@@ -16,8 +16,12 @@ stack, not GTK):
 - battery indicator and `F1`/`F2`/`F3` power keys with a two-press
   confirmation banner.
 
-Authenticates the session owner via PAM. The password buffer is zeroized after
-auth so it never lingers in memory. Theming follows the margo **matugen**
+Authenticates the session owner via its own PAM service, `/etc/pam.d/mlock`
+(`extra/mlock.pam`: `pam_unix` only, so wrong passwords at the locked screen
+can't trip `pam_faillock`; mlock falls back to `login` if the file is missing).
+Only the first hidden prompt gets the password; a second one (OTP) fails the
+attempt. The password buffer is zeroized after auth so it never lingers in
+memory. Theming follows the margo **matugen**
 palette.
 
 ## Usage

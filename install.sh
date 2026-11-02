@@ -414,6 +414,7 @@ debian_install_files() {
 644|mlogind/extra/mlogind.pam|/etc/pam.d/mlogind
 644|mlogind/extra/mlogind-greeter.pam|/etc/pam.d/mlogind-greeter
 644|mlogind/extra/mlogind-autologin.pam|/etc/pam.d/mlogind-autologin
+644|mlock/extra/mlock.pam|/etc/pam.d/mlock
 755|mlogind/extra/xsetup.sh|/etc/mlogind/xsetup.sh
 MLOGIND_ETC
   # Session-script dirs mlogind scans (config.toml: scripts_path).
