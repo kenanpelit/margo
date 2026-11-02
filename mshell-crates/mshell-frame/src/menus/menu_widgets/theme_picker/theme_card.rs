@@ -1,10 +1,8 @@
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, ThemeStoreFields};
 use mshell_config::schema::themes::Themes;
-use mshell_matugen::static_theme_mapping::static_theme;
 use reactive_graph::prelude::GetUntracked;
-use relm4::gtk::gdk;
-use relm4::gtk::prelude::{BoxExt, DrawingAreaExtManual, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
 use relm4::prelude::FactoryComponent;
 use relm4::{FactorySender, gtk};
 
@@ -146,7 +144,7 @@ impl FactoryComponent for ThemeCardModel {
         _sender: FactorySender<Self>,
     ) -> Self {
         let active_theme = config_manager().config().theme().theme().get_untracked();
-        let colors = theme_swatch_colors(&theme);
+        let colors = mshell_settings::theme_swatch::theme_swatch_colors(&theme);
         Self {
             is_selected: theme == active_theme,
             theme,
@@ -188,79 +186,19 @@ impl FactoryComponent for ThemeCardModel {
 
 impl ThemeCardModel {
     fn set_draw_funcs(&self, widgets: &ThemeCardModelWidgets) {
-        // Background
         if let Some(colors) = &self.colors {
-            let bg_color = colors[0].clone();
-            widgets.bg.set_draw_func(move |_, cr, w, h| {
-                if let Ok(rgba) = gdk::RGBA::parse(&bg_color) {
-                    let r = 6.0_f64;
-                    let w = w as f64;
-                    let h = h as f64;
-                    cr.set_source_rgba(
-                        rgba.red() as f64,
-                        rgba.green() as f64,
-                        rgba.blue() as f64,
-                        rgba.alpha() as f64,
-                    );
-                    cr.new_sub_path();
-                    cr.arc(w - r, r, r, -std::f64::consts::FRAC_PI_2, 0.0);
-                    cr.arc(w - r, h - r, r, 0.0, std::f64::consts::FRAC_PI_2);
-                    cr.arc(
-                        r,
-                        h - r,
-                        r,
-                        std::f64::consts::FRAC_PI_2,
-                        std::f64::consts::PI,
-                    );
-                    cr.arc(
-                        r,
-                        r,
-                        r,
-                        std::f64::consts::PI,
-                        3.0 * std::f64::consts::FRAC_PI_2,
-                    );
-                    cr.close_path();
-                    let _ = cr.fill();
-                }
-            });
-
-            // Swatches
-            let swatches = [
-                (&widgets.swatch1, &colors[1]),
-                (&widgets.swatch2, &colors[2]),
-                (&widgets.swatch3, &colors[3]),
-                (&widgets.swatch4, &colors[4]),
-                (&widgets.swatch5, &colors[5]),
-                (&widgets.swatch6, &colors[6]),
-            ];
-            for (swatch, color) in swatches {
-                let color = color.clone();
-                swatch.set_draw_func(move |_, cr, w, h| {
-                    if let Ok(rgba) = gdk::RGBA::parse(&color) {
-                        cr.set_source_rgba(
-                            rgba.red() as f64,
-                            rgba.green() as f64,
-                            rgba.blue() as f64,
-                            rgba.alpha() as f64,
-                        );
-                        cr.rectangle(0.0, 0.0, w as f64, h as f64);
-                        let _ = cr.fill();
-                    }
-                });
-            }
+            mshell_settings::theme_swatch::install_theme_swatches(
+                colors,
+                &widgets.bg,
+                [
+                    &widgets.swatch1,
+                    &widgets.swatch2,
+                    &widgets.swatch3,
+                    &widgets.swatch4,
+                    &widgets.swatch5,
+                    &widgets.swatch6,
+                ],
+            );
         }
     }
-}
-
-fn theme_swatch_colors(theme: &Themes) -> Option<[String; 7]> {
-    let matugen_theme = static_theme(theme, None)?;
-    Some([
-        matugen_theme.colors.surface.default.color.clone(),
-        matugen_theme.colors.on_surface.default.color.clone(),
-        matugen_theme.colors.primary.default.color.clone(),
-        matugen_theme.colors.secondary.default.color.clone(),
-        matugen_theme.colors.tertiary.default.color.clone(),
-        matugen_theme.colors.error.default.color.clone(),
-        matugen_theme.colors.outline.default.color.clone(),
-    ])
 }

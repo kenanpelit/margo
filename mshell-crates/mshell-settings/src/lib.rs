@@ -91,6 +91,8 @@ mod system_update_settings;
 mod tag_layout_settings;
 mod tag_rules_settings;
 mod theme_settings;
+/// Theme palette preview shared with the frame's theme picker.
+pub mod theme_swatch;
 mod toast_settings;
 mod translate_settings;
 mod tune_bar_settings;
