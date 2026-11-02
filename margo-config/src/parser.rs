@@ -2704,3 +2704,112 @@ mod tests {
         assert_eq!(cfg.overview_style, crate::types::OverviewStyle::Scroller);
     }
 }
+
+/// Table tests for the bind argument mapping (`bind = MODS,KEY,ACTION,args…`
+/// → `Arg`), the part of a bind the dispatcher actually reads.
+#[cfg(test)]
+mod build_arg_tests {
+    use super::{build_arg, parse_config_str};
+    use crate::types::Arg;
+
+    fn arg(parts: &[&str]) -> Arg {
+        build_arg(&parts.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+    }
+
+    #[test]
+    fn no_args_is_the_default_arg() {
+        assert_eq!(arg(&[]), Arg::default());
+    }
+
+    #[test]
+    fn first_slot_numbers() {
+        let a = arg(&["4"]);
+        assert_eq!((a.i, a.ui, a.f, a.v.as_deref()), (4, 4, 4.0, None));
+        let a = arg(&["0"]);
+        assert_eq!((a.i, a.ui, a.f, a.v.as_deref()), (0, 0, 0.0, None));
+        let a = arg(&["+3"]);
+        assert_eq!((a.i, a.ui), (3, 3));
+        // Negative ints keep `ui` at 0 rather than wrapping.
+        let a = arg(&["-1"]);
+        assert_eq!((a.i, a.ui, a.f), (-1, 0, -1.0));
+        // Tag masks above i32::MAX land in `ui` only (`tagall`-style masks).
+        let a = arg(&["4294967295"]);
+        assert_eq!((a.i, a.ui, a.f), (0, u32::MAX, u32::MAX as f32));
+        let a = arg(&["i32-overflow-free"]);
+        assert_eq!(a.v.as_deref(), Some("i32-overflow-free"));
+    }
+
+    #[test]
+    fn first_slot_floats_and_strings() {
+        let a = arg(&["0.05"]);
+        assert_eq!((a.i, a.ui, a.f, a.v.as_deref()), (0, 0, 0.05, None));
+        let a = arg(&["-0.1"]);
+        assert_eq!(a.f, -0.1);
+        let a = arg(&["1e3"]);
+        assert_eq!(a.f, 1000.0);
+        let a = arg(&["firefox"]);
+        assert_eq!((a.i, a.f, a.v.as_deref()), (0, 0.0, Some("firefox")));
+        // Too big for u32 and not an i32: parsed as a float.
+        let a = arg(&["4294967296"]);
+        assert_eq!((a.ui, a.f, a.v.as_deref()), (0, 4294967296.0, None));
+    }
+
+    #[test]
+    fn second_slot_mirrors_the_first() {
+        let a = arg(&["1", "2"]);
+        assert_eq!((a.i, a.i2, a.ui2, a.f2), (1, 2, 2, 2.0));
+        let a = arg(&["1", "-0.5"]);
+        assert_eq!((a.i2, a.ui2, a.f2), (0, 0, -0.5));
+        let a = arg(&["kitty", "dropdown"]);
+        assert_eq!(
+            (a.v.as_deref(), a.v2.as_deref()),
+            (Some("kitty"), Some("dropdown"))
+        );
+        let a = arg(&["x", "4294967295"]);
+        assert_eq!((a.ui2, a.v2.as_deref()), (u32::MAX, None));
+    }
+
+    #[test]
+    fn third_to_fifth_slots() {
+        let a = arg(&["app", "none", "kitty --class app"]);
+        assert_eq!(a.v3.as_deref(), Some("kitty --class app"));
+        assert_eq!(arg(&["a", "b", "0"]).v3, None);
+        assert_eq!(arg(&["a", "b", ""]).v3, None);
+        // A numeric 4th slot overrides `ui` from slot 1; a word is the
+        // summon/focusapp match operator.
+        let a = arg(&["5", "0", "0", "7"]);
+        assert_eq!((a.i, a.ui, a.v4.as_deref()), (5, 7, None));
+        let a = arg(&["app", "title", "cmd", "or"]);
+        assert_eq!(a.v4.as_deref(), Some("or"));
+        assert_eq!(arg(&["a", "b", "c", "0"]).v4, None);
+        let a = arg(&["1", "2", "c", "3", "9"]);
+        assert_eq!((a.ui, a.ui2), (3, 9));
+        assert_eq!(
+            arg(&["1", "2", "c", "3", "x"]).ui2,
+            2,
+            "non-numeric 5th is ignored"
+        );
+    }
+
+    #[test]
+    fn binds_carry_their_args() {
+        let cfg = parse_config_str(
+            "bind=SUPER,Return,spawn,foot\n\
+             bind=SUPER,1,view,1\n\
+             bind=SUPER+SHIFT,minus,setmfact,-0.05\n",
+            None,
+        )
+        .unwrap();
+        let find = |action: &str| {
+            cfg.key_bindings
+                .iter()
+                .find(|b| b.action == action)
+                .unwrap_or_else(|| panic!("no {action} bind"))
+                .arg
+                .clone()
+        };
+        assert_eq!(find("spawn").v.as_deref(), Some("foot"));
+        assert_eq!(find("view").ui, 1);
+        assert_eq!(find("setmfact").f, -0.05);
+    }
+}

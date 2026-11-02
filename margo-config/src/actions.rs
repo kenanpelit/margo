@@ -1066,3 +1066,119 @@ pub const LAYOUT_NAMES: &[&str] = &[
     "floating",
     "mosaic",
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn every_spelling_routes_to_exactly_one_action() {
+        let mut owner: HashMap<&str, &str> = HashMap::new();
+        for a in ACTIONS {
+            for spelling in std::iter::once(&a.name).chain(a.aliases) {
+                if let Some(prev) = owner.insert(spelling, a.name) {
+                    panic!("`{spelling}` is claimed by both `{prev}` and `{}`", a.name);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn spellings_are_single_lowercase_tokens() {
+        // The IPC grammar splits on whitespace and the dispatcher matches
+        // case-sensitively, so anything else could never be invoked.
+        for a in ACTIONS {
+            for spelling in std::iter::once(&a.name).chain(a.aliases) {
+                assert!(!spelling.is_empty(), "empty spelling on `{}`", a.name);
+                assert!(
+                    spelling.chars().all(|c| c.is_ascii_lowercase()
+                        || c.is_ascii_digit()
+                        || c == '_'
+                        || c == '-'),
+                    "`{spelling}` (on `{}`)",
+                    a.name
+                );
+            }
+            assert!(!a.aliases.contains(&a.name), "`{}` aliases itself", a.name);
+        }
+    }
+
+    #[test]
+    fn every_action_is_documented() {
+        for a in ACTIONS {
+            assert!(!a.summary.trim().is_empty(), "`{}` has no summary", a.name);
+            assert_eq!(a.args.trim(), a.args, "`{}` args padding", a.name);
+        }
+    }
+
+    #[test]
+    fn is_known_accepts_names_and_aliases_only() {
+        let table: &[(&str, bool)] = &[
+            ("view", true),
+            ("tagview", true),
+            ("tag_view", true),
+            ("tag-view", true),
+            ("movetagview", true),
+            ("tagsilent", true),
+            ("chvt", true),
+            ("cycle-kb-layout", true),
+            ("View", false),
+            ("TAGVIEW", false),
+            (" view", false),
+            ("view ", false),
+            ("", false),
+            ("tag view", false),
+            ("viewx", false),
+            ("definitely_not_an_action", false),
+        ];
+        for (name, known) in table {
+            assert_eq!(is_known(name), *known, "{name:?}");
+        }
+    }
+
+    #[test]
+    fn all_names_is_sorted_complete_and_unique() {
+        let names = all_names();
+        assert!(
+            names.windows(2).all(|w| w[0] < w[1]),
+            "sorted, no duplicates"
+        );
+        let expected: usize = ACTIONS.iter().map(|a| 1 + a.aliases.len()).sum();
+        assert_eq!(names.len(), expected);
+        for a in ACTIONS {
+            assert!(names.binary_search(&a.name).is_ok(), "{}", a.name);
+            for alias in a.aliases {
+                assert!(names.binary_search(alias).is_ok(), "{alias}");
+            }
+        }
+        assert!(names.iter().all(|n| is_known(n)));
+    }
+
+    #[test]
+    fn every_group_has_actions_and_a_label() {
+        for g in [
+            Group::Tag,
+            Group::Focus,
+            Group::Layout,
+            Group::Scroller,
+            Group::Window,
+            Group::Scratchpad,
+            Group::Overview,
+            Group::System,
+        ] {
+            assert!(!g.label().is_empty());
+            assert!(ACTIONS.iter().any(|a| a.group == g), "{g:?} is empty");
+        }
+    }
+
+    #[test]
+    fn layout_names_are_unique_tokens() {
+        let mut seen = std::collections::HashSet::new();
+        for l in LAYOUT_NAMES {
+            assert!(seen.insert(l), "duplicate layout {l}");
+            assert!(!l.is_empty() && !l.contains(char::is_whitespace), "{l:?}");
+        }
+        assert!(is_known("setlayout"));
+    }
+}
