@@ -133,7 +133,8 @@ fn stage_timeouts(cfg: &IdleConfig) -> Vec<(IdleStage, u32)> {
     .into_iter()
     .filter_map(|(stage, minutes)| {
         let minutes = minutes.filter(|m| *m > 0)?;
-        Some((stage, minutes * 60_000))
+        // Saturate (~49.7 days) rather than wrap to a tiny timeout.
+        Some((stage, minutes.saturating_mul(60_000)))
     })
     .collect()
 }
@@ -292,6 +293,20 @@ mod tests {
         assert_eq!(
             stage_timeouts(&cfg(Some(0), None, Some(1))),
             vec![(IdleStage::Suspend, 60_000)]
+        );
+    }
+
+    #[test]
+    fn huge_timeouts_saturate_instead_of_wrapping() {
+        // 71_583 min × 60_000 overflows u32: it wrapped to ~12.7 s in a
+        // release build (dimming almost at once) and panicked in debug.
+        assert_eq!(
+            stage_timeouts(&cfg(Some(71_583), None, Some(u32::MAX))),
+            vec![(IdleStage::Dim, u32::MAX), (IdleStage::Suspend, u32::MAX)]
+        );
+        assert_eq!(
+            stage_timeouts(&cfg(None, Some(71_582), None)),
+            vec![(IdleStage::Lock, 71_582 * 60_000)]
         );
     }
 
