@@ -277,10 +277,16 @@ fn build_overlay(
     let cli_click = Rc::clone(cli);
     let frame_click = Rc::clone(&frame_rc);
     let out_click = output_name.clone();
+    let da_click = drawing_area.clone();
     click.connect_pressed(move |gesture, _, x, y| {
         *state_click.cursor_output.borrow_mut() = Some(out_click.clone());
         state_click.cursor.set(Some((x, y)));
-        if let Some(color) = sample_at(&frame_click, x, y) {
+        let (sx, sy) = frame_scale(
+            &frame_click,
+            da_click.width() as f64,
+            da_click.height() as f64,
+        );
+        if let Some(color) = sample_at(&frame_click, x * sx, y * sy) {
             let formatted = format_color(color, &cli_click.format, cli_click.lowercase_hex);
             *PICKED.lock().unwrap() = Some(formatted);
         }
@@ -364,9 +370,16 @@ fn draw_overlay(
     this_output: &str,
     no_zoom: bool,
 ) {
-    // Frozen screen as the background.
+    // The frame is in buffer pixels, the widget in logical pixels: on a
+    // scaled output (HiDPI or fractional) they differ by the scale.
+    let (sx, sy) = frame_scale(frame, width as f64, height as f64);
+
+    // Frozen screen as the background, fitted to the widget.
+    cr.save().ok();
+    cr.scale(1.0 / sx, 1.0 / sy);
     cr.set_source_surface(surface, 0.0, 0.0).ok();
     cr.paint().ok();
+    cr.restore().ok();
 
     // Cursor + zoom lens only on the overlay that owns the cursor.
     let same_owner = state
@@ -382,14 +395,12 @@ fn draw_overlay(
         return;
     };
 
-    let _ = (width, height); // unused but useful to keep signature consistent
-
     if !no_zoom {
-        draw_zoom_lens(cr, cx, cy, frame);
+        draw_zoom_lens(cr, cx, cy, surface, (sx, sy));
     }
 
     // Hex chip floating below the cursor. Sample current pixel.
-    if let Some(color) = sample_at(frame, cx, cy) {
+    if let Some(color) = sample_at(frame, cx * sx, cy * sy) {
         draw_hex_chip(cr, cx, cy, color);
     }
 }
@@ -400,8 +411,15 @@ const LENS_ZOOM: f64 = 10.0;
 /// Cairo-render a circular magnifier centered on the cursor.
 /// Inside the circle: the captured pixels scaled `LENS_ZOOM` ×,
 /// with a 1-pixel grid + a central crosshair so the user can
-/// see exactly which pixel they're about to click.
-fn draw_zoom_lens(cr: &cairo::Context, cx: f64, cy: f64, frame: &RgbaImage) {
+/// see exactly which pixel they're about to click. `surface` is the
+/// frame already converted for cairo; `(sx, sy)` is [`frame_scale`].
+fn draw_zoom_lens(
+    cr: &cairo::Context,
+    cx: f64,
+    cy: f64,
+    surface: &ImageSurface,
+    (sx, sy): (f64, f64),
+) {
     cr.save().ok();
 
     // Clip to the lens circle.
@@ -414,15 +432,14 @@ fn draw_zoom_lens(cr: &cairo::Context, cx: f64, cy: f64, frame: &RgbaImage) {
     cr.translate(cx, cy);
     cr.scale(LENS_ZOOM, LENS_ZOOM);
     cr.translate(-cx, -cy);
+    cr.scale(1.0 / sx, 1.0 / sy);
 
-    if let Ok(surface) = rgba_image_to_cairo_surface(frame) {
-        cr.set_source_surface(&surface, 0.0, 0.0).ok();
-        // Nearest-neighbour so individual pixels render as crisp
-        // squares — the whole point of a magnifier is seeing the
-        // pixel grid.
-        cr.source().set_filter(cairo::Filter::Nearest);
-        cr.paint().ok();
-    }
+    cr.set_source_surface(surface, 0.0, 0.0).ok();
+    // Nearest-neighbour so individual pixels render as crisp
+    // squares — the whole point of a magnifier is seeing the
+    // pixel grid.
+    cr.source().set_filter(cairo::Filter::Nearest);
+    cr.paint().ok();
 
     cr.restore().ok();
 
@@ -482,16 +499,34 @@ fn draw_hex_chip(cr: &cairo::Context, cx: f64, cy: f64, color: Rgba<u8>) {
     cr.restore().ok();
 }
 
-/// Sample the pixel at output-local coordinates `(x, y)`. Clamps
-/// to image bounds; returns `None` for empty images.
+/// Frame (buffer) pixels per widget (logical) pixel on each axis —
+/// the output scale, e.g. `(2.0, 2.0)` at 200 %. Falls back to 1 on an
+/// axis whose widget size or frame size is still zero.
+fn frame_scale(frame: &RgbaImage, widget_w: f64, widget_h: f64) -> (f64, f64) {
+    let ratio = |frame_px: u32, widget_px: f64| {
+        if frame_px > 0 && widget_px > 0.0 {
+            frame_px as f64 / widget_px
+        } else {
+            1.0
+        }
+    };
+    (
+        ratio(frame.width(), widget_w),
+        ratio(frame.height(), widget_h),
+    )
+}
+
+/// Sample the pixel covering frame coordinates `(x, y)` — pixel `i`
+/// spans `[i, i + 1)`. Clamps to image bounds; returns `None` for
+/// empty images.
 fn sample_at(frame: &RgbaImage, x: f64, y: f64) -> Option<Rgba<u8>> {
     let w = frame.width() as i32;
     let h = frame.height() as i32;
     if w <= 0 || h <= 0 {
         return None;
     }
-    let xi = (x.round() as i32).clamp(0, w - 1);
-    let yi = (y.round() as i32).clamp(0, h - 1);
+    let xi = (x.floor() as i32).clamp(0, w - 1);
+    let yi = (y.floor() as i32).clamp(0, h - 1);
     Some(*frame.get_pixel(xi as u32, yi as u32))
 }
 
@@ -736,17 +771,50 @@ mod tests {
     }
 
     #[test]
-    fn sample_rounds_and_clamps_to_the_frame() {
+    fn sample_takes_the_pixel_under_the_point_and_clamps() {
         let mut frame = RgbaImage::new(3, 2);
         for (x, y, p) in frame.enumerate_pixels_mut() {
             *p = Rgba([x as u8, y as u8, 0, 255]);
         }
         assert_eq!(sample_at(&frame, 0.0, 0.0), Some(Rgba([0, 0, 0, 255])));
-        assert_eq!(sample_at(&frame, 1.4, 0.6), Some(Rgba([1, 1, 0, 255])));
-        assert_eq!(sample_at(&frame, 1.5, 0.0), Some(Rgba([2, 0, 0, 255])));
+        // Pixel 1 spans [1, 2): anywhere inside it picks pixel 1, not
+        // the right/lower neighbour.
+        assert_eq!(sample_at(&frame, 1.4, 0.6), Some(Rgba([1, 0, 0, 255])));
+        assert_eq!(sample_at(&frame, 1.99, 1.5), Some(Rgba([1, 1, 0, 255])));
+        assert_eq!(sample_at(&frame, 2.0, 0.0), Some(Rgba([2, 0, 0, 255])));
         assert_eq!(sample_at(&frame, -50.0, -1.0), Some(Rgba([0, 0, 0, 255])));
         assert_eq!(sample_at(&frame, 1e9, 1e9), Some(Rgba([2, 1, 0, 255])));
         assert_eq!(sample_at(&frame, f64::NAN, 0.0), Some(Rgba([0, 0, 0, 255])));
+    }
+
+    #[test]
+    fn frame_scale_maps_logical_to_buffer_pixels() {
+        let frame = RgbaImage::new(3840, 2160);
+        assert_eq!(frame_scale(&frame, 3840.0, 2160.0), (1.0, 1.0));
+        assert_eq!(frame_scale(&frame, 1920.0, 1080.0), (2.0, 2.0));
+        let (sx, sy) = frame_scale(&frame, 2560.0, 1440.0);
+        assert!((sx - 1.5).abs() < 1e-9 && (sy - 1.5).abs() < 1e-9);
+        // Not allocated yet / empty frame: identity, never inf or NaN.
+        assert_eq!(frame_scale(&frame, 0.0, 0.0), (1.0, 1.0));
+        assert_eq!(
+            frame_scale(&RgbaImage::new(0, 0), 1920.0, 1080.0),
+            (1.0, 1.0)
+        );
+    }
+
+    #[test]
+    fn hidpi_click_samples_the_pixel_under_the_pointer() {
+        // 200 % output: 4x2 logical widget over an 8x4 buffer. The pixel
+        // under logical (3.2, 1.6) is buffer (6, 3), not (3, 2).
+        let mut frame = RgbaImage::new(8, 4);
+        for (x, y, p) in frame.enumerate_pixels_mut() {
+            *p = Rgba([x as u8, y as u8, 0, 255]);
+        }
+        let (sx, sy) = frame_scale(&frame, 4.0, 2.0);
+        assert_eq!(
+            sample_at(&frame, 3.2 * sx, 1.6 * sy),
+            Some(Rgba([6, 3, 0, 255]))
+        );
     }
 
     #[test]
