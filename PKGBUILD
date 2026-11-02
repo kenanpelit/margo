@@ -194,6 +194,14 @@ pkgver() {
 
 prepare() {
   cd "$srcdir/margo"
+  # With rustup (which provides `rust`/`cargo` too), build with the toolchain
+  # pinned in rust-toolchain.toml — the one CI builds, tests and lints with —
+  # installing it if it is missing. Arch's plain `rust` package ignores the
+  # pin and uses the system compiler.
+  if command -v rustup >/dev/null 2>&1; then
+    rustup toolchain install --profile minimal \
+      "$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
+  fi
   # Pre-fetch all dependencies so build() can run offline and
   # fails early if Cargo.lock has drifted from the workspace
   # manifest.
@@ -202,8 +210,6 @@ prepare() {
 
 build() {
   cd "$srcdir/margo"
-
-  export RUSTUP_TOOLCHAIN=stable
 
   # `--remap-path-prefix` rewrites the build dir to `/build` in
   # the embedded debug strings; otherwise pacman warns about a

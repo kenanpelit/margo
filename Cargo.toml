@@ -334,10 +334,11 @@ strip = "none"
 
 # Release-grade distribution build. Inherits `release` but trades a longer
 # compile for a faster, smaller shipped binary: a single codegen unit (no
-# cross-unit inlining barriers) + fat LTO. Opt-in so the dev inner loop keeps
-# `release`'s thin-LTO / parallel-codegen speed. Build the installed binaries
-# with `cargo build --profile dist -p margo` (etc.); CI / `just` keep using
-# `release`.
+# cross-unit inlining barriers) + fat LTO. Used by `install.sh` (the
+# cross-distro installer: `cargo build --profile dist`, installs from
+# target/dist). CI, `just` and the AUR PKGBUILD stay on `release`: AUR users
+# compile on their own machines, where fat LTO + one codegen unit over the
+# whole compositor + GTK shell stack makes every update build much longer.
 [profile.dist]
 inherits = "release"
 lto = "fat"

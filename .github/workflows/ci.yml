@@ -176,6 +176,42 @@ jobs:
             | jq -r '.packages[].manifest_path | sub("/Cargo.toml$"; "")')
           cargo machete $dirs
 
+  # The declared MSRV (Cargo.toml `rust-version`) must actually build: the
+  # pinned toolchain in rust-toolchain.toml is newer, so nothing else would
+  # notice a newer-than-MSRV API slipping in. `check` only — codegen adds
+  # nothing to the question.
+  msrv:
+    name: MSRV check (rust-version)
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    timeout-minutes: 40
+    steps:
+      - name: System dependencies (pacman)
+        run: |
+          pacman -Syu --noconfirm --needed \
+            git rustup clang pkgconf \
+            wayland wayland-protocols libinput libxkbcommon \
+            mesa libdrm seatd pixman libgudev systemd-libs \
+            pcre2 pam cairo pango dbus \
+            mpv \
+            gtk4 gtk4-layer-shell libadwaita gdk-pixbuf2 graphene fontconfig freetype2 \
+            gstreamer gst-plugins-base gst-plugins-base-libs gst-plugins-good \
+            alsa-lib libpulse pipewire
+      - uses: actions/checkout@v5
+      - name: Install the MSRV toolchain
+        run: |
+          msrv=$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)
+          rustup toolchain install --profile minimal "$msrv"
+          echo "MSRV=$msrv" >> "$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: msrv
+      - name: cargo check on the MSRV (same groups as the build)
+        run: |
+          cargo +"$MSRV" check --locked -p margo -p start-margo -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mlogind -p mpower -p mdots -p mcal -p mtm
+          cargo +"$MSRV" check --locked -p mshell -p mshellctl -p mshellshare -p mpicker -p mwizard -p mkeys -p mvpn -p mgreet -p margo-portal
+          cargo +"$MSRV" check --locked -p mtune
+
   # Supply-chain scan over the vendored + git-pinned + large dependency tree
   # (the audit's "no dependency-CVE scanning" gap). Runs on the plain Ubuntu
   # runner (no GTK needed — it reads Cargo.lock). Split into a hard gate + a
