@@ -13,6 +13,7 @@ use mshell_config::schema::config::{
     NotificationsStoreFields, ScriptAutostart, ThemeStoreFields,
 };
 use mshell_idle::inhibitor::IdleInhibitor;
+use mshell_process::SpawnReaped;
 use mshell_services::notification_service;
 use mshell_services::weather_service;
 use reactive_graph::effect::Effect;
@@ -399,7 +400,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                             "Plugin updates installed",
                             &body,
                         ])
-                        .spawn();
+                        .spawn_reaped();
                 } else if !outcome.errors.is_empty() {
                     tracing::warn!(
                         errors = ?outcome.errors,
@@ -649,7 +650,7 @@ fn spawn_autostart_detached(entry: &ScriptAutostart) {
         sd.current_dir(d);
     }
     sd.arg("--").arg("sh").arg("-c").arg(&cmdline);
-    if sd.spawn().is_ok() {
+    if sd.spawn_reaped().is_ok() {
         return;
     }
 
@@ -661,7 +662,7 @@ fn spawn_autostart_detached(entry: &ScriptAutostart) {
     if let Some(d) = &dir {
         cmd.current_dir(d);
     }
-    if let Err(err) = cmd.spawn() {
+    if let Err(err) = cmd.spawn_reaped() {
         tracing::warn!(script = %entry.name, ?err, "autostart: spawn failed");
     }
 }

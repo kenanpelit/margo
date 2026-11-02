@@ -314,6 +314,8 @@ pub enum FrameInput {
     /// sync. The [`MenuId`] payload selects which. Menus with bespoke open
     /// logic keep their own variants below.
     ToggleMenu(MenuId),
+    /// Close every open menu, then open `MenuId` (dashboard shortcuts).
+    SwitchToMenu(MenuId),
     /// Re-assert the layer surface's keyboard interactivity from the
     /// current menu-reveal state. Fired once when the frame surface
     /// first maps: gtk4-layer-shell's initial commit can land with a
@@ -1168,6 +1170,11 @@ impl Component for Frame {
                 self.ensure_menu_built(&sender, id, widgets);
                 self.toggle_menu(id.menu_name(), widgets);
                 self.sync_keyboard_mode(root);
+            }
+            FrameInput::SwitchToMenu(id) => {
+                // Queued in order: the close lands before the toggle.
+                sender.input(FrameInput::CloseMenus);
+                sender.input(FrameInput::ToggleMenu(id));
             }
             FrameInput::SyncKeyboardMode => {
                 self.sync_keyboard_mode(root);

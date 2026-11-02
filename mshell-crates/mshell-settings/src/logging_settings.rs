@@ -10,6 +10,7 @@ use crate::compositor_conf::{read_bool, read_raw, set_and_reload};
 use crate::row::Row;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::ConfigStoreFields;
+use mshell_process::SpawnReaped;
 use reactive_graph::traits::GetUntracked;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -191,7 +192,9 @@ impl Component for LoggingModel {
             LoggingInput::OpenFolder => {
                 let dir = margo_logging::logs_dir();
                 let _ = std::fs::create_dir_all(&dir);
-                let _ = std::process::Command::new("xdg-open").arg(&dir).spawn();
+                let _ = std::process::Command::new("xdg-open")
+                    .arg(&dir)
+                    .spawn_reaped();
             }
         }
     }

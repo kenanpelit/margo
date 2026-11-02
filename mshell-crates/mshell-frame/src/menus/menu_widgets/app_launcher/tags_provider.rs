@@ -13,7 +13,6 @@
 
 use mshell_launcher::{LauncherItem, Provider};
 use mshell_margo_client::read_state_json;
-use std::process::Command;
 use std::rc::Rc;
 
 /// Margo's per-output tag count. `mctl status` confirms 9 tags
@@ -159,9 +158,8 @@ impl Provider for TagsProvider {
                     provider_name: "Tags".into(),
                     usage_key: Some(format!("tags:{n}")),
                     on_activate: Rc::new(move || {
-                        if let Err(err) = Command::new("mctl").args(["tags", &mask_str]).spawn() {
-                            tracing::warn!(?err, mask = mask_str, "tags provider switch failed");
-                        }
+                        // In-process `mctl tags <mask>`.
+                        mshell_margo_client::ctl::dispatch_detached("settagset", &[&mask_str, "0"]);
                     }),
                 }
             })

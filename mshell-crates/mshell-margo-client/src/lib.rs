@@ -35,6 +35,7 @@ use std::sync::{Arc, RwLock};
 use anyhow::Result;
 use futures::{Stream, StreamExt};
 
+pub mod ctl;
 pub mod state_json;
 mod sync;
 

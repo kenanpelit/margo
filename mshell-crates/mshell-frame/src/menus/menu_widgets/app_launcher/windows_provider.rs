@@ -28,7 +28,6 @@ use nucleo_matcher::{
     pattern::{CaseMatching, Normalization, Pattern},
 };
 use std::cell::RefCell;
-use std::process::Command;
 use std::rc::Rc;
 
 /// A single open-window candidate. Snapshotted from state.json
@@ -43,7 +42,7 @@ struct WindowEntry {
     /// Description line — monitor + tag number.
     description: String,
     /// Stable, session-monotonic client id from the compositor. `0` means
-    /// the running margo predates the `id` field — see [`focus_dispatch_args`].
+    /// the running margo predates the `id` field — see [`focus_dispatch`].
     client_id: u64,
     /// Tag bitmask — used for the `client_id == 0` fallback command and
     /// for the description's tag number.
@@ -111,7 +110,7 @@ impl WindowsProvider {
     }
 
     fn make_item(&self, entry: &WindowEntry, score: f64) -> LauncherItem {
-        let args = focus_dispatch_args(entry.client_id, entry.tag_mask);
+        let (action, args) = focus_dispatch(entry.client_id, entry.tag_mask);
         let monitor = entry.id.clone();
         LauncherItem {
             id: entry.id.clone(),
@@ -127,9 +126,8 @@ impl WindowsProvider {
             provider_name: "Windows".into(),
             usage_key: Some(monitor),
             on_activate: Rc::new(move || {
-                if let Err(err) = Command::new("mctl").args(&args).spawn() {
-                    tracing::warn!(?err, ?args, "windows provider focus dispatch failed");
-                }
+                let args: Vec<&str> = args.iter().map(String::as_str).collect();
+                mshell_margo_client::ctl::dispatch_detached(action, &args);
             }),
         }
     }
@@ -213,21 +211,18 @@ impl Provider for WindowsProvider {
     }
 }
 
-/// `mctl` argv for the dispatch that brings a window to the foreground.
-/// Prefers the exact, race-free `dispatch focuswindowid <id>` — the same
-/// one the dock uses — which focuses + raises the window and crosses
-/// monitors in one step. Falls back to `tags <mask>` (view-jump only,
-/// best-effort focus) when `client_id == 0`, i.e. the snapshot came from
-/// a margo build predating the `id` field.
-fn focus_dispatch_args(client_id: u64, tag_mask: u32) -> Vec<String> {
+/// The margo dispatch (action, args) that brings a window to the
+/// foreground. Prefers the exact, race-free `focuswindowid <id>` — the
+/// same one the dock uses — which focuses + raises the window and crosses
+/// monitors in one step. Falls back to `settagset <mask> 0` (view-jump
+/// only, best-effort focus) when `client_id == 0`, i.e. the snapshot came
+/// from a margo build predating the `id` field.
+fn focus_dispatch(client_id: u64, tag_mask: u32) -> (&'static str, Vec<String>) {
     if client_id != 0 {
-        vec![
-            "dispatch".into(),
-            "focuswindowid".into(),
-            client_id.to_string(),
-        ]
+        ("focuswindowid", vec![client_id.to_string()])
     } else {
-        vec!["tags".into(), tag_mask.to_string()]
+        // What `mctl tags <mask>` sends.
+        ("settagset", vec![tag_mask.to_string(), "0".into()])
     }
 }
 
@@ -258,13 +253,16 @@ mod tests {
     #[test]
     fn focus_dispatch_prefers_exact_id() {
         assert_eq!(
-            focus_dispatch_args(42, 4),
-            vec!["dispatch", "focuswindowid", "42"]
+            focus_dispatch(42, 4),
+            ("focuswindowid", vec!["42".to_string()])
         );
     }
 
     #[test]
     fn focus_dispatch_falls_back_to_tag_view_without_id() {
-        assert_eq!(focus_dispatch_args(0, 4), vec!["tags", "4"]);
+        assert_eq!(
+            focus_dispatch(0, 4),
+            ("settagset", vec!["4".to_string(), "0".to_string()])
+        );
     }
 }

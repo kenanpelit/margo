@@ -124,7 +124,7 @@ fn import_bundle(src: &Path) -> std::io::Result<()> {
 
     // Apply: shell reloads its config; the compositor re-reads config.conf.
     config_manager().reload_config();
-    let _ = Command::new("mctl").arg("reload").spawn();
+    crate::compositor_conf::reload();
     Ok(())
 }
 

@@ -95,9 +95,7 @@ fn write_fragment(cfg: &GameMode, on: bool) -> Result<(), String> {
 }
 
 fn reload() {
-    if let Err(e) = std::process::Command::new("mctl").arg("reload").spawn() {
-        tracing::warn!(error = %e, "game mode: `mctl reload` failed to spawn");
-    }
+    mshell_margo_client::ctl::reload_config_detached();
 }
 
 fn spawn_idle(enable: bool) {

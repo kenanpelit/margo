@@ -8,6 +8,7 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
+mshell-margo-client.workspace = true
 serde.workspace = true
 toml.workspace = true
 dirs.workspace = true

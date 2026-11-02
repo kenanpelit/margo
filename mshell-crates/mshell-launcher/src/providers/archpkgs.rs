@@ -14,6 +14,7 @@ use crate::{
     notify::toast,
     provider::{Provider, RefreshNotifier},
 };
+use mshell_process::SpawnReaped;
 use std::process::Command;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
@@ -465,14 +466,14 @@ fn spawn_install(terminal: &str, helper: &str, pkg: &str) {
         for arg in &inner {
             cmd.arg(arg);
         }
-        cmd.spawn()
+        cmd.spawn_reaped()
     } else {
         let mut cmd = Command::new(terminal);
         cmd.arg("-e");
         for arg in &inner {
             cmd.arg(arg);
         }
-        cmd.spawn()
+        cmd.spawn_reaped()
     };
     if let Err(err) = result {
         tracing::warn!(?err, terminal, pkg, "archpkgs install spawn failed");

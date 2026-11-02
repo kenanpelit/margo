@@ -16,6 +16,7 @@ use crate::{
     notify::toast,
     provider::{Provider, RefreshNotifier},
 };
+use mshell_process::SpawnReaped;
 use std::process::Command;
 use std::rc::Rc;
 use std::time::Duration;
@@ -232,7 +233,10 @@ impl Provider for BluetoothProvider {
                     usage_key: Some(format!("bt:{}", dev.mac)),
                     on_activate: Rc::new(move || {
                         let sub = if connected { "disconnect" } else { "connect" };
-                        if let Err(err) = Command::new("bluetoothctl").args([sub, &mac]).spawn() {
+                        if let Err(err) = Command::new("bluetoothctl")
+                            .args([sub, &mac])
+                            .spawn_reaped()
+                        {
                             tracing::warn!(?err, mac, sub, "bluetoothctl failed");
                         } else {
                             toast(action_label, toast_name.clone());

@@ -15,6 +15,7 @@ use crate::{
     notify::toast,
     provider::{Provider, RefreshNotifier},
 };
+use mshell_process::SpawnReaped;
 use std::process::Command;
 use std::rc::Rc;
 use std::time::Duration;
@@ -242,8 +243,9 @@ impl Provider for WireplumberProvider {
                     provider_name: "Audio".into(),
                     usage_key: Some(format!("audio:{}:{}", dev.kind, dev.id)),
                     on_activate: Rc::new(move || {
-                        if let Err(err) =
-                            Command::new("wpctl").args(["set-default", &id_str]).spawn()
+                        if let Err(err) = Command::new("wpctl")
+                            .args(["set-default", &id_str])
+                            .spawn_reaped()
                         {
                             tracing::warn!(?err, id = id_str, "wpctl set-default failed");
                         } else {

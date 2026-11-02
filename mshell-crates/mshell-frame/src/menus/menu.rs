@@ -264,6 +264,8 @@ pub(crate) enum MenuOutput {
     /// The mdock menu's launcher button asks the frame to open the app
     /// launcher (which also swaps out the dock menu).
     OpenAppLauncher,
+    /// A dashboard shortcut: close every menu, then open this one.
+    OpenMenu(crate::frame::MenuId),
 }
 
 pub(crate) struct MenuInit {

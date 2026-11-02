@@ -19,6 +19,7 @@
 //! `pass` to the clipboard's sensitive-skip list.
 
 use crate::{item::LauncherItem, notify::toast, provider::Provider};
+use mshell_process::SpawnReaped;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -143,7 +144,7 @@ fn copy_password(store_dir: &Path, entry: &str) {
         .env("PASSWORD_STORE_DIR", store_dir)
         .arg("-c")
         .arg(entry)
-        .spawn()
+        .spawn_reaped()
     {
         tracing::warn!(?err, entry, "pass: copy spawn failed");
     }
@@ -162,7 +163,7 @@ fn type_password(store_dir: &Path, entry: &str) {
         .env("PASSWORD_STORE_DIR", store_dir)
         .arg("-c")
         .arg(cmd)
-        .spawn()
+        .spawn_reaped()
     {
         tracing::warn!(?err, entry, "pass: type spawn failed");
     }

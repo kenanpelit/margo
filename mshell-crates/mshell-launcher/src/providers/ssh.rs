@@ -20,6 +20,7 @@
 //! kitty when `$TERMINAL` is unset).
 
 use crate::{item::LauncherItem, notify::toast, provider::Provider};
+use mshell_process::SpawnReaped;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -285,9 +286,11 @@ fn spawn_terminal_ssh(terminal: &str, host: &str) {
     let result = if terminal == "wezterm" {
         Command::new(terminal)
             .args(["start", "--", "ssh", host])
-            .spawn()
+            .spawn_reaped()
     } else {
-        Command::new(terminal).args(["-e", "ssh", host]).spawn()
+        Command::new(terminal)
+            .args(["-e", "ssh", host])
+            .spawn_reaped()
     };
     if let Err(err) = result {
         tracing::warn!(?err, terminal, host, "ssh provider spawn failed");

@@ -9,6 +9,7 @@
 use crate::row::Row;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields};
+use mshell_process::SpawnReaped;
 use reactive_graph::prelude::GetUntracked;
 use relm4::gtk::glib::SignalHandlerId;
 use relm4::gtk::prelude::*;
@@ -307,12 +308,11 @@ fn list_timezones() -> Vec<String> {
 
 /// Run `timedatectl <args>` (polkit-authenticated), reaping asynchronously.
 fn run_timedatectl(args: &[&str]) {
-    match std::process::Command::new("timedatectl").args(args).spawn() {
-        Ok(mut child) => {
-            std::thread::spawn(move || {
-                let _ = child.wait();
-            });
-        }
+    match std::process::Command::new("timedatectl")
+        .args(args)
+        .spawn_reaped()
+    {
+        Ok(_) => {}
         Err(e) => tracing::warn!(error = %e, ?args, "date-time: timedatectl failed to spawn"),
     }
 }

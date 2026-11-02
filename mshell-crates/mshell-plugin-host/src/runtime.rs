@@ -9,6 +9,7 @@
 //! Compiled only under `--features wasm`.
 
 use anyhow::Result;
+use mshell_process::SpawnReaped;
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -304,7 +305,7 @@ impl Host for HostState {
             .arg("--")
             .arg(&summary)
             .arg(&body)
-            .spawn()
+            .spawn_reaped()
         {
             tracing::warn!(plugin = self.plugin_id, "notify failed: {e}");
         }

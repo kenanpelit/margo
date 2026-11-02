@@ -7,6 +7,7 @@
 //! goes back to `running = false` when it disappears, so the pill just
 //! shows a "launch Tune" affordance in the meantime.
 
+use mshell_process::SpawnReaped;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
@@ -200,7 +201,7 @@ pub fn spawn_mtune() {
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
-        .spawn();
+        .spawn_reaped();
 }
 
 pub struct MtuneService {

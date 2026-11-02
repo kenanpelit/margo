@@ -29,6 +29,7 @@ use crate::{
     notify::toast,
     provider::{Provider, RefreshNotifier},
 };
+use mshell_process::SpawnReaped;
 use std::time::Duration;
 use std::{collections::HashSet, path::PathBuf, process::Command, rc::Rc};
 
@@ -131,7 +132,7 @@ impl ScriptsProvider {
             provider_name: "Scripts".into(),
             usage_key: Some(format!("scripts:{name}")),
             on_activate: Rc::new(move || {
-                if let Err(err) = Command::new(&path).spawn() {
+                if let Err(err) = Command::new(&path).spawn_reaped() {
                     tracing::warn!(?err, script = %display_name, "scripts provider spawn failed");
                 } else {
                     toast(format!("Launched {display_name}"), "");

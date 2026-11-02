@@ -14,6 +14,7 @@ gtk4.workspace = true
 gtk4-layer-shell.workspace = true
 image.workspace = true
 memmap2.workspace = true
+mshell-process.workspace = true
 nix.workspace = true
 mshell-services.workspace = true
 relm4.workspace = true

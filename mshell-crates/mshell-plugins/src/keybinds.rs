@@ -8,7 +8,7 @@
 //! The shell writes the survivors to `~/.config/margo/binds.d/mshell-plugins.conf`
 //! as `bind = <combo>, spawn, mshellctl plugin keybind <plugin-key> <id>` lines.
 //! The user adds `source=binds.d/mshell-plugins.conf` to their `config.conf`
-//! once; mshell calls `mctl reload` whenever the file changes.
+//! once; mshell asks margo to reload its config whenever the file changes.
 
 use crate::{Keybind, PluginStore};
 use std::collections::BTreeMap;
@@ -180,7 +180,7 @@ pub fn write_binds_file(resolved: &[Resolution]) -> std::io::Result<bool> {
 
 /// Convenience for callers (the settings UI, the shell startup) that just
 /// want "write the binds file + ask margo to reload if anything changed".
-/// Returns whether anything was actually written. `mctl reload` is only
+/// Returns whether anything was actually written. The reload is only
 /// attempted when the user already sources us (so we don't ping margo for
 /// nothing).
 pub fn sync_with_margo(store: &PluginStore) -> std::io::Result<bool> {
@@ -192,10 +192,7 @@ pub fn sync_with_margo(store: &PluginStore) -> std::io::Result<bool> {
             .join("margo")
             .join("config.conf");
         if user_sources_us(&config_conf) {
-            let _ = std::process::Command::new("mctl")
-                .arg("reload")
-                .arg("--force")
-                .spawn();
+            mshell_margo_client::ctl::reload_config_detached();
         }
     }
     Ok(changed)

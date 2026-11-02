@@ -9,6 +9,7 @@
 //! 2. **Startup commands** — margo's `exec = …` lines in `config.conf`.
 //! 3. **Environment variables** — margo's `env = KEY, VALUE` lines.
 
+use mshell_process::SpawnReaped;
 use std::collections::BTreeSet;
 use std::rc::Rc;
 
@@ -172,7 +173,7 @@ fn spawn_script(entry: &ScriptAutostart) {
         sd.current_dir(d);
     }
     sd.arg("--").arg("sh").arg("-c").arg(&cmdline);
-    if sd.spawn().is_ok() {
+    if sd.spawn_reaped().is_ok() {
         mshell_launcher::notify::toast("Started", &entry.name);
         return;
     }
@@ -183,7 +184,7 @@ fn spawn_script(entry: &ScriptAutostart) {
     if let Some(d) = &dir {
         cmd.current_dir(d);
     }
-    match cmd.spawn() {
+    match cmd.spawn_reaped() {
         Ok(_) => mshell_launcher::notify::toast("Started", &entry.name),
         Err(e) => mshell_launcher::notify::toast("Failed to start", format!("{}: {e}", entry.name)),
     }

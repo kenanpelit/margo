@@ -27,6 +27,7 @@
 //! above the rest); history rows score 40..140 by recency.
 
 use crate::{history::CommandHistory, item::LauncherItem, notify::toast, provider::Provider};
+use mshell_process::SpawnReaped;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -232,7 +233,7 @@ impl Provider for CommandProvider {
                     provider_name: "Command".into(),
                     usage_key: Some(format!("run-bin:{name}")),
                     on_activate: Rc::new(move || {
-                        if let Err(err) = Command::new(&path).spawn() {
+                        if let Err(err) = Command::new(&path).spawn_reaped() {
                             tracing::warn!(?err, bin = %bin_name, "run provider spawn failed");
                         } else {
                             toast(format!("Launched {bin_name}"), "");
@@ -323,7 +324,7 @@ impl Provider for CommandProvider {
 }
 
 fn spawn_shell(expression: &str) {
-    if let Err(err) = Command::new("sh").arg("-c").arg(expression).spawn() {
+    if let Err(err) = Command::new("sh").arg("-c").arg(expression).spawn_reaped() {
         tracing::warn!(?err, "command provider sh -c spawn failed");
     }
 }

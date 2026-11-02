@@ -1,22 +1,19 @@
 //! A generic quick-action button that opens another shell menu.
 //!
-//! Used by `mdash`'s bottom shortcut grid: each button carries a menu
-//! name (the `mshellctl menu <name>` subcommand), an icon, and a tooltip.
-//! Clicking it toggles that menu and closes the dashboard it lives in.
-//!
-//! Dispatch is via spawning `mshellctl menu <name>` — the shell talking to
-//! its own D-Bus service. That keeps this button decoupled from the
-//! frame/menu-stack internals (no cross-component output plumbing for each
-//! of the dozen-plus target menus); `mshellctl` is always on PATH as part
-//! of the install. The child is reaped on a detached thread so repeated
-//! clicks don't leave zombies in the long-lived shell process.
+//! Used by `mdash`'s bottom shortcut grid: each button carries a target
+//! [`MenuId`], an icon, and a tooltip. Clicking it closes the dashboard it
+//! lives in and opens that menu on the same frame — an in-process output
+//! (`OpenMenu` → `MenuOutput::OpenMenu` → `FrameInput::SwitchToMenu`), not a
+//! `mshellctl menu <name>` fork that round-tripped through the shell's own
+//! D-Bus service.
 
+use crate::frame::MenuId;
 use relm4::gtk::prelude::{ButtonExt, WidgetExt};
 use relm4::{ComponentParts, ComponentSender, SimpleComponent, gtk};
 
 pub(crate) struct MenuLauncherModel {
-    /// `mshellctl menu <menu>` subcommand name (kebab-case).
-    menu: String,
+    /// The menu this button opens.
+    menu: MenuId,
     icon: String,
     tooltip: String,
 }
@@ -28,11 +25,12 @@ pub(crate) enum MenuLauncherInput {
 
 #[derive(Debug)]
 pub(crate) enum MenuLauncherOutput {
-    CloseMenu,
+    /// Close the dashboard and open this menu.
+    OpenMenu(MenuId),
 }
 
 pub(crate) struct MenuLauncherInit {
-    pub menu: String,
+    pub menu: MenuId,
     pub icon: String,
     pub tooltip: String,
 }
@@ -85,20 +83,9 @@ impl SimpleComponent for MenuLauncherModel {
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>) {
         match message {
             MenuLauncherInput::Clicked => {
-                if let Ok(mut child) = std::process::Command::new("mshellctl")
-                    .arg("menu")
-                    .arg(&self.menu)
-                    .spawn()
-                {
-                    // Reap on a detached thread so the long-lived shell
-                    // doesn't accumulate zombies across clicks.
-                    std::thread::spawn(move || {
-                        let _ = child.wait();
-                    });
-                }
-                // Close the dashboard so the target menu isn't left
-                // sitting behind it in another screen region.
-                let _ = sender.output(MenuLauncherOutput::CloseMenu);
+                // The frame closes the dashboard first, so the target menu
+                // isn't left sitting behind it in another screen region.
+                let _ = sender.output(MenuLauncherOutput::OpenMenu(self.menu));
             }
         }
     }

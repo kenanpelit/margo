@@ -15,6 +15,7 @@
 //! colour-coded — performance = red, balanced = neutral,
 //! power-saver = green.
 
+use mshell_process::SpawnReaped;
 use mshell_services::{battery_service, line_power_service, power_profile_service};
 use mshell_utils::battery::{
     get_battery_icon, get_charging_battery_icon, spawn_battery_online_watcher,
@@ -458,5 +459,5 @@ pub(crate) fn set_charge_limit(limit: u8) {
         .arg("sh")
         .arg("-c")
         .arg(script)
-        .spawn();
+        .spawn_reaped();
 }

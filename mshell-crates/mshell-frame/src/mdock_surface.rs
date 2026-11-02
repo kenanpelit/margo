@@ -14,6 +14,7 @@ use crate::bars::bar_widgets::mdock_layout::{
 use gtk4_layer_shell::{KeyboardMode, Layer, LayerShell};
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, DockBehavior, DockPosition};
+use mshell_process::SpawnReaped;
 use reactive_graph::traits::GetUntracked;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
@@ -184,7 +185,10 @@ fn open_launcher() {
     } else {
         cmd
     };
-    let _ = std::process::Command::new("sh").arg("-c").arg(cmd).spawn();
+    let _ = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(cmd)
+        .spawn_reaped();
 }
 
 /// Build the 1px auto-hide trigger strip along `edge`. Pointer-enter reveals

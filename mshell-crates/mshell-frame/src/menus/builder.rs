@@ -360,6 +360,7 @@ pub fn build_widget(
                 })
                 .forward(sender.output_sender(), |msg| match msg {
                     QuickActionsOutput::CloseMenu => MenuOutput::CloseMenu,
+                    QuickActionsOutput::OpenMenu(id) => MenuOutput::OpenMenu(id),
                 }),
         ),
         MenuWidget::Container(config) => Box::new(

@@ -24,6 +24,7 @@
 //! context). On a confirmed death this watchdog raises a single actionable
 //! notification offering a one-click shell restart.
 
+use mshell_process::SpawnReaped;
 use std::time::Duration;
 
 use tracing::{info, warn};
@@ -188,7 +189,7 @@ fn notify_backend_dead() {
                 info!("audio watchdog: user accepted shell restart");
                 if let Err(err) = std::process::Command::new("systemctl")
                     .args(["--user", "restart", "mshell"])
-                    .spawn()
+                    .spawn_reaped()
                 {
                     warn!(?err, "audio watchdog: failed to restart mshell");
                 }

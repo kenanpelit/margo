@@ -4,6 +4,7 @@
 //! and any future CLI invocations. Keeps the editor probe + spawn
 //! logic in one place so swappy↔satty arg quirks aren't duplicated.
 
+use mshell_process::SpawnReaped;
 use std::path::Path;
 use std::process::Command;
 
@@ -104,7 +105,7 @@ pub fn launch_editor_blocking(input: &Path, output: &Path, editor: &str) -> Resu
                 .arg(input)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
-                .spawn()
+                .spawn_reaped()
                 .map_err(|e| ScreenshotError::CaptureFailed(format!("spawn {editor}: {e}")))?;
             Ok(false)
         }

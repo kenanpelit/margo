@@ -16,6 +16,7 @@ use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
     CalendarSubscription, CalendarsStoreFields, ConfigStoreFields,
 };
+use mshell_process::SpawnReaped;
 use reactive_graph::traits::GetUntracked;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -446,7 +447,7 @@ impl Component for CalendarSettingsModel {
                 Ok(Some(_)) => {
                     match std::process::Command::new("mcal")
                         .args(["account", "setup", "google"])
-                        .spawn()
+                        .spawn_reaped()
                     {
                         Ok(_) => mshell_launcher::notify::toast(
                             "Calendar",

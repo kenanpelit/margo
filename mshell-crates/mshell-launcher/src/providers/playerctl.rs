@@ -19,6 +19,7 @@ use crate::{
     notify::toast,
     provider::{Provider, RefreshNotifier},
 };
+use mshell_process::SpawnReaped;
 use std::process::Command;
 use std::rc::Rc;
 use std::time::Duration;
@@ -110,7 +111,7 @@ fn current_track(player: &str) -> Option<String> {
 }
 
 fn spawn_player_cmd(args: &[&str]) {
-    if let Err(err) = Command::new("playerctl").args(args).spawn() {
+    if let Err(err) = Command::new("playerctl").args(args).spawn_reaped() {
         tracing::warn!(?err, ?args, "playerctl spawn failed");
     }
 }

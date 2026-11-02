@@ -42,24 +42,16 @@ fn config() -> LoginNetworkConfig {
     config_manager().config().login_network().get_untracked()
 }
 
-/// Ephemeral shell toast — same surface the old script used (`mshellctl
-/// toast`), so the login summary looks identical. Severity: calm / positive /
-/// danger.
+/// Ephemeral shell toast — the surface `mshellctl toast` drives, raised
+/// in-process on the shared toast bus (no `mshellctl` fork + D-Bus round trip
+/// back into this process). Severity: calm / positive / danger.
 fn toast(title: &str, body: &str, severity: &str, icon: &str) {
-    let args: Vec<String> = vec![
-        "toast".into(),
-        title.into(),
-        body.into(),
-        "--icon".into(),
-        format!("{icon}-symbolic"),
-        "--severity".into(),
-        severity.into(),
-    ];
-    tokio_rt().spawn(async move {
-        let _ = tokio::process::Command::new("mshellctl")
-            .args(&args)
-            .status()
-            .await;
+    use mshell_config::toast::{ToastEvent, ToastSeverity, push_toast};
+    push_toast(ToastEvent {
+        icon: format!("{icon}-symbolic"),
+        title: title.to_string(),
+        body: (!body.is_empty()).then(|| body.to_string()),
+        severity: severity.parse().unwrap_or(ToastSeverity::Calm),
     });
 }
 

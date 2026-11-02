@@ -399,15 +399,8 @@ fn write_margo_colors(theme: &MatugenTheme) {
         return;
     }
 
-    match Command::new("mctl")
-        .arg("reload")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-    {
-        Ok(_) => info!("matugen: wrote margo colors.conf + triggered reload"),
-        Err(e) => debug!(error = %e, "matugen: mctl reload spawn failed"),
-    }
+    mshell_margo_client::ctl::reload_config_detached();
+    info!("matugen: wrote margo colors.conf + triggered reload");
 }
 
 /// Mirror the palette into `~/.config/margo/mlogind-variables.toml` so the

@@ -24,6 +24,7 @@ use mshell_osd::toast::{ToastSurfaceInit, ToastSurfaceModel};
 use mshell_osd::toast_producer::ToastProducerModel;
 use mshell_osd::volume_osd::{VolumeOsdInit, VolumeOsdModel};
 use mshell_polkit::PolkitPromptModel;
+use mshell_process::SpawnReaped;
 use mshell_services::margo_service;
 use mshell_services::notification_service;
 use mshell_session::session_lock::{lock_session, session_locked};
@@ -1191,7 +1192,7 @@ fn spawn_idle_manager() -> tokio::sync::watch::Sender<IdleConfig> {
                         }
                         if let Err(e) = std::process::Command::new("systemctl")
                             .arg("suspend")
-                            .spawn()
+                            .spawn_reaped()
                         {
                             tracing::warn!("idle suspend failed: {e}");
                         }

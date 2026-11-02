@@ -12,6 +12,7 @@
 //! it doesn't trigger inside a longer string like `git`.
 
 use crate::{item::LauncherItem, notify::toast, provider::Provider};
+use mshell_process::SpawnReaped;
 use std::process::Command;
 use std::rc::Rc;
 
@@ -193,7 +194,7 @@ impl Provider for WebsearchProvider {
                     provider_name: "Web search".into(),
                     usage_key: Some(format!("websearch:{}", engine.keyword)),
                     on_activate: Rc::new(move || {
-                        if let Err(err) = Command::new("xdg-open").arg(&url).spawn() {
+                        if let Err(err) = Command::new("xdg-open").arg(&url).spawn_reaped() {
                             tracing::warn!(?err, %url, "xdg-open failed");
                         } else {
                             toast("Web search", display_for_toast.clone());

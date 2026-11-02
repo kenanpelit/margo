@@ -7,6 +7,7 @@
 //! so this page links there rather than duplicating it.
 
 use crate::row::Row;
+use mshell_process::SpawnReaped;
 use relm4::gtk::glib::SignalHandlerId;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -255,12 +256,11 @@ fn list_locales() -> Vec<String> {
 
 /// Run `localectl <args>` (polkit-authenticated), reaping asynchronously.
 fn run_localectl(args: &[&str]) {
-    match std::process::Command::new("localectl").args(args).spawn() {
-        Ok(mut child) => {
-            std::thread::spawn(move || {
-                let _ = child.wait();
-            });
-        }
+    match std::process::Command::new("localectl")
+        .args(args)
+        .spawn_reaped()
+    {
+        Ok(_) => {}
         Err(e) => tracing::warn!(error = %e, ?args, "region: localectl failed to spawn"),
     }
 }

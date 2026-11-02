@@ -1229,17 +1229,13 @@ fn spawn_wifi_connect(
     });
 }
 
-/// Fire `mctl config reload` (detached). margo applies the new
-/// `xkb_rules_*` to the live keyboard, so the layout/options change
-/// without restarting the session.
+/// Ask margo to re-read `config.conf` (in-process, detached). margo
+/// applies the new `xkb_rules_*` to the live keyboard, so the
+/// layout/options change without restarting the session. (This used to
+/// run `mctl config reload`, which is not an mctl subcommand — the
+/// reload never happened.)
 fn reload_margo_config() {
-    match std::process::Command::new("mctl")
-        .args(["config", "reload"])
-        .spawn()
-    {
-        Ok(_) => {}
-        Err(e) => tracing::warn!(error = %e, "wizard: `mctl config reload` failed to spawn"),
-    }
+    mshell_margo_client::ctl::reload_config_detached();
 }
 
 fn read_live() -> WizardMenuWidgetModel {

@@ -11,7 +11,8 @@ pub(crate) enum WallpaperInput {
 
 #[derive(Debug)]
 pub(crate) enum WallpaperOutput {
-    CloseMenu,
+    /// Close the dashboard and open the wallpaper menu.
+    OpenMenu,
 }
 
 pub(crate) struct WallpaperInit {}
@@ -60,13 +61,9 @@ impl SimpleComponent for WallpaperModel {
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>) {
         match message {
             WallpaperInput::Clicked => {
-                // Close the dashboard, then open the wallpaper menu the same
-                // way `mshellctl menu wallpaper` does (toggles it on the
-                // active monitor).
-                let _ = sender.output(WallpaperOutput::CloseMenu);
-                let _ = std::process::Command::new("mshellctl")
-                    .args(["menu", "wallpaper"])
-                    .spawn();
+                // The frame closes the dashboard, then opens the wallpaper menu
+                // on the same output (in-process, no `mshellctl` fork).
+                let _ = sender.output(WallpaperOutput::OpenMenu);
             }
         }
     }

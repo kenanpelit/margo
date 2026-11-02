@@ -99,7 +99,11 @@ writes a `.conf`), do NOT reach into the compositor — they are separate worlds
    (mshell owns it; create `conf.d/` if missing).
 2. Ensure `config.conf` `source`s it once (`source = conf.d/<name>.conf`,
    append-if-missing, whitespace-tolerant check — see `config_sources_us`).
-3. Run `mctl reload`.
+3. Ask margo to reload: `compositor_conf::reload()` in Settings, or
+   `mshell_margo_client::ctl::reload_config_detached()` elsewhere — the
+   in-process `mctl reload` (a `dispatch reload_config` over margo's socket on
+   a background thread; margo validates and keeps the old config on errors).
+   Don't fork `mctl` for it (`mctl config reload` is not even a subcommand).
 
 Examples: `taglayouts.conf` (Tiling Layout), `binds.d/` (plugin keybinds),
 the Keybinds editor. This is the same rule DESIGN.md §8b states for Settings

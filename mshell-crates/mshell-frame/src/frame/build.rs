@@ -139,6 +139,7 @@ impl Frame {
                 MenuOutput::CloseMenu => FrameInput::CloseMenus,
                 MenuOutput::ToggleSessionMenu => FrameInput::ToggleMenu(MenuId::Session),
                 MenuOutput::OpenAppLauncher => FrameInput::ToggleMenu(MenuId::AppLauncher),
+                MenuOutput::OpenMenu(id) => FrameInput::SwitchToMenu(id),
             })
     }
 

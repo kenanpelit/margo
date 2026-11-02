@@ -43,18 +43,15 @@ impl TwilightStatus {
     }
 }
 
-/// Poll `mctl twilight status --json`. `None` when `mctl` is missing,
-/// the compositor is unreachable, or the JSON doesn't parse.
+/// Read margo's twilight state (what `mctl twilight status --json` prints)
+/// over the IPC socket, off the async workers. `None` when the compositor
+/// is unreachable or doesn't advertise twilight.
 pub(crate) async fn probe() -> Option<TwilightStatus> {
-    let out = tokio::process::Command::new("mctl")
-        .args(["twilight", "status", "--json"])
-        .output()
+    let v = tokio::task::spawn_blocking(mshell_margo_client::ctl::twilight_status)
         .await
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let v: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+        .ok()?
+        .ok()
+        .filter(|v| !v.is_null())?;
     Some(TwilightStatus {
         enabled: v.get("enabled").and_then(|x| x.as_bool()).unwrap_or(false),
         mode: v

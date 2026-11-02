@@ -11,6 +11,7 @@ license.workspace = true
 anyhow.workspace = true
 mshell-config.workspace = true
 mpd_client.workspace = true
+mshell-process.workspace = true
 notify-rust.workspace = true
 reactive_graph.workspace = true
 tokio.workspace = true

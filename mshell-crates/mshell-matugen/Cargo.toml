@@ -10,6 +10,7 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 mshell-config.workspace = true
+mshell-margo-client.workspace = true
 relm4.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -12,6 +12,7 @@ gio-unix.workspace = true
 futures.workspace = true
 libc.workspace = true
 gtk4-layer-shell.workspace = true
+mshell-process.workspace = true
 notify-rust.workspace = true
 mcal.workspace = true
 mshell-ai.workspace = true

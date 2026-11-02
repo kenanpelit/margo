@@ -1210,6 +1210,8 @@ existing part. Reuse keeps the system coherent (§0) and is faster.
 | **Boxed-list** | `03-primitives/_boxed_list.scss` (`.ok-boxed-list[.compact]`) | a group of related form/switch/device rows (§5) | a lone row or a free-form tile |
 | **Dynamic box** | `mshell-common/.../dynamic_box` | animated add/remove/reorder in a `Box` (dock) | a static or relm4-factory list |
 | **Severity class** | Rust `severity_class` + §2 SCSS | any thresholded metric | binary on/off (use §3 active tint) |
+| **`spawn_reaped`** | `mshell-process` (`SpawnReaped` trait) | any fire-and-forget `std::process::Command` (xdg-open, a terminal, `sh -c`) — the child is reaped when it exits | you need its output/status (`.output()` / `.status()` / tokio) |
+| **`mshell_margo_client::ctl`** | `mshell-margo-client/src/ctl.rs` | compositor control from the shell: `dispatch`, `reload_config_detached`, `twilight_status` | — never fork `mctl` / `mshellctl` from inside mshell |
 | **Managed `.conf` fragment** | §8b pattern (`tag_layout_settings`) | a Settings page writing compositor config | a shell-owned setting (use the store) |
 
 If a needed part doesn't exist, build it as a shared component here, not

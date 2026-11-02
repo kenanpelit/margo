@@ -10,6 +10,7 @@
 
 use mshell_cache::hidden_apps::is_hidden;
 use mshell_launcher::{LauncherItem, Provider};
+use mshell_process::SpawnReaped;
 use mshell_utils::launch::launch_detached;
 use nucleo_matcher::{
     Config, Matcher, Utf32Str,
@@ -237,7 +238,7 @@ impl Provider for AppsProvider {
                 .arg("sh")
                 .arg("-c")
                 .arg(&cmd)
-                .spawn();
+                .spawn_reaped();
         }))
     }
 }

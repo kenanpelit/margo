@@ -135,19 +135,14 @@ impl Component for NightLightModel {
     }
 }
 
-/// `mctl twilight status --json` → the `enabled` flag. `None` when
-/// `mctl` is missing, the compositor isn't reachable, or the JSON
-/// doesn't parse.
+/// margo's twilight `enabled` flag, read over the IPC socket (what
+/// `mctl twilight status --json` reports). `None` when the compositor
+/// isn't reachable or doesn't advertise twilight.
 async fn probe_twilight_enabled() -> Option<bool> {
-    let out = tokio::process::Command::new("mctl")
-        .args(["twilight", "status", "--json"])
-        .output()
+    let v = tokio::task::spawn_blocking(mshell_margo_client::ctl::twilight_status)
         .await
+        .ok()?
         .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let v: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
     v.get("enabled")?.as_bool()
 }
 

@@ -104,19 +104,11 @@ pub(crate) fn set_and_reload(key: &str, val: String) {
     reload();
 }
 
+/// Re-parse `config.conf` in the running compositor. The single shared
+/// reload for Settings pages: an in-process `dispatch reload_config` over
+/// margo's socket on a background thread (no `mctl` fork, nothing to reap).
 pub(crate) fn reload() {
-    match std::process::Command::new("mctl").args(["reload"]).spawn() {
-        // Reap on a detached thread so we neither block the GTK main loop nor
-        // leak a zombie `mctl` per settings apply (std Child::drop doesn't
-        // wait). This is the single shared reload — other Settings pages
-        // should call it rather than re-spawning `mctl reload` themselves.
-        Ok(mut child) => {
-            std::thread::spawn(move || {
-                let _ = child.wait();
-            });
-        }
-        Err(e) => tracing::warn!(error = %e, "settings: `mctl reload` failed to spawn"),
-    }
+    mshell_margo_client::ctl::reload_config_detached();
 }
 
 /// The current `config.conf` value of each of `keys` that is set (first

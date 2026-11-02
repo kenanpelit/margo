@@ -1,3 +1,4 @@
+use crate::frame::MenuId;
 use crate::menus::menu_widgets::quick_action::actions::airplane_mode::{
     AirplaneModeInit, AirplaneModeModel,
 };
@@ -42,6 +43,8 @@ pub(crate) enum QuickActionsInput {}
 #[derive(Debug)]
 pub(crate) enum QuickActionsOutput {
     CloseMenu,
+    /// Close the dashboard and open another menu on the same frame.
+    OpenMenu(MenuId),
 }
 
 pub(crate) struct QuickActionsInit {
@@ -143,7 +146,9 @@ impl QuickActionsModel {
                 Box::new(WallpaperModel::builder().launch(WallpaperInit {}).forward(
                     sender.output_sender(),
                     |msg| match msg {
-                        WallpaperOutput::CloseMenu => QuickActionsOutput::CloseMenu,
+                        WallpaperOutput::OpenMenu => {
+                            QuickActionsOutput::OpenMenu(MenuId::Wallpaper)
+                        }
                     },
                 ))
             }
@@ -151,7 +156,9 @@ impl QuickActionsModel {
                 ScreenshotModel::builder()
                     .launch(ScreenshotInit {})
                     .forward(sender.output_sender(), |msg| match msg {
-                        ScreenshotOutput::CloseMenu => QuickActionsOutput::CloseMenu,
+                        ScreenshotOutput::OpenMenu => {
+                            QuickActionsOutput::OpenMenu(MenuId::Screenshot)
+                        }
                     }),
             ),
             QuickActionWidget::Settings => {
@@ -164,76 +171,89 @@ impl QuickActionsModel {
                 Box::new(ShutdownModel::builder().launch(ShutdownInit {}).detach())
             }
             // ── Menu-launcher buttons ──
-            QuickActionWidget::Network => {
-                Self::menu_btn(sender, "network", "network-wireless-symbolic", "Network")
-            }
+            QuickActionWidget::Network => Self::menu_btn(
+                sender,
+                MenuId::Network,
+                "network-wireless-symbolic",
+                "Network",
+            ),
             QuickActionWidget::Bluetooth => {
-                Self::menu_btn(sender, "bluetooth", "bluetooth-symbolic", "Bluetooth")
+                Self::menu_btn(sender, MenuId::Bluetooth, "bluetooth-symbolic", "Bluetooth")
             }
             QuickActionWidget::CpuDashboard => Self::menu_btn(
                 sender,
-                "cpu-dashboard",
+                MenuId::CpuDashboard,
                 "utilities-system-monitor-symbolic",
                 "CPU dashboard",
             ),
             QuickActionWidget::AudioDashboard => Self::menu_btn(
                 sender,
-                "audio-dashboard",
+                MenuId::AudioDashboard,
                 "audio-volume-high-symbolic",
                 "Audio dashboard",
             ),
-            QuickActionWidget::Vpn => Self::menu_btn(sender, "vpn", "network-vpn-symbolic", "VPN"),
+            QuickActionWidget::Vpn => {
+                Self::menu_btn(sender, MenuId::Vpn, "network-vpn-symbolic", "VPN")
+            }
             QuickActionWidget::ControlCenter => Self::menu_btn(
                 sender,
-                "control-center",
+                MenuId::ControlCenter,
                 "preferences-system-symbolic",
                 "Control center",
             ),
             QuickActionWidget::Twilight => {
-                Self::menu_btn(sender, "twilight", "night-light-symbolic", "Twilight")
+                Self::menu_btn(sender, MenuId::Twilight, "night-light-symbolic", "Twilight")
             }
-            QuickActionWidget::Keybinds => {
-                Self::menu_btn(sender, "keybinds", "input-keyboard-symbolic", "Keybinds")
-            }
+            QuickActionWidget::Keybinds => Self::menu_btn(
+                sender,
+                MenuId::Keybinds,
+                "input-keyboard-symbolic",
+                "Keybinds",
+            ),
             QuickActionWidget::Dns => {
-                Self::menu_btn(sender, "dns", "network-server-symbolic", "DNS")
+                Self::menu_btn(sender, MenuId::Dns, "network-server-symbolic", "DNS")
             }
             QuickActionWidget::Power => {
-                Self::menu_btn(sender, "power", "battery-symbolic", "Power")
+                Self::menu_btn(sender, MenuId::Power, "battery-symbolic", "Power")
             }
-            QuickActionWidget::Session => {
-                Self::menu_btn(sender, "session", "system-shutdown-symbolic", "Session")
+            QuickActionWidget::Session => Self::menu_btn(
+                sender,
+                MenuId::Session,
+                "system-shutdown-symbolic",
+                "Session",
+            ),
+            QuickActionWidget::Ip => {
+                Self::menu_btn(sender, MenuId::Ip, "network-wired-symbolic", "IP")
             }
-            QuickActionWidget::Ip => Self::menu_btn(sender, "ip", "network-wired-symbolic", "IP"),
             QuickActionWidget::AlarmClock => {
-                Self::menu_btn(sender, "alarm-clock", "alarm-symbolic", "Alarm clock")
+                Self::menu_btn(sender, MenuId::AlarmClock, "alarm-symbolic", "Alarm clock")
             }
             QuickActionWidget::SystemUpdate => Self::menu_btn(
                 sender,
-                "system-update",
+                MenuId::SystemUpdate,
                 "software-update-available-symbolic",
                 "System updates",
             ),
         }
     }
 
-    /// Build a menu-launcher button: an icon button that opens
-    /// `mshellctl menu <menu>` and closes the dashboard it lives in.
+    /// Build a menu-launcher button: an icon button that opens `menu` and
+    /// closes the dashboard it lives in.
     fn menu_btn(
         sender: &ComponentSender<Self>,
-        menu: &str,
+        menu: MenuId,
         icon: &str,
         tooltip: &str,
     ) -> Box<dyn GenericWidgetController> {
         Box::new(
             MenuLauncherModel::builder()
                 .launch(MenuLauncherInit {
-                    menu: menu.to_string(),
+                    menu,
                     icon: icon.to_string(),
                     tooltip: tooltip.to_string(),
                 })
                 .forward(sender.output_sender(), |msg| match msg {
-                    MenuLauncherOutput::CloseMenu => QuickActionsOutput::CloseMenu,
+                    MenuLauncherOutput::OpenMenu(id) => QuickActionsOutput::OpenMenu(id),
                 }),
         )
     }

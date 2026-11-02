@@ -23,6 +23,7 @@
 //! | Compositor | reload config |
 
 use crate::{item::LauncherItem, notify::toast, provider::Provider};
+use mshell_process::SpawnReaped;
 use std::process::Command;
 use std::rc::Rc;
 
@@ -341,7 +342,7 @@ fn run(command: &[String]) {
     let Some((bin, args)) = command.split_first() else {
         return;
     };
-    if let Err(err) = Command::new(bin).args(args).spawn() {
+    if let Err(err) = Command::new(bin).args(args).spawn_reaped() {
         tracing::warn!(?err, ?command, "mctl action spawn failed");
     }
 }

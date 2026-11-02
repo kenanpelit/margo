@@ -11,7 +11,8 @@ pub(crate) enum ScreenshotInput {
 
 #[derive(Debug)]
 pub(crate) enum ScreenshotOutput {
-    CloseMenu,
+    /// Close the dashboard and open the screenshot menu.
+    OpenMenu,
 }
 
 pub(crate) struct ScreenshotInit {}
@@ -60,12 +61,9 @@ impl SimpleComponent for ScreenshotModel {
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>) {
         match message {
             ScreenshotInput::Clicked => {
-                // Close the dashboard, then open the screenshot menu the
-                // same way `mshellctl menu screenshot` does.
-                let _ = sender.output(ScreenshotOutput::CloseMenu);
-                let _ = std::process::Command::new("mshellctl")
-                    .args(["menu", "screenshot"])
-                    .spawn();
+                // The frame closes the dashboard, then opens the screenshot menu
+                // on the same output (in-process, no `mshellctl` fork).
+                let _ = sender.output(ScreenshotOutput::OpenMenu);
             }
         }
     }

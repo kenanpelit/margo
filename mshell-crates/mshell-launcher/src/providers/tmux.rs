@@ -20,6 +20,7 @@ use crate::{
     notify::toast,
     provider::{Provider, RefreshNotifier},
 };
+use mshell_process::SpawnReaped;
 use std::process::Command;
 use std::rc::Rc;
 use std::time::Duration;
@@ -219,11 +220,11 @@ fn spawn_terminal_attach(terminal: &str, session: &str) {
     let result = if terminal == "wezterm" {
         Command::new(terminal)
             .args(["start", "--", "mtm", "session", "create", session])
-            .spawn()
+            .spawn_reaped()
     } else {
         Command::new(terminal)
             .args(["-e", "mtm", "session", "create", session])
-            .spawn()
+            .spawn_reaped()
     };
     if let Err(err) = result {
         tracing::warn!(?err, terminal, session, "tmux provider spawn failed");
