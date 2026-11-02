@@ -2,8 +2,9 @@
 //! Software cursor loading and rendering.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Read;
+use std::rc::Rc;
 
 use drm_fourcc::DrmFourcc;
 use smithay::{
@@ -14,8 +15,33 @@ use smithay::{
         },
         gles::GlesRenderer,
     },
+    input::pointer::CursorIcon,
     utils::{Buffer, Logical, Physical, Point, Size, Transform},
 };
+
+/// Shapes loaded when the manager is created, so the first hover over a
+/// link, text field or window edge doesn't parse the theme file inside
+/// input handling.
+const PRELOAD: &[CursorIcon] = &[
+    CursorIcon::Pointer,
+    CursorIcon::Text,
+    CursorIcon::Grab,
+    CursorIcon::Grabbing,
+    CursorIcon::Move,
+    CursorIcon::EwResize,
+    CursorIcon::NsResize,
+    CursorIcon::NwseResize,
+    CursorIcon::NeswResize,
+    CursorIcon::ColResize,
+    CursorIcon::RowResize,
+    CursorIcon::NotAllowed,
+    CursorIcon::Wait,
+    CursorIcon::Progress,
+    CursorIcon::Crosshair,
+];
+
+/// Theme lookup: `(icon name, nominal size) → image`.
+type Loader<'a> = dyn FnMut(&str, u32) -> Option<CursorImage> + 'a;
 
 // ── Cursor image data (backend-independent) ────────────────────────────────────
 
@@ -123,6 +149,12 @@ pub struct CursorManager {
     /// `RefCell` because the render path only has `&self` and loads a
     /// missing scale on first use.
     sprites: RefCell<HashMap<(String, i32), CursorSprite>>,
+    /// Requested names the theme had no image for, so asking again (every
+    /// pointer motion over such a surface) doesn't re-read the theme.
+    missing: HashSet<String>,
+    /// The active XCursor theme, resolved once (its directory search is
+    /// not free).
+    theme: Rc<xcursor::CursorTheme>,
     /// The name currently being drawn.
     current: String,
     /// Nominal cursor size in logical px (closest theme image is picked).
@@ -136,7 +168,18 @@ impl CursorManager {
             .and_then(|s| s.parse().ok())
             .filter(|n| *n > 0)
             .unwrap_or(24);
-        let (theme_name, image) = match load_from_theme("default", size) {
+        let theme_name = std::env::var("XCURSOR_THEME").unwrap_or_else(|_| "default".into());
+        let theme = Rc::new(xcursor::CursorTheme::load(&theme_name));
+        let loader_theme = theme.clone();
+        Self::build(size, theme, &mut |name, size| {
+            load_from_theme(&loader_theme, name, size)
+        })
+    }
+
+    /// Load `default` (embedded arrow when the theme has none) and the
+    /// [`PRELOAD`] shapes through `load`.
+    fn build(size: u32, theme: Rc<xcursor::CursorTheme>, load: &mut Loader<'_>) -> Self {
+        let (theme_name, image) = match load("default", size) {
             Some(image) => (Some("default".to_string()), image),
             None => (None, embedded_arrow()),
         };
@@ -144,33 +187,56 @@ impl CursorManager {
         resolved.insert("default".to_string(), theme_name);
         let mut sprites = HashMap::new();
         sprites.insert(("default".to_string(), 1), CursorSprite::new(&image, 1));
-        Self {
+        let mut manager = Self {
             resolved,
             sprites: RefCell::new(sprites),
+            missing: HashSet::new(),
+            theme,
             current: "default".to_string(),
             size,
+        };
+        for icon in PRELOAD {
+            manager.resolve(icon.name(), icon.alt_names(), load);
+        }
+        manager
+    }
+
+    /// Make sure `primary` is resolved (theme image cached) or known to be
+    /// missing, loading through `load` only the first time it is asked for.
+    fn resolve(&mut self, primary: &str, alts: &[&str], load: &mut Loader<'_>) {
+        if self.resolved.contains_key(primary) || self.missing.contains(primary) {
+            return;
+        }
+        let size = self.size;
+        match std::iter::once(primary)
+            .chain(alts.iter().copied())
+            .find_map(|name| load(name, size).map(|image| (name, image)))
+        {
+            Some((name, image)) => {
+                self.resolved
+                    .insert(primary.to_string(), Some(name.to_string()));
+                self.sprites
+                    .get_mut()
+                    .insert((primary.to_string(), 1), CursorSprite::new(&image, 1));
+            }
+            None => {
+                self.missing.insert(primary.to_string());
+            }
         }
     }
 
     /// Switch to the cursor named `primary` (with `alts` as theme fallbacks,
-    /// e.g. `pointer` → `hand2`/`pointing_hand`). Loads + caches on first use;
-    /// keeps the previous cursor (falling back to `default`) if no variant
+    /// e.g. `pointer` → `hand2`/`pointing_hand`). Loads + caches on first use
+    /// (common shapes are preloaded); keeps drawing `default` if no variant
     /// resolves in the active theme.
     pub fn set_named(&mut self, primary: &str, alts: &[&str]) {
         if self.current == primary && self.resolved.contains_key(primary) {
             return;
         }
-        if !self.resolved.contains_key(primary)
-            && let Some((name, image)) = std::iter::once(primary)
-                .chain(alts.iter().copied())
-                .find_map(|name| load_from_theme(name, self.size).map(|image| (name, image)))
-        {
-            self.resolved
-                .insert(primary.to_string(), Some(name.to_string()));
-            self.sprites
-                .get_mut()
-                .insert((primary.to_string(), 1), CursorSprite::new(&image, 1));
-        }
+        let theme = self.theme.clone();
+        self.resolve(primary, alts, &mut |name, size| {
+            load_from_theme(&theme, name, size)
+        });
         self.current = if self.resolved.contains_key(primary) {
             primary.to_string()
         } else {
@@ -187,12 +253,15 @@ impl CursorManager {
             return sprite.clone();
         }
         let loaded = match self.resolved.get(&self.current) {
-            Some(Some(theme_name)) if wanted > 1 => {
-                load_from_theme(theme_name, self.size.saturating_mul(wanted as u32)).map(|image| {
-                    let bs = effective_buffer_scale(self.size, image.nominal_size, wanted);
-                    CursorSprite::new(&image, bs)
-                })
-            }
+            Some(Some(theme_name)) if wanted > 1 => load_from_theme(
+                &self.theme,
+                theme_name,
+                self.size.saturating_mul(wanted as u32),
+            )
+            .map(|image| {
+                let bs = effective_buffer_scale(self.size, image.nominal_size, wanted);
+                CursorSprite::new(&image, bs)
+            }),
             _ => None,
         };
         let mut sprites = self.sprites.borrow_mut();
@@ -233,9 +302,11 @@ impl CursorManager {
 
 // ── xcursor theme loading ─────────────────────────────────────────────────────
 
-fn load_from_theme(cursor_name: &str, size: u32) -> Option<CursorImage> {
-    let theme_name = std::env::var("XCURSOR_THEME").unwrap_or_else(|_| "default".into());
-    let theme = xcursor::CursorTheme::load(&theme_name);
+fn load_from_theme(
+    theme: &xcursor::CursorTheme,
+    cursor_name: &str,
+    size: u32,
+) -> Option<CursorImage> {
     let path = theme.load_icon(cursor_name)?;
     let mut data = Vec::new();
     std::fs::File::open(&path)
@@ -347,6 +418,50 @@ mod tests {
                 "buffer scale {buffer_scale}, output scale {output_scale}: hotspot at {on_screen:?}, pointer at {want:?}"
             );
         }
+    }
+
+    fn fake_image() -> CursorImage {
+        CursorImage {
+            pixels: vec![0; 4],
+            width: 1,
+            height: 1,
+            hotspot_x: 0,
+            hotspot_y: 0,
+            nominal_size: 24,
+        }
+    }
+
+    #[test]
+    fn common_shapes_are_preloaded_and_misses_are_cached() {
+        let calls = std::cell::RefCell::new(Vec::<String>::new());
+        let mut load = |name: &str, _size: u32| {
+            calls.borrow_mut().push(name.to_string());
+            (name != "bogus").then(fake_image)
+        };
+        let theme = Rc::new(xcursor::CursorTheme::load("margo-test-no-such-theme"));
+        let mut m = CursorManager::build(24, theme, &mut load);
+        assert!(m.resolved.contains_key(CursorIcon::Pointer.name()));
+        assert!(m.resolved.contains_key(CursorIcon::Text.name()));
+
+        // Switching to a preloaded shape (the input path) loads nothing.
+        let before = calls.borrow().len();
+        m.resolve(
+            CursorIcon::Pointer.name(),
+            CursorIcon::Pointer.alt_names(),
+            &mut load,
+        );
+        assert_eq!(calls.borrow().len(), before);
+
+        // An unknown shape is looked up once, then remembered as missing.
+        m.resolve("bogus", &[], &mut load);
+        let after_miss = calls.borrow().len();
+        assert_eq!(after_miss, before + 1);
+        m.resolve("bogus", &[], &mut load);
+        assert_eq!(
+            calls.borrow().len(),
+            after_miss,
+            "a miss must not re-read the theme"
+        );
     }
 
     #[test]
