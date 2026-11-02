@@ -784,6 +784,28 @@ fn spawn_profile(
     profile: DisplayProfile,
     outputs: Vec<EditorOut>,
 ) {
+    let (plan, mirror, label) = profile_plan(profile, &outputs);
+    if matches!(profile, DisplayProfile::Mirror) && mirror.is_none() {
+        sender.input(LayoutSettingsInput::CommandResult(Err(
+            "Mirror needs both a laptop screen and an external monitor".to_string(),
+        )));
+        return;
+    }
+
+    run_dispatches(sender, plan, mirror, label.to_string());
+}
+
+/// A dispatch plan: `mctl dispatch` argument lists, in order.
+type DispatchPlan = Vec<Vec<String>>;
+
+/// The `mctl dispatch` plan for a display profile over the live outputs,
+/// the optional `wl-mirror` pair (as [`run_dispatches`] takes it: the
+/// external output to fill, the laptop panel shown on it), and the label
+/// reported when it ran.
+fn profile_plan(
+    profile: DisplayProfile,
+    outputs: &[EditorOut],
+) -> (DispatchPlan, Option<(String, String)>, &'static str) {
     let internal: Vec<String> = outputs
         .iter()
         .filter(|o| is_internal_connector(&o.connector))
@@ -798,7 +820,7 @@ fn spawn_profile(
     let enable = |c: &String| vec!["enable_output".to_string(), c.clone()];
     let disable = |c: &String| vec!["disable_output".to_string(), c.clone()];
 
-    let (plan, mirror, label): (Vec<Vec<String>>, Option<(String, String)>, &str) = match profile {
+    let (plan, mirror, label): (DispatchPlan, Option<(String, String)>, &str) = match profile {
         DisplayProfile::InternalOnly => (
             internal
                 .iter()
@@ -832,14 +854,7 @@ fn spawn_profile(
         }
     };
 
-    if matches!(profile, DisplayProfile::Mirror) && mirror.is_none() {
-        sender.input(LayoutSettingsInput::CommandResult(Err(
-            "Mirror needs both a laptop screen and an external monitor".to_string(),
-        )));
-        return;
-    }
-
-    run_dispatches(sender, plan, mirror, label.to_string());
+    (plan, mirror, label)
 }
 
 /// Rebuild the per-output power list: one row per live output with a
@@ -982,12 +997,7 @@ fn spawn_apply_geometry(mut outs: Vec<EditorOut>, sender: ComponentSender<Layout
     if outs.is_empty() {
         return;
     }
-    let min_x = outs.iter().map(|o| o.x).min().unwrap_or(0);
-    let min_y = outs.iter().map(|o| o.y).min().unwrap_or(0);
-    for o in &mut outs {
-        o.x -= min_x;
-        o.y -= min_y;
-    }
+    normalise_origin(&mut outs);
     relm4::spawn(async move {
         let mut cmd = tokio::process::Command::new("wlr-randr");
         for o in &outs {
@@ -1015,6 +1025,16 @@ fn spawn_apply_geometry(mut outs: Vec<EditorOut>, sender: ComponentSender<Layout
         };
         sender.input(LayoutSettingsInput::CommandResult(outcome));
     });
+}
+
+/// Shift the arrangement so its top-left output sits at (0,0).
+fn normalise_origin(outs: &mut [EditorOut]) {
+    let min_x = outs.iter().map(|o| o.x).min().unwrap_or(0);
+    let min_y = outs.iter().map(|o| o.y).min().unwrap_or(0);
+    for o in outs {
+        o.x -= min_x;
+        o.y -= min_y;
+    }
 }
 
 /// (Re)build the draggable monitor tiles in the editor `Fixed`, scaled to
@@ -1341,5 +1361,205 @@ mod tests {
         // The old byte-slicing parser panicked here (non-char-boundary slice).
         assert_eq!(parse_hex_rgb(Some("1ä23456")), None);
         assert_eq!(parse_hex_rgb(None), None);
+    }
+
+    fn out(connector: &str, x: i32, y: i32, width: i32, height: i32) -> EditorOut {
+        EditorOut {
+            connector: connector.to_string(),
+            label: String::new(),
+            color: None,
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    #[test]
+    fn catalogue_parses_mlayout_list_json() {
+        let body = r##"{
+            "active": "desk",
+            "config_dir": "/home/u/.config/margo",
+            "layouts": [
+                {"slug": "desk", "name": "Desk", "active": true, "shortcuts": ["super+1", 7],
+                 "outputs": [
+                    {"connector": "eDP-1", "label": "Laptop", "x": 0, "y": 1080,
+                     "width": 1920, "height": 1200, "color": "#ff0000"},
+                    {"connector": "DP-3", "x": 0, "y": 0, "width": 2560, "height": 1440},
+                    {"label": "no connector"}
+                 ]},
+                {"slug": "solo"},
+                {"name": "slugless"},
+                "garbage"
+            ]
+        }"##;
+        let cat = parse_catalogue(body).unwrap();
+        assert_eq!(cat.active.as_deref(), Some("desk"));
+        assert_eq!(cat.config_dir, "/home/u/.config/margo");
+        assert_eq!(cat.layouts.len(), 2, "{:#?}", cat.layouts);
+
+        let desk = &cat.layouts[0];
+        assert_eq!(
+            (desk.slug.as_str(), desk.name.as_str(), desk.active),
+            ("desk", "Desk", true)
+        );
+        // Non-string shortcuts are skipped, not fatal.
+        assert_eq!(desk.shortcuts, ["super+1"]);
+        assert_eq!(desk.outputs.len(), 2);
+        let edp = &desk.outputs[0];
+        assert_eq!(
+            (
+                edp.connector.as_str(),
+                edp.label.as_deref(),
+                edp.x,
+                edp.y,
+                edp.width,
+                edp.height
+            ),
+            ("eDP-1", Some("Laptop"), 0, 1080, 1920, 1200)
+        );
+        assert_eq!(edp.color.as_deref(), Some("#ff0000"));
+        assert_eq!(desk.outputs[1].label, None);
+
+        // Missing optional fields default; the name falls back to the slug.
+        let solo = &cat.layouts[1];
+        assert_eq!((solo.name.as_str(), solo.active), ("solo", false));
+        assert!(solo.shortcuts.is_empty() && solo.outputs.is_empty());
+    }
+
+    #[test]
+    fn catalogue_tolerates_missing_sections_and_rejects_bad_json() {
+        let cat = parse_catalogue("{}").unwrap();
+        assert!(cat.active.is_none() && cat.config_dir.is_empty() && cat.layouts.is_empty());
+        let cat = parse_catalogue(r#"{"active": null, "layouts": {}}"#).unwrap();
+        assert!(cat.active.is_none() && cat.layouts.is_empty());
+        assert!(parse_catalogue("").is_err());
+        assert!(parse_catalogue("mlayout: command not found").is_err());
+    }
+
+    #[test]
+    fn outputs_parse_and_default_missing_geometry() {
+        let body = r##"{"outputs": [
+            {"connector": "eDP-1", "label": "Laptop", "x": -1920, "y": 0, "width": 1920, "height": 1080},
+            {"connector": "HDMI-A-1", "x": 1.5, "color": "#00ff00"},
+            {"label": "nameless"}
+        ]}"##;
+        let outs = parse_outputs(body).unwrap();
+        assert_eq!(outs.len(), 2);
+        assert_eq!(
+            (outs[0].x, outs[0].width, outs[0].label.as_str()),
+            (-1920, 1920, "Laptop")
+        );
+        // Non-integer / missing numbers read as 0; a missing label as "".
+        assert_eq!((outs[1].x, outs[1].y, outs[1].width), (0, 0, 0));
+        assert_eq!(outs[1].label, "");
+        assert_eq!(outs[1].color.as_deref(), Some("#00ff00"));
+
+        assert!(parse_outputs(r#"{"outputs": []}"#).unwrap().is_empty());
+        assert!(parse_outputs("{}").is_none());
+        assert!(parse_outputs(r#"{"outputs": 3}"#).is_none());
+        assert!(parse_outputs("not json").is_none());
+    }
+
+    #[test]
+    fn internal_connectors_are_edp_and_lvds() {
+        for c in ["eDP-1", "edp-2", "LVDS-1"] {
+            assert!(is_internal_connector(c), "{c}");
+        }
+        for c in ["DP-1", "HDMI-A-1", "DVI-D-1", "Virtual-1", ""] {
+            assert!(!is_internal_connector(c), "{c}");
+        }
+    }
+
+    #[test]
+    fn slugs_follow_mlayout_rules() {
+        for ok in ["desk", "work-2", "home_office", "  padded  "] {
+            assert!(is_valid_slug(ok), "{ok:?}");
+        }
+        for bad in [
+            "",
+            "   ",
+            "two words",
+            "../etc",
+            "slash/y",
+            "ümlaut",
+            "dot.conf",
+        ] {
+            assert!(!is_valid_slug(bad), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn snapping_butts_a_dragged_monitor_against_its_neighbour() {
+        let mut outs = vec![
+            out("eDP-1", 0, 0, 1920, 1080),
+            out("DP-1", 1990, 60, 2560, 1440),
+        ];
+        snap_arrangement(&mut outs, "DP-1");
+        // 70 px gap closes to adjacency; 60 px offset snaps to top-aligned.
+        assert_eq!((outs[1].x, outs[1].y), (1920, 0));
+        // Other outputs never move.
+        assert_eq!((outs[0].x, outs[0].y), (0, 0));
+    }
+
+    #[test]
+    fn snapping_leaves_far_moves_and_unknown_outputs_alone() {
+        let mut outs = vec![
+            out("eDP-1", 0, 0, 1920, 1080),
+            out("DP-1", 2500, 600, 2560, 1440),
+        ];
+        snap_arrangement(&mut outs, "DP-1");
+        assert_eq!((outs[1].x, outs[1].y), (2500, 600));
+        snap_arrangement(&mut outs, "HDMI-A-9");
+        assert_eq!((outs[1].x, outs[1].y), (2500, 600));
+        let mut single = vec![out("eDP-1", 37, 12, 1920, 1080)];
+        snap_arrangement(&mut single, "eDP-1");
+        assert_eq!((single[0].x, single[0].y), (37, 12));
+    }
+
+    #[test]
+    fn origin_is_normalised_to_the_top_left_output() {
+        let mut outs = vec![
+            out("eDP-1", -1920, 300, 1920, 1080),
+            out("DP-1", 0, -200, 2560, 1440),
+        ];
+        normalise_origin(&mut outs);
+        assert_eq!((outs[0].x, outs[0].y), (0, 500));
+        assert_eq!((outs[1].x, outs[1].y), (1920, 0));
+        normalise_origin(&mut []);
+    }
+
+    fn cmds(plan: &DispatchPlan) -> Vec<String> {
+        plan.iter().map(|c| c.join(" ")).collect()
+    }
+
+    #[test]
+    fn profiles_enable_before_disabling() {
+        let outs = [
+            out("eDP-1", 0, 0, 1920, 1080),
+            out("DP-1", 1920, 0, 2560, 1440),
+        ];
+        let (plan, mirror, _) = profile_plan(DisplayProfile::InternalOnly, &outs);
+        assert_eq!(cmds(&plan), ["enable_output eDP-1", "disable_output DP-1"]);
+        assert!(mirror.is_none());
+        let (plan, _, _) = profile_plan(DisplayProfile::ExternalOnly, &outs);
+        assert_eq!(cmds(&plan), ["enable_output DP-1", "disable_output eDP-1"]);
+        let (plan, _, label) = profile_plan(DisplayProfile::Extend, &outs);
+        assert_eq!(cmds(&plan), ["enable_output eDP-1", "enable_output DP-1"]);
+        assert_eq!(label, "profile: extend");
+        let (plan, mirror, _) = profile_plan(DisplayProfile::Mirror, &outs);
+        assert_eq!(cmds(&plan), ["enable_output eDP-1", "enable_output DP-1"]);
+        assert_eq!(mirror, Some(("DP-1".to_string(), "eDP-1".to_string())));
+    }
+
+    #[test]
+    fn mirror_needs_both_kinds_of_output() {
+        let laptop = [out("eDP-1", 0, 0, 1920, 1080)];
+        assert!(profile_plan(DisplayProfile::Mirror, &laptop).1.is_none());
+        let desktop = [
+            out("DP-1", 0, 0, 2560, 1440),
+            out("DP-2", 2560, 0, 2560, 1440),
+        ];
+        assert!(profile_plan(DisplayProfile::Mirror, &desktop).1.is_none());
     }
 }
