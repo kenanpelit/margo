@@ -389,4 +389,183 @@ mod tests {
         let ours = all_binds(&load_sections_from(&dir.path().join("config.conf"))).len();
         assert_eq!(ours, margo);
     }
+    fn bind(line: &str) -> Keybind {
+        parse_bind(line)
+            .unwrap_or_else(|| panic!("not a bind: {line}"))
+            .1
+    }
+
+    #[test]
+    fn bind_flag_suffixes_follow_margo() {
+        for ok in [
+            "bind", "binds", "bindl", "bindr", "bindp", "bindc", "bindsl", "bindlr",
+        ] {
+            assert!(
+                parse_bind(&format!("{ok} = SUPER,q,killclient")).is_some(),
+                "{ok}"
+            );
+        }
+        for bad in ["binde", "bindm", "bindsym", "binding", "bindx"] {
+            assert!(
+                parse_bind(&format!("{bad} = SUPER,q,killclient")).is_none(),
+                "{bad}"
+            );
+        }
+        // Spacing around `=` doesn't matter; the key must still be first.
+        assert!(parse_bind("bind=SUPER,q,killclient").is_some());
+        assert!(parse_bind("   bind   =   SUPER , q , killclient").is_some());
+        assert!(parse_bind("mousebind = SUPER,btn_left,moveresize").is_none());
+        assert!(parse_bind("bind SUPER,q,killclient").is_none());
+    }
+
+    #[test]
+    fn commented_out_binds_are_skipped() {
+        assert!(parse_bind("# bind = SUPER,q,killclient").is_none());
+        assert!(parse_bind("   #bind = SUPER,q,killclient").is_none());
+    }
+
+    #[test]
+    fn modifier_names_are_case_insensitive_and_deduplicated() {
+        assert_eq!(
+            bind("bind = super+SHIFT,q,killclient").mods,
+            ["Super", "Shift"]
+        );
+        assert_eq!(bind("bind = Ctrl+ctrl,q,killclient").mods, ["Ctrl"]);
+        assert_eq!(
+            bind("bind = NONE,Print,spawn,grim").mods,
+            Vec::<&str>::new()
+        );
+        assert_eq!(bind("bind = ,Print,spawn,grim").mods, Vec::<&str>::new());
+    }
+
+    #[test]
+    fn keys_are_prettified() {
+        assert_eq!(bind("bind = SUPER,q,killclient").key, "Q");
+        assert_eq!(bind("bind = SUPER,Return,spawn,kitty").key, "Enter");
+        assert_eq!(bind("bind = SUPER,space,spawn,x").key, "Space");
+        assert_eq!(
+            bind("bind = NONE,XF86AudioRaiseVolume,spawn,wpctl").key,
+            "Vol Up"
+        );
+        assert_eq!(
+            bind("bind = NONE,XF86AudioPlayPause,spawn,playerctl").key,
+            "Play/Pause"
+        );
+        assert_eq!(bind("bind = SUPER,F1,spawn,x").key, "F1");
+        assert_eq!(bind("bind = SUPER,code:24,killclient").key, "code:24");
+        // Non-ASCII single characters pass through unchanged.
+        assert_eq!(bind("bind = SUPER,ö,spawn,x").key, "ö");
+    }
+
+    #[test]
+    fn descriptions_prefer_comments_then_humanise() {
+        assert_eq!(
+            bind(r#"bind = SUPER,q,killclient #"Close window""#).desc,
+            "Close window"
+        );
+        assert_eq!(
+            bind("bind = SUPER,q,killclient   # close it").desc,
+            "close it"
+        );
+        // An empty plain comment falls back to the humanised action.
+        assert_eq!(bind("bind = SUPER,q,killclient #").desc, "Killclient");
+        assert_eq!(
+            bind("bind = SUPER,f,toggle_floating-window").desc,
+            "Toggle Floating Window"
+        );
+        assert_eq!(bind("bind = SUPER,b,spawn,").desc, "");
+    }
+
+    #[test]
+    fn categories_follow_the_action() {
+        let cat = |line: &str| parse_bind(line).unwrap().0;
+        assert_eq!(cat("bind = SUPER,1,view,1"), "Workspaces");
+        assert_eq!(cat("bind = SUPER,q,killclient"), "Windows");
+        assert_eq!(cat("bind = SUPER,t,setlayout,tile"), "Layout");
+        assert_eq!(
+            cat("bind = SUPER,s,toggle_named_scratchpad,term"),
+            "Scratchpad"
+        );
+        assert_eq!(
+            cat("bind = SUPER,d,spawn,mshellctl menu app-launcher"),
+            "Shell"
+        );
+        assert_eq!(
+            cat("bind = NONE,XF86AudioMute,spawn,wpctl set-mute @DEFAULT_SINK@ toggle"),
+            "Media"
+        );
+        assert_eq!(cat("bind = SUPER,l,spawn,mlock"), "System");
+        assert_eq!(cat("bind = SUPER,Return,spawn,kitty"), "Launch");
+        assert_eq!(cat("bind = SUPER,r,reload_config"), "General");
+        // Case-insensitive on the action.
+        assert_eq!(cat("bind = SUPER,1,VIEW,1"), "Workspaces");
+    }
+
+    #[test]
+    fn sections_come_out_in_category_order_without_empties() {
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("config.conf");
+        std::fs::write(
+            &conf,
+            "bind = SUPER,r,reload_config\n\
+             bind = SUPER,Return,spawn,kitty\n\
+             bind = SUPER,1,view,1\n\
+             bind = SUPER,2,view,2\n",
+        )
+        .unwrap();
+        let sections = load_sections_from(&conf);
+        let titles: Vec<_> = sections.iter().map(|s| s.title).collect();
+        assert_eq!(titles, ["Launch", "Workspaces", "General"]);
+        // Binds keep config order within a section.
+        let ws: Vec<_> = sections[1].binds.iter().map(|b| b.key.as_str()).collect();
+        assert_eq!(ws, ["1", "2"]);
+    }
+
+    #[test]
+    fn missing_config_or_source_is_not_fatal() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(load_sections_from(&dir.path().join("nope.conf")).is_empty());
+        let conf = dir.path().join("config.conf");
+        std::fs::write(
+            &conf,
+            "source = gone.conf\nsource = ~/definitely/not/here.conf\nbind = SUPER,q,killclient\n",
+        )
+        .unwrap();
+        assert_eq!(all_binds(&load_sections_from(&conf)).len(), 1);
+    }
+
+    #[test]
+    fn mutual_source_cycle_terminates_and_loads_each_file_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a.conf");
+        std::fs::write(&a, "bind = SUPER,a,killclient\nsource = b.conf\n").unwrap();
+        std::fs::write(
+            dir.path().join("b.conf"),
+            "bind = SUPER,b,killclient\nsource = ./a.conf\nsource = \"a.conf\"\n",
+        )
+        .unwrap();
+        let keys: Vec<String> = all_binds(&load_sections_from(&a))
+            .iter()
+            .map(|b| b.key.clone())
+            .collect();
+        assert_eq!(keys, ["A", "B"]);
+    }
+
+    #[test]
+    fn source_lines_are_followed_in_place() {
+        // An include's binds land where the `source` line is, not at the end.
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("config.conf");
+        std::fs::write(
+            &conf,
+            "bind = SUPER,a,killclient\nsource=inc.conf\nbind = SUPER,c,killclient\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("inc.conf"), "bind = SUPER,b,killclient\n").unwrap();
+        let keys: Vec<String> = all_binds(&load_sections_from(&conf))
+            .iter()
+            .map(|b| b.key.clone())
+            .collect();
+        assert_eq!(keys, ["A", "B", "C"]);
+    }
 }
