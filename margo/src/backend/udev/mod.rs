@@ -1246,6 +1246,7 @@ pub(super) fn take_pending_snapshots(
                     texture,
                     source_size: size,
                     captured_at: std::time::Instant::now(),
+                    live: Default::default(),
                 });
                 state.clients[idx].snapshot_pending = false;
                 tracing::debug!(

@@ -122,6 +122,12 @@ pub struct ResizeSnapshot {
     pub texture: smithay::backend::renderer::gles::GlesTexture,
     pub source_size: smithay::utils::Size<i32, smithay::utils::Logical>,
     pub captured_at: std::time::Instant,
+    /// The crossfade's live layer (`tex_next`), re-captured only when the
+    /// window commits and rendered into the same texture while its size
+    /// holds. A `RefCell` because element building only has `&MargoState`.
+    pub live: std::cell::RefCell<
+        crate::render::window_capture::CaptureSlot<smithay::backend::renderer::gles::GlesTexture>,
+    >,
 }
 
 impl std::fmt::Debug for ResizeSnapshot {

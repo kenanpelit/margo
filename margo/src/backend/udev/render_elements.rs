@@ -2192,8 +2192,8 @@ fn push_client_elements(
                 }
 
                 // Two-texture niri-style crossfade: if a snapshot
-                // is active, capture the live surface tree to a
-                // *fresh* GlesTexture this frame (`tex_next`), then
+                // is active, capture the live surface tree to an
+                // offscreen GlesTexture (`tex_next`), then
                 // composite tex_prev and tex_next together via a
                 // single ResizeRenderElement that draws BOTH
                 // through the same `render_texture_from_to` path
@@ -2219,23 +2219,37 @@ fn push_client_elements(
                     let id =
                         smithay::backend::renderer::element::Id::from_wayland_resource(wl_surface);
 
-                    // Capture LIVE → tex_next this frame. The
-                    // capture goes through the same offscreen-
-                    // render path as tex_prev (`capture_window`),
-                    // so the resulting texture has the same
-                    // pixel-level layout as the snapshot would have
-                    // if taken right now. Failure → no tex_next,
-                    // ResizeRenderElement falls back to tex_prev
-                    // only at full alpha (no worse than the
-                    // single-texture variant we had before).
+                    // Live layer → tex_next, through the same
+                    // offscreen-render path as tex_prev
+                    // (`capture_window`), so both textures share the
+                    // same pixel-level layout. Cached on the snapshot
+                    // by content key: re-rendered only when the
+                    // window committed (or its size / the scale
+                    // changed), into the previous texture when the
+                    // size holds — not a fresh window-sized texture
+                    // every frame, and not again for the screencopy /
+                    // cast rebuilds of the same frame. Failure → no
+                    // tex_next, ResizeRenderElement falls back to
+                    // tex_prev only at full alpha.
                     let live_size = c.window.geometry().size;
+                    let live_key = crate::render::window_capture::window_content_key(
+                        &c.window,
+                        live_size,
+                        output_scale.into(),
+                    );
                     let tex_next = if live_size.w > 0 && live_size.h > 0 {
-                        match crate::render::window_capture::capture_window(
-                            renderer,
-                            &c.window,
-                            live_size,
-                            output_scale.into(),
-                        ) {
+                        match snapshot
+                            .live
+                            .borrow_mut()
+                            .get_or_capture(live_key, |reuse| {
+                                crate::render::window_capture::capture_window_reusing(
+                                    renderer,
+                                    &c.window,
+                                    live_size,
+                                    output_scale.into(),
+                                    reuse,
+                                )
+                            }) {
                             Ok(t) => Some(t),
                             Err(e) => {
                                 tracing::trace!("resize_next: live capture failed: {e:?}");
@@ -2244,6 +2258,15 @@ fn push_client_elements(
                         }
                     } else {
                         None
+                    };
+                    // The element keeps one id for the whole transition,
+                    // so what changes in place — live content and the
+                    // crossfade progress — goes into its commit counter.
+                    let resize_commit = {
+                        use std::hash::{Hash, Hasher};
+                        let mut h = std::collections::hash_map::DefaultHasher::new();
+                        (live_key, progress.to_bits()).hash(&mut h);
+                        smithay::backend::renderer::utils::CommitCounter::from(h.finish() as usize)
                     };
 
                     let resize_program = clipped_surface_program.clone();
@@ -2256,7 +2279,7 @@ fn push_client_elements(
                             scale,
                             progress,
                             1.0,
-                            smithay::backend::renderer::utils::CommitCounter::default(),
+                            resize_commit,
                             radius,
                             resize_program,
                         ),

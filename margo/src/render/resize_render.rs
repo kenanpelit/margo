@@ -37,8 +37,9 @@ pub struct ResizeRenderElement {
     /// `1.0 - progress` alpha so it fades out as the transition
     /// completes.
     tex_prev: GlesTexture,
-    /// "Next" texture — the live window content re-captured into an
-    /// offscreen GlesTexture every frame. By going through the SAME
+    /// "Next" texture — the live window content captured into an
+    /// offscreen GlesTexture (re-rendered whenever the window commits;
+    /// see `ResizeSnapshot::live`). By going through the SAME
     /// `render_texture_from_to` path as `tex_prev` (instead of
     /// the live `WaylandSurfaceRenderElement` tree), both layers
     /// share the same pixel-snapping, the same rounded-clip shader,
@@ -57,7 +58,9 @@ pub struct ResizeRenderElement {
     /// Output scale, propagated to physical conversions inside
     /// `Element::geometry`.
     scale: Scale<f64>,
-    /// Bumped every time `geometry` changes so smithay re-damages.
+    /// Changes whenever what is drawn changes in place (live content,
+    /// crossfade progress) so smithay re-damages; geometry changes are
+    /// damaged by the tracker itself.
     commit: CommitCounter,
     /// Animation progress in [0, 1]. Drives the crossfade alpha for
     /// both layers: `tex_prev` at `1 - progress`, `tex_next` at
