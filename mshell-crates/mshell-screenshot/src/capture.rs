@@ -138,16 +138,14 @@ impl CaptureBackend {
     pub fn capture_region(&self, region: &RegionSelection) -> Result<image::RgbaImage> {
         let full = self.capture_output_raw(&region.output)?;
 
-        let x = (region.x as u32).min(full.width());
-        let y = (region.y as u32).min(full.height());
-        let w = (region.width as u32).min(full.width().saturating_sub(x));
-        let h = (region.height as u32).min(full.height().saturating_sub(y));
-
-        if w == 0 || h == 0 {
+        let Some((x, y, w, h)) = clamp_crop(
+            (region.x, region.y, region.width, region.height),
+            (full.width(), full.height()),
+        ) else {
             return Err(ScreenshotError::CaptureFailed(
                 "region has zero size".into(),
             ));
-        }
+        };
 
         Ok(image::imageops::crop_imm(&full, x, y, w, h).to_image())
     }
@@ -276,6 +274,19 @@ impl CaptureBackend {
 
         Ok(image)
     }
+}
+
+/// Clamp crop rect `(x, y, w, h)` to a `(width, height)` image. `None`
+/// when nothing of it is left.
+fn clamp_crop(
+    (x, y, w, h): (i32, i32, i32, i32),
+    (full_w, full_h): (u32, u32),
+) -> Option<(u32, u32, u32, u32)> {
+    let x = (x as u32).min(full_w);
+    let y = (y as u32).min(full_h);
+    let w = (w as u32).min(full_w.saturating_sub(x));
+    let h = (h as u32).min(full_h.saturating_sub(y));
+    (w > 0 && h > 0).then_some((x, y, w, h))
 }
 
 /// Convert raw pixel data from the compositor's format to RGBA8.
@@ -473,5 +484,97 @@ impl Dispatch<zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1, ()> for CaptureSt
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clamp_crop_keeps_rects_inside_the_frame() {
+        assert_eq!(
+            clamp_crop((10, 20, 30, 40), (100, 100)),
+            Some((10, 20, 30, 40))
+        );
+        assert_eq!(
+            clamp_crop((90, 95, 30, 40), (100, 100)),
+            Some((90, 95, 10, 5)),
+            "overhang is trimmed"
+        );
+        assert_eq!(
+            clamp_crop((0, 0, 100, 100), (100, 100)),
+            Some((0, 0, 100, 100))
+        );
+    }
+
+    #[test]
+    fn clamp_crop_rejects_empty_results() {
+        assert_eq!(
+            clamp_crop((100, 0, 10, 10), (100, 100)),
+            None,
+            "starts past the edge"
+        );
+        assert_eq!(clamp_crop((0, 0, 0, 10), (100, 100)), None);
+        assert_eq!(clamp_crop((0, 0, 10, 10), (0, 0)), None);
+    }
+
+    fn convert(data: &[u8], w: u32, h: u32, stride: u32, f: wl_shm::Format) -> Vec<[u8; 4]> {
+        convert_to_rgba(data, w, h, stride, f)
+            .unwrap()
+            .pixels()
+            .map(|p| p.0)
+            .collect()
+    }
+
+    #[test]
+    fn converts_each_supported_shm_format() {
+        let px = [0x11, 0x22, 0x33, 0x80];
+        assert_eq!(
+            convert(&px, 1, 1, 4, wl_shm::Format::Argb8888),
+            vec![[0x33, 0x22, 0x11, 0x80]]
+        );
+        assert_eq!(
+            convert(&px, 1, 1, 4, wl_shm::Format::Xrgb8888),
+            vec![[0x33, 0x22, 0x11, 0xFF]],
+            "X formats are opaque whatever the padding byte holds"
+        );
+        assert_eq!(
+            convert(&px, 1, 1, 4, wl_shm::Format::Abgr8888),
+            vec![[0x11, 0x22, 0x33, 0x80]]
+        );
+        assert_eq!(
+            convert(&px, 1, 1, 4, wl_shm::Format::Xbgr8888),
+            vec![[0x11, 0x22, 0x33, 0xFF]]
+        );
+    }
+
+    #[test]
+    fn honours_row_stride_padding() {
+        // 1x2 image, 8-byte stride: the second pixel row starts at 8.
+        let data = [1, 2, 3, 255, 9, 9, 9, 9, 4, 5, 6, 255, 9, 9, 9, 9];
+        assert_eq!(
+            convert(&data, 1, 2, 8, wl_shm::Format::Xbgr8888),
+            vec![[1, 2, 3, 255], [4, 5, 6, 255]]
+        );
+    }
+
+    #[test]
+    fn short_buffer_leaves_missing_pixels_blank_instead_of_panicking() {
+        let data = [1, 2, 3, 255, 4, 5];
+        assert_eq!(
+            convert(&data, 2, 1, 8, wl_shm::Format::Xbgr8888),
+            vec![[1, 2, 3, 255], [0, 0, 0, 0]]
+        );
+    }
+
+    #[test]
+    fn unsupported_format_is_an_error() {
+        assert!(matches!(
+            convert_to_rgba(&[0; 4], 1, 1, 4, wl_shm::Format::Rgb565),
+            Err(ScreenshotError::CaptureFailed(_))
+        ));
+        // An empty frame has no pixel to reject.
+        assert!(convert_to_rgba(&[], 0, 0, 0, wl_shm::Format::Rgb565).is_ok());
     }
 }

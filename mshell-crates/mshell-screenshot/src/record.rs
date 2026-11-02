@@ -45,36 +45,7 @@ pub(crate) fn start_recording(
         }
 
         let mut cmd = Command::new("wf-recorder");
-        match args {
-            WfRecorderArgs::Region {
-                x,
-                y,
-                width,
-                height,
-            } => {
-                cmd.args(["--geometry", &format!("{x},{y} {width}x{height}")]);
-            }
-            WfRecorderArgs::Monitor { name } => {
-                cmd.args(["-o", &name]);
-            }
-            WfRecorderArgs::Window {
-                x,
-                y,
-                width,
-                height,
-            } => {
-                cmd.args(["--geometry", &format!("{x},{y} {width}x{height}")]);
-            }
-            WfRecorderArgs::All => {}
-        }
-        cmd.arg("-f").arg(&path);
-        cmd.args(["-c", "libx264"]);
-        cmd.args(["-p", "crf=23"]);
-        cmd.args(["-p", "preset=fast"]);
-        cmd.args(["-x", "yuv420p"]);
-        if let Some(audio) = audio {
-            cmd.arg(format!("--audio={}", audio));
-        }
+        cmd.args(wf_recorder_argv(&args, &path, audio.as_deref()));
 
         let mut child: Child = match cmd.spawn() {
             Ok(c) => c,
@@ -104,6 +75,56 @@ pub(crate) fn start_recording(
     handle
 }
 
+/// wf-recorder's argv (without the program name) for a recording of
+/// `args` into `path`.
+fn wf_recorder_argv(
+    args: &WfRecorderArgs,
+    path: &std::path::Path,
+    audio: Option<&str>,
+) -> Vec<std::ffi::OsString> {
+    let mut argv: Vec<std::ffi::OsString> = Vec::new();
+    match args {
+        WfRecorderArgs::Region {
+            x,
+            y,
+            width,
+            height,
+        }
+        | WfRecorderArgs::Window {
+            x,
+            y,
+            width,
+            height,
+        } => {
+            argv.push("--geometry".into());
+            argv.push(format!("{x},{y} {width}x{height}").into());
+        }
+        WfRecorderArgs::Monitor { name } => {
+            argv.push("-o".into());
+            argv.push(name.into());
+        }
+        WfRecorderArgs::All => {}
+    }
+    argv.push("-f".into());
+    argv.push(path.into());
+    for a in [
+        "-c",
+        "libx264",
+        "-p",
+        "crf=23",
+        "-p",
+        "preset=fast",
+        "-x",
+        "yuv420p",
+    ] {
+        argv.push(a.into());
+    }
+    if let Some(audio) = audio {
+        argv.push(format!("--audio={audio}").into());
+    }
+    argv
+}
+
 pub(crate) enum WfRecorderArgs {
     Region {
         x: i32,
@@ -121,4 +142,71 @@ pub(crate) enum WfRecorderArgs {
         height: i32,
     },
     All,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::OsString;
+    use std::path::Path;
+
+    fn argv(args: WfRecorderArgs, audio: Option<&str>) -> Vec<String> {
+        wf_recorder_argv(&args, Path::new("/v/rec.mp4"), audio)
+            .into_iter()
+            .map(|a: OsString| a.into_string().unwrap())
+            .collect()
+    }
+
+    const TAIL: [&str; 10] = [
+        "-f",
+        "/v/rec.mp4",
+        "-c",
+        "libx264",
+        "-p",
+        "crf=23",
+        "-p",
+        "preset=fast",
+        "-x",
+        "yuv420p",
+    ];
+
+    #[test]
+    fn region_and_window_use_slurp_style_geometry() {
+        let region = WfRecorderArgs::Region {
+            x: 10,
+            y: -20,
+            width: 300,
+            height: 200,
+        };
+        let a = argv(region, None);
+        assert_eq!(&a[..2], ["--geometry", "10,-20 300x200"]);
+        assert_eq!(&a[2..], TAIL);
+
+        let window = WfRecorderArgs::Window {
+            x: 1920,
+            y: 0,
+            width: 800,
+            height: 600,
+        };
+        assert_eq!(&argv(window, None)[..2], ["--geometry", "1920,0 800x600"]);
+    }
+
+    #[test]
+    fn monitor_and_all() {
+        let a = argv(
+            WfRecorderArgs::Monitor {
+                name: "DP-2".into(),
+            },
+            None,
+        );
+        assert_eq!(&a[..2], ["-o", "DP-2"]);
+        assert_eq!(argv(WfRecorderArgs::All, None), TAIL);
+    }
+
+    #[test]
+    fn audio_device_goes_last_as_one_argument() {
+        let a = argv(WfRecorderArgs::All, Some("alsa_output.pci monitor"));
+        assert_eq!(a.last().unwrap(), "--audio=alsa_output.pci monitor");
+        assert_eq!(a.len(), TAIL.len() + 1);
+    }
 }

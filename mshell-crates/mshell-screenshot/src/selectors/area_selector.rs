@@ -214,10 +214,7 @@ fn create_overlay_window(
             let ex = (sx + offset_x).clamp(0.0, max_w);
             let ey = (sy + offset_y).clamp(0.0, max_h);
 
-            let rx = sx.min(ex);
-            let ry = sy.min(ey);
-            let rw = (ex - sx).abs();
-            let rh = (ey - sy).abs();
+            let (rx, ry, rw, rh) = normalized_rect((sx, sy), (ex, ey));
 
             if rw > 5.0 && rh > 5.0 {
                 // Snap-to-window: if the user's rough drag lines
@@ -390,8 +387,8 @@ fn draw_overlay(
 
 /// Friendly description of `w:h` — named tag when it matches a
 /// common screen / social format within a small ε, otherwise the
-/// reduced fraction so e.g. 800×600 reads as "4:3" and 1735×973
-/// reads as "1735:973" (the user's odd custom drag). ε is 0.5 %
+/// reduced fraction so e.g. 800×600 reads as "4:3" and 1700×973
+/// reads as "1700:973" (the user's odd custom drag). ε is 0.5 %
 /// to absorb sub-pixel drift from the drag clamp.
 fn aspect_label(w: i32, h: i32) -> String {
     if w <= 0 || h <= 0 {
@@ -469,19 +466,39 @@ fn nudge_selection(state: &SharedState, dx: f64, dy: f64) -> bool {
     else {
         return false;
     };
-    let (max_w, max_h) = state
+    let bounds = state
         .output_dims
         .get(&out)
         .copied()
         .unwrap_or((f64::INFINITY, f64::INFINITY));
-    let new_x = (*x + dx).clamp(0.0, (max_w - *w).max(0.0));
-    let new_y = (*y + dy).clamp(0.0, (max_h - *h).max(0.0));
-    if (new_x - *x).abs() < f64::EPSILON && (new_y - *y).abs() < f64::EPSILON {
+    let Some((new_x, new_y)) = nudged_origin((*x, *y, *w, *h), (dx, dy), bounds) else {
         return false;
-    }
+    };
     *x = new_x;
     *y = new_y;
     true
+}
+
+/// Origin of rect `(x, y, w, h)` moved by `(dx, dy)` and clamped so the
+/// rect stays inside `(0, 0)..bounds`. `None` when it can't move (already
+/// pinned against that edge, or a zero step).
+fn nudged_origin(
+    (x, y, w, h): (f64, f64, f64, f64),
+    (dx, dy): (f64, f64),
+    (max_w, max_h): (f64, f64),
+) -> Option<(f64, f64)> {
+    let new_x = (x + dx).clamp(0.0, (max_w - w).max(0.0));
+    let new_y = (y + dy).clamp(0.0, (max_h - h).max(0.0));
+    if (new_x - x).abs() < f64::EPSILON && (new_y - y).abs() < f64::EPSILON {
+        return None;
+    }
+    Some((new_x, new_y))
+}
+
+/// `(x, y, w, h)` of the rect spanned by two drag corners, whichever
+/// direction the drag went.
+fn normalized_rect((sx, sy): (f64, f64), (ex, ey): (f64, f64)) -> (f64, f64, f64, f64) {
+    (sx.min(ex), sy.min(ey), (ex - sx).abs(), (ey - sy).abs())
 }
 
 /// Replace a sloppy drag rect with a window's exact bbox when
@@ -542,15 +559,197 @@ fn current_rect_for(state: &SharedState, this_output: &str) -> Option<(f64, f64,
         }
         return None;
     }
-    let (sx, sy) = state.drag_start.get()?;
-    let (cx, cy) = state.drag_current.get()?;
-    let x = sx.min(cx);
-    let y = sy.min(cy);
-    let w = (cx - sx).abs();
-    let h = (cy - sy).abs();
+    let start = state.drag_start.get()?;
+    let current = state.drag_current.get()?;
+    let (x, y, w, h) = normalized_rect(start, current);
     if w > 1.0 && h > 1.0 {
         Some((x, y, w, h))
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn win(output: &str, x: f64, y: f64, width: f64, height: f64) -> WindowRect {
+        WindowRect {
+            output: output.into(),
+            address: format!("{output}@{x},{y}"),
+            x,
+            y,
+            width,
+            height,
+            global_x: x as i32,
+            global_y: y as i32,
+            global_w: width as i32,
+            global_h: height as i32,
+        }
+    }
+
+    #[test]
+    fn aspect_label_names_common_formats() {
+        let table: &[((i32, i32), &str)] = &[
+            ((1920, 1080), "16:9"),
+            ((1280, 720), "16:9"),
+            ((1921, 1080), "16:9"),
+            ((1080, 1920), "9:16"),
+            ((500, 500), "1:1"),
+            ((800, 600), "4:3"),
+            ((600, 800), "3:4"),
+            ((1920, 1200), "16:10"),
+            ((2520, 1080), "21:9"),
+            ((5120, 1440), "32:9"),
+            ((1500, 1000), "3:2"),
+            ((1000, 1500), "2:3"),
+        ];
+        for ((w, h), want) in table {
+            assert_eq!(aspect_label(*w, *h), *want, "{w}x{h}");
+        }
+    }
+
+    #[test]
+    fn aspect_label_reduces_odd_drags() {
+        assert_eq!(aspect_label(1920, 1152), "5:3");
+        assert_eq!(aspect_label(1700, 973), "1700:973");
+        // Within 0.5 % of 16:9 still reads as the preset.
+        assert_eq!(aspect_label(1735, 973), "16:9");
+        assert_eq!(aspect_label(7, 1), "7:1");
+        assert_eq!(aspect_label(1, 7), "1:7");
+    }
+
+    #[test]
+    fn aspect_label_of_degenerate_sizes() {
+        assert_eq!(aspect_label(0, 100), "—");
+        assert_eq!(aspect_label(100, 0), "—");
+        assert_eq!(aspect_label(-16, 9), "—");
+    }
+
+    #[test]
+    fn gcd_basics() {
+        assert_eq!(gcd(1920, 1080), 120);
+        assert_eq!(gcd(17, 5), 1);
+        assert_eq!(gcd(0, 9), 9);
+        assert_eq!(gcd(9, 0), 9);
+        assert_eq!(gcd(0, 0), 1, "never 0, so callers can divide by it");
+    }
+
+    #[test]
+    fn normalized_rect_handles_every_drag_direction() {
+        let want = (10.0, 20.0, 30.0, 40.0);
+        assert_eq!(normalized_rect((10.0, 20.0), (40.0, 60.0)), want);
+        assert_eq!(normalized_rect((40.0, 60.0), (10.0, 20.0)), want);
+        assert_eq!(normalized_rect((40.0, 20.0), (10.0, 60.0)), want);
+        assert_eq!(normalized_rect((10.0, 60.0), (40.0, 20.0)), want);
+        assert_eq!(
+            normalized_rect((5.0, 5.0), (5.0, 5.0)),
+            (5.0, 5.0, 0.0, 0.0)
+        );
+    }
+
+    #[test]
+    fn nudge_moves_and_clamps_to_the_output() {
+        let r = (100.0, 100.0, 200.0, 100.0);
+        let out = (1920.0, 1080.0);
+        assert_eq!(nudged_origin(r, (1.0, 0.0), out), Some((101.0, 100.0)));
+        assert_eq!(nudged_origin(r, (0.0, -10.0), out), Some((100.0, 90.0)));
+        assert_eq!(
+            nudged_origin(r, (-500.0, 0.0), out),
+            Some((0.0, 100.0)),
+            "clamped at the left edge"
+        );
+        assert_eq!(
+            nudged_origin(r, (5000.0, 5000.0), out),
+            Some((1720.0, 980.0)),
+            "the far edge keeps the whole rect on the output"
+        );
+    }
+
+    #[test]
+    fn nudge_reports_no_move_when_pinned() {
+        let out = (1920.0, 1080.0);
+        assert_eq!(
+            nudged_origin((0.0, 0.0, 10.0, 10.0), (-1.0, -1.0), out),
+            None
+        );
+        assert_eq!(
+            nudged_origin((1910.0, 50.0, 10.0, 10.0), (10.0, 0.0), out),
+            None
+        );
+        assert_eq!(nudged_origin((5.0, 5.0, 10.0, 10.0), (0.0, 0.0), out), None);
+        // A rect larger than the output pins at the origin.
+        assert_eq!(
+            nudged_origin((0.0, 0.0, 4000.0, 10.0), (1.0, 0.0), out),
+            None
+        );
+    }
+
+    #[test]
+    fn nudge_without_known_output_bounds_is_unclamped_on_the_far_side() {
+        let inf = (f64::INFINITY, f64::INFINITY);
+        assert_eq!(
+            nudged_origin((10.0, 10.0, 5.0, 5.0), (1e6, 0.0), inf),
+            Some((1e6 + 10.0, 10.0))
+        );
+        assert_eq!(
+            nudged_origin((10.0, 10.0, 5.0, 5.0), (-20.0, 0.0), inf),
+            Some((0.0, 10.0))
+        );
+    }
+
+    #[test]
+    fn snap_picks_a_window_whose_edges_are_all_close() {
+        let windows = [win("DP-1", 100.0, 100.0, 800.0, 600.0)];
+        assert_eq!(
+            snap_to_window(&windows, "DP-1", 110.0, 95.0, 785.0, 610.0),
+            Some((100.0, 100.0, 800.0, 600.0))
+        );
+    }
+
+    #[test]
+    fn snap_rejects_far_edges_and_other_outputs() {
+        let windows = [win("DP-1", 100.0, 100.0, 800.0, 600.0)];
+        // Right edge 30 px short: a deliberate slice, keep the drag.
+        assert_eq!(
+            snap_to_window(&windows, "DP-1", 100.0, 100.0, 770.0, 600.0),
+            None
+        );
+        assert_eq!(
+            snap_to_window(&windows, "HDMI-A-1", 100.0, 100.0, 800.0, 600.0),
+            None
+        );
+        assert_eq!(snap_to_window(&[], "DP-1", 0.0, 0.0, 10.0, 10.0), None);
+    }
+
+    #[test]
+    fn snap_threshold_is_inclusive() {
+        let windows = [win("DP-1", 100.0, 100.0, 800.0, 600.0)];
+        let t = SNAP_THRESHOLD_PX;
+        assert!(snap_to_window(&windows, "DP-1", 100.0 + t, 100.0, 800.0 - t, 600.0).is_some());
+        assert!(
+            snap_to_window(
+                &windows,
+                "DP-1",
+                100.0 + t + 0.5,
+                100.0,
+                800.0 - t - 0.5,
+                600.0
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn snap_prefers_the_smallest_matching_window() {
+        let windows = [
+            win("DP-1", 0.0, 0.0, 1000.0, 800.0),
+            win("DP-1", 5.0, 5.0, 990.0, 790.0),
+            win("DP-1", 10.0, 10.0, 985.0, 785.0),
+        ];
+        assert_eq!(
+            snap_to_window(&windows, "DP-1", 5.0, 5.0, 990.0, 790.0),
+            Some((10.0, 10.0, 985.0, 785.0))
+        );
     }
 }

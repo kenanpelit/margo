@@ -528,3 +528,53 @@ fn copy_to_clipboard(image: &image::RgbaImage) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn annotated_sibling_keeps_dir_and_extension() {
+        assert_eq!(
+            annotated_sibling(Path::new("/p/Screenshots/2026_01_02_screenshot.png")),
+            PathBuf::from("/p/Screenshots/2026_01_02_screenshot-edit.png")
+        );
+        assert_eq!(
+            annotated_sibling(Path::new("shot.jpeg")),
+            PathBuf::from("shot-edit.jpeg")
+        );
+        assert_eq!(
+            annotated_sibling(Path::new("/p/noext")),
+            PathBuf::from("/p/noext-edit.png")
+        );
+    }
+
+    #[test]
+    fn last_region_round_trips() {
+        store_last_region(RegionSelection {
+            output: "DP-1".into(),
+            x: 1,
+            y: 2,
+            width: 3,
+            height: 4,
+        });
+        let r = load_last_region().unwrap();
+        assert_eq!(
+            (r.output.as_str(), r.x, r.y, r.width, r.height),
+            ("DP-1", 1, 2, 3, 4)
+        );
+    }
+
+    #[test]
+    fn saved_png_decodes_back_to_the_same_pixels() {
+        let dir = std::env::temp_dir().join(format!("mshell-shot-{}", std::process::id()));
+        let path = dir.join("nested").join("a.png");
+        let mut img = image::RgbaImage::new(2, 1);
+        img.put_pixel(0, 0, image::Rgba([1, 2, 3, 255]));
+        img.put_pixel(1, 0, image::Rgba([4, 5, 6, 128]));
+        save_to_file(&img, &path).unwrap();
+        let back = image::open(&path).unwrap().to_rgba8();
+        assert_eq!(back, img);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}
