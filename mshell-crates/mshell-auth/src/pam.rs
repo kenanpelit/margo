@@ -249,4 +249,121 @@ mod tests {
         );
         assert_eq!(rc, -1, "null resp out-pointer must be rejected");
     }
+
+    // PAM message styles beyond the echo-off password prompt (Linux-PAM
+    // `_pam_types.h`).
+    const PAM_PROMPT_ECHO_ON: c_int = 2;
+    const PAM_ERROR_MSG: c_int = 3;
+    const PAM_TEXT_INFO: c_int = 4;
+
+    /// Run the conversation callback over `styles` (`None` = a null message
+    /// pointer in the array) with `password` as appdata, returning the rc and
+    /// each slot's `(response, retcode)`. Frees what the callback allocated.
+    fn converse(
+        styles: &[Option<c_int>],
+        password: Option<&str>,
+    ) -> (c_int, Vec<(Option<String>, c_int)>) {
+        let text = CString::new("Password: ").unwrap();
+        let messages: Vec<PamMessage> = styles
+            .iter()
+            .map(|s| PamMessage {
+                msg_style: s.unwrap_or(0),
+                msg: text.as_ptr(),
+            })
+            .collect();
+        let ptrs: Vec<*const PamMessage> = styles
+            .iter()
+            .zip(&messages)
+            .map(|(s, m)| {
+                if s.is_some() {
+                    m as *const _
+                } else {
+                    std::ptr::null()
+                }
+            })
+            .collect();
+        let password = password.map(|p| CString::new(p).unwrap());
+        let appdata = password
+            .as_ref()
+            .map_or(std::ptr::null_mut(), |p| p.as_ptr() as *mut c_void);
+        let mut resp: *mut PamResponse = std::ptr::null_mut();
+        let rc = conv_callback(styles.len() as c_int, ptrs.as_ptr(), &mut resp, appdata);
+        let mut out = Vec::new();
+        if !resp.is_null() {
+            for i in 0..styles.len() {
+                // SAFETY: the callback calloc'd `styles.len()` slots.
+                let slot = unsafe { &*resp.add(i) };
+                let text = (!slot.resp.is_null()).then(|| {
+                    // SAFETY: a non-null resp is a strdup'd C string.
+                    let s = unsafe { std::ffi::CStr::from_ptr(slot.resp) }
+                        .to_string_lossy()
+                        .into_owned();
+                    unsafe { libc::free(slot.resp.cast()) };
+                    s
+                });
+                out.push((text, slot.resp_retcode));
+            }
+            unsafe { libc::free(resp.cast()) };
+        }
+        (rc, out)
+    }
+
+    #[test]
+    fn conv_answers_the_password_prompt_with_the_password() {
+        let (rc, out) = converse(&[Some(PAM_PROMPT_ECHO_OFF)], Some("hunter2"));
+        assert_eq!(rc, PAM_SUCCESS);
+        assert_eq!(out, vec![(Some("hunter2".to_string()), 0)]);
+    }
+
+    #[test]
+    fn conv_leaves_non_password_messages_unanswered() {
+        // A username prompt, an error and an info line (e.g. pam_faillock's
+        // "account locked" text) get an empty response, not the password.
+        let (rc, out) = converse(
+            &[
+                Some(PAM_TEXT_INFO),
+                Some(PAM_PROMPT_ECHO_ON),
+                Some(PAM_ERROR_MSG),
+                Some(PAM_PROMPT_ECHO_OFF),
+            ],
+            Some("pw"),
+        );
+        assert_eq!(rc, PAM_SUCCESS);
+        assert_eq!(
+            out,
+            vec![(None, 0), (None, 0), (None, 0), (Some("pw".to_string()), 0)]
+        );
+    }
+
+    #[test]
+    fn conv_skips_null_messages_and_tolerates_no_password() {
+        let (rc, out) = converse(&[None, Some(PAM_PROMPT_ECHO_OFF)], Some("pw"));
+        assert_eq!(rc, PAM_SUCCESS);
+        assert_eq!(out, vec![(None, 0), (Some("pw".to_string()), 0)]);
+
+        let (rc, out) = converse(&[Some(PAM_PROMPT_ECHO_OFF)], None);
+        assert_eq!(rc, PAM_SUCCESS);
+        assert_eq!(out, vec![(None, 0)]);
+    }
+
+    #[test]
+    fn conv_answers_repeated_password_prompts() {
+        // Stacked modules (e.g. pam_unix then pam_gnome_keyring) may each ask.
+        let (_, out) = converse(
+            &[Some(PAM_PROMPT_ECHO_OFF), Some(PAM_PROMPT_ECHO_OFF)],
+            Some("pw"),
+        );
+        assert_eq!(
+            out,
+            vec![(Some("pw".to_string()), 0), (Some("pw".to_string()), 0)]
+        );
+    }
+
+    #[test]
+    fn current_user_is_a_plain_name() {
+        if let Some(name) = current_user() {
+            assert!(!name.is_empty());
+            assert!(!name.contains(['\0', '/', '\n']));
+        }
+    }
 }
