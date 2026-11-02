@@ -1339,26 +1339,7 @@ fn set_plugin_enabled(dir: &std::path::Path, name: &str, enabled: bool) -> Resul
         let dirname = entry.file_name().to_string_lossy().to_string();
         let mname = manifest_field(&text, "name").unwrap_or_else(|| dirname.clone());
         if dirname == name || mname == name {
-            let val = if enabled { "true" } else { "false" };
-            let mut out = String::new();
-            let mut rewrote = false;
-            for line in text.lines() {
-                let is_enabled = line
-                    .split_once('=')
-                    .map(|(k, _)| k.trim() == "enabled")
-                    .unwrap_or(false);
-                if is_enabled {
-                    out.push_str(&format!("enabled = {val}\n"));
-                    rewrote = true;
-                } else {
-                    out.push_str(line);
-                    out.push('\n');
-                }
-            }
-            if !rewrote {
-                out.push_str(&format!("enabled = {val}\n"));
-            }
-            std::fs::write(&manifest, out)?;
+            std::fs::write(&manifest, with_enabled_line(&text, enabled))?;
             println!(
                 "{} plugin '{name}'. Takes effect on the next margo start.",
                 if enabled { "Enabled" } else { "Disabled" }
@@ -1367,6 +1348,31 @@ fn set_plugin_enabled(dir: &std::path::Path, name: &str, enabled: bool) -> Resul
         }
     }
     bail!("no plugin named '{name}' in {}", dir.display());
+}
+
+/// `text` (a plugin.toml) with its `enabled = …` line set to `enabled`,
+/// appended when there is none.
+fn with_enabled_line(text: &str, enabled: bool) -> String {
+    let val = if enabled { "true" } else { "false" };
+    let mut out = String::new();
+    let mut rewrote = false;
+    for line in text.lines() {
+        let is_enabled = line
+            .split_once('=')
+            .map(|(k, _)| k.trim() == "enabled")
+            .unwrap_or(false);
+        if is_enabled {
+            out.push_str(&format!("enabled = {val}\n"));
+            rewrote = true;
+        } else {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    if !rewrote {
+        out.push_str(&format!("enabled = {val}\n"));
+    }
+    out
 }
 
 fn cmd_actions(verbose: bool, group_filter: Option<&str>, names_only: bool) -> Result<()> {
@@ -2675,6 +2681,15 @@ fn print_status_rich(state: &serde_json::Value, output_filter: Option<&str>) {
 /// is whitespace-split); the value-bearing actions read their single
 /// non-numeric arg as `arg.v`.
 fn send_dispatch(action: &str, args: &[&str]) -> Result<()> {
+    let req = dispatch_request(action, args);
+    let reply = mctl::ipc_client::request_once(&req)?;
+    check_dispatch_reply(action, &reply)
+}
+
+/// The `dispatch <action> [args…]` request line (without the newline).
+/// Empty args are dropped: the server tokenises on whitespace, so they
+/// could not be told apart anyway.
+fn dispatch_request(action: &str, args: &[&str]) -> String {
     let mut req = String::from("dispatch ");
     req.push_str(action);
     for a in args {
@@ -2684,8 +2699,7 @@ fn send_dispatch(action: &str, args: &[&str]) -> Result<()> {
         req.push(' ');
         req.push_str(a);
     }
-    let reply = mctl::ipc_client::request_once(&req)?;
-    check_dispatch_reply(action, &reply)
+    req
 }
 
 /// A dispatch succeeded only if margo said `ok: true`; anything else is a
@@ -3250,5 +3264,194 @@ mod tests {
     fn diff_stat_vs_current_counts_added_and_removed_lines() {
         let stat = diff_stat_vs_current("a\nb\n", "a\nc\n");
         assert_eq!(stat, "+1/-1");
+    }
+}
+
+#[cfg(test)]
+mod helper_tests {
+    use super::*;
+
+    #[test]
+    fn dispatch_request_joins_action_and_args() {
+        assert_eq!(dispatch_request("quit", &[]), "dispatch quit");
+        assert_eq!(dispatch_request("view", &["4"]), "dispatch view 4");
+        assert_eq!(
+            dispatch_request("settagset", &["5", "0"]),
+            "dispatch settagset 5 0"
+        );
+        assert_eq!(
+            dispatch_request("spawn", &["", "foot", ""]),
+            "dispatch spawn foot",
+            "empty args are dropped"
+        );
+    }
+
+    #[test]
+    fn manifest_fields() {
+        let text = "# a plugin\nname = \"clock\"\nversion='1.2'\ndescription = a=b\n";
+        assert_eq!(manifest_field(text, "name").as_deref(), Some("clock"));
+        assert_eq!(manifest_field(text, "version").as_deref(), Some("1.2"));
+        assert_eq!(manifest_field(text, "description").as_deref(), Some("a=b"));
+        assert_eq!(manifest_field(text, "enabled"), None);
+        assert_eq!(
+            manifest_field("# name = x\n", "name"),
+            None,
+            "commented out"
+        );
+    }
+
+    #[test]
+    fn manifest_enabled_defaults_to_true() {
+        assert!(manifest_enabled("name = x\n"));
+        assert!(manifest_enabled("enabled = yes\n"));
+        assert!(manifest_enabled("enabled = on"));
+        assert!(!manifest_enabled("enabled = false\n"));
+        assert!(!manifest_enabled("enabled = 0\n"));
+        assert!(
+            !manifest_enabled("enabled = nah\n"),
+            "unknown values disable"
+        );
+    }
+
+    #[test]
+    fn enabled_line_is_rewritten_or_appended() {
+        assert_eq!(
+            with_enabled_line("name = x\nenabled = true\nversion = 1\n", false),
+            "name = x\nenabled = false\nversion = 1\n"
+        );
+        assert_eq!(
+            with_enabled_line("name = x\n", true),
+            "name = x\nenabled = true\n"
+        );
+        assert_eq!(
+            with_enabled_line("name = x\n  enabled=false", true),
+            "name = x\nenabled = true\n"
+        );
+        assert_eq!(
+            with_enabled_line("# enabled = false\nname = x", false),
+            "# enabled = false\nname = x\nenabled = false\n",
+            "a commented-out key is left alone"
+        );
+    }
+
+    #[test]
+    fn hhmm_is_normalised_and_range_checked() {
+        assert_eq!(normalize_hhmm("7:5").unwrap(), "07:05");
+        assert_eq!(normalize_hhmm(" 23 : 59 ").unwrap(), "23:59");
+        assert_eq!(normalize_hhmm("00:00").unwrap(), "00:00");
+        for bad in ["24:00", "12:60", "1200", "", ":", "a:b", "-1:00", "12:5:00"] {
+            assert!(normalize_hhmm(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn preset_names_cannot_escape_the_directory() {
+        assert!(validate_preset_name("night").is_ok());
+        assert!(validate_preset_name("warm-2").is_ok());
+        for bad in ["", "../x", "a/b", "a\\b", ".hidden", "..", "."] {
+            assert!(validate_preset_name(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn preset_file_needs_both_keys_and_clamps() {
+        let dir = std::env::temp_dir().join(format!("mctl-preset-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let write = |name: &str, body: &str| {
+            let p = dir.join(name);
+            std::fs::write(&p, body).unwrap();
+            p
+        };
+        let p = write(
+            "ok.conf",
+            "# night\n[preset]\nstatic_temp = 3400\nstatic_gamma = \"90\"\n",
+        );
+        assert_eq!(read_preset_file(&p), Some((3400, 90)));
+        let p = write("clamp.conf", "static_temp=100\nstatic_gamma=999\n");
+        assert_eq!(read_preset_file(&p), Some((1000, 200)));
+        let p = write("half.conf", "static_temp=4000\n");
+        assert_eq!(read_preset_file(&p), None);
+        let p = write("bad.conf", "static_temp=warm\nstatic_gamma=90\n");
+        assert_eq!(read_preset_file(&p), None);
+        assert_eq!(read_preset_file(&dir.join("missing.conf")), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn rule(id: &str, title: &str) -> margo_config::WindowRule {
+        margo_config::WindowRule {
+            id: Some(id.into()),
+            title: Some(title.into()),
+            ..Default::default()
+        }
+    }
+
+    fn verdict(r: &margo_config::WindowRule, appid: &str, title: &str) -> Result<(), &'static str> {
+        match classify_rule(r, appid, title) {
+            Verdict::Match => Ok(()),
+            Verdict::Reject(why) => Err(why),
+        }
+    }
+
+    #[test]
+    fn rule_classification() {
+        assert_eq!(verdict(&rule("^firefox$", ""), "firefox", "x"), Ok(()));
+        assert_eq!(
+            verdict(&rule("^firefox$", ""), "firefox-dev", "x"),
+            Err("appid pattern miss")
+        );
+        assert_eq!(
+            verdict(
+                &rule("", "Picture-in-Picture"),
+                "firefox",
+                "Picture-in-Picture"
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            verdict(&rule("firefox", "^PiP$"), "firefox", "Mozilla"),
+            Err("title pattern miss")
+        );
+        assert_eq!(
+            verdict(&rule("kitty", ""), "", ""),
+            Err("appid pattern miss"),
+            "a pattern never matches an empty value"
+        );
+        // An invalid regex falls back to substring matching.
+        assert_eq!(verdict(&rule("^foo(", ""), "xfoo(y", ""), Ok(()));
+    }
+
+    #[test]
+    fn rule_exclusions() {
+        let mut r = rule("firefox", "");
+        r.exclude_title = Some("Private".into());
+        assert_eq!(verdict(&r, "firefox", "Mozilla Firefox"), Ok(()));
+        assert_eq!(
+            verdict(&r, "firefox", "Private Browsing"),
+            Err("exclude_title matched")
+        );
+        let mut r = rule("", "");
+        r.exclude_id = Some("^steam".into());
+        assert_eq!(verdict(&r, "steam_app_1", ""), Err("exclude_id matched"));
+        r.exclude_id = Some(String::new());
+        assert_eq!(
+            verdict(&r, "steam_app_1", ""),
+            Ok(()),
+            "empty exclusion is ignored"
+        );
+    }
+
+    #[test]
+    fn twilight_preview_args_parse() {
+        let args = Args::try_parse_from(["mctl", "twilight", "preview", "3500", "80"]).unwrap();
+        assert!(matches!(
+            args.command,
+            Command::Twilight {
+                action: TwilightCmd::Preview {
+                    kelvin: 3500,
+                    gamma: 80
+                }
+            }
+        ));
+        assert!(Args::try_parse_from(["mctl", "twilight", "preview", "warm"]).is_err());
     }
 }
