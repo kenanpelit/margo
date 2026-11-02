@@ -61,6 +61,7 @@ mod screencopy;
 mod selection;
 mod session_lock;
 mod session_regressions;
+mod session_snapshot;
 mod tag_mask;
 mod tag_mon;
 mod tag_transition_anim;

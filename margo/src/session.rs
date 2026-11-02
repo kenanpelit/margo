@@ -243,8 +243,17 @@ pub fn apply_to_state(state: &mut MargoState, snap: &SessionSnapshot) -> usize {
             continue;
         };
         let m = &mut state.monitors[idx];
-        m.seltags = ms.seltags;
-        m.tagset = ms.tagset;
+        // Every value below is used as an index or fed to the layouts, and
+        // the autosave is applied on startup: one out-of-range field in the
+        // file would panic margo on every start. Fold / clamp / drop them.
+        let seltags = ms.seltags & 1;
+        let tagset = ms.tagset.map(|t| t & crate::TAGMASK);
+        // An active slot with no real tag would show an empty desktop;
+        // keep the live tagset in that case.
+        if tagset[seltags] != 0 {
+            m.seltags = seltags;
+            m.tagset = tagset;
+        }
 
         // Per-tag fields — clamp to the locally-allocated length so a
         // future MAX_TAGS change doesn't OOB on an old snapshot.
@@ -254,13 +263,32 @@ pub fn apply_to_state(state: &mut MargoState, snap: &SessionSnapshot) -> usize {
                 m.pertag.ltidxs[tag_i] = lt;
             }
         }
-        let n = m.pertag.mfacts.len().min(ms.pertag.mfacts.len());
-        m.pertag.mfacts[..n].copy_from_slice(&ms.pertag.mfacts[..n]);
+        // Same range `setmfact` and tag rules clamp to; a NaN / inf keeps
+        // the live value.
+        for (live, &saved) in m.pertag.mfacts.iter_mut().zip(&ms.pertag.mfacts) {
+            if saved.is_finite() {
+                *live = saved.clamp(0.05, 0.95);
+            }
+        }
         let n = m.pertag.nmasters.len().min(ms.pertag.nmasters.len());
         m.pertag.nmasters[..n].copy_from_slice(&ms.pertag.nmasters[..n]);
 
-        m.pertag.curtag = ms.pertag.curtag;
-        m.pertag.prevtag = ms.pertag.prevtag;
+        // `curtag` / `prevtag` index the per-tag tables (0 = overview,
+        // 1..=MAX_TAGS). Out of range → derive `curtag` from a single
+        // active tag, else keep the live value.
+        let max_tag = crate::MAX_TAGS;
+        let active = m.tagset[m.seltags];
+        if ms.pertag.curtag <= max_tag {
+            m.pertag.curtag = ms.pertag.curtag;
+        } else if active.count_ones() == 1 {
+            m.pertag.curtag = active.trailing_zeros() as usize + 1;
+        }
+        m.pertag.curtag = m.pertag.curtag.min(max_tag);
+        m.pertag.prevtag = if ms.pertag.prevtag <= max_tag {
+            ms.pertag.prevtag
+        } else {
+            m.pertag.curtag
+        };
 
         // `taglayout_force`: the config's per-tag layouts override the
         // snapshot we just restored.
