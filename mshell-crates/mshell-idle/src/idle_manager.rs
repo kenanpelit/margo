@@ -87,13 +87,7 @@ struct AppData {
 impl AppData {
     /// Recompute the deepest idled stage and publish it.
     fn publish_stage(&self) {
-        let stage = self
-            .notifications
-            .iter()
-            .filter(|n| n.idled)
-            .map(|n| n.stage)
-            .max_by_key(|s| s.rank())
-            .unwrap_or(IdleStage::Active);
+        let stage = deepest_stage(self.notifications.iter().map(|n| (n.stage, n.idled)));
         let _ = self.stage_tx.send(stage);
     }
 
@@ -105,22 +99,43 @@ impl AppData {
         let (Some(notifier), Some(seat)) = (&self.notifier, &self.seat) else {
             return;
         };
-        for (stage, minutes) in [
-            (IdleStage::Dim, cfg.dim_minutes),
-            (IdleStage::Lock, cfg.lock_minutes),
-            (IdleStage::Suspend, cfg.suspend_minutes),
-        ] {
-            if let Some(minutes) = minutes.filter(|m| *m > 0) {
-                let object = notifier.get_idle_notification(minutes * 60_000, seat, qh, stage);
-                self.notifications.push(Notification {
-                    stage,
-                    object,
-                    idled: false,
-                });
-            }
+        for (stage, timeout_ms) in stage_timeouts(cfg) {
+            let object = notifier.get_idle_notification(timeout_ms, seat, qh, stage);
+            self.notifications.push(Notification {
+                stage,
+                object,
+                idled: false,
+            });
         }
         let _ = self.stage_tx.send(IdleStage::Active);
     }
+}
+
+/// The deepest stage among `(stage, idled)` pairs that have idled;
+/// `Active` when none has.
+fn deepest_stage(stages: impl Iterator<Item = (IdleStage, bool)>) -> IdleStage {
+    stages
+        .filter(|(_, idled)| *idled)
+        .map(|(stage, _)| stage)
+        .max_by_key(|s| s.rank())
+        .unwrap_or(IdleStage::Active)
+}
+
+/// The enabled stages of `cfg` with their ext-idle-notify timeouts in
+/// milliseconds, in dim → lock → suspend order. `None` and `Some(0)`
+/// disable a stage.
+fn stage_timeouts(cfg: &IdleConfig) -> Vec<(IdleStage, u32)> {
+    [
+        (IdleStage::Dim, cfg.dim_minutes),
+        (IdleStage::Lock, cfg.lock_minutes),
+        (IdleStage::Suspend, cfg.suspend_minutes),
+    ]
+    .into_iter()
+    .filter_map(|(stage, minutes)| {
+        let minutes = minutes.filter(|m| *m > 0)?;
+        Some((stage, minutes * 60_000))
+    })
+    .collect()
 }
 
 impl Dispatch<wl_registry::WlRegistry, ()> for AppData {
@@ -244,5 +259,72 @@ fn run(mut cfg_rx: watch::Receiver<IdleConfig>, stage_tx: watch::Sender<IdleStag
             data.apply_config(&qh, &cfg);
             conn.flush().ok();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cfg(dim: Option<u32>, lock: Option<u32>, suspend: Option<u32>) -> IdleConfig {
+        IdleConfig {
+            dim_minutes: dim,
+            lock_minutes: lock,
+            suspend_minutes: suspend,
+        }
+    }
+
+    #[test]
+    fn timeouts_are_minutes_in_milliseconds_in_stage_order() {
+        assert_eq!(
+            stage_timeouts(&cfg(Some(5), Some(10), Some(30))),
+            vec![
+                (IdleStage::Dim, 300_000),
+                (IdleStage::Lock, 600_000),
+                (IdleStage::Suspend, 1_800_000),
+            ]
+        );
+    }
+
+    #[test]
+    fn none_and_zero_disable_a_stage() {
+        assert_eq!(stage_timeouts(&IdleConfig::default()), vec![]);
+        assert_eq!(
+            stage_timeouts(&cfg(Some(0), None, Some(1))),
+            vec![(IdleStage::Suspend, 60_000)]
+        );
+    }
+
+    #[test]
+    fn deepest_idled_stage_wins() {
+        use IdleStage::*;
+        assert_eq!(deepest_stage([].into_iter()), Active);
+        assert_eq!(
+            deepest_stage([(Dim, false), (Lock, false)].into_iter()),
+            Active
+        );
+        assert_eq!(deepest_stage([(Dim, true), (Lock, false)].into_iter()), Dim);
+        assert_eq!(
+            deepest_stage([(Dim, true), (Lock, true), (Suspend, false)].into_iter()),
+            Lock
+        );
+        // Order of the notifications doesn't matter, only their rank.
+        assert_eq!(
+            deepest_stage([(Suspend, true), (Dim, true)].into_iter()),
+            Suspend
+        );
+        // A later stage idling while an earlier one resumed still counts.
+        assert_eq!(
+            deepest_stage([(Dim, false), (Lock, true)].into_iter()),
+            Lock
+        );
+    }
+
+    #[test]
+    fn rank_orders_stages() {
+        use IdleStage::*;
+        assert!(Active.rank() < Dim.rank());
+        assert!(Dim.rank() < Lock.rank());
+        assert!(Lock.rank() < Suspend.rank());
     }
 }

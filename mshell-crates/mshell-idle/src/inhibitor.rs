@@ -18,10 +18,24 @@ trait LogindManager {
 static INSTANCE: OnceLock<IdleInhibitor> = OnceLock::new();
 
 fn cache_path() -> Option<PathBuf> {
-    let base = std::env::var_os("XDG_CACHE_HOME")
+    cache_path_from(std::env::var_os("XDG_CACHE_HOME"), std::env::var_os("HOME"))
+}
+
+/// `$XDG_CACHE_HOME/mshell/idle_inhibitor`, else `$HOME/.cache/…`.
+fn cache_path_from(
+    xdg_cache: Option<std::ffi::OsString>,
+    home: Option<std::ffi::OsString>,
+) -> Option<PathBuf> {
+    let base = xdg_cache
         .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))?;
+        .or_else(|| home.map(|h| PathBuf::from(h).join(".cache")))?;
     Some(base.join("mshell").join("idle_inhibitor"))
+}
+
+/// Cache file contents → enabled. Only an explicit `1` enables, so a
+/// truncated or foreign file never leaves the inhibitor stuck on.
+fn parse_cached_state(contents: &str) -> bool {
+    contents.trim() == "1"
 }
 
 /// Read cached state. Returns `false` on any error (missing file, parse failure, etc).
@@ -30,7 +44,7 @@ fn read_cached_state() -> bool {
         return false;
     };
     match std::fs::read_to_string(&path) {
-        Ok(s) => s.trim() == "1",
+        Ok(s) => parse_cached_state(&s),
         Err(_) => false,
     }
 }
@@ -137,6 +151,35 @@ impl IdleInhibitor {
         } else {
             self.enable().await?;
             Ok(true)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::OsString;
+
+    #[test]
+    fn cache_path_prefers_xdg_cache_home() {
+        assert_eq!(
+            cache_path_from(Some(OsString::from("/c")), Some(OsString::from("/h"))),
+            Some(PathBuf::from("/c/mshell/idle_inhibitor"))
+        );
+        assert_eq!(
+            cache_path_from(None, Some(OsString::from("/h"))),
+            Some(PathBuf::from("/h/.cache/mshell/idle_inhibitor"))
+        );
+        assert_eq!(cache_path_from(None, None), None);
+    }
+
+    #[test]
+    fn only_an_explicit_one_enables() {
+        assert!(parse_cached_state("1"));
+        assert!(parse_cached_state("1\n"));
+        assert!(parse_cached_state("  1  "));
+        for s in ["", "0", "true", "11", "yes", "1 0"] {
+            assert!(!parse_cached_state(s), "{s:?}");
         }
     }
 }
