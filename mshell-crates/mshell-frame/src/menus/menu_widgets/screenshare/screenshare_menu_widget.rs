@@ -338,3 +338,101 @@ fn group_by_window_program(windows: Vec<ScreenShareWindow>) -> Vec<Program> {
 
     grouped
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn triples(ws: &[ScreenShareWindow]) -> Vec<(&str, &str, &str)> {
+        ws.iter()
+            .map(|w| {
+                (
+                    w.window_id.as_str(),
+                    w.window_program.as_str(),
+                    w.instance_title.as_str(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn parses_the_margo_portal_payload() {
+        // margo-portal: `<id>[HC>]<class>[HT>]<title>[HE>]` joined by `[HA>]`.
+        let payload = "12[HC>]firefox[HT>]Mozilla Firefox[HE>][HA>]7[HC>]foot[HT>]~/src[HE>]";
+        assert_eq!(
+            triples(&parse_screen_share_string(payload)),
+            [("12", "firefox", "Mozilla Firefox"), ("7", "foot", "~/src")]
+        );
+    }
+
+    #[test]
+    fn tolerates_xdph_trailing_fields_and_separators() {
+        // xdph appends the window address after `[HE>]` and may end with
+        // a trailing `[HA>]`.
+        let payload = "1[HC>]kitty[HT>]vim[HE>]0x55d0[HA>]";
+        assert_eq!(
+            triples(&parse_screen_share_string(payload)),
+            [("1", "kitty", "vim")]
+        );
+        // No `[HE>]` at all: the whole remainder is the title.
+        assert_eq!(
+            triples(&parse_screen_share_string("2[HC>]a[HT>]b")),
+            [("2", "a", "b")]
+        );
+    }
+
+    #[test]
+    fn trims_fields_and_keeps_empty_titles() {
+        let payload = " 3 [HC>] code [HT>]  [HE>]";
+        assert_eq!(
+            triples(&parse_screen_share_string(payload)),
+            [("3", "code", "")]
+        );
+    }
+
+    #[test]
+    fn titles_may_contain_markup_lookalikes() {
+        let payload = "4[HC>]term[HT>]echo [HC>] > x[HE>]";
+        assert_eq!(
+            triples(&parse_screen_share_string(payload)),
+            [("4", "term", "echo [HC>] > x")]
+        );
+    }
+
+    #[test]
+    fn malformed_entries_are_dropped() {
+        assert!(parse_screen_share_string("").is_empty());
+        assert!(parse_screen_share_string("   ").is_empty());
+        assert!(parse_screen_share_string("garbage").is_empty());
+        let payload = "5[HC>]no-title-marker[HA>]6[HC>]ok[HT>]fine[HE>][HA>][HT>]no-class";
+        assert_eq!(
+            triples(&parse_screen_share_string(payload)),
+            [("6", "ok", "fine")]
+        );
+    }
+
+    #[test]
+    fn groups_by_program_sorted_by_name_then_title() {
+        let ws = parse_screen_share_string(
+            "1[HC>]foot[HT>]b[HE>][HA>]2[HC>]firefox[HT>]z[HE>][HA>]3[HC>]foot[HT>]a[HE>]",
+        );
+        let grouped = group_by_window_program(ws);
+        let names: Vec<_> = grouped.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, ["firefox", "foot"]);
+        let foot: Vec<_> = grouped[1]
+            .windows
+            .iter()
+            .map(|w| (w.window_id.as_str(), w.instance_title.as_str()))
+            .collect();
+        assert_eq!(foot, [("3", "a"), ("1", "b")]);
+        assert!(group_by_window_program(Vec::new()).is_empty());
+    }
+
+    #[test]
+    fn truncate_counts_characters_not_bytes() {
+        assert_eq!(truncate("short", 30), "short");
+        assert_eq!(truncate("abcdef", 3), "abc…");
+        assert_eq!(truncate("çğıöşü", 6), "çğıöşü");
+        assert_eq!(truncate("çğıöşü", 2), "çğ…");
+    }
+}

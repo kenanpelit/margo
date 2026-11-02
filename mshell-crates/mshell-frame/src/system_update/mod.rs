@@ -212,18 +212,7 @@ async fn probe_repo() -> Result<Vec<UpdateEntry>, String> {
         let out = run("dnf", &["check-update", "--refresh", "-q"]).await?;
         return match out.code {
             0 => Ok(Vec::new()),
-            100 => Ok(out
-                .stdout
-                .lines()
-                .filter(|l| !l.trim().is_empty() && !l.starts_with(' '))
-                .filter_map(|l| l.split_whitespace().next())
-                .map(|name| UpdateEntry {
-                    source: Source::Repo,
-                    name: name.to_string(),
-                    old_version: None,
-                    new_version: None,
-                })
-                .collect()),
+            100 => Ok(parse_dnf_check_update(&out.stdout)),
             c => Err(probe_err("dnf", c, &out.stderr)),
         };
     }
@@ -232,18 +221,7 @@ async fn probe_repo() -> Result<Vec<UpdateEntry>, String> {
         if out.code != 0 {
             return Err(probe_err("apt", out.code, &out.stderr));
         }
-        return Ok(out
-            .stdout
-            .lines()
-            .filter(|l| l.contains("[upgradable from:"))
-            .filter_map(|l| l.split('/').next())
-            .map(|name| UpdateEntry {
-                source: Source::Repo,
-                name: name.to_string(),
-                old_version: None,
-                new_version: None,
-            })
-            .collect());
+        return Ok(parse_apt_upgradable(&out.stdout));
     }
     // No repo backend — not an error, just nothing to report.
     Ok(Vec::new())
@@ -283,8 +261,12 @@ async fn probe_flatpak() -> Result<Vec<UpdateEntry>, String> {
            <(flatpak remote-ls --updates --columns=application,name,version 2>/dev/null | sort -t'\t' -k1,1) \
            <(flatpak list --columns=application,version 2>/dev/null | sort -t'\t' -k1,1)";
     let out = run("sh", &["-c", script]).await?;
-    Ok(out
-        .stdout
+    Ok(parse_flatpak_join(&out.stdout))
+}
+
+/// Parse the `appid<TAB>name<TAB>new<TAB>old` lines of the flatpak join.
+fn parse_flatpak_join(stdout: &str) -> Vec<UpdateEntry> {
+    stdout
         .lines()
         .filter(|l| !l.trim().is_empty())
         .map(|line| {
@@ -310,7 +292,40 @@ async fn probe_flatpak() -> Result<Vec<UpdateEntry>, String> {
                 new_version: new,
             }
         })
-        .collect())
+        .collect()
+}
+
+/// Package names from `dnf check-update -q` (exit 100): one
+/// `name.arch  version  repo` line per update; indented lines are
+/// continuations.
+fn parse_dnf_check_update(stdout: &str) -> Vec<UpdateEntry> {
+    stdout
+        .lines()
+        .filter(|l| !l.trim().is_empty() && !l.starts_with(' '))
+        .filter_map(|l| l.split_whitespace().next())
+        .map(|name| UpdateEntry {
+            source: Source::Repo,
+            name: name.to_string(),
+            old_version: None,
+            new_version: None,
+        })
+        .collect()
+}
+
+/// Package names from `apt list --upgradable`
+/// (`name/suite version arch [upgradable from: old]`).
+fn parse_apt_upgradable(stdout: &str) -> Vec<UpdateEntry> {
+    stdout
+        .lines()
+        .filter(|l| l.contains("[upgradable from:"))
+        .filter_map(|l| l.split('/').next())
+        .map(|name| UpdateEntry {
+            source: Source::Repo,
+            name: name.to_string(),
+            old_version: None,
+            new_version: None,
+        })
+        .collect()
 }
 
 // ── Parsing + process helpers ───────────────────────────────────
@@ -414,14 +429,19 @@ pub(crate) async fn launch_terminal_upgrade(cfg: ProbeConfig) {
         "{}; echo; echo \"[mshell] done — press Enter to close.\"; read",
         steps.join("; ")
     );
-    let args: Vec<String> = match term {
+    let args = terminal_argv(term, script);
+    if let Err(e) = tokio::process::Command::new(term).args(&args).spawn() {
+        warn!(error = %e, term, "system_update: terminal spawn failed");
+    }
+}
+
+/// Arguments that make `term` run `sh -c script`.
+fn terminal_argv(term: &str, script: String) -> Vec<String> {
+    match term {
         "kitty" => vec!["--".into(), "sh".into(), "-c".into(), script],
         "foot" => vec!["sh".into(), "-c".into(), script],
         "gnome-terminal" => vec!["--".into(), "sh".into(), "-c".into(), script],
         _ => vec!["-e".into(), "sh".into(), "-c".into(), script],
-    };
-    if let Err(e) = tokio::process::Command::new(term).args(&args).spawn() {
-        warn!(error = %e, term, "system_update: terminal spawn failed");
     }
 }
 
@@ -440,4 +460,149 @@ async fn detect_terminal() -> Option<&'static str> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(source: Source, name: &str, old: Option<&str>, new: Option<&str>) -> UpdateEntry {
+        UpdateEntry {
+            source,
+            name: name.into(),
+            old_version: old.map(String::from),
+            new_version: new.map(String::from),
+        }
+    }
+
+    #[test]
+    fn arrow_list_parses_checkupdates_output() {
+        let out = "linux 6.9.1.arch1-1 -> 6.9.2.arch1-1\n\
+                   mesa 1:24.1.0-1 -> 1:24.1.1-1\n";
+        assert_eq!(
+            parse_arrow_list(out, Source::Repo),
+            vec![
+                entry(
+                    Source::Repo,
+                    "linux",
+                    Some("6.9.1.arch1-1"),
+                    Some("6.9.2.arch1-1")
+                ),
+                entry(Source::Repo, "mesa", Some("1:24.1.0-1"), Some("1:24.1.1-1")),
+            ]
+        );
+    }
+
+    #[test]
+    fn arrow_list_tolerates_blank_lines_padding_and_missing_arrow() {
+        let out = "\n   \n  paru-bin   2.0.3-1   ->   2.0.4-1  \nlonely\n";
+        assert_eq!(
+            parse_arrow_list(out, Source::Aur),
+            vec![
+                entry(Source::Aur, "paru-bin", Some("2.0.3-1"), Some("2.0.4-1")),
+                entry(Source::Aur, "lonely", None, None),
+            ]
+        );
+        assert!(parse_arrow_list("", Source::Repo).is_empty());
+    }
+
+    #[test]
+    fn arrow_list_keeps_the_source() {
+        let e = parse_arrow_list("a 1 -> 2", Source::Aur);
+        assert_eq!(e[0].source, Source::Aur);
+    }
+
+    #[test]
+    fn dnf_names_skip_continuation_lines() {
+        let out = "\nkernel.x86_64          6.8.9-300.fc40     updates\n\
+                   firefox.x86_64         126.0-1.fc40       updates\n\
+                   \x20   continued.noarch   1-1   updates\n";
+        let names: Vec<_> = parse_dnf_check_update(out)
+            .into_iter()
+            .map(|e| e.name)
+            .collect();
+        assert_eq!(names, ["kernel.x86_64", "firefox.x86_64"]);
+    }
+
+    #[test]
+    fn apt_names_from_upgradable_lines_only() {
+        let out = "Listing... Done\n\
+                   firefox/jammy-updates 126.0+build1 amd64 [upgradable from: 125.0]\n\
+                   libc6/jammy-updates,jammy-security 2.35-0ubuntu3.8 amd64 [upgradable from: 2.35-0ubuntu3.7]\n";
+        let names: Vec<_> = parse_apt_upgradable(out)
+            .into_iter()
+            .map(|e| e.name)
+            .collect();
+        assert_eq!(names, ["firefox", "libc6"]);
+    }
+
+    #[test]
+    fn flatpak_join_lines() {
+        let out = "org.mozilla.firefox\tFirefox\t126.0\t125.0\n\
+                   com.example.NoName\t\t2.0\t1.0\n\
+                   org.example.Unversioned\tUnversioned\t\t\n\
+                   \n";
+        assert_eq!(
+            parse_flatpak_join(out),
+            vec![
+                entry(Source::Flatpak, "Firefox", Some("125.0"), Some("126.0")),
+                entry(
+                    Source::Flatpak,
+                    "com.example.NoName",
+                    Some("1.0"),
+                    Some("2.0")
+                ),
+                entry(Source::Flatpak, "Unversioned", None, None),
+            ]
+        );
+    }
+
+    #[test]
+    fn report_counts_per_source() {
+        let report = UpdateReport {
+            entries: vec![
+                entry(Source::Repo, "a", None, None),
+                entry(Source::Aur, "b", None, None),
+                entry(Source::Repo, "c", None, None),
+            ],
+            error: None,
+        };
+        assert_eq!(report.total(), 3);
+        assert_eq!(report.count(Source::Repo), 2);
+        assert_eq!(report.count(Source::Aur), 1);
+        assert_eq!(report.count(Source::Flatpak), 0);
+        assert!(!report.is_empty());
+        assert!(UpdateReport::default().is_empty());
+    }
+
+    #[test]
+    fn cache_round_trips_through_json() {
+        let cache = UpdateCache {
+            checked_at: 42,
+            report: UpdateReport {
+                entries: vec![entry(Source::Flatpak, "x", Some("1"), None)],
+                error: Some("boom".into()),
+            },
+        };
+        let back: UpdateCache =
+            serde_json::from_str(&serde_json::to_string(&cache).unwrap()).unwrap();
+        assert_eq!(back.checked_at, 42);
+        assert_eq!(back.report, cache.report);
+    }
+
+    #[test]
+    fn terminal_argv_per_emulator() {
+        let s = || "echo hi".to_string();
+        assert_eq!(terminal_argv("kitty", s()), ["--", "sh", "-c", "echo hi"]);
+        assert_eq!(terminal_argv("foot", s()), ["sh", "-c", "echo hi"]);
+        assert_eq!(
+            terminal_argv("gnome-terminal", s()),
+            ["--", "sh", "-c", "echo hi"]
+        );
+        assert_eq!(
+            terminal_argv("alacritty", s()),
+            ["-e", "sh", "-c", "echo hi"]
+        );
+        assert_eq!(terminal_argv("xterm", s()), ["-e", "sh", "-c", "echo hi"]);
+    }
 }

@@ -231,43 +231,59 @@ fn parse_devices(raw: &str) -> Vec<Device> {
 /// `org.gtk.Actions.Describe battery.state` →
 /// `(… [<{'charging': <false>, 'percentage': <64.0>, …}>] …)`.
 async fn fetch_battery(dev: &mut Device) {
-    static PCT_RE: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"'percentage':\s*<([0-9.]+)>").unwrap());
-    static CHG_RE: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"'charging':\s*<(true|false)>").unwrap());
-
     let path = device_path(&dev.id);
     let Ok(out) = describe(&path, "battery.state").await else {
         return;
     };
-    if let Some(c) = PCT_RE.captures(&out)
-        && let Ok(pct) = c[1].parse::<f64>()
-    {
-        dev.battery_charge = Some(pct.round() as i32);
+    let (charge, charging) = parse_battery(&out);
+    if charge.is_some() {
+        dev.battery_charge = charge;
     }
-    if let Some(c) = CHG_RE.captures(&out) {
-        dev.battery_charging = &c[1] == "true";
+    if let Some(charging) = charging {
+        dev.battery_charging = charging;
     }
+}
+
+/// `(percentage, charging)` from a `battery.state` Describe reply.
+fn parse_battery(out: &str) -> (Option<i32>, Option<bool>) {
+    static PCT_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"'percentage':\s*<([0-9.]+)>").unwrap());
+    static CHG_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"'charging':\s*<(true|false)>").unwrap());
+    let charge = PCT_RE
+        .captures(out)
+        .and_then(|c| c[1].parse::<f64>().ok())
+        .map(|pct| pct.round() as i32);
+    let charging = CHG_RE.captures(out).map(|c| &c[1] == "true");
+    (charge, charging)
 }
 
 /// `org.gtk.Actions.Describe connectivity_report.state` →
 /// `… {'network-type': <'LTE'>, 'signal-strength': <int64 3>} …`.
 async fn fetch_connectivity(dev: &mut Device) {
-    static TYPE_RE: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"'network-type':\s*<'([^']+)'>").unwrap());
-    static SIG_RE: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"'signal-strength':\s*<(?:int64\s+)?(\d+)>").unwrap());
-
     let path = device_path(&dev.id);
     let Ok(out) = describe(&path, "connectivity_report.state").await else {
         return;
     };
-    if let Some(c) = TYPE_RE.captures(&out) {
-        dev.network_type = c[1].to_string();
+    let (network_type, strength) = parse_connectivity(&out);
+    if let Some(t) = network_type {
+        dev.network_type = t;
     }
-    if let Some(c) = SIG_RE.captures(&out) {
-        dev.network_strength = c[1].parse().unwrap_or(-1);
+    if let Some(s) = strength {
+        dev.network_strength = s;
     }
+}
+
+/// `(network type, signal strength)` from a `connectivity_report.state`
+/// Describe reply. An unparsable strength reads as `-1` (unknown).
+fn parse_connectivity(out: &str) -> (Option<String>, Option<i32>) {
+    static TYPE_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"'network-type':\s*<'([^']+)'>").unwrap());
+    static SIG_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"'signal-strength':\s*<(?:int64\s+)?(\d+)>").unwrap());
+    let network_type = TYPE_RE.captures(out).map(|c| c[1].to_string());
+    let strength = SIG_RE.captures(out).map(|c| c[1].parse().unwrap_or(-1));
+    (network_type, strength)
 }
 
 async fn describe(path: &str, action: &str) -> Result<String, String> {
@@ -392,5 +408,177 @@ async fn run(args: &[&str]) -> Result<String, String> {
         Ok(o) if o.status.success() => Ok(String::from_utf8_lossy(&o.stdout).into_owned()),
         Ok(o) => Err(String::from_utf8_lossy(&o.stderr).trim().to_string()),
         Err(e) => Err(format!("gdbus spawn: {e}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `gdbus call … GetManagedObjects` output for a paired, connected
+    /// phone and a discovered, unpaired laptop.
+    const MANAGED: &str = "({objectpath '/ca/andyholmes/Valent/Device/3f2a91c0': \
+        {'ca.andyholmes.Valent.Device': {'IconName': <'phone-symbolic'>, \
+        'Id': <'3f2a91c0'>, 'Name': <'Pixel 7'>, 'State': <uint32 3>, 'Type': <'phone'>}}, \
+        objectpath '/ca/andyholmes/Valent/Device/laptop_2d01': \
+        {'ca.andyholmes.Valent.Device': {'IconName': <'computer-symbolic'>, \
+        'Id': <'laptop-01'>, 'Name': <'ThinkPad'>, 'State': <uint32 1>, 'Type': <'laptop'>}}},)";
+
+    #[test]
+    fn parses_managed_objects() {
+        let devices = parse_devices(MANAGED);
+        assert_eq!(devices.len(), 2);
+        let phone = &devices[0];
+        assert_eq!(
+            (phone.id.as_str(), phone.name.as_str()),
+            ("3f2a91c0", "Pixel 7")
+        );
+        assert!(phone.reachable && phone.paired);
+        assert!(!phone.pair_requested && !phone.pair_incoming);
+        assert_eq!(phone.battery_charge, None);
+        assert_eq!(phone.network_strength, -1);
+        let laptop = &devices[1];
+        assert_eq!(
+            (laptop.id.as_str(), laptop.name.as_str()),
+            ("laptop-01", "ThinkPad")
+        );
+        assert!(laptop.reachable && !laptop.paired);
+    }
+
+    #[test]
+    fn state_bits_map_to_flags() {
+        let with_state = |state: u32| {
+            let raw = format!(
+                "({{objectpath '/ca/andyholmes/Valent/Device/x': \
+                 {{'ca.andyholmes.Valent.Device': {{'Id': <'x'>, 'State': <uint32 {state}>}}}}}},)"
+            );
+            let d = parse_devices(&raw).pop().unwrap();
+            (d.reachable, d.paired, d.pair_incoming, d.pair_requested)
+        };
+        assert_eq!(with_state(0), (false, false, false, false));
+        assert_eq!(with_state(STATE_CONNECTED), (true, false, false, false));
+        assert_eq!(with_state(STATE_PAIRED), (false, true, false, false));
+        assert_eq!(
+            with_state(STATE_CONNECTED | STATE_PAIR_INCOMING),
+            (true, false, true, false)
+        );
+        assert_eq!(
+            with_state(STATE_CONNECTED | STATE_PAIR_OUTGOING),
+            (true, false, false, true)
+        );
+    }
+
+    #[test]
+    fn missing_properties_fall_back() {
+        let raw = "({objectpath '/ca/andyholmes/Valent/Device/abc_2d1': \
+                   {'ca.andyholmes.Valent.Device': {'IconName': <'phone-symbolic'>}}},)";
+        let d = parse_devices(raw).pop().unwrap();
+        assert_eq!(d.id, "abc_2d1", "id falls back to the object-path tail");
+        assert_eq!(d.name, d.id, "name falls back to the id");
+        assert!(!d.reachable && !d.paired, "no State means not connected");
+    }
+
+    #[test]
+    fn no_devices_or_garbage_yields_nothing() {
+        assert!(parse_devices("(@a{oa{sa{sv}}} {},)").is_empty());
+        assert!(parse_devices("").is_empty());
+        assert!(
+            parse_devices("Error: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown")
+                .is_empty()
+        );
+        // The manager's own path is not a device.
+        assert!(
+            parse_devices("({objectpath '/ca/andyholmes/Valent': {'org.gtk.Actions': {}}},)")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn battery_reply() {
+        let out =
+            "([<{'charging': <true>, 'percentage': <63.6>, 'icon-name': <'battery-good'>}>],)";
+        assert_eq!(parse_battery(out), (Some(64), Some(true)));
+        let out = "([<{'charging': <false>, 'percentage': <100.0>}>],)";
+        assert_eq!(parse_battery(out), (Some(100), Some(false)));
+        assert_eq!(parse_battery("([],)"), (None, None));
+    }
+
+    #[test]
+    fn connectivity_reply() {
+        let out = "([<{'network-type': <'LTE'>, 'signal-strength': <int64 3>}>],)";
+        assert_eq!(parse_connectivity(out), (Some("LTE".into()), Some(3)));
+        let out = "([<{'network-type': <'5G'>, 'signal-strength': <4>}>],)";
+        assert_eq!(parse_connectivity(out), (Some("5G".into()), Some(4)));
+        assert_eq!(parse_connectivity("([],)"), (None, None));
+    }
+
+    #[test]
+    fn object_path_escaping() {
+        assert_eq!(escape_object_path("abc123"), "abc123");
+        assert_eq!(escape_object_path("a-b.c"), "a_2db_2ec");
+        assert_eq!(
+            escape_object_path("a_b"),
+            "a_5fb",
+            "underscore itself is escaped"
+        );
+        assert_eq!(escape_object_path(""), "");
+        assert_eq!(escape_object_path("ü"), "_c3_bc", "per UTF-8 byte");
+        assert_eq!(device_path("x-1"), "/ca/andyholmes/Valent/Device/x_2d1");
+    }
+
+    #[test]
+    fn string_param_is_escaped() {
+        assert_eq!(quoted_string_param("hi"), r#"[<"hi">]"#);
+        assert_eq!(quoted_string_param(r#"say "x""#), r#"[<"say \"x\"">]"#);
+        assert_eq!(quoted_string_param(r"C:\dir"), r#"[<"C:\\dir">]"#);
+        assert_eq!(quoted_string_param("it's"), r#"[<"it's">]"#);
+    }
+
+    fn device(id: &str, reachable: bool) -> Device {
+        Device {
+            id: id.into(),
+            name: id.into(),
+            reachable,
+            network_strength: -1,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn main_device_preference() {
+        let report = ValentReport {
+            daemon_available: true,
+            devices: vec![device("a", false), device("b", true), device("c", true)],
+        };
+        assert_eq!(
+            report.main_device("c").unwrap().id,
+            "c",
+            "configured id wins"
+        );
+        assert_eq!(
+            report.main_device("").unwrap().id,
+            "b",
+            "else first reachable"
+        );
+        assert_eq!(report.main_device("gone").unwrap().id, "b");
+        let offline = ValentReport {
+            daemon_available: true,
+            devices: vec![device("a", false), device("b", false)],
+        };
+        assert_eq!(offline.main_device("").unwrap().id, "a", "else first");
+        assert!(ValentReport::default().main_device("a").is_none());
+    }
+
+    #[test]
+    fn pill_icon_never_blank() {
+        assert_eq!(
+            ValentReport::default().pill_icon(""),
+            "dialog-warning-symbolic"
+        );
+        let empty = ValentReport {
+            daemon_available: true,
+            devices: Vec::new(),
+        };
+        assert_eq!(empty.pill_icon(""), "phone-symbolic");
     }
 }
