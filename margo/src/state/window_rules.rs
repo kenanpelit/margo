@@ -154,7 +154,9 @@ impl MargoState {
         // back — auto-floating (or re-packing) whichever of *their*
         // clients happened to be visible, regardless of what layout
         // those tags were actually set to.
-        if tagmask.count_ones() == 1 {
+        // Bits above `MAX_TAGS` have no `Pertag` slot; pointing `curtag`
+        // at one would make every later per-tag read index out of bounds.
+        if tagmask.count_ones() == 1 && tagmask & crate::TAGMASK != 0 {
             mon.pertag.prevtag = mon.pertag.curtag;
             mon.pertag.curtag = tagmask.trailing_zeros() as usize + 1;
         }

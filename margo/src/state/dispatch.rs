@@ -203,6 +203,7 @@ impl MargoState {
     }
 
     pub fn view_tag(&mut self, tagmask: u32) {
+        let tagmask = tagmask & crate::TAGMASK;
         if tagmask == 0 {
             return;
         }
@@ -212,7 +213,7 @@ impl MargoState {
         // skip the redirect when the user is already on the home
         // monitor or the tagmask is the all-tags special value.
         let current_mon = self.focused_monitor();
-        let mon_idx = if tagmask != u32::MAX {
+        let mon_idx = if tagmask != crate::TAGMASK {
             if let Some(home) = self.tag_home_monitor(tagmask) {
                 if home != current_mon && home < self.monitors.len() {
                     self.warp_focus_to_monitor(home);
@@ -459,6 +460,7 @@ impl MargoState {
     }
 
     pub fn toggle_view_tag(&mut self, tagmask: u32) {
+        let tagmask = tagmask & crate::TAGMASK;
         let mon_idx = self.focused_monitor();
         if mon_idx >= self.monitors.len() {
             return;
@@ -677,6 +679,7 @@ impl MargoState {
     }
 
     pub fn tag_focused(&mut self, tagmask: u32) {
+        let tagmask = tagmask & crate::TAGMASK;
         if tagmask == 0 {
             return;
         }
@@ -713,6 +716,10 @@ impl MargoState {
     /// arranging. Leaving the guard set would make this one client
     /// snap instead of riding the same slide-in as its neighbours.
     pub fn tag_view(&mut self, tagmask: u32) {
+        let tagmask = tagmask & crate::TAGMASK;
+        if tagmask == 0 {
+            return;
+        }
         let idx = self.focused_client_idx();
         self.tag_focused(tagmask);
         if let Some(idx) = idx {
@@ -743,6 +750,10 @@ impl MargoState {
     }
 
     pub fn toggle_client_tag(&mut self, tagmask: u32) {
+        let tagmask = tagmask & crate::TAGMASK;
+        if tagmask == 0 {
+            return;
+        }
         let Some(idx) = self.focused_client_idx() else {
             return;
         };

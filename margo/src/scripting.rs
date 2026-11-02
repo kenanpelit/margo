@@ -147,14 +147,7 @@ fn build_engine() -> Engine {
         }
     });
 
-    engine.register_fn("tag", |n: rhai::INT| -> rhai::INT {
-        if (1..=32).contains(&n) {
-            1 << (n - 1)
-        } else {
-            warn!(n = n, "init.rhai: tag() out of range [1, 32], returning 0");
-            0
-        }
-    });
+    engine.register_fn("tag", tag_mask_for);
 
     // ── Read-only state introspection ───────────────────────────────────
 
@@ -281,6 +274,21 @@ fn build_engine() -> Engine {
     });
 
     engine
+}
+
+/// Rhai `tag(n)`: the mask for 1-based tag `n`, or 0 (with a warning) when
+/// `n` isn't one of margo's `MAX_TAGS` tags. Tag actions ignore a 0 mask.
+fn tag_mask_for(n: rhai::INT) -> rhai::INT {
+    if (1..=crate::MAX_TAGS as rhai::INT).contains(&n) {
+        1 << (n - 1)
+    } else {
+        warn!(
+            n = n,
+            max = crate::MAX_TAGS,
+            "init.rhai: tag() out of range [1, MAX_TAGS], returning 0"
+        );
+        0
+    }
 }
 
 fn args_to_arg(args: &Array) -> Arg {
@@ -775,4 +783,22 @@ fn fire_hook(state: &mut MargoState, kind: HookKind) {
         *dst = combined;
     }
     state.scripting = Some(sc);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tag_is_limited_to_real_tags() {
+        assert_eq!(tag_mask_for(1), 1);
+        assert_eq!(
+            tag_mask_for(crate::MAX_TAGS as rhai::INT),
+            1 << (crate::MAX_TAGS - 1)
+        );
+        assert_eq!(tag_mask_for(0), 0);
+        assert_eq!(tag_mask_for(crate::MAX_TAGS as rhai::INT + 1), 0);
+        assert_eq!(tag_mask_for(32), 0);
+        assert_eq!(tag_mask_for(-3), 0);
+    }
 }

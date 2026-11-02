@@ -91,6 +91,9 @@ pub const LYR_IM_POPUP: usize = 8;
 pub const LYR_BLOCK: usize = 9;
 pub const NUM_LAYERS: usize = 10;
 pub const MAX_TAGS: usize = 9;
+/// Every real tag bit (`MAX_TAGS` of them). Masks from users, IPC and
+/// scripts are cut down to this before they reach a tagset or `Pertag`.
+pub const TAGMASK: u32 = (1 << MAX_TAGS) - 1;
 
 // ── Pending image-copy-capture frames ────────────────────────────────────────
 //

@@ -38,7 +38,7 @@ dispatch("action_name");                    // zero-arg
 dispatch("action_name", [arg1, arg2]);      // with args (mirrors `bind = ...`)
 
 spawn("kitty");                             // shell-style spawn helper
-tag(n);                                     // tag bitmask helper — tag(3) == 4
+tag(n);                                     // tag bitmask helper — tag(3) == 4; 0 outside 1..=9
 ```
 
 Anything in `mctl actions` is callable. `mctl actions --verbose` enumerates every action with example arg shapes.

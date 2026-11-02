@@ -562,7 +562,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
         // stays dwm-/dwl-style: window goes, user stays put.
         "tagview" | "tag_view" | "tag-view" | "movetagview" => state.tag_view(tag_arg(arg)),
         "toggletag" => state.toggle_client_tag(tag_arg(arg)),
-        "tagall" => state.view_tag(u32::MAX),
+        "tagall" => state.view_tag(crate::TAGMASK),
         "viewtoleft" | "viewtoleft_have_client" => state.view_relative(-1),
         "viewtoright" | "viewtoright_have_client" => state.view_relative(1),
         // mango 0.16.1: view the adjacent tag if empty, else insert a
@@ -588,10 +588,10 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
         //   arg.i = tagmask, arg.i2 != 0 → write the *inactive* slot.
         "settagset" => {
             let idx = state.focused_monitor();
-            let mask = arg.i as u32;
+            let mask = arg.i as u32 & crate::TAGMASK;
             if idx < state.monitors.len() && mask != 0 {
                 let sel = if arg.i2 != 0 {
-                    1 - state.monitors[idx].seltags
+                    state.monitors[idx].seltags ^ 1
                 } else {
                     state.monitors[idx].seltags
                 };
@@ -608,7 +608,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
                 && state.clients[cidx].monitor == idx
             {
                 let current = state.clients[cidx].tags;
-                let new = (current & arg.i as u32) ^ arg.i2 as u32;
+                let new = ((current & arg.i as u32) ^ arg.i2 as u32) & crate::TAGMASK;
                 if new != 0 {
                     state.animate_tag_departure(cidx);
                     state.clients[cidx].old_tags = state.clients[cidx].tags;
@@ -847,14 +847,20 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
     DispatchOutcome::Handled
 }
 
+/// The tag mask an action argument names: the `ui` slot (Rhai, config tag
+/// masks) or a positive `i` (IPC, binds), cut down to the real tags. Every
+/// string→`Arg` mapper (config, IPC, Rhai) lands here, so this is the one
+/// place a stray high bit (`mctl dispatch view 512`) gets dropped; a mask
+/// with no real tag left is 0, which every tag action ignores.
 fn tag_arg(arg: &Arg) -> u32 {
-    if arg.ui != 0 {
+    let raw = if arg.ui != 0 {
         arg.ui
     } else if arg.i > 0 {
         arg.i as u32
     } else {
         0
-    }
+    };
+    raw & crate::TAGMASK
 }
 
 fn float_arg(arg: &Arg) -> f32 {
