@@ -158,15 +158,19 @@ fn apply(service: &MargoService, state: &StateJson) {
         .map(|m| m.active_workspace.get().id);
 
     // ── Workspaces ───────────────────────────────────────────────────
+    // Tags are bits of a u32 mask, so at most 32 exist. Clamping keeps a
+    // malformed frame from overflowing `1 << (tag - 1)` or allocating a
+    // per-tag table sized by an arbitrary number.
+    let tag_count_u32 = state.tag_count.min(u32::BITS);
     let current_ws = service.workspaces.get();
-    let mut next_ws: Vec<Arc<Workspace>> = Vec::with_capacity(state.tag_count as usize);
+    let mut next_ws: Vec<Arc<Workspace>> = Vec::with_capacity(tag_count_u32 as usize);
     let mut workspace_by_id: HashMap<i64, Arc<Workspace>> = HashMap::new();
 
     // Per-tag window count + fullscreen flag, folded in one pass over clients
     // (walking only each client's set tag-bits) instead of two full O(clients)
     // scans per tag inside the loop below. This is the O(tags × clients) tag
     // math the loop used to do; now it is ~O(clients).
-    let tag_count = state.tag_count as usize;
+    let tag_count = tag_count_u32 as usize;
     let tag_mask: u32 = if tag_count >= 32 {
         u32::MAX
     } else {
@@ -188,7 +192,7 @@ fn apply(service: &MargoService, state: &StateJson) {
         }
     }
 
-    for tag in 1..=state.tag_count {
+    for tag in 1..=tag_count_u32 {
         let ws_id = tag as i64;
         let bit = 1u32 << (tag - 1);
         let owner = state
@@ -1242,6 +1246,22 @@ mod apply_tests {
             e,
             MargoEvent::ActiveWindowV2 { address } if address.margo_id() == Some(1)
         )));
+    }
+
+    #[test]
+    fn oversized_tag_count_is_clamped_to_the_mask_width() {
+        // A malformed or future frame with more tags than a u32 mask holds
+        // overflowed `1 << (tag - 1)` (a panic in debug builds) and sized
+        // the per-tag tables by the raw number.
+        let svc = service();
+        let mut f = frame();
+        f.tag_count = 40;
+        apply(&svc, &f);
+        assert_eq!(svc.workspaces.get().len(), 32);
+        assert_eq!(ws(&svc, 1).windows.get(), 2);
+        f.tag_count = u32::MAX;
+        apply(&svc, &f);
+        assert_eq!(svc.workspaces.get().len(), 32);
     }
 
     #[test]
