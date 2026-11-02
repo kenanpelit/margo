@@ -7,7 +7,7 @@ use relm4::gtk::glib;
 use relm4::gtk::pango;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk, once_cell};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
 use time::format_description::parse;
@@ -343,43 +343,39 @@ impl Component for NotificationModel {
 
         // ── Shrinking timeout bar + hover-to-pause (popup only).
         if let Some(ms) = timeout_ms.filter(|ms| *ms > 0) {
-            let total = ms as f64;
-            let remaining = Rc::new(Cell::new(total));
-            let paused = Rc::new(Cell::new(false));
-            const TICK_MS: u64 = 30;
-
-            let bar = widgets.timeout_bar.downgrade();
-            let paused_tick = paused.clone();
-            glib::timeout_add_local(std::time::Duration::from_millis(TICK_MS), move || {
-                let Some(bar) = bar.upgrade() else {
-                    return glib::ControlFlow::Break;
-                };
-                if !paused_tick.get() {
-                    let r = (remaining.get() - TICK_MS as f64).max(0.0);
-                    remaining.set(r);
-                    bar.set_fraction(r / total);
-                    if r <= 0.0 {
-                        return glib::ControlFlow::Break;
-                    }
-                }
-                glib::ControlFlow::Continue
+            // Driven by the frame clock rather than a 30 ms timer: the bar
+            // advances in step with the frames the popup paints anyway (no
+            // extra main-loop wakeups, several popups share one clock, and
+            // GTK stops ticking an unmapped bar). The tick callback is
+            // removed while hovered, so a paused bar costs nothing, and it
+            // only queues a redraw when the bar's width moves a pixel.
+            let countdown = Rc::new(Countdown {
+                total: f64::from(ms),
+                remaining: Cell::new(f64::from(ms)),
+                last_frame: Cell::new(None),
+                last_px: Cell::new(-1),
+                tick: RefCell::new(None),
             });
+            Countdown::arm(&countdown, &widgets.timeout_bar);
 
             // Pause both the bar *and* the real auto-dismiss timer while
             // the pointer is over the card (noctalia parity).
             let motion = gtk::EventControllerMotion::new();
-            let paused_enter = paused.clone();
+            let countdown_enter = countdown.clone();
             let enter_cb = on_hover_enter.clone();
             motion.connect_enter(move |_, _, _| {
-                paused_enter.set(true);
+                countdown_enter.pause();
                 if let Some(f) = &enter_cb {
                     f();
                 }
             });
-            let paused_leave = paused.clone();
+            let countdown_leave = countdown.clone();
+            let bar = widgets.timeout_bar.downgrade();
             let leave_cb = on_hover_leave.clone();
             motion.connect_leave(move |_| {
-                paused_leave.set(false);
+                if let Some(bar) = bar.upgrade() {
+                    Countdown::arm(&countdown_leave, &bar);
+                }
                 if let Some(f) = &leave_cb {
                     f();
                 }
@@ -619,6 +615,59 @@ impl Component for NotificationModel {
 /// Format a notification's timestamp as `HH:MM` (24-h) or `hh:mm am/pm`
 /// (12-h), in local time. Shared by the popup component and the
 /// virtualized history list so both render times identically.
+/// The popup's shrinking timeout bar, ticked by the bar's frame clock.
+struct Countdown {
+    total: f64,
+    remaining: Cell<f64>,
+    /// Frame time (µs) of the previous tick; `None` right after (re)arming
+    /// so the paused interval isn't counted.
+    last_frame: Cell<Option<i64>>,
+    last_px: Cell<i32>,
+    tick: RefCell<Option<gtk::TickCallbackId>>,
+}
+
+impl Countdown {
+    /// Start ticking (no-op if already ticking or finished).
+    fn arm(this: &Rc<Self>, bar: &gtk::ProgressBar) {
+        if this.tick.borrow().is_some() || this.remaining.get() <= 0.0 {
+            return;
+        }
+        this.last_frame.set(None);
+        let state = this.clone();
+        let id = bar.add_tick_callback(move |bar, clock| {
+            let now = clock.frame_time();
+            let Some(prev) = state.last_frame.replace(Some(now)) else {
+                return glib::ControlFlow::Continue;
+            };
+            let r = countdown_remaining(state.remaining.get(), now - prev);
+            state.remaining.set(r);
+            let px = (r / state.total * f64::from(bar.width())).round() as i32;
+            if px != state.last_px.replace(px) || r <= 0.0 {
+                bar.set_fraction(r / state.total);
+            }
+            if r <= 0.0 {
+                // Finished: GTK drops the callback on `Break`.
+                state.tick.borrow_mut().take();
+                return glib::ControlFlow::Break;
+            }
+            glib::ControlFlow::Continue
+        });
+        *this.tick.borrow_mut() = Some(id);
+    }
+
+    /// Stop ticking until the next [`Countdown::arm`].
+    fn pause(&self) {
+        if let Some(id) = self.tick.borrow_mut().take() {
+            id.remove();
+        }
+    }
+}
+
+/// Countdown left after a frame `delta_us` long (frame-clock µs), in ms.
+fn countdown_remaining(remaining_ms: f64, delta_us: i64) -> f64 {
+    (remaining_ms - delta_us.max(0) as f64 / 1000.0).max(0.0)
+}
+
 pub fn format_notification_time(notification: &Notification, format_24_h: bool) -> String {
     let timestamp = notification.timestamp.get();
     let local_offset = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
@@ -723,6 +772,19 @@ pub fn detect_code(text: &str) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod countdown_tests {
+    use super::countdown_remaining;
+
+    #[test]
+    fn countdown_subtracts_frame_time_and_clamps() {
+        assert_eq!(countdown_remaining(5000.0, 16_667), 5000.0 - 16.667);
+        assert_eq!(countdown_remaining(10.0, 20_000), 0.0);
+        // A clock that steps backwards never adds time.
+        assert_eq!(countdown_remaining(100.0, -5_000), 100.0);
+    }
 }
 
 #[cfg(test)]
