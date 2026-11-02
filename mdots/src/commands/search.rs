@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use colored::*;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use crate::config::{load_config, ConfigPaths, PackageManagerType};
 
@@ -16,33 +16,31 @@ pub fn run(paths: &ConfigPaths) -> Result<()> {
     let backend = crate::backend::create_backend(&config)?;
     let pm_type = crate::config::resolve_package_manager(&config)?;
 
-    // Build the fzf command depending on the package manager
-    let fzf_cmd = match pm_type {
+    // List every package with the helper and pipe it into fzf. Both run as
+    // argv — the configured helper name never passes through `sh -c`.
+    let output = match pm_type {
         PackageManagerType::Pacman => {
-            let info_cmd = backend.package_info_command().to_string();
-            format!(
-                "{cmd} -Slq --color=never 2>/dev/null | fzf \
-                --multi \
-                --ansi \
-                --preview '{cmd} -Si {{1}} --color=never' \
-                --preview-window=right:60%:wrap \
-                --header='→ Interactive package search\nℹ Use TAB to select multiple packages, ENTER to install' \
-                --prompt='Search packages > ' \
-                --height=100% \
-                --border=rounded \
-                --border-label=' mdots search ' \
-                --border-label-pos=2 \
-                --color=border:blue,label:cyan",
-                cmd = info_cmd
-            )
+            let helper = backend.package_info_command().to_string();
+            let (program, args) = list_command(&helper);
+            let mut list = Command::new(program)
+                .args(args)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .spawn()
+                .with_context(|| format!("Failed to run {helper}"))?;
+            let list_out = list
+                .stdout
+                .take()
+                .context("Failed to capture the package list")?;
+            let output = Command::new("fzf")
+                .args(fzf_args(&helper))
+                .stdin(Stdio::from(list_out))
+                .output()
+                .context("Failed to run fzf")?;
+            let _ = list.wait();
+            output
         }
     };
-
-    let output = Command::new("sh")
-        .arg("-c")
-        .arg(fzf_cmd)
-        .output()
-        .context("Failed to run fzf")?;
 
     if !output.status.success() {
         println!("{} Search cancelled", "✗".yellow());
@@ -105,4 +103,72 @@ pub fn run(paths: &ConfigPaths) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Program and arguments that list every installable package name.
+fn list_command(helper: &str) -> (&str, [&'static str; 2]) {
+    (helper, ["-Slq", "--color=never"])
+}
+
+/// Single-quote `s` for a POSIX shell.
+fn sh_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', r"'\''"))
+}
+
+/// fzf arguments. `--preview` is the one place fzf itself runs a shell
+/// command, so the helper name is quoted there.
+fn fzf_args(helper: &str) -> Vec<String> {
+    let preview = format!("{} -Si {{1}} --color=never", sh_quote(helper));
+    [
+        "--multi",
+        "--ansi",
+        "--preview",
+        &preview,
+        "--preview-window=right:60%:wrap",
+        "--header=→ Interactive package search\nℹ Use TAB to select multiple packages, ENTER to install",
+        "--prompt=Search packages > ",
+        "--height=100%",
+        "--border=rounded",
+        "--border-label= mdots search ",
+        "--border-label-pos=2",
+        "--color=border:blue,label:cyan",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn helper_name_is_an_argv_element_not_shell_text() {
+        // A configured aur_helper used to be spliced into `sh -c`; a value with
+        // shell syntax would have run as a command.
+        let evil = "yay; touch pwned";
+        let (program, args) = list_command(evil);
+        assert_eq!(program, evil);
+        assert_eq!(args, ["-Slq", "--color=never"]);
+    }
+
+    #[test]
+    fn fzf_preview_quotes_the_helper() {
+        let args = fzf_args("my helper'; touch pwned #");
+        let preview = args
+            .iter()
+            .position(|a| a == "--preview")
+            .map(|i| args[i + 1].clone())
+            .unwrap();
+        assert_eq!(
+            preview,
+            r#"'my helper'\''; touch pwned #' -Si {1} --color=never"#
+        );
+        assert!(args.iter().any(|a| a == "--multi"));
+    }
+
+    #[test]
+    fn sh_quote_plain_word() {
+        assert_eq!(sh_quote("paru"), "'paru'");
+    }
 }
