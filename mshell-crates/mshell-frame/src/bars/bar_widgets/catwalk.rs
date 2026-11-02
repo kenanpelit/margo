@@ -7,8 +7,11 @@
 //! Two sprite sets ship bundled (selected by `bars.widgets.catwalk.style`):
 //! the original **noctalia** cat (4 walk + 4 idle frames) and **RunCat** —
 //! the classic macOS running cat (5 run frames + a sleeping idle pose), via
-//! CatWalk by Driglu4it, originally RunCat by Kyome. Frames are written to a
-//! cache dir at first run so `GtkImage` can load them scalably.
+//! CatWalk by Driglu4it, originally RunCat by Kyome. The SVG frames are
+//! rasterised once, at the sprite's device-pixel size, into `gdk::Texture`s;
+//! a frame step only swaps the paintable (re-rendered only when the size or
+//! the monitor scale changes). The animation stops while the pill is unmapped
+//! (bar hidden) and resumes on map.
 //!
 //! The walk cadence uses the RunCat easing — `5000/√(cpu+35) − 400` ms per
 //! frame, floored at 30 ms — so the cat eases smoothly from a saunter to a
@@ -23,10 +26,10 @@ use mshell_config::schema::config::{
     CatwalkDisplay, ConfigStoreFields,
 };
 use reactive_graph::prelude::GetUntracked;
-use relm4::gtk::glib;
+use relm4::gtk::gdk_pixbuf::Pixbuf;
 use relm4::gtk::prelude::*;
+use relm4::gtk::{gdk, gio, glib};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 const NOCTALIA_IDLE: [(&str, &[u8]); 4] = [
@@ -92,17 +95,22 @@ const RUNCAT_IDLE: [(&str, &[u8]); 1] = [(
     include_bytes!("catwalk_icons/runcat-idle.svg"),
 )];
 
-/// Bundled sprite frames, unpacked to the cache dir once at first run.
+/// Bundled sprite frames rasterised at one device-pixel size.
 struct Frames {
-    noctalia_idle: Vec<PathBuf>,
-    noctalia_active: Vec<PathBuf>,
-    runcat_idle: Vec<PathBuf>,
-    runcat_active: Vec<PathBuf>,
+    /// Square edge in device pixels the textures were rendered at.
+    px: i32,
+    noctalia_idle: Vec<gdk::Texture>,
+    noctalia_active: Vec<gdk::Texture>,
+    runcat_idle: Vec<gdk::Texture>,
+    runcat_active: Vec<gdk::Texture>,
 }
 
 pub(crate) struct CatwalkModel {
-    frames: Frames,
+    /// Rendered lazily on the first tick (needs the widget's scale factor).
+    frames: Option<Frames>,
     frame: usize,
+    /// A tick is armed. Cleared when the chain stops while unmapped.
+    ticking: bool,
     cpu_percent: u32,
     prev_total: u64,
     prev_idle: u64,
@@ -120,6 +128,8 @@ pub(crate) struct CatwalkModel {
 #[derive(Debug)]
 pub(crate) enum CatwalkInput {
     Tick,
+    /// The pill was mapped again: restart the animation if it stopped.
+    Mapped,
     Clicked,
 }
 
@@ -180,8 +190,6 @@ impl Component for CatwalkModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let frames = ensure_frames();
-
         let hide_background = config_manager()
             .config()
             .bars()
@@ -198,8 +206,9 @@ impl Component for CatwalkModel {
         arm_tick(&sender, 120);
 
         let model = CatwalkModel {
-            frames,
+            frames: None,
             frame: 0,
+            ticking: true,
             cpu_percent: 0,
             prev_total,
             prev_idle,
@@ -219,6 +228,9 @@ impl Component for CatwalkModel {
             widgets.btn.set_css_classes(&["ok-bar-widget"]);
         }
 
+        let map_sender = sender.clone();
+        root.connect_map(move |_| map_sender.input(CatwalkInput::Mapped));
+
         ComponentParts { model, widgets }
     }
 
@@ -227,14 +239,28 @@ impl Component for CatwalkModel {
         widgets: &mut Self::Widgets,
         message: Self::Input,
         sender: ComponentSender<Self>,
-        _root: &Self::Root,
+        root: &Self::Root,
     ) {
         match message {
             CatwalkInput::Clicked => {
                 let _ = sender.output(CatwalkOutput::Clicked);
                 return;
             }
+            CatwalkInput::Mapped => {
+                if !self.ticking {
+                    self.ticking = true;
+                    arm_tick(&sender, 0);
+                }
+                return;
+            }
             CatwalkInput::Tick => {
+                // Nobody can see the cat (bar hidden / output gone): let the
+                // chain lapse; `Mapped` restarts it.
+                if !root.is_mapped() {
+                    self.ticking = false;
+                    return;
+                }
+
                 let cfg: CatwalkConfig = config_manager()
                     .config()
                     .bars()
@@ -259,23 +285,32 @@ impl Component for CatwalkModel {
 
                 let active = self.cpu_percent >= cfg.minimum_threshold;
 
-                // Advance the frame and paint it (only when the picture changes).
-                let paths = self.frames.set_for(cfg.style, active);
-                let len = paths.len().max(1);
-                self.frame = (self.frame + 1) % len;
-                let key = (cfg.style, active, self.frame);
-                if self.last_key != Some(key) {
-                    self.last_key = Some(key);
-                    if let Some(p) = paths.get(self.frame % len) {
-                        widgets.img.set_from_file(Some(p));
-                    }
-                }
-
                 // Sprite size (guarded).
                 let size = cfg.size.clamp(12, 48);
                 if self.last_size != Some(size) {
                     self.last_size = Some(size);
                     widgets.img.set_pixel_size(size as i32);
+                }
+
+                // (Re)rasterise the frames when the device-pixel size changes.
+                let px = size as i32 * widgets.img.scale_factor().max(1);
+                if self.frames.as_ref().is_none_or(|f| f.px != px) {
+                    self.frames = Some(Frames::render(px));
+                    self.last_key = None;
+                }
+
+                // Advance the frame and paint it (only when the picture changes).
+                if let Some(frames) = &self.frames {
+                    let set = frames.set_for(cfg.style, active);
+                    let len = set.len().max(1);
+                    self.frame = (self.frame + 1) % len;
+                    let key = (cfg.style, active, self.frame);
+                    if self.last_key != Some(key) {
+                        self.last_key = Some(key);
+                        if let Some(texture) = set.get(self.frame % len) {
+                            widgets.img.set_paintable(Some(texture));
+                        }
+                    }
                 }
 
                 // CPU-% label text + severity (only when the value changes).
@@ -311,13 +346,7 @@ impl Component for CatwalkModel {
 
                 // Schedule the next frame: RunCat easing while active (smooth
                 // saunter → zoom), a slow plod while idle.
-                let next_ms = if active {
-                    let cpu = self.cpu_percent as f64;
-                    (5000.0 / (cpu + 35.0).sqrt() - 400.0).ceil().max(30.0) as u64
-                } else {
-                    280
-                };
-                arm_tick(&sender, next_ms);
+                arm_tick(&sender, frame_interval_ms(self.cpu_percent, active));
             }
         }
 
@@ -325,8 +354,42 @@ impl Component for CatwalkModel {
     }
 }
 
+/// Milliseconds until the next frame: the RunCat easing
+/// `5000/√(cpu+35) − 400`, floored at 30 ms, while active; a slow plod idle.
+fn frame_interval_ms(cpu_percent: u32, active: bool) -> u64 {
+    if active {
+        let cpu = f64::from(cpu_percent);
+        (5000.0 / (cpu + 35.0).sqrt() - 400.0).ceil().max(30.0) as u64
+    } else {
+        280
+    }
+}
+
 impl Frames {
-    fn set_for(&self, style: CatStyle, active: bool) -> &[PathBuf] {
+    /// Rasterise every bundled frame to a `px`×`px` texture (aspect kept).
+    fn render(px: i32) -> Self {
+        let render = |frames: &[(&str, &'static [u8])]| -> Vec<gdk::Texture> {
+            frames
+                .iter()
+                .filter_map(|(name, svg)| {
+                    let texture = render_svg(svg, px).map(|p| pixbuf_texture(&p));
+                    if texture.is_none() {
+                        tracing::warn!("catwalk: cannot render frame {name}");
+                    }
+                    texture
+                })
+                .collect()
+        };
+        Self {
+            px,
+            noctalia_idle: render(&NOCTALIA_IDLE),
+            noctalia_active: render(&NOCTALIA_ACTIVE),
+            runcat_idle: render(&RUNCAT_IDLE),
+            runcat_active: render(&RUNCAT_ACTIVE),
+        }
+    }
+
+    fn set_for(&self, style: CatStyle, active: bool) -> &[gdk::Texture] {
         match (style, active) {
             (CatStyle::RunCat, true) => &self.runcat_active,
             (CatStyle::RunCat, false) => &self.runcat_idle,
@@ -362,41 +425,51 @@ fn arm_tick(sender: &ComponentSender<CatwalkModel>, ms: u64) {
     });
 }
 
-/// Cache dir for the unpacked frames: `$XDG_CACHE_HOME/mshell/catwalk`.
-fn cache_dir() -> PathBuf {
-    std::env::var_os("XDG_CACHE_HOME")
-        .map(PathBuf::from)
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or_else(|| {
-            std::env::var_os("HOME")
-                .map(PathBuf::from)
-                .unwrap_or_default()
-                .join(".cache")
-        })
-        .join("mshell")
-        .join("catwalk")
+/// Rasterise an SVG to fit a `px`×`px` box (aspect preserved).
+fn render_svg(svg: &'static [u8], px: i32) -> Option<Pixbuf> {
+    let stream = gio::MemoryInputStream::from_bytes(&glib::Bytes::from_static(svg));
+    Pixbuf::from_stream_at_scale(&stream, px, px, true, gio::Cancellable::NONE).ok()
 }
 
-/// Write the bundled frames to the cache dir (once) and return their paths.
-fn ensure_frames() -> Frames {
-    let dir = cache_dir();
-    let _ = std::fs::create_dir_all(&dir);
-    let write = |frames: &[(&str, &[u8])]| -> Vec<PathBuf> {
-        frames
-            .iter()
-            .map(|(name, bytes)| {
-                let path = dir.join(name);
-                if !path.exists() {
-                    let _ = std::fs::write(&path, bytes);
-                }
-                path
-            })
-            .collect()
+/// Wrap a pixbuf's pixels in a texture without a conversion pass.
+fn pixbuf_texture(pixbuf: &Pixbuf) -> gdk::Texture {
+    let format = if pixbuf.has_alpha() {
+        gdk::MemoryFormat::R8g8b8a8
+    } else {
+        gdk::MemoryFormat::R8g8b8
     };
-    Frames {
-        noctalia_idle: write(&NOCTALIA_IDLE),
-        noctalia_active: write(&NOCTALIA_ACTIVE),
-        runcat_idle: write(&RUNCAT_IDLE),
-        runcat_active: write(&RUNCAT_ACTIVE),
+    gdk::MemoryTexture::new(
+        pixbuf.width(),
+        pixbuf.height(),
+        format,
+        &pixbuf.read_pixel_bytes(),
+        pixbuf.rowstride() as usize,
+    )
+    .upcast()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn frames_rasterise_at_the_requested_device_size() {
+        for (_, svg) in NOCTALIA_IDLE
+            .iter()
+            .chain(&NOCTALIA_ACTIVE)
+            .chain(&RUNCAT_IDLE)
+            .chain(&RUNCAT_ACTIVE)
+        {
+            let pixbuf = render_svg(svg, 44).expect("bundled SVG renders");
+            assert_eq!(pixbuf.width().max(pixbuf.height()), 44);
+        }
+    }
+
+    #[test]
+    fn frame_interval_follows_runcat_easing() {
+        assert_eq!(frame_interval_ms(0, false), 280);
+        assert_eq!(frame_interval_ms(100, true), 31);
+        assert!(frame_interval_ms(10, true) > frame_interval_ms(90, true));
+        assert!(frame_interval_ms(100, true) >= 30);
     }
 }
