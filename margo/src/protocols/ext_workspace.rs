@@ -98,17 +98,22 @@ impl WorkspaceData {
         display: &DisplayHandle,
         client: &Client,
         manager: &ExtWorkspaceManagerV1,
-    ) -> &ExtWorkspaceHandleV1
+    ) -> Option<&ExtWorkspaceHandleV1>
     where
         D: Dispatch<ExtWorkspaceHandleV1, ExtWorkspaceManagerV1> + 'static,
     {
-        let workspace = client
-            .create_resource::<ExtWorkspaceHandleV1, _, D>(
-                display,
-                manager.version(),
-                manager.clone(),
-            )
-            .unwrap();
+        // Fails when the client is already gone; skip it rather than panic.
+        let workspace = match client.create_resource::<ExtWorkspaceHandleV1, _, D>(
+            display,
+            manager.version(),
+            manager.clone(),
+        ) {
+            Ok(workspace) => workspace,
+            Err(err) => {
+                tracing::debug!(?err, "ext_workspace: client gone, skipping workspace");
+                return None;
+            }
+        };
         manager.workspace(&workspace);
         workspace.id(self.id.clone());
         workspace.name(self.name.clone());
@@ -121,7 +126,7 @@ impl WorkspaceData {
         workspace.state(self.proto_state());
         workspace.capabilities(ext_workspace_handle_v1::WorkspaceCapabilities::Activate);
         self.instances.push(workspace);
-        self.instances.last().unwrap()
+        self.instances.last()
     }
 }
 
@@ -132,24 +137,29 @@ impl GroupData {
         client: &Client,
         manager: &ExtWorkspaceManagerV1,
         output: &Output,
-    ) -> &ExtWorkspaceGroupHandleV1
+    ) -> Option<&ExtWorkspaceGroupHandleV1>
     where
         D: Dispatch<ExtWorkspaceGroupHandleV1, ExtWorkspaceManagerV1> + 'static,
     {
-        let group = client
-            .create_resource::<ExtWorkspaceGroupHandleV1, _, D>(
-                display,
-                manager.version(),
-                manager.clone(),
-            )
-            .unwrap();
+        // Fails when the client is already gone; skip it rather than panic.
+        let group = match client.create_resource::<ExtWorkspaceGroupHandleV1, _, D>(
+            display,
+            manager.version(),
+            manager.clone(),
+        ) {
+            Ok(group) => group,
+            Err(err) => {
+                tracing::debug!(?err, "ext_workspace: client gone, skipping group");
+                return None;
+            }
+        };
         manager.workspace_group(&group);
         group.capabilities(ext_workspace_group_handle_v1::GroupCapabilities::empty());
         for wl_output in output.client_outputs(client) {
             group.output_enter(&wl_output);
         }
         self.instances.push(group);
-        self.instances.last().unwrap()
+        self.instances.last()
     }
 }
 
@@ -366,7 +376,9 @@ where
         // Existing workspaces → new client.
         let mut new_workspaces: HashMap<Output, Vec<ExtWorkspaceHandleV1>> = HashMap::new();
         for ((output, _), data) in proto.workspaces.iter_mut() {
-            let workspace = data.add_instance::<D>(handle, client, &manager).clone();
+            let Some(workspace) = data.add_instance::<D>(handle, client, &manager).cloned() else {
+                continue;
+            };
             new_workspaces
                 .entry(output.clone())
                 .or_default()
@@ -375,9 +387,12 @@ where
 
         // Existing groups → new client, wiring enters.
         for (output, group_data) in proto.groups.iter_mut() {
-            let group = group_data
+            let Some(group) = group_data
                 .add_instance::<D>(handle, client, &manager, output)
-                .clone();
+                .cloned()
+            else {
+                continue;
+            };
             for workspace in new_workspaces.get(output).into_iter().flatten() {
                 group.workspace_enter(workspace);
             }

@@ -69,6 +69,7 @@ mod tag_mask;
 mod tag_mon;
 mod tag_transition_anim;
 mod theme;
+mod virtual_pointer;
 mod window_rules;
 mod x11;
 mod xdg_activation;

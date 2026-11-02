@@ -424,6 +424,15 @@ where
                 x_extent,
                 y_extent,
             } => {
+                // Coordinates are fractions of the extents; a zero extent
+                // would turn into a NaN / infinite pointer position.
+                if x_extent == 0 || y_extent == 0 {
+                    warn!(
+                        x_extent,
+                        y_extent, "virtual_pointer: ignoring motion with a zero extent"
+                    );
+                    return;
+                }
                 handler.on_virtual_pointer_motion_absolute(VirtualPointerMotionAbsoluteEvent {
                     pointer,
                     time,

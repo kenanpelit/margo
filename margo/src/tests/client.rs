@@ -45,6 +45,10 @@ use smithay::reexports::wayland_protocols_wlr::layer_shell::v1::client::{
     zwlr_layer_shell_v1::{self, ZwlrLayerShellV1},
     zwlr_layer_surface_v1::{self, ZwlrLayerSurfaceV1},
 };
+use smithay::reexports::wayland_protocols_wlr::virtual_pointer::v1::client::{
+    zwlr_virtual_pointer_manager_v1::ZwlrVirtualPointerManagerV1,
+    zwlr_virtual_pointer_v1::ZwlrVirtualPointerV1,
+};
 use wayland_backend::client::Backend;
 use wayland_client::globals::Global;
 use wayland_client::protocol::wl_buffer::WlBuffer;
@@ -371,6 +375,14 @@ impl Client {
         let decoration = manager.get_toplevel_decoration(toplevel, &self.qh, ());
         self.connection.flush().expect("client flush");
         decoration
+    }
+
+    /// Create a `zwlr_virtual_pointer_v1` (no seat: the default one).
+    pub fn create_virtual_pointer(&mut self) -> ZwlrVirtualPointerV1 {
+        let manager: ZwlrVirtualPointerManagerV1 = self.bind_global(2);
+        let pointer = manager.create_virtual_pointer(None, &self.qh, ());
+        self.connection.flush().expect("client flush");
+        pointer
     }
 
     /// Create + acquire an ext-session-lock. Returns the lock
@@ -849,6 +861,30 @@ impl Dispatch<ZxdgToplevelDecorationV1, ()> for ClientState {
         // Mode events arrive whenever the server resolves a
         // configure-with-decoration; tests inspect MargoState
         // directly rather than tracking this on the client side.
+    }
+}
+
+impl Dispatch<ZwlrVirtualPointerManagerV1, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &ZwlrVirtualPointerManagerV1,
+        _: <ZwlrVirtualPointerManagerV1 as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ZwlrVirtualPointerV1, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &ZwlrVirtualPointerV1,
+        _: <ZwlrVirtualPointerV1 as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
     }
 }
 
