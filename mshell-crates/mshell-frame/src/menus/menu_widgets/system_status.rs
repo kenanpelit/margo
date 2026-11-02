@@ -24,6 +24,7 @@
 //! an `--error` tint, temp > 80 °C the same. The pill stays "calm"
 //! by default so the dashboard reads quiet.
 
+use crate::menus::reveal_poll::RevealPoll;
 use mshell_common::scoped_effects::EffectScope;
 use mshell_services::{battery_service, line_power_service, power_profile_service};
 use mshell_utils::battery::{
@@ -35,9 +36,7 @@ use mshell_utils::power_profile::{
 };
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::cell::Cell;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::time::Duration;
 use wayle_battery::types::DeviceState;
 use wayle_power_profiles::types::profile::PowerProfile;
@@ -60,10 +59,10 @@ pub(crate) struct SystemStatusModel {
     profile: PowerProfile,
     temp_celsius: i32,
     temp_sensor_path: Option<PathBuf>,
-    /// Whether this menu is currently revealed. The temp poll skips its
-    /// hwmon read while the menu is closed (battery/profile stay
-    /// watcher-driven, so they keep updating regardless).
-    revealed: Rc<Cell<bool>>,
+    /// The 2 s temp poll; runs only while the menu is revealed
+    /// (battery/profile stay watcher-driven, so they keep updating
+    /// regardless).
+    poll: RevealPoll,
     _effects: EffectScope,
 }
 
@@ -232,24 +231,14 @@ impl Component for SystemStatusModel {
         spawn_battery_online_watcher(&sender, || SystemStatusCommandOutput::BatteryChanged);
         spawn_active_profile_watcher(&sender, None, || SystemStatusCommandOutput::ProfileChanged);
 
-        // Self-cancelling temp poll (mirrors sysstat pattern). Skips the
-        // hwmon read while the menu is closed — defaults open so the
-        // first paint after build is primed.
-        let revealed = Rc::new(Cell::new(true));
+        // Poll only while revealed: the timer itself is removed on hide.
+        // Self-cancelling — the poll ends when the receiver hangs up.
         let sender_clone = sender.clone();
-        let revealed_timer = revealed.clone();
-        relm4::gtk::glib::timeout_add_local(POLL_INTERVAL, move || {
-            if !revealed_timer.get() {
-                return relm4::gtk::glib::ControlFlow::Continue;
-            }
-            if sender_clone
+        let poll = RevealPoll::new(POLL_INTERVAL, move || {
+            sender_clone
                 .input_sender()
                 .send(SystemStatusInput::PollTemp)
-                .is_err()
-            {
-                return relm4::gtk::glib::ControlFlow::Break;
-            }
-            relm4::gtk::glib::ControlFlow::Continue
+                .is_ok()
         });
 
         // Prime initial state.
@@ -278,7 +267,7 @@ impl Component for SystemStatusModel {
             profile,
             temp_celsius,
             temp_sensor_path,
-            revealed,
+            poll,
             _effects: EffectScope::new(),
         };
 
@@ -326,7 +315,7 @@ impl Component for SystemStatusModel {
                 }
             }
             SystemStatusInput::ParentRevealChanged(visible) => {
-                self.revealed.set(visible);
+                self.poll.set_revealed(visible);
                 if visible {
                     sender.input(SystemStatusInput::PollTemp);
                 }

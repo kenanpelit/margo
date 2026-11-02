@@ -23,13 +23,13 @@ use crate::bars::bar_widgets::sysstat::{
     find_cpu_temp_sensor_pub, read_all_fans_pub, read_all_temp_sensors_pub, read_cpu_stat_pub,
     read_temp_millideg_pub,
 };
+use crate::menus::reveal_poll::RevealPoll;
 use futures::StreamExt;
 use mshell_services::sys_info_service;
 use relm4::gtk::prelude::{
     BoxExt, DrawingAreaExt, DrawingAreaExtManual, GridExt, OrientableExt, WidgetExt,
 };
 use relm4::{Component, ComponentParts, ComponentSender, RelmWidgetExt, gtk};
-use std::cell::Cell;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -156,13 +156,12 @@ pub(crate) struct CpuDashboardMenuWidgetModel {
     core_rows: Vec<CoreRow>,
     /// CPU-load samples for the sparkline; shared with the draw func.
     history: Rc<RefCell<Vec<u32>>>,
-    /// Reveal state, shared with the poll timer. The 2 s `Poll` does ~9
-    /// /proc reads plus two full `/sys/class/hwmon` walks; gating it on
-    /// reveal means a closed dashboard does none of that (the timer still
-    /// wakes, but the work is skipped). Set by `ParentRevealChanged` from
-    /// the host menu. Starts `true` since the widget is built on first
-    /// reveal.
-    revealed: Rc<Cell<bool>>,
+    /// The 2 s `Poll` timer (~9 /proc reads plus two full
+    /// `/sys/class/hwmon` walks). It exists only while the dashboard is
+    /// revealed — `ParentRevealChanged` from the host menu starts and
+    /// removes it — so a closed dashboard neither works nor wakes. Starts
+    /// running since the widget is built on first reveal.
+    poll: RevealPoll,
 }
 
 impl std::fmt::Debug for CpuDashboardMenuWidgetModel {
@@ -574,28 +573,14 @@ impl Component for CpuDashboardMenuWidgetModel {
         let (load_1m, load_5m, load_15m) = read_loadavg().unwrap_or((0.0, 0.0, 0.0));
         let (cpu_model, cpu_cores, cpu_threads) = read_cpu_info();
 
-        // Reveal gate, shared with the poll timer below. `true` because
-        // the widget is built on its menu's first reveal.
-        let revealed = Rc::new(Cell::new(true));
-
-        // Self-cancelling — Break when the receiver hangs up, so
-        // the timer dies with the widget instead of running for
-        // the rest of the shell session. Skips the (heavy: /proc + two
-        // hwmon walks) `Poll` while the dashboard is closed.
+        // Poll only while revealed: the timer itself is removed on hide.
+        // Self-cancelling — the poll ends when the receiver hangs up.
         let sender_clone = sender.clone();
-        let revealed_timer = revealed.clone();
-        relm4::gtk::glib::timeout_add_local(POLL_INTERVAL, move || {
-            if !revealed_timer.get() {
-                return relm4::gtk::glib::ControlFlow::Continue;
-            }
-            if sender_clone
+        let poll = RevealPoll::new(POLL_INTERVAL, move || {
+            sender_clone
                 .input_sender()
                 .send(CpuDashboardMenuWidgetInput::Poll)
-                .is_err()
-            {
-                return relm4::gtk::glib::ControlFlow::Break;
-            }
-            relm4::gtk::glib::ControlFlow::Continue
+                .is_ok()
         });
 
         let (freq_min_ghz, freq_avg_ghz, freq_max_ghz) =
@@ -631,7 +616,7 @@ impl Component for CpuDashboardMenuWidgetModel {
             sensor_path,
             core_rows: Vec::new(),
             history: Rc::new(RefCell::new(Vec::with_capacity(HISTORY_LEN))),
-            revealed,
+            poll,
         };
 
         let widgets = view_output!();
@@ -743,7 +728,7 @@ impl Component for CpuDashboardMenuWidgetModel {
     ) {
         match message {
             CpuDashboardMenuWidgetInput::ParentRevealChanged(visible) => {
-                self.revealed.set(visible);
+                self.poll.set_revealed(visible);
                 // Refresh immediately on open so reappearing shows live
                 // numbers instead of a (up to 2 s) stale snapshot.
                 if visible {
