@@ -784,15 +784,10 @@ fn spawn_profile(
     profile: DisplayProfile,
     outputs: Vec<EditorOut>,
 ) {
-    let (plan, mirror, label) = profile_plan(profile, &outputs);
-    if matches!(profile, DisplayProfile::Mirror) && mirror.is_none() {
-        sender.input(LayoutSettingsInput::CommandResult(Err(
-            "Mirror needs both a laptop screen and an external monitor".to_string(),
-        )));
-        return;
+    match profile_plan(profile, &outputs) {
+        Ok((plan, mirror, label)) => run_dispatches(sender, plan, mirror, label.to_string()),
+        Err(e) => sender.input(LayoutSettingsInput::CommandResult(Err(e.to_string()))),
     }
-
-    run_dispatches(sender, plan, mirror, label.to_string());
 }
 
 /// A dispatch plan: `mctl dispatch` argument lists, in order.
@@ -801,11 +796,16 @@ type DispatchPlan = Vec<Vec<String>>;
 /// The `mctl dispatch` plan for a display profile over the live outputs,
 /// the optional `wl-mirror` pair (as [`run_dispatches`] takes it: the
 /// external output to fill, the laptop panel shown on it), and the label
-/// reported when it ran.
+/// reported when it ran. `Err` (the message to show) when the profile can't
+/// apply to these outputs — in particular, never a plan that would leave
+/// every output switched off.
 fn profile_plan(
     profile: DisplayProfile,
     outputs: &[EditorOut],
-) -> (DispatchPlan, Option<(String, String)>, &'static str) {
+) -> Result<(DispatchPlan, Option<(String, String)>, &'static str), &'static str> {
+    if outputs.is_empty() {
+        return Err("No outputs detected");
+    }
     let internal: Vec<String> = outputs
         .iter()
         .filter(|o| is_internal_connector(&o.connector))
@@ -820,7 +820,13 @@ fn profile_plan(
     let enable = |c: &String| vec!["enable_output".to_string(), c.clone()];
     let disable = |c: &String| vec!["disable_output".to_string(), c.clone()];
 
-    let (plan, mirror, label): (DispatchPlan, Option<(String, String)>, &str) = match profile {
+    Ok(match profile {
+        DisplayProfile::InternalOnly if internal.is_empty() => {
+            return Err("No laptop screen to keep on");
+        }
+        DisplayProfile::ExternalOnly if external.is_empty() => {
+            return Err("No external monitor to switch to");
+        }
         DisplayProfile::InternalOnly => (
             internal
                 .iter()
@@ -846,15 +852,12 @@ fn profile_plan(
         ),
         DisplayProfile::Mirror => {
             let plan: Vec<Vec<String>> = outputs.iter().map(|o| enable(&o.connector)).collect();
-            let mirror = match (external.first(), internal.first()) {
-                (Some(ext), Some(int)) => Some((ext.clone(), int.clone())),
-                _ => None,
+            let (Some(ext), Some(int)) = (external.first(), internal.first()) else {
+                return Err("Mirror needs both a laptop screen and an external monitor");
             };
-            (plan, mirror, "profile: mirror")
+            (plan, Some((ext.clone(), int.clone())), "profile: mirror")
         }
-    };
-
-    (plan, mirror, label)
+    })
 }
 
 /// Rebuild the per-output power list: one row per live output with a
@@ -1539,15 +1542,15 @@ mod tests {
             out("eDP-1", 0, 0, 1920, 1080),
             out("DP-1", 1920, 0, 2560, 1440),
         ];
-        let (plan, mirror, _) = profile_plan(DisplayProfile::InternalOnly, &outs);
+        let (plan, mirror, _) = profile_plan(DisplayProfile::InternalOnly, &outs).unwrap();
         assert_eq!(cmds(&plan), ["enable_output eDP-1", "disable_output DP-1"]);
         assert!(mirror.is_none());
-        let (plan, _, _) = profile_plan(DisplayProfile::ExternalOnly, &outs);
+        let (plan, _, _) = profile_plan(DisplayProfile::ExternalOnly, &outs).unwrap();
         assert_eq!(cmds(&plan), ["enable_output DP-1", "disable_output eDP-1"]);
-        let (plan, _, label) = profile_plan(DisplayProfile::Extend, &outs);
+        let (plan, _, label) = profile_plan(DisplayProfile::Extend, &outs).unwrap();
         assert_eq!(cmds(&plan), ["enable_output eDP-1", "enable_output DP-1"]);
         assert_eq!(label, "profile: extend");
-        let (plan, mirror, _) = profile_plan(DisplayProfile::Mirror, &outs);
+        let (plan, mirror, _) = profile_plan(DisplayProfile::Mirror, &outs).unwrap();
         assert_eq!(cmds(&plan), ["enable_output eDP-1", "enable_output DP-1"]);
         assert_eq!(mirror, Some(("DP-1".to_string(), "eDP-1".to_string())));
     }
@@ -1555,11 +1558,26 @@ mod tests {
     #[test]
     fn mirror_needs_both_kinds_of_output() {
         let laptop = [out("eDP-1", 0, 0, 1920, 1080)];
-        assert!(profile_plan(DisplayProfile::Mirror, &laptop).1.is_none());
+        assert!(profile_plan(DisplayProfile::Mirror, &laptop).is_err());
         let desktop = [
             out("DP-1", 0, 0, 2560, 1440),
             out("DP-2", 2560, 0, 2560, 1440),
         ];
-        assert!(profile_plan(DisplayProfile::Mirror, &desktop).1.is_none());
+        assert!(profile_plan(DisplayProfile::Mirror, &desktop).is_err());
+    }
+
+    #[test]
+    fn single_kind_profiles_refuse_to_turn_every_output_off() {
+        // A desktop has no laptop panel; a closed-lid laptop on the road has
+        // no external monitor. "Only" profiles there would disable every
+        // output and leave a black screen.
+        let desktop = [out("DP-1", 0, 0, 2560, 1440)];
+        assert!(profile_plan(DisplayProfile::InternalOnly, &desktop).is_err());
+        let laptop = [out("eDP-1", 0, 0, 1920, 1080)];
+        assert!(profile_plan(DisplayProfile::ExternalOnly, &laptop).is_err());
+        assert!(profile_plan(DisplayProfile::Extend, &[]).is_err());
+        // The valid cases still plan.
+        assert!(profile_plan(DisplayProfile::InternalOnly, &laptop).is_ok());
+        assert!(profile_plan(DisplayProfile::ExternalOnly, &desktop).is_ok());
     }
 }
