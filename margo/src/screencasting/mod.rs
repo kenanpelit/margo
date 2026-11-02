@@ -40,6 +40,7 @@
 //! Built incrementally so each commit lands compile-clean — large
 //! ports tend to drift when you stage everything at once.
 
+pub mod pacing;
 pub mod pw_utils;
 pub mod render_helpers;
 

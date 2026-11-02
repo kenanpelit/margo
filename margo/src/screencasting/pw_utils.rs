@@ -60,6 +60,9 @@ use crate::screencasting::{CastRenderElement, CastTarget};
 use crate::state::MargoState as State;
 use crate::utils::get_monotonic_time;
 
+pub use super::pacing::CastFrameOutcome;
+use super::pacing::cast_self_wake;
+
 /// `tracy_client` shim — niri uses Tracy profiler spans
 /// throughout pw_utils via the `tracy_client::span!` macro.
 /// margo doesn't link tracy; this shim makes the macro a no-op
@@ -1063,25 +1066,41 @@ impl Cast {
         }
     }
 
-    /// Ensure exactly one wake is pending so the cast keeps ticking
-    /// without an unconditional per-tick global repaint. If a redraw is
-    /// already scheduled (the frame was throttled by
-    /// [`check_time_and_schedule`](Self::check_time_and_schedule)) keep
-    /// it; otherwise arm a one-shot at the next frame boundary
-    /// (`last_frame_time + min_time_between_frames`, or now if we haven't
-    /// rendered yet). This bounds cast wakeups to the stream's frame
-    /// cadence instead of spinning the event loop between vblanks.
-    pub fn ensure_next_frame_scheduled(&mut self, output: Output) {
+    /// Arm this cast's own wake-up after a repaint tick, if the tick's
+    /// `outcome` needs one (see [`cast_self_wake`]). Scene damage already
+    /// pings the repaint source, which renders every cast, so a cast that
+    /// rendered or had nothing new relies on that; only a frame that is
+    /// owed but blocked on PipeWire (no free buffer, size renegotiation)
+    /// retries on a timer — never in the past, so a static scene can't
+    /// turn into a zero-length timer loop. A redraw already scheduled by
+    /// [`check_time_and_schedule`](Self::check_time_and_schedule) is kept.
+    pub fn schedule_after_tick(&mut self, output: Output, outcome: CastFrameOutcome) {
         if self.scheduled_redraw.get().is_some() {
             return;
         }
-        let target = if self.last_frame_time.is_zero() {
-            get_monotonic_time()
-        } else {
-            let min = self.inner.borrow().min_time_between_frames;
-            self.last_frame_time + min
-        };
-        self.schedule_redraw(output, target);
+        let min = self.inner.borrow().min_time_between_frames;
+        if let Some(target) =
+            cast_self_wake(outcome, get_monotonic_time(), self.last_frame_time, min)
+        {
+            self.schedule_redraw(output, target);
+        }
+    }
+
+    /// Forget what the damage trackers last saw, so the next render
+    /// redraws the whole frame. Used when a tick consumed damage but could
+    /// not deliver the frame (no buffer, render error): otherwise the
+    /// retry would see "no damage" and the change would never reach the
+    /// stream.
+    fn reset_damage_trackers(&self) {
+        if let CastState::Ready {
+            damage_tracker,
+            cursor_damage_tracker,
+            ..
+        } = &mut self.inner.borrow_mut().state
+        {
+            *damage_tracker = None;
+            *cursor_damage_tracker = None;
+        }
     }
 
     fn dequeue_available_buffer(&mut self) -> Option<NonNull<pw_buffer>> {
@@ -1180,7 +1199,7 @@ impl Cast {
         cursor_data: &CursorData<CastRenderElement>,
         size: Size<i32, Physical>,
         scale: Scale<f64>,
-    ) -> bool {
+    ) -> CastFrameOutcome {
         let mut inner = self.inner.borrow_mut();
 
         let CastState::Ready {
@@ -1191,7 +1210,7 @@ impl Cast {
         } = &mut inner.state
         else {
             error!("cast must be in Ready state to render");
-            return false;
+            return CastFrameOutcome::Failed;
         };
         let damage_tracker = damage_tracker
             .get_or_insert_with(|| OutputDamageTracker::new(size, scale, Transform::Normal));
@@ -1228,7 +1247,7 @@ impl Cast {
             Ok(x) => x,
             Err(err) => {
                 warn!("damage tracking failed, skipping frame: {err:?}");
-                return false;
+                return CastFrameOutcome::Failed;
             }
         };
 
@@ -1238,7 +1257,7 @@ impl Cast {
                     Ok(x) => x,
                     Err(err) => {
                         warn!("cursor damage tracking failed, skipping frame: {err:?}");
-                        return false;
+                        return CastFrameOutcome::Failed;
                     }
                 };
             redraw_cursor = damage.is_some();
@@ -1248,14 +1267,18 @@ impl Cast {
 
         if damage.is_none() && !has_cursor_update {
             trace!("no damage, skipping frame");
-            return false;
+            return CastFrameOutcome::NoDamage;
         }
         *last_cursor_location = Some(cursor_data.location);
         drop(inner);
 
         let Some(pw_buffer) = self.dequeue_available_buffer() else {
-            warn!("no available buffer in pw stream, skipping frame");
-            return false;
+            // The damage pass above already recorded this frame as seen;
+            // forget it so the retry renders it instead of finding "no
+            // damage".
+            debug!("no available buffer in pw stream, retrying frame");
+            self.reset_damage_trackers();
+            return CastFrameOutcome::NoBuffer;
         };
         let buffer = pw_buffer.as_ptr();
 
@@ -1266,7 +1289,10 @@ impl Cast {
         };
         let Some(damage_tracker) = damage_tracker.as_mut() else {
             warn!("cast damage tracker missing, skipping frame");
-            return false;
+            drop(inner);
+            // SAFETY: `pw_buffer` was just dequeued from this live stream and not queued back.
+            unsafe { return_unused_buffer(&self.stream, pw_buffer) };
+            return CastFrameOutcome::Failed;
         };
 
         // SAFETY: `buffer` was just dequeued from this live stream and stays ours until queued back.
@@ -1290,7 +1316,7 @@ impl Cast {
                 warn!("cast buffer fd not in dmabufs map, skipping frame");
                 drop(inner);
                 return_unused_buffer(&self.stream, pw_buffer);
-                return false;
+                return CastFrameOutcome::Failed;
             };
 
             let res = render_to_dmabuf(renderer, damage_tracker, dmabuf, elements, states);
@@ -1301,18 +1327,19 @@ impl Cast {
                     mark_buffer_as_good(pw_buffer, &mut self.sequence_counter);
                     trace!("queueing buffer with seq={}", self.sequence_counter);
                     self.queue_after_sync(pw_buffer, sync_point);
-                    true
+                    CastFrameOutcome::Rendered
                 }
                 Err(err) => {
                     warn!("error rendering to dmabuf: {err:?}");
                     return_unused_buffer(&self.stream, pw_buffer);
-                    false
+                    self.reset_damage_trackers();
+                    CastFrameOutcome::Failed
                 }
             }
         }
     }
 
-    pub fn dequeue_buffer_and_clear(&mut self, renderer: &mut GlesRenderer) -> bool {
+    pub fn dequeue_buffer_and_clear(&mut self, renderer: &mut GlesRenderer) -> CastFrameOutcome {
         let mut inner = self.inner.borrow_mut();
 
         // Clear out the damage tracker if we're in Ready state.
@@ -1328,8 +1355,8 @@ impl Cast {
         drop(inner);
 
         let Some(pw_buffer) = self.dequeue_available_buffer() else {
-            warn!("no available buffer in pw stream, skipping frame");
-            return false;
+            debug!("no available buffer in pw stream, retrying clear");
+            return CastFrameOutcome::NoBuffer;
         };
         let buffer = pw_buffer.as_ptr();
 
@@ -1345,7 +1372,7 @@ impl Cast {
             let Some(dmabuf) = self.inner.borrow().dmabufs.get(&fd).cloned() else {
                 warn!("cast clear buffer fd not in dmabufs map, skipping frame");
                 return_unused_buffer(&self.stream, pw_buffer);
-                return false;
+                return CastFrameOutcome::Failed;
             };
 
             match clear_dmabuf(renderer, dmabuf) {
@@ -1353,12 +1380,12 @@ impl Cast {
                     mark_buffer_as_good(pw_buffer, &mut self.sequence_counter);
                     trace!("queueing clear buffer with seq={}", self.sequence_counter);
                     self.queue_after_sync(pw_buffer, sync_point);
-                    true
+                    CastFrameOutcome::Rendered
                 }
                 Err(err) => {
                     warn!("error clearing dmabuf: {err:?}");
                     return_unused_buffer(&self.stream, pw_buffer);
-                    false
+                    CastFrameOutcome::Failed
                 }
             }
         }

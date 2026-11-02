@@ -316,7 +316,7 @@ pub(super) fn drain_active_cast_frames(
     outputs: &mut HashMap<crtc::Handle, OutputDevice>,
     state: &mut MargoState,
 ) {
-    use crate::screencasting::pw_utils::{CastSizeChange, CursorData};
+    use crate::screencasting::pw_utils::{CastFrameOutcome, CastSizeChange, CursorData};
     use crate::screencasting::{CastRenderElement, CastTarget};
     use smithay::backend::renderer::element::utils::{Relocate, RelocateRenderElement};
     use smithay::utils::Size;
@@ -332,8 +332,11 @@ pub(super) fn drain_active_cast_frames(
 
     let mut to_stop = Vec::new();
     let now = crate::utils::get_monotonic_time();
+    // What this tick did for each cast, by index; decides below whether the
+    // cast needs its own wake-up.
+    let mut outcomes = vec![CastFrameOutcome::Skipped; casts.len()];
 
-    for cast in casts.iter_mut() {
+    for (cast, outcome) in casts.iter_mut().zip(outcomes.iter_mut()) {
         if !cast.is_active() {
             continue;
         }
@@ -344,7 +347,8 @@ pub(super) fn drain_active_cast_frames(
         let target = cast.target.clone();
         match target {
             CastTarget::Nothing => {
-                if cast.dequeue_buffer_and_clear(renderer) {
+                *outcome = cast.dequeue_buffer_and_clear(renderer);
+                if *outcome == CastFrameOutcome::Rendered {
                     cast.last_frame_time = now;
                 }
             }
@@ -377,12 +381,16 @@ pub(super) fn drain_active_cast_frames(
                 }
 
                 if cast.check_time_and_schedule(&mon.output, now) {
+                    *outcome = CastFrameOutcome::Throttled;
                     continue;
                 }
 
                 match cast.ensure_size(size) {
                     Ok(CastSizeChange::Ready) => (),
-                    Ok(CastSizeChange::Pending) => continue,
+                    Ok(CastSizeChange::Pending) => {
+                        *outcome = CastFrameOutcome::SizePending;
+                        continue;
+                    }
                     Err(err) => {
                         warn!("cast ensure_size: {err:?}");
                         to_stop.push(cast.session_id);
@@ -461,7 +469,9 @@ pub(super) fn drain_active_cast_frames(
 
                 let cursor_data: CursorData<CastRenderElement> =
                     CursorData::compute(&elements, cursor_count, cursor_loc, scale);
-                if cast.dequeue_buffer_and_render(renderer, &elements, &cursor_data, size, scale) {
+                *outcome =
+                    cast.dequeue_buffer_and_render(renderer, &elements, &cursor_data, size, scale);
+                if *outcome == CastFrameOutcome::Rendered {
                     cast.last_frame_time = now;
                 }
             }
@@ -480,12 +490,16 @@ pub(super) fn drain_active_cast_frames(
                 let output = od.output.clone();
 
                 if cast.check_time_and_schedule(&output, now) {
+                    *outcome = CastFrameOutcome::Throttled;
                     continue;
                 }
 
                 match cast.ensure_size(size) {
                     Ok(CastSizeChange::Ready) => (),
-                    Ok(CastSizeChange::Pending) => continue,
+                    Ok(CastSizeChange::Pending) => {
+                        *outcome = CastFrameOutcome::SizePending;
+                        continue;
+                    }
                     Err(err) => {
                         warn!("cast ensure_size: {err:?}");
                         to_stop.push(cast.session_id);
@@ -530,23 +544,24 @@ pub(super) fn drain_active_cast_frames(
 
                 let cursor_data: CursorData<CastRenderElement> =
                     CursorData::compute(&elements, cursor_count, cursor_loc, scale);
-                if cast.dequeue_buffer_and_render(renderer, &elements, &cursor_data, size, scale) {
+                *outcome =
+                    cast.dequeue_buffer_and_render(renderer, &elements, &cursor_data, size, scale);
+                if *outcome == CastFrameOutcome::Rendered {
                     cast.last_frame_time = now;
                 }
             }
         }
     }
 
-    // Keep each active cast ticking via its OWN per-cast timer at the
-    // next frame boundary, rather than an unconditional global repaint
-    // every tick. The old `if any_active { state.request_repaint() }`
-    // re-pinged immediately regardless of pacing, so a single active cast
-    // spun the event loop at max rate on a static scene — the throttle in
-    // `check_time_and_schedule` only skipped the *render*, not the ping.
-    // Rendered casts schedule their next frame here; a cast the pacing
-    // layer already throttled keeps its existing timer (the method
-    // no-ops when one is pending).
-    for cast in casts.iter_mut() {
+    // Scene damage pings the repaint source, which runs this function for
+    // every cast, so most casts need no wake of their own. The old code
+    // armed one for every active cast at `last_frame_time + min`; once the
+    // scene went static that target lay in the past, became a zero-length
+    // timer, and re-ran the repaint back to back forever. Now only a frame
+    // that is owed but blocked on PipeWire (no free buffer, resize)
+    // retries, at a future time; a cast the pacing layer throttled keeps
+    // the timer `check_time_and_schedule` armed.
+    for (cast, outcome) in casts.iter_mut().zip(outcomes) {
         if !cast.is_active() {
             continue;
         }
@@ -565,7 +580,7 @@ pub(super) fn drain_active_cast_frames(
             CastTarget::Nothing => state.monitors.first().map(|m| m.output.clone()),
         };
         if let Some(output) = output {
-            cast.ensure_next_frame_scheduled(output);
+            cast.schedule_after_tick(output, outcome);
         }
     }
 
