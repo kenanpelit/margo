@@ -36,6 +36,7 @@ mod server;
 mod active_output;
 mod arrange;
 mod bootstrap;
+mod client_removal;
 mod color_management;
 mod dispatch;
 mod dmabuf;

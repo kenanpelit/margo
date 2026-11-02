@@ -34,7 +34,6 @@
 //!   windowed even after the client requested fullscreen.
 
 use smithay::{
-    backend::renderer::element::Id as RenderElementId,
     desktop::{PopupKind, Window},
     input::Seat,
     reexports::{
@@ -50,7 +49,7 @@ use smithay::{
     },
 };
 
-use crate::state::{ClosingClient, FocusTarget, MargoClient, MargoState};
+use crate::state::{FocusTarget, MargoClient, MargoState};
 
 impl XdgShellHandler for MargoState {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
@@ -362,129 +361,21 @@ impl XdgShellHandler for MargoState {
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
         let wl_surf = surface.wl_surface().clone();
-        // Capture identity BEFORE any removal so the on_window_close
-        // hook can fire with (app_id, title) — by the time the hook
-        // runs, the MargoClient is gone.
-        let mut closed_identity: Option<(String, String)> = None;
-        if let Some(idx) = self
+        tracing::info!("toplevel destroyed");
+        match self
             .clients
             .iter()
             .position(|c| c.window.wl_surface().as_deref() == Some(&wl_surf))
         {
-            closed_identity = Some((
-                self.clients[idx].app_id.clone(),
-                self.clients[idx].title.clone(),
-            ));
-            if let Some(handle) = self.clients[idx].foreign_toplevel_handle.take() {
-                handle.send_closed();
+            // Focus recall, close animation, arrange, the portal window
+            // list and the `on_window_close` hook all happen in there —
+            // the same path X11 windows take.
+            Some(idx) => {
+                self.remove_client(idx);
             }
-            // Enqueue a close animation entry BEFORE removing the
-            // client. The renderer captures the wl_surface to a
-            // texture on its very next frame (the surface is still
-            // alive — Wayland clients destroy their xdg_toplevel role
-            // first, then their wl_surface), and from then on draws
-            // the texture scaled+faded out around the slot's centre.
-            //
-            // We still unmap and remove from `clients` immediately so
-            // every other state machine (focus stack, layout, scene
-            // ordering) treats the close as having happened. The
-            // closing entry lives in `closing_clients` purely as a
-            // render-side concern.
-            if self.config.animations
-                && self.config.animation_duration_close > 0
-                && !self.clients[idx].no_animation
-            {
-                let kind_str = self.clients[idx]
-                    .animation_type_close
-                    .clone()
-                    .unwrap_or_else(|| self.config.animation_type_close.clone());
-                let kind = crate::render::open_close::OpenCloseKind::parse(&kind_str);
-                let now = crate::utils::now_ms();
-                let border_radius = self.client_radius(idx);
-                let c = &self.clients[idx];
-                self.closing_clients.push(ClosingClient {
-                    id: RenderElementId::new(),
-                    texture: None,
-                    capture_pending: true,
-                    geom: c.geom,
-                    monitor: c.monitor,
-                    tags: c.tags,
-                    time_started: now,
-                    duration: self.config.animation_duration_close,
-                    progress: 0.0,
-                    kind,
-                    extreme_scale: self.config.zoom_end_ratio.clamp(0.05, 1.0),
-                    border_radius,
-                    source_surface: Some(wl_surf.clone()),
-                });
-                self.request_repaint();
-            }
-            let window = self.clients[idx].window.clone();
-            let client_id = self.clients[idx].id;
-            // Capture the group before the client vanishes so we can
-            // repair the one-active-member invariant afterwards.
-            let group = self.group_of(idx);
-            self.mru_remove_window(&window);
-            self.space.unmap_elem(&window);
-            if let Some(surface) = window.wl_surface() {
-                self.forget_decoration_ids(&surface);
-            }
-            self.clients.remove(idx);
-            self.remove_focus_history_id(client_id);
-            self.shift_indices_after_remove(idx);
-            self.session_end_check();
-            if let Some(gid) = group {
-                self.repair_group(gid);
-            }
-            // Re-focus, preferring the previous focus (niri-style
-            // focus stack recall), falling back to the spatially
-            // nearest visible window.
-            let mon_idx = self.focused_monitor();
-            if mon_idx < self.monitors.len() {
-                let tagset = self.monitors[mon_idx].current_tagset();
-                let prev = self.monitors[mon_idx].prev_selected;
-                let target = prev
-                    .filter(|&i| {
-                        i < self.clients.len() && self.clients[i].is_visible_on(mon_idx, tagset)
-                    })
-                    .or_else(|| {
-                        // Spatial fallback: window whose geom is
-                        // closest (in vec order) to the removed slot.
-                        (0..self.clients.len())
-                            .rev()
-                            .find(|&i| i < idx && self.clients[i].is_visible_on(mon_idx, tagset))
-                    })
-                    .or_else(|| {
-                        self.clients
-                            .iter()
-                            .position(|c| c.is_visible_on(mon_idx, tagset))
-                    });
-                match target {
-                    Some(i) => {
-                        let w = self.clients[i].window.clone();
-                        self.monitors[mon_idx].selected = Some(i);
-                        self.focus_surface(Some(FocusTarget::Window(w)));
-                    }
-                    None => {
-                        self.monitors[mon_idx].selected = None;
-                        self.focus_surface(None);
-                    }
-                }
-            }
-            // Re-arrange so the scroller centers the new focus immediately.
-            if mon_idx < self.monitors.len() {
-                self.arrange_monitor(mon_idx);
-            }
-        }
-        tracing::info!("toplevel destroyed");
-        // Refresh xdp-gnome's window picker — see finalize_initial_map.
-        self.emit_windows_changed();
-        // Fire user scripting hook AFTER state is consistent
-        // (client removed, focus shifted, arrange done) so handlers
-        // observing `client_count()` / `focused_appid()` see the
-        // post-close world.
-        if let Some((app_id, title)) = closed_identity {
-            crate::scripting::fire_window_close(self, &app_id, &title);
+            // Never mapped as a client; still refresh xdp-gnome's window
+            // picker — see finalize_initial_map.
+            None => self.emit_windows_changed(),
         }
     }
 

@@ -10,6 +10,7 @@ mod handlers;
 // first step; others follow in the same form.
 mod animation_tick;
 mod arrange;
+mod client_removal;
 mod data;
 mod debug_dump;
 mod directional;

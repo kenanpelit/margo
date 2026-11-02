@@ -99,34 +99,9 @@ impl MargoState {
 
     pub(crate) fn remove_x11_window(&mut self, x11surface: &X11Surface) {
         if let Some(idx) = self.find_x11_client(x11surface) {
-            let app_id = self.clients[idx].app_id.clone();
-            let title = self.clients[idx].title.clone();
-            if let Some(handle) = self.clients[idx].foreign_toplevel_handle.take() {
-                handle.send_closed();
-            }
-            let window = self.clients[idx].window.clone();
-            let client_id = self.clients[idx].id;
-            let group = self.group_of(idx);
-            self.mru_remove_window(&window);
-            self.space.unmap_elem(&window);
-            if let Some(surface) = window.wl_surface() {
-                self.forget_decoration_ids(&surface);
-            }
-            self.clients.remove(idx);
-            self.remove_focus_history_id(client_id);
-            self.shift_indices_after_remove(idx);
-            self.session_end_check();
-            if let Some(gid) = group {
-                self.repair_group(gid);
-            }
-            let mon_idx = self.focused_monitor();
-            if !self.monitors.is_empty() {
-                self.arrange_monitor(mon_idx);
-            }
-            // Refresh xdp-gnome's window picker — same path the
-            // Wayland toplevel_destroyed handler uses.
-            self.emit_windows_changed();
-            crate::scripting::fire_window_close(self, &app_id, &title);
+            // Same teardown as a Wayland toplevel (focus recall, close
+            // animation, arrange of the window's own monitor, hooks).
+            self.remove_client(idx);
             return;
         }
 
