@@ -1332,7 +1332,7 @@ fn build_arg(parts: &[String]) -> Arg {
         arg.f = v as f32;
     } else if let Ok(v) = s0.parse::<f32>() {
         arg.f = v;
-    } else if s0 != "0" {
+    } else if !s0.is_empty() {
         arg.v = Some(s0.to_string());
     }
 
@@ -1347,7 +1347,9 @@ fn build_arg(parts: &[String]) -> Arg {
         arg.f2 = v as f32;
     } else if let Ok(v) = s1.parse::<f32>() {
         arg.f2 = v;
-    } else if s1 != "0" {
+    } else if !s1.is_empty() {
+        // An empty field (`…,spawn,` or `…,app,,cmd`) stays `None`, the
+        // documented "`Some` only when non-empty" convention.
         arg.v2 = Some(s1.to_string());
     }
 
@@ -2789,6 +2791,29 @@ mod build_arg_tests {
             2,
             "non-numeric 5th is ignored"
         );
+    }
+
+    /// `Arg::v`/`v2` are documented as `Some` only when non-empty (the
+    /// convention the IPC side follows too). A trailing comma or an empty
+    /// field must not produce `Some("")`.
+    #[test]
+    fn empty_fields_are_none_not_empty_strings() {
+        let a = arg(&[""]);
+        assert_eq!(a, Arg::default());
+        let a = arg(&["", ""]);
+        assert_eq!((a.v.as_deref(), a.v2.as_deref()), (None, None));
+        let a = arg(&["kitty", ""]);
+        assert_eq!((a.v.as_deref(), a.v2.as_deref()), (Some("kitty"), None));
+        let a = arg(&["", "title"]);
+        assert_eq!((a.v.as_deref(), a.v2.as_deref()), (None, Some("title")));
+
+        let cfg = parse_config_str("bind=SUPER,q,killclient,\n", None).unwrap();
+        let bind = cfg
+            .key_bindings
+            .iter()
+            .find(|b| b.action == "killclient")
+            .unwrap();
+        assert_eq!(bind.arg.v, None);
     }
 
     #[test]
