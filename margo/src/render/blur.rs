@@ -47,6 +47,7 @@
 use crate::render::shader_cache::ShaderSlot;
 use std::cell::RefCell;
 
+use smithay::backend::renderer::Frame;
 use smithay::backend::renderer::element::{Element, Id, Kind, RenderElement, UnderlyingStorage};
 use smithay::backend::renderer::gles::{GlesError, GlesFrame, GlesRenderer, ffi, link_program};
 use smithay::backend::renderer::utils::{CommitCounter, DamageSet, OpaqueRegions};
@@ -135,6 +136,17 @@ thread_local! {
 static BLUR_DIAG_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 static BLUR_DIAG_COMPOSITE: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
+
+/// Logged once when blur is skipped on a transformed output.
+static BLUR_TRANSFORM_WARNED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Whether `draw_blur`'s framebuffer addressing is valid for a frame with
+/// this output transform: only when output space and framebuffer space
+/// coincide.
+pub fn blur_supported(transform: Transform) -> bool {
+    transform == Transform::Normal
+}
 
 /// Marker handle proving the blur GL resources compiled successfully.
 /// `push_*_elements` checks `shader()` like it does for shadows; the
@@ -395,6 +407,21 @@ impl RenderElement<GlesRenderer> for BlurRenderElement {
         _opaque_regions: &[Rectangle<i32, Physical>],
         _cache: Option<&UserDataMap>,
     ) -> Result<(), GlesError> {
+        // `draw_blur` addresses the framebuffer directly (CopyTexSubImage2D
+        // and an NDC quad from `dst`), but `dst` is in the output's
+        // *transformed* physical space; on a rotated/flipped output those
+        // differ and the blur would sample and cover the wrong region.
+        // Skip it there (the surface still draws, just without the
+        // background blur) until the rect is mapped into framebuffer space.
+        if !blur_supported(frame.transformation()) {
+            if !BLUR_TRANSFORM_WARNED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                tracing::info!(
+                    "blur disabled on transformed output ({:?})",
+                    frame.transformation()
+                );
+            }
+            return Ok(());
+        }
         // The composite quad is positioned by mapping `dst` (output-
         // physical pixels) directly into NDC against the GL viewport
         // inside `draw_blur` — deterministic, no dependency on smithay's
@@ -983,6 +1010,22 @@ void main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn blur_only_on_untransformed_outputs() {
+        assert!(blur_supported(Transform::Normal));
+        for t in [
+            Transform::_90,
+            Transform::_180,
+            Transform::_270,
+            Transform::Flipped,
+            Transform::Flipped90,
+            Transform::Flipped180,
+            Transform::Flipped270,
+        ] {
+            assert!(!blur_supported(t), "{t:?}");
+        }
+    }
 
     #[test]
     fn passes_zero_when_disabled() {
