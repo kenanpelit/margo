@@ -71,5 +71,10 @@ wasm-plugins = [
     "mshell-plugin-host/wasm",
 ]
 
+[dev-dependencies]
+# Golden test: the keybind cheatsheet vs margo's own parser.
+margo-config = { path = "../../margo-config" }
+tempfile = "3"
+
 [lints]
 workspace = true

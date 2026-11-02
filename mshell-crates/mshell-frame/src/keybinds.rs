@@ -97,8 +97,13 @@ fn read_all_lines(path: &Path, visited: &mut HashSet<PathBuf>, out: &mut Vec<Str
 /// Parse all binds, grouped into ordered sections (empty sections
 /// dropped).
 pub(crate) fn load_sections() -> Vec<Section> {
+    load_sections_from(&config_path())
+}
+
+/// [`load_sections`] for the config at `path` (testable seam).
+fn load_sections_from(path: &Path) -> Vec<Section> {
     let mut lines = Vec::new();
-    read_all_lines(&config_path(), &mut HashSet::new(), &mut lines);
+    read_all_lines(path, &mut HashSet::new(), &mut lines);
 
     let mut by_cat: std::collections::HashMap<&'static str, Vec<Keybind>> =
         std::collections::HashMap::new();
@@ -123,11 +128,21 @@ pub(crate) fn load_sections() -> Vec<Section> {
 /// non-bind lines.
 fn parse_bind(line: &str) -> Option<(&'static str, Keybind)> {
     let t = line.trim();
-    // `bind`, `binde`, `bindr`, `bindl` … all start with `bind`.
+    // `bind` plus margo's flag suffixes (`bindr`, `bindl`, `bindsp`, …).
     let rest = t.strip_prefix("bind")?;
-    let rest = rest.trim_start();
-    // Skip flag chars (e, r, l, m, …) up to the `=`.
-    let rest = rest.trim_start_matches(|c: char| c.is_ascii_alphabetic());
+    let flags_end = rest
+        .find(|c: char| !c.is_ascii_alphabetic())
+        .unwrap_or(rest.len());
+    let (flags, rest) = rest.split_at(flags_end);
+    // Only the flags margo's parser accepts (`is_bind_key`: s/l/r/p/c).
+    // Hyprland's `binde`/`bindm` are not margo binds — margo skips them, so
+    // the cheatsheet must not list them.
+    if !flags
+        .chars()
+        .all(|c| matches!(c, 's' | 'l' | 'r' | 'p' | 'c'))
+    {
+        return None;
+    }
     let body = rest.trim_start().strip_prefix('=')?.trim();
 
     // Split off a trailing description comment.
@@ -298,5 +313,80 @@ fn categorise(action: &str, args: &str) -> &'static str {
         | "resizewindow" | "zoom" | "swap" | "movestack" | "togglealwaysontop" | "summon"
         | "unscratchpad" => "Windows",
         _ => "General",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A config tree exercising `source =` the way margo resolves it: a bare
+    /// relative path, a nested include, a self-include loop, a commented-out
+    /// source, plus bind flag variants and descriptions.
+    fn fixture() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("binds.d")).unwrap();
+        std::fs::write(
+            root.join("config.conf"),
+            "# main\n\
+             bind = SUPER,Return,spawn,kitty #\"Terminal\"\n\
+             binde = SUPER,equal,incgaps,1\n\
+             # source = binds.d/ignored.conf\n\
+             source = binds.d/apps.conf\n\
+             bind = SUPER+SHIFT,q,killclient\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("binds.d/apps.conf"),
+            "bind = SUPER,b,spawn,firefox\nsource = nested.conf\nsource = apps.conf\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("binds.d/nested.conf"),
+            "bindr = ALT,space,spawn,mshellctl menu app-launcher # launcher\n",
+        )
+        .unwrap();
+        std::fs::write(root.join("binds.d/ignored.conf"), "bind = SUPER,x,quit\n").unwrap();
+        dir
+    }
+
+    fn all_binds(sections: &[Section]) -> Vec<&Keybind> {
+        sections.iter().flat_map(|s| s.binds.iter()).collect()
+    }
+
+    #[test]
+    fn follows_sources_and_reads_descriptions() {
+        let dir = fixture();
+        let sections = load_sections_from(&dir.path().join("config.conf"));
+        let binds = all_binds(&sections);
+        // 6 bind lines in the tree, one is a commented-out source's and one
+        // is a Hyprland-only `binde` margo doesn't load.
+        assert_eq!(binds.len(), 4, "{binds:#?}");
+        assert!(binds.iter().any(|b| b.desc == "Terminal"));
+        assert!(binds.iter().any(|b| b.desc == "launcher"));
+    }
+
+    /// Golden check against margo's own parser: the cheatsheet must see
+    /// exactly the key binds margo loads from the same include tree (minus
+    /// the chvt binds margo injects into every config).
+    #[test]
+    fn sees_the_same_binds_as_margo() {
+        let dir = fixture();
+        let injected = {
+            let empty = dir.path().join("empty.conf");
+            std::fs::write(&empty, "").unwrap();
+            margo_config::parse_config(Some(&empty))
+                .unwrap()
+                .key_bindings
+                .len()
+        };
+        let margo = margo_config::parse_config(Some(&dir.path().join("config.conf")))
+            .unwrap()
+            .key_bindings
+            .len()
+            - injected;
+        let ours = all_binds(&load_sections_from(&dir.path().join("config.conf"))).len();
+        assert_eq!(ours, margo);
     }
 }
