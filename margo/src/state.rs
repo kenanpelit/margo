@@ -884,6 +884,9 @@ pub struct MargoState {
     /// `overview_backdrop_color` is used instead. Decoded at startup and
     /// re-decoded by `reload_config` so Settings → Overview applies live.
     pub overview_backdrop: Option<crate::wallpaper::WallpaperState>,
+    /// Generation of the latest overview-backdrop decode request; a decode
+    /// that finishes after a newer request is dropped.
+    pub overview_backdrop_request: u64,
     pub xwm: Option<X11Wm>,
     /// Latest position an override-redirect X11 surface (menu / popup /
     /// tooltip) was configured to, keyed by `window_id`. Toolkits move the
@@ -1490,6 +1493,7 @@ impl MargoState {
                 .overview_backdrop_image
                 .as_deref()
                 .and_then(crate::wallpaper::WallpaperState::load_exact),
+            overview_backdrop_request: 0,
             xwm: None,
             or_positions: std::collections::HashMap::new(),
             xwayland_shell_state,

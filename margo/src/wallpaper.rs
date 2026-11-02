@@ -48,14 +48,58 @@ const FALLBACK_RELATIVE_USER: &str = ".local/share/margo/wallpapers/default.jpg"
 const FALLBACK_SYSTEM: &str = "/usr/share/margo/wallpapers/default.jpg";
 
 pub struct WallpaperState {
-    /// The decoded source — kept around so we can rebuild the buffer
-    /// if the renderer ever needs different byte orderings or scales.
-    /// Drop it once stable to save ~24 MB on a 4K image.
+    /// Pixel size of the decoded image (for the fit maths).
     natural_size: (u32, u32),
     /// Whatever buffer we hand to `MemoryRenderBufferRenderElement`.
     /// One global buffer is reused across every output — Smithay's
     /// element handles per-output scaling via the `dst_size` arg below.
+    /// It keeps the CPU pixels (~32 MB for a 4K image) so each renderer
+    /// (one per DRM device) can import its own texture; dropping them
+    /// would need a per-renderer texture cache instead.
     buffer: MemoryRenderBuffer,
+}
+
+/// A decoded image, RGBA in `Abgr8888` byte order. Plain data, so the
+/// decode can run off the event loop and be turned into a
+/// [`WallpaperState`] on it.
+pub struct DecodedImage {
+    rgba: Vec<u8>,
+    size: (u32, u32),
+}
+
+impl DecodedImage {
+    /// Resolve exactly `path` (with `~` expansion), without the wallpaper
+    /// fallback chain — the overview backdrop's semantics. `None` (logged)
+    /// when the path is empty or missing. Reads `HOME`, so call it on the
+    /// event-loop thread: margo mutates its environment at runtime (e.g.
+    /// `DISPLAY` once XWayland is up), and getenv racing setenv is unsound.
+    pub fn resolve_exact(path: &str) -> Option<PathBuf> {
+        let trimmed = path.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        let expanded = expand_home(trimmed);
+        if !exists_and_readable(&expanded) {
+            warn!(path = %expanded.display(), "overview backdrop: image not found");
+            return None;
+        }
+        Some(expanded)
+    }
+
+    /// Decode an already-resolved path. Touches no environment, so it may
+    /// run on any thread. `None` (logged) when undecodable.
+    pub fn decode(path: &Path) -> Option<Self> {
+        match decode_pixels(path) {
+            Ok(image) => {
+                info!(path = %path.display(), "overview backdrop: loaded");
+                Some(image)
+            }
+            Err(e) => {
+                warn!(path = %path.display(), error = %e, "overview backdrop: decode failed");
+                None
+            }
+        }
+    }
 }
 
 impl WallpaperState {
@@ -91,27 +135,24 @@ impl WallpaperState {
     /// missing — rather than silently borrowing the desktop wallpaper
     /// default like [`Self::load`] would.
     pub fn load_exact(path: &str) -> Option<Self> {
-        let trimmed = path.trim();
-        if trimmed.is_empty() {
-            return None;
-        }
-        let expanded = expand_home(trimmed);
-        if !exists_and_readable(&expanded) {
-            warn!(path = %expanded.display(), "overview backdrop: image not found");
-            return None;
-        }
-        match decode_to_buffer(&expanded) {
-            Ok((buffer, size)) => {
-                info!(path = %expanded.display(), "overview backdrop: loaded");
-                Some(Self {
-                    natural_size: size,
-                    buffer,
-                })
-            }
-            Err(e) => {
-                warn!(path = %expanded.display(), error = %e, "overview backdrop: decode failed");
-                None
-            }
+        let path = DecodedImage::resolve_exact(path)?;
+        DecodedImage::decode(&path).map(Self::from_decoded)
+    }
+
+    /// Upload a [`DecodedImage`] into a render buffer.
+    pub fn from_decoded(image: DecodedImage) -> Self {
+        let (w, h) = image.size;
+        let buffer = MemoryRenderBuffer::from_slice(
+            &image.rgba,
+            DrmFourcc::Abgr8888,
+            Size::<i32, Buffer>::from((w as i32, h as i32)),
+            1,
+            Transform::Normal,
+            None,
+        );
+        Self {
+            natural_size: image.size,
+            buffer,
         }
     }
 
@@ -231,6 +272,11 @@ fn resolve_path(explicit: Option<&str>) -> Option<PathBuf> {
 const RAW_HEADER: usize = 8;
 
 fn decode_to_buffer(path: &Path) -> Result<(MemoryRenderBuffer, (u32, u32)), image::ImageError> {
+    let state = WallpaperState::from_decoded(decode_pixels(path)?);
+    Ok((state.buffer, state.natural_size))
+}
+
+fn decode_pixels(path: &Path) -> Result<DecodedImage, image::ImageError> {
     if is_raw_backdrop(path) {
         // `image::ImageError: From<io::Error>`, so a raw failure surfaces
         // through the same `warn!(error = %e)` path as a decode failure.
@@ -246,15 +292,10 @@ fn decode_to_buffer(path: &Path) -> Result<(MemoryRenderBuffer, (u32, u32)), ima
     // which is exactly what `image::RgbaImage` gives us. No swizzle
     // needed. (Cursor uses Argb8888 because libxcursor outputs that
     // ordering; we deliberately diverge here.)
-    let buffer = MemoryRenderBuffer::from_slice(
-        &rgba.into_raw(),
-        DrmFourcc::Abgr8888,
-        Size::<i32, Buffer>::from((w as i32, h as i32)),
-        1,
-        Transform::Normal,
-        None,
-    );
-    Ok((buffer, (w, h)))
+    Ok(DecodedImage {
+        rgba: rgba.into_raw(),
+        size: (w, h),
+    })
 }
 
 /// A `.raw` path is the headed greeter backdrop, not an image the `image`
@@ -265,27 +306,22 @@ fn is_raw_backdrop(path: &Path) -> bool {
         .is_some_and(|e| e.eq_ignore_ascii_case("raw"))
 }
 
-/// Read a `[u32 LE width][u32 LE height][RGBA]` backdrop straight into a
-/// render buffer. The trailing RGBA is already in `Abgr8888` byte order
-/// (R first, A last) and opaque, so — like the `image` path above — no
-/// swizzle or premultiply is needed.
-fn decode_raw(path: &Path) -> io::Result<(MemoryRenderBuffer, (u32, u32))> {
-    let bytes = std::fs::read(path)?;
+/// Read a `[u32 LE width][u32 LE height][RGBA]` backdrop. The trailing
+/// RGBA is already in `Abgr8888` byte order (R first, A last) and opaque,
+/// so — like the `image` path above — no swizzle or premultiply is needed.
+fn decode_raw(path: &Path) -> io::Result<DecodedImage> {
+    let mut bytes = std::fs::read(path)?;
     let (w, h) = parse_raw_header(&bytes).ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::InvalidData,
             "raw backdrop: header disagrees with byte count",
         )
     })?;
-    let buffer = MemoryRenderBuffer::from_slice(
-        &bytes[RAW_HEADER..],
-        DrmFourcc::Abgr8888,
-        Size::<i32, Buffer>::from((w as i32, h as i32)),
-        1,
-        Transform::Normal,
-        None,
-    );
-    Ok((buffer, (w, h)))
+    bytes.drain(..RAW_HEADER);
+    Ok(DecodedImage {
+        rgba: bytes,
+        size: (w, h),
+    })
 }
 
 /// `(width, height)` of a `[u32 LE w][u32 LE h][RGBA]` buffer whose length

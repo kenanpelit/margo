@@ -5,6 +5,56 @@
 use super::*;
 
 impl MargoState {
+    /// Decode the overview backdrop image off the event loop. A large image
+    /// takes long enough to decode that doing it inside `reload_config`
+    /// froze input and rendering; the decode now runs on a short-lived
+    /// thread and the result is uploaded when it arrives. The previous
+    /// backdrop stays up until then; a newer request (or clearing the
+    /// path) supersedes a decode still in flight.
+    pub(crate) fn load_overview_backdrop_async(&mut self, path: Option<String>) {
+        use crate::wallpaper::{DecodedImage, WallpaperState};
+        self.overview_backdrop_request = self.overview_backdrop_request.wrapping_add(1);
+        let request = self.overview_backdrop_request;
+        // Resolve here, not on the thread: it reads `HOME` (see
+        // `DecodedImage::resolve_exact`).
+        let Some(path) = path.as_deref().and_then(DecodedImage::resolve_exact) else {
+            self.overview_backdrop = None;
+            self.request_repaint();
+            return;
+        };
+        let (tx, rx) = calloop::channel::channel::<Option<DecodedImage>>();
+        let inserted = self.loop_handle.insert_source(rx, move |event, _, state| {
+            if let calloop::channel::Event::Msg(image) = event
+                && state.overview_backdrop_request == request
+            {
+                state.overview_backdrop = image.map(WallpaperState::from_decoded);
+                state.request_repaint();
+            }
+        });
+        if let Err(error) = inserted {
+            tracing::warn!(
+                ?error,
+                "overview backdrop: channel insert failed, decoding inline"
+            );
+            self.overview_backdrop = DecodedImage::decode(&path).map(WallpaperState::from_decoded);
+            return;
+        }
+        let thread_path = path.clone();
+        let spawned = std::thread::Builder::new()
+            .name("margo-backdrop".into())
+            .spawn(move || {
+                // The receiver may be gone (compositor shutting down).
+                let _ = tx.send(DecodedImage::decode(&thread_path));
+            });
+        if let Err(error) = spawned {
+            tracing::warn!(
+                ?error,
+                "overview backdrop: decode thread failed, decoding inline"
+            );
+            self.overview_backdrop = DecodedImage::decode(&path).map(WallpaperState::from_decoded);
+        }
+    }
+
     /// Explicit reload (`mctl reload`, the reload keybind).
     pub fn reload_config(&mut self) -> Result<()> {
         self.reload_config_inner(false)
@@ -131,10 +181,7 @@ impl MargoState {
         // applies live. Only re-reads the file when the path actually
         // differs — avoids a needless decode on every `mctl reload`.
         if new_config.overview_backdrop_image != self.config.overview_backdrop_image {
-            self.overview_backdrop = new_config
-                .overview_backdrop_image
-                .as_deref()
-                .and_then(crate::wallpaper::WallpaperState::load_exact);
+            self.load_overview_backdrop_async(new_config.overview_backdrop_image.clone());
         }
         // `client.border_width` is seeded from `config.borderpx` at map time
         // (see `state/data.rs`), so a bare config swap would leave every

@@ -168,3 +168,54 @@ fn open_and_close_grid_overview_dispatch_to_the_right_halves() {
     dispatch_action(&mut fx.server.state, "close_grid_overview", &arg);
     assert!(!fx.server.state.is_overview_open());
 }
+
+/// Write a 1×1 headed `.raw` backdrop (the greeter format) and return its path.
+fn write_raw_backdrop(tag: &str) -> std::path::PathBuf {
+    let path =
+        std::env::temp_dir().join(format!("margo-backdrop-{tag}-{}.raw", std::process::id()));
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(&1_u32.to_le_bytes());
+    bytes.extend_from_slice(&1_u32.to_le_bytes());
+    bytes.extend_from_slice(&[10, 20, 30, 255]);
+    std::fs::write(&path, bytes).expect("write raw backdrop");
+    path
+}
+
+#[test]
+fn overview_backdrop_decodes_off_the_event_loop() {
+    let mut fx = Fixture::new();
+    let path = write_raw_backdrop("async");
+    fx.server
+        .state
+        .load_overview_backdrop_async(Some(path.display().to_string()));
+    // The call returns before the image is decoded/uploaded (it used to
+    // decode inline, so this was already `Some`)…
+    assert!(fx.server.state.overview_backdrop.is_none());
+    let mut loaded = false;
+    // …and the result lands through the event loop.
+    for _ in 0..200 {
+        if loaded {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fx.server.dispatch();
+        loaded = fx.server.state.overview_backdrop.is_some();
+    }
+    assert!(loaded, "decoded backdrop must arrive via the event loop");
+
+    // Clearing the path wins over a decode still in flight.
+    fx.server
+        .state
+        .load_overview_backdrop_async(Some(path.display().to_string()));
+    fx.server.state.load_overview_backdrop_async(None);
+    assert!(fx.server.state.overview_backdrop.is_none());
+    for _ in 0..20 {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fx.server.dispatch();
+    }
+    assert!(
+        fx.server.state.overview_backdrop.is_none(),
+        "a superseded decode must be dropped"
+    );
+    let _ = std::fs::remove_file(path);
+}
