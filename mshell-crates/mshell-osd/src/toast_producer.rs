@@ -885,15 +885,16 @@ fn battery_alert(
         };
     }
     // The most urgent warn level reached (lowest threshold ≥ which the
-    // charge has fallen). Firing only when it changes gives exactly one
-    // toast per level as the battery drains.
+    // charge has fallen). Firing only when it is more urgent than the last
+    // one announced gives exactly one toast per level as the battery drains,
+    // and a reading that jitters back up across a threshold stays quiet.
     let reached = levels
         .iter()
         .copied()
         .filter(|&l| l > crit && pct <= l)
         .min();
     match reached {
-        Some(level) if warned != Some(level) => BatteryAlert::Low(level),
+        Some(level) if warned.is_none_or(|w| level < w) => BatteryAlert::Low(level),
         _ => BatteryAlert::Quiet,
     }
 }
@@ -1057,6 +1058,18 @@ mod tests {
     fn battery_ladder_empty_levels_only_criticals() {
         assert_eq!(drain(&[50, 10, 3, 2], 3, &[]), vec![BatteryAlert::Critical]);
         assert_eq!(drain(&[50, 10, 0], 0, &[]), vec![]);
+    }
+
+    #[test]
+    fn battery_ladder_does_not_repeat_on_an_upward_wobble() {
+        // The reading jitters around a threshold while still discharging
+        // (or recovers a little under lighter load). 10 % was announced;
+        // bouncing to 11 % must not re-announce the 20 % level, and dropping
+        // back to 10 % must not repeat the 10 % toast.
+        assert_eq!(
+            drain(&[21, 20, 11, 10, 11, 10, 11, 9], 3, LEVELS),
+            vec![BatteryAlert::Low(20), BatteryAlert::Low(10)]
+        );
     }
 
     #[test]
