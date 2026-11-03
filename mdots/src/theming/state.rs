@@ -223,7 +223,7 @@ pub fn load_theming_state(state_file: &Path) -> Result<ThemingState> {
     ))?;
 
     let state: ThemingState =
-        serde_yaml::from_str(&content).context("Failed to parse theming state YAML")?;
+        yaml_serde::from_str(&content).context("Failed to parse theming state YAML")?;
 
     log::debug!("Loaded theming state from {:?}", state_file);
     Ok(state)
@@ -237,7 +237,7 @@ pub fn save_theming_state(state_file: &Path, state: &ThemingState) -> Result<()>
             .context(format!("Failed to create state directory: {:?}", parent))?;
     }
 
-    let yaml = serde_yaml::to_string(state).context("Failed to serialize theming state to YAML")?;
+    let yaml = yaml_serde::to_string(state).context("Failed to serialize theming state to YAML")?;
 
     crate::atomic_write::write_atomic(state_file, &yaml).context(format!(
         "Failed to write theming state file: {:?}",

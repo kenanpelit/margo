@@ -500,7 +500,7 @@ pub fn disable_interactive(paths: &ConfigPaths) -> Result<()> {
 fn save_config(paths: &ConfigPaths, config: &crate::config::Config) -> Result<()> {
     // Determine the correct file to save to
     let save_path = if let Ok(pointer_content) = std::fs::read_to_string(&paths.config_file) {
-        if let Ok(pointer_config) = serde_yaml::from_str::<crate::config::Config>(&pointer_content)
+        if let Ok(pointer_config) = yaml_serde::from_str::<crate::config::Config>(&pointer_content)
         {
             // Check if it's a pointer config
             #[allow(deprecated)]
@@ -538,7 +538,7 @@ fn save_config(paths: &ConfigPaths, config: &crate::config::Config) -> Result<()
         );
     }
 
-    let yaml = serde_yaml::to_string(config).context("Failed to serialize config")?;
+    let yaml = yaml_serde::to_string(config).context("Failed to serialize config")?;
     std::fs::write(&save_path, yaml)
         .context(format!("Failed to write config file: {:?}", save_path))?;
     Ok(())

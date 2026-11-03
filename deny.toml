@@ -25,13 +25,9 @@ yanked = "deny"
 # vulnerabilities with an available fix are NOT parked here; they are bumped
 # instead (e.g. anyhow >=1.0.103, memmap2 >=0.9.11).
 #
-# The serde_yaml entry used to name RUSTSEC-2024-0320, which is yaml-rust (not
-# in the tree); the advisory that actually fires is RUSTSEC-2024-0449,
-# unsafe-libyaml (serde_yaml's parser) being unmaintained. RUSTSEC-2026-0196
-# (cgmath) is gone from the tree, so it was dropped.
+# RUSTSEC-2026-0196 (cgmath) is gone from the tree, so it was dropped.
 ignore = [
     # --- Unmaintained crates, no security vuln, no safe upgrade path ---------
-    { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml unmaintained, via serde_yaml 0.9 (itself deprecated upstream); replacing serde_yaml is tracked in docs/code-quality-roadmap.md" },
     { id = "RUSTSEC-2025-0057", reason = "fxhash unmaintained, no vuln; only via fxprof-processed-profile in the optional, unshipped wasmtime stack" },
     { id = "RUSTSEC-2025-0119", reason = "number_prefix unmaintained, no vuln; transitive via indicatif" },
     { id = "RUSTSEC-2024-0436", reason = "paste unmaintained proc-macro, no vuln; deep transitive and ubiquitous" },

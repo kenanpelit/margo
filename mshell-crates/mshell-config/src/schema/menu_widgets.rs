@@ -504,7 +504,7 @@ mod tests {
     fn list_item_configs_parse_with_missing_fields() {
         let yaml = "- !Container\n  widgets: [Weather]\n- !Spacer {}\n- !QuickActions {}\n";
         let widgets: Vec<MenuWidget> =
-            serde_yaml::from_str(yaml).expect("partial list items parse");
+            yaml_serde::from_str(yaml).expect("partial list items parse");
         assert_eq!(
             widgets,
             vec![

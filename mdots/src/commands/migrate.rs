@@ -68,8 +68,8 @@ pub fn run(paths: &ConfigPaths, dry_run: bool) -> Result<()> {
     // Load current config to extract hostname
     let config_content =
         fs::read_to_string(&paths.config_file).context("Failed to read config.yaml")?;
-    let config: serde_yaml::Value =
-        serde_yaml::from_str(&config_content).context("Failed to parse config.yaml")?;
+    let config: yaml_serde::Value =
+        yaml_serde::from_str(&config_content).context("Failed to parse config.yaml")?;
 
     let hostname = config
         .get("host")
@@ -267,7 +267,7 @@ fn migrate_structure(paths: &ConfigPaths, old_packages_dir: &Path, hostname: &st
 
     // 4. Read current config.yaml
     let config_content = fs::read_to_string(&paths.config_file)?;
-    let config: serde_yaml::Value = serde_yaml::from_str(&config_content)?;
+    let config: yaml_serde::Value = yaml_serde::from_str(&config_content)?;
 
     // 5. Create or update host config file
     let host_file = new_hosts.join(format!("{}.yaml", hostname));
@@ -277,7 +277,7 @@ fn migrate_structure(paths: &ConfigPaths, old_packages_dir: &Path, hostname: &st
         // Check if it's in old format (missing 'host' field)
         match fs::read_to_string(&host_file) {
             Ok(content) => {
-                match serde_yaml::from_str::<serde_yaml::Value>(&content) {
+                match yaml_serde::from_str::<yaml_serde::Value>(&content) {
                     Ok(yaml) => yaml.get("host").is_none(), // Old format if missing 'host' field
                     Err(_) => true,                         // Invalid YAML, needs update
                 }
@@ -293,7 +293,7 @@ fn migrate_structure(paths: &ConfigPaths, old_packages_dir: &Path, hostname: &st
         let existing_host_yaml = if host_file.exists() {
             fs::read_to_string(&host_file)
                 .ok()
-                .and_then(|content| serde_yaml::from_str::<serde_yaml::Value>(&content).ok())
+                .and_then(|content| yaml_serde::from_str::<yaml_serde::Value>(&content).ok())
         } else {
             None
         };

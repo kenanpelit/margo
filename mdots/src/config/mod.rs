@@ -320,7 +320,7 @@ impl<'de> Deserialize<'de> for RunHooksAsUser {
     {
         use serde::de::Error;
 
-        let value = serde_yaml::Value::deserialize(deserializer)?;
+        let value = yaml_serde::Value::deserialize(deserializer)?;
 
         // Try boolean first
         if let Some(b) = value.as_bool() {
@@ -1491,7 +1491,7 @@ pub fn resolve_config_path(paths: &ConfigPaths) -> Result<PathBuf> {
 
     if is_pointer_config_raw(&content) {
         let config: Config =
-            serde_yaml::from_str(&content).context("Failed to parse config.yaml")?;
+            yaml_serde::from_str(&content).context("Failed to parse config.yaml")?;
 
         let host_file = paths.host_packages_file(&config.host);
         if !host_file.exists() {
@@ -1605,7 +1605,7 @@ fn read_pointer_package_manager(paths: &ConfigPaths) -> Option<PackageManagerTyp
     if !is_pointer_config_raw(&content) {
         return None;
     }
-    let config: Config = serde_yaml::from_str(&content).ok()?;
+    let config: Config = yaml_serde::from_str(&content).ok()?;
     config.package_manager
 }
 
@@ -1613,16 +1613,16 @@ fn read_pointer_package_manager(paths: &ConfigPaths) -> Option<PackageManagerTyp
 /// A pointer config only has the "host" field (and optionally "package_manager")
 fn is_pointer_config_raw(yaml_content: &str) -> bool {
     // Parse as a raw YAML value to check field count
-    let value: serde_yaml::Value = match serde_yaml::from_str(yaml_content) {
+    let value: yaml_serde::Value = match yaml_serde::from_str(yaml_content) {
         Ok(v) => v,
         Err(_) => return false,
     };
 
     // Check if it's a mapping with only pointer fields (host, and optionally package_manager)
-    if let serde_yaml::Value::Mapping(map) = value {
-        let has_host = map.contains_key(serde_yaml::Value::String("host".to_string()));
+    if let yaml_serde::Value::Mapping(map) = value {
+        let has_host = map.contains_key(yaml_serde::Value::String("host".to_string()));
         let has_pkg_mgr =
-            map.contains_key(serde_yaml::Value::String("package_manager".to_string()));
+            map.contains_key(yaml_serde::Value::String("package_manager".to_string()));
 
         // A pointer config has "host" and optionally "package_manager", nothing else
         if has_host && (map.len() == 1 || (map.len() == 2 && has_pkg_mgr)) {
@@ -1664,7 +1664,7 @@ fn load_config_from_file(paths: &ConfigPaths, file_path: &Path) -> Result<Config
             let content = std::fs::read_to_string(file_path)
                 .context(format!("Failed to read config file: {:?}", file_path))?;
 
-            serde_yaml::from_str(&content)
+            yaml_serde::from_str(&content)
                 .context(format!("Failed to parse config: {:?}", file_path))?
         }
         _ => {
@@ -1706,7 +1706,7 @@ fn load_config_with_imports(
         Some("yaml") | Some("yml") | None => {
             let content = std::fs::read_to_string(config_path)
                 .context(format!("Failed to read config file: {:?}", config_path))?;
-            serde_yaml::from_str(&content)
+            yaml_serde::from_str(&content)
                 .context(format!("Failed to parse config: {:?}", config_path))?
         }
         _ => anyhow::bail!("Unsupported config file type: {:?}", config_path),
@@ -1765,7 +1765,7 @@ pub fn load_package_list<P: AsRef<Path>>(path: P) -> Result<PackageList> {
     let content = std::fs::read_to_string(path.as_ref())
         .context(format!("Failed to read package list: {:?}", path.as_ref()))?;
 
-    serde_yaml::from_str(&content).context("Failed to parse package list YAML")
+    yaml_serde::from_str(&content).context("Failed to parse package list YAML")
 }
 
 /// Load a package list from YAML, Lua, or Nix based on file extension.
@@ -1809,7 +1809,7 @@ pub fn write_package_list_any<P: AsRef<Path>>(path: P, list: &PackageList) -> Re
         Some("nix") => package_list_to_nix(list),
         Some("lua") => package_list_to_lua(list),
         Some("yaml") | Some("yml") | None => {
-            serde_yaml::to_string(list).context("Failed to serialize package list")?
+            yaml_serde::to_string(list).context("Failed to serialize package list")?
         }
         _ => anyhow::bail!("Unsupported package list type: {:?}", path),
     };
@@ -1986,7 +1986,7 @@ pub fn load_module<P: AsRef<Path>>(path: P) -> Result<ModuleStructure> {
             let manifest_content = std::fs::read_to_string(&yaml_manifest_path).context(
                 format!("Failed to read module.yaml: {:?}", yaml_manifest_path),
             )?;
-            serde_yaml::from_str(&manifest_content).context("Failed to parse module.yaml")?
+            yaml_serde::from_str(&manifest_content).context("Failed to parse module.yaml")?
         } else {
             let discovered_files = discover_package_files(path)?;
             if discovered_files.is_empty() {
@@ -2577,7 +2577,7 @@ mod tests {
 
     #[test]
     fn package_entry_reads_a_flatpak_remote() {
-        let entries: Vec<PackageEntry> = serde_yaml::from_str(
+        let entries: Vec<PackageEntry> = yaml_serde::from_str(
             "- vim\n- name: org.gnome.Builder\n  type: flatpak\n  remote: gnome-nightly\n- name: io.ente.auth\n  type: flatpak\n",
         )
         .unwrap();
@@ -2587,7 +2587,7 @@ mod tests {
         assert_eq!(entries[2].remote(), None);
         // Written back only when set.
         assert!(
-            !serde_yaml::to_string(&entries[2])
+            !yaml_serde::to_string(&entries[2])
                 .unwrap()
                 .contains("remote")
         );
@@ -2623,7 +2623,7 @@ mod tests {
     #[test]
     fn test_secrets_default_empty_when_absent() {
         let config: Config =
-            serde_yaml::from_str("host: myhost\n").expect("config without secrets should parse");
+            yaml_serde::from_str("host: myhost\n").expect("config without secrets should parse");
         assert!(
             config.secrets.is_empty(),
             "secrets must default to empty when the key is absent"
@@ -2641,7 +2641,7 @@ secrets:
     mode: \"0600\"
     name: app-env
 ";
-        let config: Config = serde_yaml::from_str(yaml).expect("config should parse");
+        let config: Config = yaml_serde::from_str(yaml).expect("config should parse");
         assert_eq!(config.secrets.len(), 1);
         let s = &config.secrets[0];
         assert_eq!(s.source, "secrets/env.sops");
@@ -2658,7 +2658,7 @@ secrets:
   - source: secrets/token.sops
     target: ~/.netrc
 ";
-        let config: Config = serde_yaml::from_str(yaml).expect("config should parse");
+        let config: Config = yaml_serde::from_str(yaml).expect("config should parse");
         let s = &config.secrets[0];
         assert_eq!(s.mode, None, "mode is optional");
         assert_eq!(s.name, None, "name is optional");
@@ -2672,7 +2672,7 @@ secrets:
     /// Build a Config from YAML. Only `host` is required; every other field
     /// has a serde default, so this exercises the real deserialization path.
     fn cfg(yaml: &str) -> Config {
-        serde_yaml::from_str(yaml).expect("test config should be valid YAML")
+        yaml_serde::from_str(yaml).expect("test config should be valid YAML")
     }
 
     #[test]

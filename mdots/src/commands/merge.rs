@@ -775,7 +775,7 @@ fn create_dependencies_module(
     deps_list.packages.sort_by(|a, b| a.name().cmp(b.name()));
 
     // Save packages file
-    let yaml = serde_yaml::to_string(&deps_list)
+    let yaml = yaml_serde::to_string(&deps_list)
         .context("Failed to serialize dependencies packages.yaml")?;
     std::fs::write(&deps_packages_file, yaml)
         .context("Failed to write dependencies packages.yaml")?;
@@ -806,7 +806,7 @@ fn create_dependencies_module(
         upstream_url: None,
     };
 
-    let manifest_yaml = serde_yaml::to_string(&deps_manifest)
+    let manifest_yaml = yaml_serde::to_string(&deps_manifest)
         .context("Failed to serialize dependencies module.yaml")?;
     std::fs::write(&deps_manifest_file, manifest_yaml)
         .context("Failed to write dependencies module.yaml")?;
@@ -987,7 +987,7 @@ fn run_services_merge(paths: &ConfigPaths, dry_run: bool, user_scope: bool) -> R
         } else {
             let content = std::fs::read_to_string(&host_file)
                 .context(format!("Failed to read host file: {:?}", host_file))?;
-            serde_yaml::from_str::<Config>(&content)
+            yaml_serde::from_str::<Config>(&content)
                 .context("Failed to parse host configuration")?
         }
     } else {
@@ -1078,7 +1078,7 @@ fn run_services_merge(paths: &ConfigPaths, dry_run: bool, user_scope: bool) -> R
         }
     } else {
         // Save as YAML (original behavior)
-        let yaml = serde_yaml::to_string(&host_config)
+        let yaml = yaml_serde::to_string(&host_config)
             .context("Failed to serialize host configuration")?;
         std::fs::write(&host_file, yaml)
             .context(format!("Failed to write host file: {:?}", host_file))?;
@@ -1320,7 +1320,7 @@ fn run_defaults_merge(paths: &ConfigPaths, dry_run: bool) -> Result<()> {
         } else {
             let content = std::fs::read_to_string(&host_file)
                 .context(format!("Failed to read host file: {:?}", host_file))?;
-            serde_yaml::from_str::<Config>(&content)
+            yaml_serde::from_str::<Config>(&content)
                 .context("Failed to parse host configuration")?
         }
     } else {
@@ -1428,7 +1428,7 @@ fn run_defaults_merge(paths: &ConfigPaths, dry_run: bool) -> Result<()> {
         }
     } else {
         // Save as YAML (original behavior)
-        let yaml = serde_yaml::to_string(&host_config)
+        let yaml = yaml_serde::to_string(&host_config)
             .context("Failed to serialize host configuration")?;
         std::fs::write(&host_file, yaml)
             .context(format!("Failed to write host file: {:?}", host_file))?;

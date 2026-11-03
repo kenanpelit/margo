@@ -56,7 +56,7 @@ fn empty_env() -> (ConfigPaths, Config) {
     };
     // Built through serde rather than by hand so this keeps compiling when
     // `Config` gains a field — almost everything on it is `serde(default)`.
-    let config: Config = serde_yaml::from_str("host: render-test\n").expect("minimal config");
+    let config: Config = yaml_serde::from_str("host: render-test\n").expect("minimal config");
     (paths, config)
 }
 

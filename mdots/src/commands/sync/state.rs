@@ -38,7 +38,7 @@ pub(super) fn load_modules_state(state_file: &Path) -> Result<ModulesState> {
         std::fs::read_to_string(state_file).context("Failed to read modules state file")?;
 
     let state: ModulesState =
-        serde_yaml::from_str(&content).context("Failed to parse modules state YAML")?;
+        yaml_serde::from_str(&content).context("Failed to parse modules state YAML")?;
 
     Ok(state)
 }
@@ -48,7 +48,7 @@ pub(super) fn save_modules_state(state_file: &Path, state: &ModulesState) -> Res
         std::fs::create_dir_all(parent).context("Failed to create state directory")?;
     }
 
-    let yaml = serde_yaml::to_string(state).context("Failed to serialize modules state")?;
+    let yaml = yaml_serde::to_string(state).context("Failed to serialize modules state")?;
 
     crate::atomic_write::write_atomic(state_file, &yaml)
         .context("Failed to write modules state file")?;
@@ -72,12 +72,12 @@ pub(super) struct StateFile {
 }
 
 pub(super) fn load_state_file(paths: &ConfigPaths) -> Result<StateFile> {
-    use serde_yaml::Value;
+    use yaml_serde::Value;
 
     let content =
         std::fs::read_to_string(&paths.state_file).context("Failed to read state file")?;
 
-    let yaml: Value = serde_yaml::from_str(&content).context("Failed to parse state file")?;
+    let yaml: Value = yaml_serde::from_str(&content).context("Failed to parse state file")?;
 
     let mut packages = Vec::new();
 

@@ -46,7 +46,7 @@ struct Host {
 }
 
 /// Minimal YAML schema — just enough to identify hosts and pull
-/// their display fields. `serde_yaml::Value` for everything else
+/// their display fields. `yaml_serde::Value` for everything else
 /// because assh accepts many fields we don't surface.
 #[derive(Debug, Deserialize)]
 struct AsshFile {
@@ -62,7 +62,7 @@ struct HostEntry {
     #[serde(default)]
     user: Option<String>,
     #[serde(default)]
-    port: Option<serde_yaml::Value>,
+    port: Option<yaml_serde::Value>,
 }
 
 pub struct SshProvider {
@@ -128,8 +128,8 @@ fn which_exists(bin: &str) -> bool {
 /// can't be SSH'd into directly. Returns the host list sorted
 /// alphabetically by name so the empty-query browse view is
 /// predictable.
-fn parse_assh(src: &str) -> Result<Vec<Host>, serde_yaml::Error> {
-    let file: AsshFile = serde_yaml::from_str(src)?;
+fn parse_assh(src: &str) -> Result<Vec<Host>, yaml_serde::Error> {
+    let file: AsshFile = yaml_serde::from_str(src)?;
     let mut out: Vec<Host> = file
         .hosts
         .into_iter()
@@ -139,8 +139,8 @@ fn parse_assh(src: &str) -> Result<Vec<Host>, serde_yaml::Error> {
             let port = entry
                 .port
                 .map(|v| match v {
-                    serde_yaml::Value::Number(n) => n.to_string(),
-                    serde_yaml::Value::String(s) => s,
+                    yaml_serde::Value::Number(n) => n.to_string(),
+                    yaml_serde::Value::String(s) => s,
                     _ => String::new(),
                 })
                 .unwrap_or_default();

@@ -162,7 +162,7 @@ fn run_internal(paths: &ConfigPaths, check_packages: bool, json: bool, quiet: bo
         if base_file.exists() {
             match std::fs::read_to_string(&base_file) {
                 Ok(content) => {
-                    if serde_yaml::from_str::<serde_yaml::Value>(&content).is_ok() {
+                    if yaml_serde::from_str::<yaml_serde::Value>(&content).is_ok() {
                         if !json && !quiet {
                             println!("  {} base.yaml is valid", "✓".green());
                         }
@@ -310,7 +310,7 @@ fn run_internal(paths: &ConfigPaths, check_packages: bool, json: bool, quiet: bo
             if is_yaml {
                 match std::fs::read_to_string(path) {
                     Ok(content) => {
-                        if serde_yaml::from_str::<serde_yaml::Value>(&content).is_err() {
+                        if yaml_serde::from_str::<yaml_serde::Value>(&content).is_err() {
                             errors += 1;
                             if !json && !quiet {
                                 println!("  {} Invalid YAML syntax: {}", "✗".red(), module_name);

@@ -3088,14 +3088,14 @@ mod schema_tests {
     /// An empty YAML map → every field falls back to its default.
     #[test]
     fn empty_map_deserializes_to_default() {
-        let cfg: Config = serde_yaml::from_str("{}").unwrap();
+        let cfg: Config = yaml_serde::from_str("{}").unwrap();
         assert_eq!(cfg, Config::default());
     }
 
     /// New notification button toggles: off / on by default.
     #[test]
     fn notification_button_defaults() {
-        let cfg: Config = serde_yaml::from_str("{}").unwrap();
+        let cfg: Config = yaml_serde::from_str("{}").unwrap();
         assert!(
             !cfg.notifications.show_action_buttons,
             "action buttons should be hidden by default"
@@ -3108,7 +3108,7 @@ mod schema_tests {
 
     #[test]
     fn explicit_notification_buttons_parse() {
-        let cfg: Config = serde_yaml::from_str(
+        let cfg: Config = yaml_serde::from_str(
             "notifications:\n  show_action_buttons: true\n  show_close_button: false\n",
         )
         .unwrap();
@@ -3120,7 +3120,7 @@ mod schema_tests {
     /// (including untouched sub-structs) keeps its default.
     #[test]
     fn partial_yaml_keeps_other_defaults() {
-        let cfg: Config = serde_yaml::from_str("general:\n  clock_format_24_h: true\n").unwrap();
+        let cfg: Config = yaml_serde::from_str("general:\n  clock_format_24_h: true\n").unwrap();
         assert!(cfg.general.clock_format_24_h);
         // notifications section was never mentioned → defaults intact.
         assert!(cfg.notifications.show_close_button);
@@ -3131,7 +3131,7 @@ mod schema_tests {
     /// older binary must still load).
     #[test]
     fn unknown_top_level_key_is_ignored() {
-        let parsed = serde_yaml::from_str::<Config>("a_key_from_the_future: 42\n");
+        let parsed = yaml_serde::from_str::<Config>("a_key_from_the_future: 42\n");
         assert!(parsed.is_ok(), "unknown keys should not fail the parse");
     }
 
@@ -3139,8 +3139,8 @@ mod schema_tests {
     #[test]
     fn default_config_round_trips_through_yaml() {
         let def = Config::default();
-        let yaml = serde_yaml::to_string(&def).unwrap();
-        let back: Config = serde_yaml::from_str(&yaml).unwrap();
+        let yaml = yaml_serde::to_string(&def).unwrap();
+        let back: Config = yaml_serde::from_str(&yaml).unwrap();
         assert_eq!(back, def);
     }
 
@@ -3149,7 +3149,7 @@ mod schema_tests {
     #[test]
     fn dock_old_config_loads_with_new_defaults() {
         let yaml = "dock:\n  icon_size: 48\n  show_running: false\n";
-        let cfg: Config = serde_yaml::from_str(yaml).unwrap();
+        let cfg: Config = yaml_serde::from_str(yaml).unwrap();
         assert_eq!(cfg.dock.icon_size, 48);
         assert!(!cfg.dock.show_running);
         assert!(cfg.dock.in_bar);

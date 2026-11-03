@@ -772,7 +772,7 @@ pub fn load_services_state(state_file: &Path) -> Result<ServicesState> {
     ))?;
 
     let state: ServicesState =
-        serde_yaml::from_str(&content).context("Failed to parse services state YAML")?;
+        yaml_serde::from_str(&content).context("Failed to parse services state YAML")?;
 
     debug!("Loaded services state from {:?}", state_file);
     Ok(state)
@@ -787,7 +787,7 @@ pub fn save_services_state(state_file: &Path, state: &ServicesState) -> Result<(
     }
 
     let yaml =
-        serde_yaml::to_string(state).context("Failed to serialize services state to YAML")?;
+        yaml_serde::to_string(state).context("Failed to serialize services state to YAML")?;
 
     crate::atomic_write::write_atomic(state_file, &yaml).context(format!(
         "Failed to write services state file: {:?}",

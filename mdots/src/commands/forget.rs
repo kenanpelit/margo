@@ -68,7 +68,7 @@ pub fn run(paths: &ConfigPaths, package_name: &str) -> Result<()> {
     {
         pkg_list.packages.remove(pos);
         let yaml =
-            serde_yaml::to_string(&pkg_list).context("Failed to serialize system-packages")?;
+            yaml_serde::to_string(&pkg_list).context("Failed to serialize system-packages")?;
         fs::write(&system_packages_file, yaml).context("Failed to write system-packages file")?;
         removed_from.push(RemovalLocation {
             source: format!("system-packages-{}", config.host),

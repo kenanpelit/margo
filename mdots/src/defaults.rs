@@ -468,7 +468,7 @@ pub fn load_defaults_state(state_file: &Path) -> Result<DefaultsState> {
     ))?;
 
     let state: DefaultsState =
-        serde_yaml::from_str(&content).context("Failed to parse defaults state YAML")?;
+        yaml_serde::from_str(&content).context("Failed to parse defaults state YAML")?;
 
     debug!("Loaded defaults state from {:?}", state_file);
     Ok(state)
@@ -483,7 +483,7 @@ pub fn save_defaults_state(state_file: &Path, state: &DefaultsState) -> Result<(
     }
 
     let yaml =
-        serde_yaml::to_string(state).context("Failed to serialize defaults state to YAML")?;
+        yaml_serde::to_string(state).context("Failed to serialize defaults state to YAML")?;
 
     crate::atomic_write::write_atomic(state_file, &yaml).context(format!(
         "Failed to write defaults state file: {:?}",

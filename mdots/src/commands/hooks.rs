@@ -565,7 +565,7 @@ fn load_hooks_state(paths: &ConfigPaths) -> Result<HashMap<String, HookStateEntr
     }
 
     let content = std::fs::read_to_string(&paths.hooks_state_file)?;
-    let yaml: serde_yaml::Value = serde_yaml::from_str(&content)?;
+    let yaml: yaml_serde::Value = yaml_serde::from_str(&content)?;
 
     let mut hooks_state = HashMap::new();
 
@@ -639,7 +639,7 @@ fn save_hooks_state(
     });
 
     // Atomic: this file decides whether `sudo bash` hooks re-run.
-    let content = serde_yaml::to_string(&yaml_value)?;
+    let content = yaml_serde::to_string(&yaml_value)?;
     crate::atomic_write::write_atomic(&paths.hooks_state_file, &content)?;
 
     Ok(())

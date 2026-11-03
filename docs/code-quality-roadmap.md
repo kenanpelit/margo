@@ -135,15 +135,16 @@ files, and overlapping feature mechanisms.**
   cancellable task group; (c) on plugin unload/reload, join/kill the workers,
   timers and subprocesses. Deferred pending a call on how ship-critical the
   plugin tier is (it's WASM/experimental today).
-- [ ] **Replace `serde_yaml` 0.9 with a maintained YAML crate.** Upstream
-  archived it (`0.9.34+deprecated`); `mdots`, `mshell-config` and
-  `mshell-launcher` use it through the workspace dependency. Its parser,
-  `unsafe-libyaml`, is flagged unmaintained (RUSTSEC-2024-0449, ignored in
-  `deny.toml` pointing here), and neither will get fixes. Candidates: avoid `serde_yml` (it drew its own
-  unsoundness/unmaintained reports); `serde_norway` / `serde_yaml_ng` are
-  API-compatible forks — pick one with an active maintainer, swap the workspace entry, and
-  run the mshell-config round-trip/migration tests and mdots' state tests,
-  which pin the on-disk format.
+- [x] **Replace `serde_yaml` 0.9 with a maintained YAML crate.** ✅ Done:
+  `mdots`, `mshell-config` and `mshell-launcher` use `yaml_serde` (the YAML
+  organization's fork of serde_yaml, same API, parser `libyaml-rs`), and
+  mshell-config feeds figment through its own `yaml_serde` provider instead of
+  figment's serde_yaml-backed `yaml` feature, so serde_yaml and
+  `unsafe-libyaml` (RUSTSEC-2024-0449) are gone from the tree. Rejected:
+  `serde_yml` (RUSTSEC-2025-0068, unsound + archived), `serde_yaml_ng` (still
+  on `unsafe-libyaml`), `serde_norway` (no release since 2024-12). Golden files
+  in mshell-config (`tests/fixtures/margo.*.yaml`, written by serde_yaml 0.9)
+  pin the bytes a real profile is rewritten with.
 - [ ] **Dwindle "smart focusdir"** (mango 0.17, `4cf6e1cd`). mango remembers
   the most-recently-focused window within the split branch you enter, via a
   persistent per-tag binary split tree (`pertag->dwindle_root`). Margo's

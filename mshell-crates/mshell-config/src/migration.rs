@@ -20,7 +20,7 @@
 //!
 //! 1. Bump [`CONFIG_VERSION`].
 //! 2. Add a `N => migrate_vN_to_vN1(doc)` arm to [`apply_step`] that mutates the
-//!    raw `serde_yaml::Value` (rename a key, fill an intended value, drop a dead
+//!    raw `yaml_serde::Value` (rename a key, fill an intended value, drop a dead
 //!    block). Keep it idempotent-friendly: it only ever runs once per profile.
 //! 3. Add a round-trip test below (old-shape fixture → [`migrate_yaml`] → assert
 //!    the new shape + that re-running is a no-op).
@@ -30,7 +30,7 @@
 //! upgrade is applied exactly once. On save, [`stamp_version`] keeps the current
 //! version pinned at the top of the serialized profile.
 
-use serde_yaml::{Mapping, Value};
+use yaml_serde::{Mapping, Value};
 
 use crate::schema::themes::Themes;
 
@@ -144,8 +144,8 @@ fn migrate_v2_to_v3(doc: &mut Mapping) {
 /// A document that is not a YAML mapping (empty / malformed-but-parseable) is
 /// returned stamped but otherwise untouched — figment will fall back to
 /// defaults for it downstream.
-pub fn migrate_yaml(yaml: &str) -> Result<Migrated, serde_yaml::Error> {
-    let mut doc: Value = serde_yaml::from_str(yaml)?;
+pub fn migrate_yaml(yaml: &str) -> Result<Migrated, yaml_serde::Error> {
+    let mut doc: Value = yaml_serde::from_str(yaml)?;
     let from = read_version(&doc);
 
     // An empty document parses as Null; treat it as an empty mapping so we can
@@ -170,20 +170,20 @@ pub fn migrate_yaml(yaml: &str) -> Result<Migrated, serde_yaml::Error> {
     }
     set_version(map, target);
 
-    let out = serde_yaml::to_string(&doc)?;
+    let out = yaml_serde::to_string(&doc)?;
     // `changed` is true if the version moved OR a step rewrote the body. We
     // approximate "a step rewrote the body" by comparing against a stamp-only
     // pass of the original: if migrating and merely stamping differ, a step
     // touched content.
     let changed = from != target || {
-        let mut stamped_only: Value = serde_yaml::from_str(yaml)?;
+        let mut stamped_only: Value = yaml_serde::from_str(yaml)?;
         if stamped_only.is_null() {
             stamped_only = Value::Mapping(Mapping::new());
         }
         if let Value::Mapping(m) = &mut stamped_only {
             set_version(m, from.max(target));
         }
-        serde_yaml::to_string(&stamped_only)? != out
+        yaml_serde::to_string(&stamped_only)? != out
     };
 
     Ok(Migrated {
@@ -197,14 +197,14 @@ pub fn migrate_yaml(yaml: &str) -> Result<Migrated, serde_yaml::Error> {
 /// profile YAML (used on save, since the `Config` struct itself does not carry
 /// the key). A non-mapping document is returned unchanged.
 pub fn stamp_version(yaml: &str) -> String {
-    let Ok(mut doc) = serde_yaml::from_str::<Value>(yaml) else {
+    let Ok(mut doc) = yaml_serde::from_str::<Value>(yaml) else {
         return yaml.to_string();
     };
     let Value::Mapping(map) = &mut doc else {
         return yaml.to_string();
     };
     set_version(map, CONFIG_VERSION);
-    serde_yaml::to_string(&doc).unwrap_or_else(|_| yaml.to_string())
+    yaml_serde::to_string(&doc).unwrap_or_else(|_| yaml.to_string())
 }
 
 #[cfg(test)]
@@ -213,7 +213,7 @@ mod tests {
 
     /// Strip the version key so we can compare bodies independent of stamping.
     fn body_without_version(yaml: &str) -> Value {
-        let mut v: Value = serde_yaml::from_str(yaml).unwrap();
+        let mut v: Value = yaml_serde::from_str(yaml).unwrap();
         if let Value::Mapping(m) = &mut v {
             m.remove(Value::String(VERSION_KEY.to_string()));
         }
@@ -232,7 +232,7 @@ idle:
         assert_eq!(m.from, 0, "absent version reads as 0");
         assert!(m.changed, "stamping a v0 profile is a change");
 
-        let out: Value = serde_yaml::from_str(&m.yaml).unwrap();
+        let out: Value = yaml_serde::from_str(&m.yaml).unwrap();
         assert_eq!(
             read_version(&out),
             CONFIG_VERSION,
@@ -254,7 +254,7 @@ idle:
             let m = migrate_yaml(&old).unwrap();
             assert!(m.changed, "{dead} → Kenp is a content change");
 
-            let out: Value = serde_yaml::from_str(&m.yaml).unwrap();
+            let out: Value = yaml_serde::from_str(&m.yaml).unwrap();
             assert_eq!(read_version(&out), CONFIG_VERSION);
             let theme = out.get("theme").and_then(|t| t.get("theme")).unwrap();
             assert_eq!(theme.as_str(), Some("Kenp"), "{dead} rewritten to Kenp");
@@ -269,7 +269,7 @@ idle:
     fn v1_to_v2_leaves_a_live_theme_untouched() {
         let old = "config_version: 1\ntheme:\n  theme: TokyoNight\n";
         let m = migrate_yaml(old).unwrap();
-        let out: Value = serde_yaml::from_str(&m.yaml).unwrap();
+        let out: Value = yaml_serde::from_str(&m.yaml).unwrap();
         let theme = out.get("theme").and_then(|t| t.get("theme")).unwrap();
         assert_eq!(theme.as_str(), Some("TokyoNight"), "live theme preserved");
     }
@@ -283,13 +283,13 @@ idle:
             let m = migrate_yaml(&old).unwrap();
             assert!(m.changed, "{dead} → Kenp is a content change");
 
-            let out: Value = serde_yaml::from_str(&m.yaml).unwrap();
+            let out: Value = yaml_serde::from_str(&m.yaml).unwrap();
             assert_eq!(read_version(&out), CONFIG_VERSION);
             let theme = out.get("theme").and_then(|t| t.get("theme")).unwrap();
             assert_eq!(theme.as_str(), Some("Kenp"), "{dead} rewritten to Kenp");
 
             // The rewritten profile deserializes into the live Config type.
-            serde_yaml::from_str::<crate::schema::config::Config>(&m.yaml)
+            yaml_serde::from_str::<crate::schema::config::Config>(&m.yaml)
                 .unwrap_or_else(|e| panic!("migrated {dead} profile no longer parses: {e}"));
 
             // Idempotent: re-running leaves it on Kenp and reports no change.
@@ -303,14 +303,14 @@ idle:
         for dead in ["Dracula", "NordDark", "Vesper", "AyuDark"] {
             let old = format!("config_version: 3\ntheme:\n  theme: {dead}\n");
             let m = migrate_yaml(&old).unwrap();
-            let out: Value = serde_yaml::from_str(&m.yaml).unwrap();
+            let out: Value = yaml_serde::from_str(&m.yaml).unwrap();
             let theme = out.get("theme").and_then(|t| t.get("theme")).unwrap();
             assert_eq!(theme.as_str(), Some("Kenp"), "{dead} rewritten to Kenp");
         }
         for live in ["Margo", "Iznik", "GruvboxMaterial", "Horizon"] {
             let old = format!("config_version: 3\ntheme:\n  theme: {live}\n");
             let m = migrate_yaml(&old).unwrap();
-            let out: Value = serde_yaml::from_str(&m.yaml).unwrap();
+            let out: Value = yaml_serde::from_str(&m.yaml).unwrap();
             let theme = out.get("theme").and_then(|t| t.get("theme")).unwrap();
             assert_eq!(theme.as_str(), Some(live), "live theme {live} preserved");
         }
@@ -321,7 +321,7 @@ idle:
         for version in [3, CONFIG_VERSION] {
             let yaml = format!("config_version: {version}\ntheme:\n  theme: OneMargo\n");
             let m = migrate_yaml(&yaml).unwrap();
-            let cfg: crate::schema::config::Config = serde_yaml::from_str(&m.yaml).unwrap();
+            let cfg: crate::schema::config::Config = yaml_serde::from_str(&m.yaml).unwrap();
             assert_eq!(cfg.theme.theme, Themes::Margo, "from v{version}");
         }
     }
@@ -338,7 +338,7 @@ idle:
         ] {
             let old = format!("config_version: 2\ntheme:\n  theme: {live}\n");
             let m = migrate_yaml(&old).unwrap();
-            let out: Value = serde_yaml::from_str(&m.yaml).unwrap();
+            let out: Value = yaml_serde::from_str(&m.yaml).unwrap();
             let theme = out.get("theme").and_then(|t| t.get("theme")).unwrap();
             assert_eq!(theme.as_str(), Some(live), "live theme {live} preserved");
         }
@@ -368,14 +368,14 @@ idle:
     fn stamp_adds_version_to_versionless_yaml() {
         let yaml = "general:\n  foo: 1\n";
         let stamped = stamp_version(yaml);
-        let v: Value = serde_yaml::from_str(&stamped).unwrap();
+        let v: Value = yaml_serde::from_str(&stamped).unwrap();
         assert_eq!(read_version(&v), CONFIG_VERSION);
     }
 
     #[test]
     fn empty_document_gets_a_version() {
         let m = migrate_yaml("").unwrap();
-        let v: Value = serde_yaml::from_str(&m.yaml).unwrap();
+        let v: Value = yaml_serde::from_str(&m.yaml).unwrap();
         assert_eq!(read_version(&v), CONFIG_VERSION);
     }
 
@@ -392,7 +392,7 @@ idle:
             let yaml = crate::config_utils::bundled_profile_yaml(name)
                 .unwrap_or_else(|| panic!("bundled profile {name} missing"));
             let m = migrate_yaml(yaml).expect("bundled profile migrates");
-            let v: Value = serde_yaml::from_str(&m.yaml).unwrap();
+            let v: Value = yaml_serde::from_str(&m.yaml).unwrap();
             assert_eq!(
                 read_version(&v),
                 CONFIG_VERSION,
@@ -400,7 +400,7 @@ idle:
             );
             // The migrated YAML must still deserialize into the live Config
             // type — the strongest "didn't break the shape" guarantee.
-            serde_yaml::from_str::<crate::schema::config::Config>(&m.yaml)
+            yaml_serde::from_str::<crate::schema::config::Config>(&m.yaml)
                 .unwrap_or_else(|e| panic!("migrated bundled {name} no longer parses: {e}"));
         }
     }

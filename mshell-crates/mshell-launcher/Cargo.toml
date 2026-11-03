@@ -17,7 +17,7 @@ nucleo-matcher = "0.3"
 regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-serde_yaml = "0.9"
+yaml_serde.workspace = true
 tracing.workspace = true
 
 [lints]

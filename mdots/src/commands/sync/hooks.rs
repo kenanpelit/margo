@@ -584,19 +584,19 @@ pub(super) fn legacy_hook_script_hash(script: &str) -> String {
     hasher.finish().to_string()
 }
 
-pub(super) fn load_hooks_yaml(paths: &ConfigPaths) -> Result<serde_yaml::Value> {
+pub(super) fn load_hooks_yaml(paths: &ConfigPaths) -> Result<yaml_serde::Value> {
     if paths.hooks_state_file.exists() {
         let content = std::fs::read_to_string(&paths.hooks_state_file)?;
-        Ok(serde_yaml::from_str(&content)?)
+        Ok(yaml_serde::from_str(&content)?)
     } else {
-        Ok(serde_yaml::from_str("hooks: []")?)
+        Ok(yaml_serde::from_str("hooks: []")?)
     }
 }
 
 /// Write the hooks state atomically: it decides whether `sudo bash` hooks
 /// re-run, so a torn file must never replace a good one.
-pub(super) fn save_hooks_yaml(paths: &ConfigPaths, yaml: &serde_yaml::Value) -> Result<()> {
-    let content = serde_yaml::to_string(yaml)?;
+pub(super) fn save_hooks_yaml(paths: &ConfigPaths, yaml: &yaml_serde::Value) -> Result<()> {
+    let content = yaml_serde::to_string(yaml)?;
     crate::atomic_write::write_atomic(&paths.hooks_state_file, &content)
 }
 
@@ -655,8 +655,8 @@ pub fn check_hook_status(
                 && stored_hash == legacy_hook_script_hash(&script_content)
             {
                 hook_map.insert(
-                    serde_yaml::Value::from("script_hash"),
-                    serde_yaml::Value::from(current_hash.clone()),
+                    yaml_serde::Value::from("script_hash"),
+                    yaml_serde::Value::from(current_hash.clone()),
                 );
                 migrate = true;
                 HookStatus::Executed
@@ -687,7 +687,7 @@ pub fn mark_hook_skipped(paths: &ConfigPaths, module: &str) -> Result<()> {
         });
 
         // Add new entry with skipped status
-        let new_hook = serde_yaml::to_value(serde_json::json!({
+        let new_hook = yaml_serde::to_value(serde_json::json!({
             "module": module,
             "status": "skipped",
         }))?;
@@ -724,7 +724,7 @@ pub fn mark_hook_executed(
         });
 
         // Add new entry
-        let new_hook = serde_yaml::to_value(serde_json::json!({
+        let new_hook = yaml_serde::to_value(serde_json::json!({
             "module": module,
             "script": hook_path.to_string_lossy().to_string(),
             "script_hash": script_hash,

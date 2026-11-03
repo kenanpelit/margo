@@ -362,12 +362,12 @@ pub(crate) fn load_secrets_state(state_dir: &Path) -> Result<SecretsState> {
         return Ok(SecretsState::default());
     }
     let content = fs::read_to_string(&path).context("reading secrets state file")?;
-    serde_yaml::from_str(&content).context("parsing secrets state file")
+    yaml_serde::from_str(&content).context("parsing secrets state file")
 }
 
 pub(crate) fn save_secrets_state(state_dir: &Path, state: &SecretsState) -> Result<()> {
     fs::create_dir_all(state_dir).context("creating state directory")?;
-    let yaml = serde_yaml::to_string(state).context("serializing secrets state")?;
+    let yaml = yaml_serde::to_string(state).context("serializing secrets state")?;
     crate::atomic_write::write_atomic(&secrets_state_path(state_dir), &yaml)
         .context("writing secrets state file")
 }

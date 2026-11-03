@@ -715,7 +715,7 @@ fn load_dotfiles_state(paths: &ConfigPaths) -> Result<DotfilesState> {
     let content = fs::read_to_string(&state_file).context("Failed to read dotfiles state file")?;
 
     let state: DotfilesState =
-        serde_yaml::from_str(&content).context("Failed to parse dotfiles state file")?;
+        yaml_serde::from_str(&content).context("Failed to parse dotfiles state file")?;
 
     Ok(state)
 }
@@ -727,7 +727,7 @@ fn save_dotfiles_state(paths: &ConfigPaths, state: &DotfilesState) -> Result<()>
 
     let state_file = paths.state_dir.join("dotfiles-state.yaml");
 
-    let yaml = serde_yaml::to_string(state).context("Failed to serialize dotfiles state")?;
+    let yaml = yaml_serde::to_string(state).context("Failed to serialize dotfiles state")?;
 
     crate::atomic_write::write_atomic(&state_file, &yaml)
         .context("Failed to write dotfiles state file")?;
@@ -870,7 +870,7 @@ mod tests {
 
         // The module is now disabled (empty enabled_modules) → prune must
         // restore the original, not leave it orphaned.
-        let config: Config = serde_yaml::from_str("host: testhost\n").unwrap();
+        let config: Config = yaml_serde::from_str("host: testhost\n").unwrap();
         prune_dotfiles(&paths, &config, true).unwrap();
 
         assert!(
@@ -919,7 +919,7 @@ mod tests {
         };
         save_dotfiles_state(&paths, &state).unwrap();
 
-        let config: Config = serde_yaml::from_str("host: testhost\n").unwrap();
+        let config: Config = yaml_serde::from_str("host: testhost\n").unwrap();
         prune_dotfiles(&paths, &config, true).unwrap();
 
         // The user's replacement file is untouched...

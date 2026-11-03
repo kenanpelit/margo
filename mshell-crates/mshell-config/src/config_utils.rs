@@ -1,6 +1,6 @@
 use figment::{
     Figment,
-    providers::{Format, Serialized, Yaml},
+    providers::{Format, Serialized},
 };
 use std::{
     sync::{
@@ -18,9 +18,25 @@ use reactive_stores::{ArcStore, Patch};
 use crate::paths::{active_profile_cache_path, profile_path, profiles_dir};
 use crate::schema::config::Config;
 use reactive_graph::prelude::ReadUntracked;
-use serde_yaml::{Mapping, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
+use yaml_serde::{Mapping, Value};
+
+/// figment's YAML provider for profiles, backed by `yaml_serde`. figment's
+/// own `Yaml` (its `yaml` feature) is tied to the unmaintained `serde_yaml`;
+/// this is the same provider (`Format::from_str` is all figment's `Yaml`
+/// defines) on the maintained fork, so files parse exactly as before.
+pub(crate) struct Yaml;
+
+impl Format for Yaml {
+    type Error = yaml_serde::Error;
+
+    const NAME: &'static str = "YAML";
+
+    fn from_str<T: serde::de::DeserializeOwned>(string: &str) -> Result<T, Self::Error> {
+        yaml_serde::from_str(string)
+    }
+}
 
 pub(crate) fn read_active_profile_from_cache() -> Option<String> {
     let p = active_profile_cache_path();
@@ -336,15 +352,15 @@ pub(crate) fn persist_config_layer(
 /// The sparse profile YAML `persist_config_layer` writes for `value`: only
 /// the fields that differ from `Config::default()`, stamped with the current
 /// `config_version`.
-fn profile_layer_yaml(value: &Config) -> Result<String, serde_yaml::Error> {
-    let full = serde_yaml::to_value(value)?;
-    let base = serde_yaml::to_value(Config::default())?;
+fn profile_layer_yaml(value: &Config) -> Result<String, yaml_serde::Error> {
+    let full = yaml_serde::to_value(value)?;
+    let base = yaml_serde::to_value(Config::default())?;
     let diff = diff_against_default(&full, &base).unwrap_or_else(|| Value::Mapping(Mapping::new()));
 
     // Pin the current format version at the top of the serialized profile;
     // the Config struct deliberately omits the meta key (migration.rs), so we
     // stamp it on the way out.
-    Ok(crate::migration::stamp_version(&serde_yaml::to_string(
+    Ok(crate::migration::stamp_version(&yaml_serde::to_string(
         &diff,
     )?))
 }
@@ -458,11 +474,11 @@ mod tests {
         cfg.osd.distance += 7;
         cfg.osd.border_width += 2;
 
-        let full = serde_yaml::to_value(&cfg).unwrap();
-        let base = serde_yaml::to_value(Config::default()).unwrap();
+        let full = yaml_serde::to_value(&cfg).unwrap();
+        let base = yaml_serde::to_value(Config::default()).unwrap();
         let diff =
             diff_against_default(&full, &base).expect("a customised config diffs to something");
-        let yaml = serde_yaml::to_string(&diff).unwrap();
+        let yaml = yaml_serde::to_string(&diff).unwrap();
 
         let reloaded = Figment::from(Serialized::defaults(Config::default()))
             .merge(Yaml::string(&yaml))
@@ -528,7 +544,7 @@ mod tests {
     /// to only that branch.
     #[test]
     fn diff_drops_fields_left_at_default() {
-        let base = serde_yaml::to_value(Config::default()).unwrap();
+        let base = yaml_serde::to_value(Config::default()).unwrap();
         assert!(
             diff_against_default(&base, &base).is_none(),
             "an all-default config persists nothing"
@@ -536,7 +552,7 @@ mod tests {
 
         let mut cfg = Config::default();
         cfg.osd.width += 1;
-        let full = serde_yaml::to_value(&cfg).unwrap();
+        let full = yaml_serde::to_value(&cfg).unwrap();
         let diff = diff_against_default(&full, &base).unwrap();
         let Value::Mapping(map) = &diff else {
             panic!("config diffs to a mapping");
@@ -565,7 +581,7 @@ mod tests {
             "default is a bundled profile"
         );
         assert!(path.exists(), "default.yaml seeded");
-        serde_yaml::from_str::<Config>(&std::fs::read_to_string(&path).unwrap())
+        yaml_serde::from_str::<Config>(&std::fs::read_to_string(&path).unwrap())
             .expect("seeded profile parses as Config");
 
         // Re-seeding must NOT clobber a profile the user has customised.

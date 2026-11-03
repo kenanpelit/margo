@@ -123,7 +123,7 @@ impl From<SourceFileYaml> for SourceConfig {
 pub fn load_source_yaml(path: &Path) -> Result<SourceConfig> {
     let content = std::fs::read_to_string(path)
         .with_context(|| format!("Failed to read source config: {}", path.display()))?;
-    let parsed: SourceFileYaml = serde_yaml::from_str(&content)
+    let parsed: SourceFileYaml = yaml_serde::from_str(&content)
         .with_context(|| format!("Failed to parse source config: {}", path.display()))?;
     Ok(parsed.into())
 }

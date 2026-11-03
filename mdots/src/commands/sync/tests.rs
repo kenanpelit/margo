@@ -380,7 +380,7 @@ fn write_hook(root: &std::path::Path, body: &str) -> PathBuf {
 
 fn stored_hash(paths: &ConfigPaths, module: &str) -> Option<String> {
     let content = std::fs::read_to_string(&paths.hooks_state_file).ok()?;
-    let yaml: serde_yaml::Value = serde_yaml::from_str(&content).ok()?;
+    let yaml: yaml_serde::Value = yaml_serde::from_str(&content).ok()?;
     yaml.get("hooks")?
         .as_sequence()?
         .iter()
