@@ -1,20 +1,22 @@
 #%PAM-1.0
 #
-# PAM stack for mlock, margo's screen locker — installed as
-# /etc/pam.d/mlock.
+# PAM stack for margo's screen lockers — mlock and mshell's own lock
+# screen — installed as /etc/pam.d/mlock.
 #
-# mlock only calls pam_authenticate to check the password of the user
+# Both only call pam_authenticate to check the password of the user
 # whose session is locked, so only the auth line matters. It is pam_unix
 # alone on purpose: the system `login` stack mlock used before carries
 # pam_faillock, and anyone at the locked screen could type wrong
 # passwords until the owner's account was locked out everywhere. Like
 # swaylock, a locker never needs account/session/password handling.
 #
-# mlock answers the first hidden prompt with the typed password and fails
+# Both answer the first hidden prompt with the typed password and fail
 # on any further one (an OTP or second factor would otherwise be sent the
-# password). Without this file mlock falls back to the `login` service.
+# password). Without this file they fall back to the `login` service.
 #
 # Fingerprint (optional): uncomment to accept a finger before the
-# password. The locker blocks while fprintd waits for the sensor.
+# password. The locker blocks while fprintd waits for the sensor. mshell's
+# lock screen talks to fprintd itself and does not need this line; with it,
+# its password check waits for the sensor first.
 #auth       sufficient   pam_fprintd.so
 auth        required     pam_unix.so

@@ -671,8 +671,9 @@ package() {
   # a first-class logind session. Inert while [autologin] is unset.
   install -Dm644 "mlogind/extra/mlogind-autologin.pam" \
     "$pkgdir/etc/pam.d/mlogind-autologin"
-  # mlock's own PAM service: pam_unix only, so wrong passwords typed at
-  # the locked screen can't trip pam_faillock and lock the owner out.
+  # The lockers' PAM service (mlock and mshell's lock screen): pam_unix
+  # only, so wrong passwords typed at the locked screen can't trip
+  # pam_faillock and lock the owner out.
   install -Dm644 "mlock/extra/mlock.pam" \
     "$pkgdir/etc/pam.d/mlock"
   install -Dm644 "mlogind/extra/mlogind.sysusers" \

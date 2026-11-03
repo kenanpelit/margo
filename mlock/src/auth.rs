@@ -2,7 +2,10 @@
 //!
 //! Kept inline (rather than shared via a crate) because PAM bindings
 //! are tiny and the duplication is cheaper than spinning up a fourth
-//! workspace member just for two functions. If a third locker ever
+//! workspace member just for two functions. mshell's lock screen carries
+//! the same code in `mshell-crates/mshell-auth/src/pam.rs` (that crate
+//! pulls tokio and zbus, which mlock does not want): change the service
+//! choice or the conversation rule in both. If a third locker ever
 //! appears we'll factor this out.
 
 use std::cell::Cell;
