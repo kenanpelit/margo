@@ -52,7 +52,7 @@ use smithay::backend::renderer::element::{Element, Id, Kind, RenderElement, Unde
 use smithay::backend::renderer::gles::{GlesError, GlesFrame, GlesRenderer, ffi, link_program};
 use smithay::backend::renderer::utils::{CommitCounter, DamageSet, OpaqueRegions};
 use smithay::utils::user_data::UserDataMap;
-use smithay::utils::{Buffer, Logical, Physical, Rectangle, Scale, Transform};
+use smithay::utils::{Buffer, Logical, Physical, Rectangle, Scale, Size, Transform};
 
 use margo_config::BlurParams;
 
@@ -137,15 +137,24 @@ static BLUR_DIAG_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::Atomic
 static BLUR_DIAG_COMPOSITE: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
-/// Logged once when blur is skipped on a transformed output.
-static BLUR_TRANSFORM_WARNED: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
-
-/// Whether `draw_blur`'s framebuffer addressing is valid for a frame with
-/// this output transform: only when output space and framebuffer space
-/// coincide.
-pub fn blur_supported(transform: Transform) -> bool {
-    transform == Transform::Normal
+/// Where an element drawn at `dst` (output space, top-left origin) lands
+/// in the framebuffer, in GL window coordinates, for a frame rendered
+/// with `transform` (`GlesFrame::transformation()`, i.e. the output
+/// transform already inverted by the damage tracker) into a framebuffer
+/// of `fb_size` (the mode size; the GL viewport).
+///
+/// smithay's projection flips Y for OpenGL, so window row 0 is the top
+/// row of the output buffer and, for `Transform::Normal`, the result is
+/// `dst` itself. For the other seven it is `dst` moved by the frame
+/// transform within the output-space size — exactly smithay's
+/// `transform_rect_in`, which the tests check against the projection
+/// matrix and against real GL rendering.
+pub fn framebuffer_rect(
+    dst: Rectangle<i32, Physical>,
+    transform: Transform,
+    fb_size: Size<i32, Physical>,
+) -> Rectangle<i32, Physical> {
+    transform.transform_rect_in(dst, &transform.transform_size(fb_size))
 }
 
 /// Marker handle proving the blur GL resources compiled successfully.
@@ -407,28 +416,18 @@ impl RenderElement<GlesRenderer> for BlurRenderElement {
         _opaque_regions: &[Rectangle<i32, Physical>],
         _cache: Option<&UserDataMap>,
     ) -> Result<(), GlesError> {
-        // `draw_blur` addresses the framebuffer directly (CopyTexSubImage2D
-        // and an NDC quad from `dst`), but `dst` is in the output's
-        // *transformed* physical space; on a rotated/flipped output those
-        // differ and the blur would sample and cover the wrong region.
-        // Skip it there (the surface still draws, just without the
-        // background blur) until the rect is mapped into framebuffer space.
-        if !blur_supported(frame.transformation()) {
-            if !BLUR_TRANSFORM_WARNED.swap(true, std::sync::atomic::Ordering::Relaxed) {
-                tracing::info!(
-                    "blur disabled on transformed output ({:?})",
-                    frame.transformation()
-                );
-            }
-            return Ok(());
-        }
-        // The composite quad is positioned by mapping `dst` (output-
-        // physical pixels) directly into NDC against the GL viewport
-        // inside `draw_blur` — deterministic, no dependency on smithay's
-        // projection-matrix layout (the previous `frame.projection()`
-        // path drew the quad off-screen on this hardware).
-        let region_w = dst.size.w.max(1);
-        let region_h = dst.size.h.max(1);
+        // `draw_blur` addresses the framebuffer directly: CopyTexSubImage2D
+        // for the capture and a quad placed in GL window coordinates for the
+        // composite. `dst` is in output space; map it to where smithay's
+        // projection put this element in the framebuffer (on a rotated or
+        // flipped output those differ). The blur is computed in framebuffer
+        // orientation, which is fine: the Kawase filter and the rounded-
+        // rect mask are both symmetric under the 8 output transforms.
+        let transform = frame.transformation();
+        let fb_size = transform.transform_size(frame.output_size());
+        let fb_rect = framebuffer_rect(dst, transform, fb_size);
+        let region_w = fb_rect.size.w.max(1);
+        let region_h = fb_rect.size.h.max(1);
         let corner_px = self.corner_radius * self.scale.x as f32;
         let params = self.params;
 
@@ -439,7 +438,7 @@ impl RenderElement<GlesRenderer> for BlurRenderElement {
                 let Some(blur_gl) = borrow.ready_mut() else {
                     return;
                 };
-                draw_blur(gl, blur_gl, dst, region_w, region_h, corner_px, &params);
+                draw_blur(gl, blur_gl, fb_rect, region_w, region_h, corner_px, &params);
             });
         })?;
         Ok(())
@@ -451,7 +450,8 @@ impl RenderElement<GlesRenderer> for BlurRenderElement {
 }
 
 /// The actual dual-Kawase + composite pass. All GL state we touch is
-/// captured up front and restored at the end.
+/// captured up front and restored at the end. `dst` is the blur region in
+/// GL window coordinates of the bound framebuffer ([`framebuffer_rect`]).
 ///
 /// # Safety
 /// Current GL context; `blur_gl` programs/VBO are valid.
@@ -495,16 +495,13 @@ unsafe fn draw_blur(
         gl.ActiveTexture(ffi::TEXTURE0);
         gl.BindTexture(ffi::TEXTURE_2D, cap_tex);
         // Copy from the currently-bound (output) read framebuffer.
-        // `CopyTexSubImage2D`'s source `(x, y)` is in GL window coords
-        // (bottom-left origin), whereas `dst.loc` is top-left physical —
-        // so we flip Y against the framebuffer height. The viewport
-        // smithay set covers the whole output, so `prev_vp[3]` is the
-        // framebuffer height. The captured texture therefore stores the
-        // region right-side-up in GL texture space (row 0 = bottom). The
-        // composite step samples with V flipped so it re-emits the blur
-        // in the same orientation as the background it replaces.
+        // `dst` is already in GL window coordinates (`framebuffer_rect`):
+        // smithay's projection flips Y for OpenGL, so window row 0 is the
+        // top row of the output buffer and no further flip is needed. The
+        // captured texture's row 0 is window row `dst.loc.y`, and the
+        // composite places texel rows the same way round.
         let fb_h = prev_vp[3];
-        let src_y = fb_h - dst.loc.y - region_h;
+        let src_y = dst.loc.y;
         gl.BindFramebuffer(ffi::FRAMEBUFFER, output_fbo);
         gl.CopyTexSubImage2D(
             ffi::TEXTURE_2D,
@@ -878,11 +875,11 @@ void main() {
 }
 "#;
 
-// Composite vertex shader: the quad's `a_uv` (0..1) is mapped into the
-// destination rect in output-physical pixel space, then transformed by
-// the frame's projection (which encodes the output transform) into clip
-// space — so the blurred texture lands exactly on `dst` regardless of
-// rotation. We carry `a_uv` through unchanged for texture sampling.
+// Composite vertex shader: the quad's `a_uv` (0..1) is mapped onto the
+// destination rect, given in GL window coordinates of the framebuffer
+// (`framebuffer_rect`, which already accounts for the output transform and
+// smithay's Y flip), then into NDC against the viewport. `a_uv` is carried
+// through unchanged for texture sampling.
 const COMPOSITE_VERT_SRC: &str = r#"#version 100
 precision highp float;
 attribute vec2 a_pos;
@@ -893,14 +890,9 @@ uniform vec4 viewport;   // x, y, w, h in framebuffer pixels
 varying vec2 v_uv;
 void main() {
     v_uv = a_uv;
-    // dst rect in output-physical pixels (top-left origin).
     vec2 px = dst_origin + a_uv * dst_size;
-    // Map pixel coords → NDC against the GL viewport. Pixel Y grows down,
-    // NDC Y grows up, so the Y axis is flipped. Deterministic — does not
-    // depend on smithay's projection-matrix layout/transpose.
-    float ndc_x = 2.0 * (px.x - viewport.x) / viewport.z - 1.0;
-    float ndc_y = 1.0 - 2.0 * (px.y - viewport.y) / viewport.w;
-    gl_Position = vec4(ndc_x, ndc_y, 0.0, 1.0);
+    vec2 ndc = 2.0 * (px - viewport.xy) / viewport.zw - 1.0;
+    gl_Position = vec4(ndc, 0.0, 1.0);
 }
 "#;
 
@@ -950,8 +942,8 @@ void main() {
 }
 "#;
 
-// Composite: position the quad via the output projection (mapping
-// dst-pixel coords → clip space), sample the blurred texture, apply
+// Composite: sample the blurred texture over the quad placed by
+// COMPOSITE_VERT_SRC, apply
 // brightness / contrast / saturation / noise, and mask to the rounded
 // rect. Output is premultiplied alpha (smithay's blend expects it).
 const COMPOSITE_FRAG_SRC: &str = r#"#version 100
@@ -976,12 +968,10 @@ float hash(vec2 p) {
 }
 
 void main() {
-    // The blurred texture stores the region right-side-up in GL space
-    // (row 0 = bottom, set by the flipped capture). The destination
-    // quad runs top-left → bottom-right via the frame projection, so we
-    // flip V here to put the blur back in the orientation of the
-    // background it sits under.
-    vec2 sample_uv = vec2(v_uv.x, 1.0 - v_uv.y) * uv_scale;
+    // Texel row 0 of the blurred texture is window row `dst_origin.y`
+    // (the capture copies window rows in order), and `v_uv.y = 0` sits
+    // on that same row, so no flip.
+    vec2 sample_uv = v_uv * uv_scale;
     vec3 c = texture2D(tex, sample_uv).rgb;
 
     // brightness
@@ -1011,20 +1001,98 @@ void main() {
 mod tests {
     use super::*;
 
+    const ALL_TRANSFORMS: [Transform; 8] = [
+        Transform::Normal,
+        Transform::_90,
+        Transform::_180,
+        Transform::_270,
+        Transform::Flipped,
+        Transform::Flipped90,
+        Transform::Flipped180,
+        Transform::Flipped270,
+    ];
+
+    /// smithay's GlesRenderer::render projection, replayed in f64: output-
+    /// space pixel → NDC (top-left ortho over the transformed size), then
+    /// the frame transform's matrix, then the Y flip for OpenGL, then the
+    /// viewport. Returns GL window coordinates.
+    fn smithay_project(p: (f64, f64), transform: Transform, fb: (i32, i32)) -> (f64, f64) {
+        let out = transform.transform_size(Size::<i32, Physical>::from(fb));
+        let ux = 2.0 * p.0 / f64::from(out.w) - 1.0;
+        let uy = 1.0 - 2.0 * p.1 / f64::from(out.h);
+        let m = transform.matrix();
+        let a = f64::from(m.x_axis.x) * ux + f64::from(m.y_axis.x) * uy;
+        let b = f64::from(m.x_axis.y) * ux + f64::from(m.y_axis.y) * uy;
+        let (nx, ny) = (a, -b);
+        (
+            (nx + 1.0) / 2.0 * f64::from(fb.0),
+            (ny + 1.0) / 2.0 * f64::from(fb.1),
+        )
+    }
+
     #[test]
-    fn blur_only_on_untransformed_outputs() {
-        assert!(blur_supported(Transform::Normal));
-        for t in [
-            Transform::_90,
-            Transform::_180,
-            Transform::_270,
-            Transform::Flipped,
-            Transform::Flipped90,
-            Transform::Flipped180,
-            Transform::Flipped270,
-        ] {
-            assert!(!blur_supported(t), "{t:?}");
+    fn framebuffer_rect_matches_smithays_projection_for_every_transform() {
+        let fb = (1920, 1080);
+        let rects = [
+            Rectangle::new((0, 0).into(), (300, 40).into()),
+            Rectangle::new((17, 230).into(), (640, 480).into()),
+        ];
+        for t in ALL_TRANSFORMS {
+            for dst in rects {
+                let a = smithay_project((f64::from(dst.loc.x), f64::from(dst.loc.y)), t, fb);
+                let b = smithay_project(
+                    (
+                        f64::from(dst.loc.x + dst.size.w),
+                        f64::from(dst.loc.y + dst.size.h),
+                    ),
+                    t,
+                    fb,
+                );
+                let expected = Rectangle::<i32, Physical>::new(
+                    (a.0.min(b.0).round() as i32, a.1.min(b.1).round() as i32).into(),
+                    (
+                        (a.0 - b.0).abs().round() as i32,
+                        (a.1 - b.1).abs().round() as i32,
+                    )
+                        .into(),
+                );
+                assert_eq!(
+                    framebuffer_rect(dst, t, fb.into()),
+                    expected,
+                    "{t:?} {dst:?}"
+                );
+            }
         }
+    }
+
+    #[test]
+    fn framebuffer_rect_examples() {
+        // A 300x40 top bar on a 1920x1080 panel.
+        let bar = Rectangle::<i32, Physical>::new((0, 0).into(), (300, 40).into());
+        let fb: Size<i32, Physical> = (1920, 1080).into();
+        // Normal: window row 0 is the top row, nothing moves.
+        assert_eq!(framebuffer_rect(bar, Transform::Normal, fb), bar);
+        // Upside down: bottom-right corner of the buffer.
+        assert_eq!(
+            framebuffer_rect(bar, Transform::_180, fb),
+            Rectangle::new((1620, 1040).into(), (300, 40).into())
+        );
+        // Mirrored: top-right.
+        assert_eq!(
+            framebuffer_rect(bar, Transform::Flipped, fb),
+            Rectangle::new((1620, 0).into(), (300, 40).into())
+        );
+        // Portrait (output space 1080x1920): the bar becomes a 40x300
+        // column; frame transform _90 puts the output's top edge on the
+        // buffer's right edge.
+        assert_eq!(
+            framebuffer_rect(bar, Transform::_90, fb),
+            Rectangle::new((1880, 0).into(), (40, 300).into())
+        );
+        assert_eq!(
+            framebuffer_rect(bar, Transform::_270, fb),
+            Rectangle::new((0, 780).into(), (40, 300).into())
+        );
     }
 
     #[test]
@@ -1063,5 +1131,168 @@ mod tests {
         assert_eq!(mip_size(1000, 500, 2), (250, 125));
         // Never collapses to zero.
         assert_eq!(mip_size(1, 1, 5), (1, 1));
+    }
+}
+
+/// Blur placement checked on a real GL context (render node + GBM/EGL,
+/// rendering into an offscreen texture, no display needed). Skips with a
+/// note when no render node / EGL is available (headless CI).
+#[cfg(test)]
+mod gpu_tests {
+    use super::*;
+    use smithay::backend::allocator::Fourcc;
+    use smithay::backend::allocator::gbm::GbmDevice;
+    use smithay::backend::egl::{EGLContext, EGLDisplay};
+    use smithay::backend::renderer::{Bind, Color32F, ExportMem, Offscreen, Renderer};
+
+    const ALL: [Transform; 8] = [
+        Transform::Normal,
+        Transform::_90,
+        Transform::_180,
+        Transform::_270,
+        Transform::Flipped,
+        Transform::Flipped90,
+        Transform::Flipped180,
+        Transform::Flipped270,
+    ];
+
+    fn renderer() -> Option<GlesRenderer> {
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/dri/renderD128")
+            .ok()?;
+        let fd = smithay::backend::drm::DrmDeviceFd::new(std::os::fd::OwnedFd::from(file).into());
+        let gbm = GbmDevice::new(fd).ok()?;
+        // SAFETY: `gbm` owns the open render node and is moved into the display.
+        let display = unsafe { EGLDisplay::new(gbm) }.ok()?;
+        let context = EGLContext::new(&display).ok()?;
+        // SAFETY: the context was just created on this thread and is not shared.
+        unsafe { GlesRenderer::new(context) }.ok()
+    }
+
+    /// Render `fb_size` (framebuffer / mode size) with the frame transform
+    /// `transform`: blue clear, red at `dst` (output space), then
+    /// optionally the blur element over `dst`. Returns RGBA rows in GL
+    /// window order (row 0 = window y 0).
+    fn render(
+        renderer: &mut GlesRenderer,
+        fb_size: Size<i32, Physical>,
+        transform: Transform,
+        dst: Rectangle<i32, Physical>,
+        blur: bool,
+    ) -> Vec<u8> {
+        let mut tex: smithay::backend::renderer::gles::GlesTexture = renderer
+            .create_buffer(Fourcc::Abgr8888, (fb_size.w, fb_size.h).into())
+            .expect("offscreen buffer");
+        let mut fb = renderer.bind(&mut tex).expect("bind");
+        {
+            let mut frame = renderer
+                .render(&mut fb, fb_size, transform)
+                .expect("render");
+            let out_size = transform.transform_size(fb_size);
+            frame
+                .clear(
+                    Color32F::new(0.0, 0.0, 1.0, 1.0),
+                    &[Rectangle::from_size(out_size)],
+                )
+                .expect("clear");
+            frame
+                .draw_solid(
+                    dst,
+                    &[Rectangle::from_size(dst.size)],
+                    Color32F::new(1.0, 0.0, 0.0, 1.0),
+                )
+                .expect("solid");
+            if blur {
+                let params = BlurParams {
+                    num_passes: 2,
+                    radius: 2,
+                    noise: 0.0,
+                    brightness: 0.5,
+                    contrast: 1.0,
+                    saturation: 1.0,
+                };
+                let element = BlurRenderElement::new(
+                    Id::new(),
+                    Rectangle::new(
+                        (dst.loc.x, dst.loc.y).into(),
+                        (dst.size.w, dst.size.h).into(),
+                    ),
+                    0.0,
+                    params,
+                    Scale::from(1.0),
+                );
+                element
+                    .draw(
+                        &mut frame,
+                        element.src(),
+                        dst,
+                        &[Rectangle::from_size(dst.size)],
+                        &[],
+                        None,
+                    )
+                    .expect("blur draw");
+            }
+            let _ = frame.finish().expect("finish");
+        }
+        let mapping = renderer
+            .copy_framebuffer(
+                &fb,
+                Rectangle::from_size((fb_size.w, fb_size.h).into()),
+                Fourcc::Abgr8888,
+            )
+            .expect("copy");
+        renderer.map_texture(&mapping).expect("map").to_vec()
+    }
+
+    /// Blur at half brightness over a red rect on blue: on every output
+    /// transform the blurred (darkened) red must cover exactly the rect
+    /// smithay drew `dst` at, and nothing else may change. A capture or
+    /// composite at the wrong framebuffer rect leaves bright red inside or
+    /// darkens blue outside.
+    #[test]
+    fn blur_covers_exactly_the_drawn_rect_on_every_transform() {
+        let Some(mut renderer) = renderer() else {
+            eprintln!("skipped: no render node / EGL");
+            return;
+        };
+        if shader(&mut renderer).is_none() {
+            eprintln!("skipped: blur shaders did not compile");
+            return;
+        }
+        // Non-square framebuffer and an off-centre rect, so every mirror
+        // and rotation lands somewhere else.
+        let fb_size: Size<i32, Physical> = (64, 40).into();
+        let dst = Rectangle::new((3, 5).into(), (12, 8).into());
+        for t in ALL {
+            let fb_rect = framebuffer_rect(dst, t, fb_size);
+            let px = render(&mut renderer, fb_size, t, dst, true);
+            for y in 0..fb_size.h {
+                for x in 0..fb_size.w {
+                    let i = ((y * fb_size.w + x) * 4) as usize;
+                    let (r, g, b) = (px[i], px[i + 1], px[i + 2]);
+                    let inside = x >= fb_rect.loc.x
+                        && x < fb_rect.loc.x + fb_rect.size.w
+                        && y >= fb_rect.loc.y
+                        && y < fb_rect.loc.y + fb_rect.size.h;
+                    let edge = x == fb_rect.loc.x
+                        || x == fb_rect.loc.x + fb_rect.size.w - 1
+                        || y == fb_rect.loc.y
+                        || y == fb_rect.loc.y + fb_rect.size.h - 1;
+                    if !inside {
+                        assert!(
+                            b > 240 && r < 15,
+                            "{t:?}: ({x},{y}) outside {fb_rect:?} changed to {r},{g},{b}"
+                        );
+                    } else if !edge {
+                        assert!(
+                            (100..=160).contains(&r) && g < 30 && b < 30,
+                            "{t:?}: ({x},{y}) inside {fb_rect:?} is {r},{g},{b}, not blurred red"
+                        );
+                    }
+                }
+            }
+        }
     }
 }
