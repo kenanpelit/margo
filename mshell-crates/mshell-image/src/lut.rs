@@ -155,14 +155,22 @@ pub fn generate_clut(theme: &Themes) -> Option<Vec<u8>> {
 /// CLUT cache directory: `$XDG_CACHE_HOME/mshell/cluts`, falling back to
 /// `$HOME/.cache/mshell/cluts`. `None` when neither is set.
 fn clut_cache_dir() -> Option<PathBuf> {
-    if let Some(dir) = std::env::var_os("XDG_CACHE_HOME") {
+    clut_cache_dir_from(std::env::var_os("XDG_CACHE_HOME"), std::env::var_os("HOME"))
+}
+
+/// [`clut_cache_dir`] for explicit `XDG_CACHE_HOME` / `HOME` values.
+fn clut_cache_dir_from(
+    xdg_cache_home: Option<std::ffi::OsString>,
+    home: Option<std::ffi::OsString>,
+) -> Option<PathBuf> {
+    if let Some(dir) = xdg_cache_home {
         let dir = PathBuf::from(dir);
         // A relative XDG_CACHE_HOME is invalid per spec; ignore it.
         if dir.is_absolute() {
             return Some(dir.join("mshell").join("cluts"));
         }
     }
-    let home = std::env::var_os("HOME")?;
+    let home = home?;
     Some(
         PathBuf::from(home)
             .join(".cache")
@@ -197,8 +205,13 @@ fn write_clut_cache(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 /// first use of a theme costs one generation (~20 ms); every later use is a
 /// cache read.
 pub fn load_clut(theme: &Themes) -> Option<Vec<u8>> {
+    load_clut_in(clut_cache_dir().as_deref(), theme)
+}
+
+/// [`load_clut`] with the cache in `cache_dir` (`None` = don't cache).
+fn load_clut_in(cache_dir: Option<&Path>, theme: &Themes) -> Option<Vec<u8>> {
     let name = clut_name(theme)?;
-    let cached = clut_cache_dir().map(|d| d.join(format!("{name}.bin")));
+    let cached = cache_dir.map(|d| d.join(format!("{name}.bin")));
 
     if let Some(path) = &cached {
         match fs::read(path) {
@@ -722,6 +735,150 @@ mod tests {
         assert!(!grade_in_place(img.as_mut(), &clut, 1.0, 1.0, &cancel));
     }
 
+    /// A fresh, empty directory under the system temp dir, removed on drop.
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(tag: &str) -> Self {
+            static SEQ: AtomicU64 = AtomicU64::new(0);
+            let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+            let dir = std::env::temp_dir().join(format!(
+                "mshell-image-test-{tag}-{}-{seq}",
+                std::process::id()
+            ));
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).expect("create temp dir");
+            Self(dir)
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn file_names(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = fs::read_dir(dir)
+            .expect("read dir")
+            .map(|e| {
+                e.expect("dir entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn every_static_theme_has_a_unique_clut_name() {
+        for (name, theme) in CLUT_THEMES {
+            assert_eq!(clut_name(theme), Some(*name));
+        }
+        let mut names: Vec<_> = CLUT_THEMES.iter().map(|(n, _)| *n).collect();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), CLUT_THEMES.len(), "duplicate CLUT name");
+        // Every theme but Wallpaper recolours; Default shares Kenp's CLUT.
+        for theme in [
+            Themes::Kenp,
+            Themes::CatppuccinMocha,
+            Themes::EverforestDarkMedium,
+            Themes::GruvboxMaterial,
+            Themes::Horizon,
+            Themes::Iznik,
+            Themes::KanagawaWave,
+            Themes::OneDark,
+            Themes::Margo,
+            Themes::RosePine,
+            Themes::TokyoNight,
+        ] {
+            assert!(clut_name(&theme).is_some(), "{theme:?} has no CLUT");
+        }
+        assert_eq!(clut_name(&Themes::Default), Some("kenp"));
+        assert_eq!(clut_name(&Themes::Wallpaper), None);
+        assert!(!CLUT_THEMES.iter().any(|(_, t)| *t == Themes::Default));
+    }
+
+    #[test]
+    fn cache_dir_prefers_an_absolute_xdg_cache_home() {
+        let some = |s: &str| Some(std::ffi::OsString::from(s));
+        assert_eq!(
+            clut_cache_dir_from(some("/x/cache"), some("/home/u")),
+            Some(PathBuf::from("/x/cache/mshell/cluts"))
+        );
+        // Relative or unset XDG_CACHE_HOME falls back to $HOME/.cache.
+        for xdg in [some("rel/cache"), None] {
+            assert_eq!(
+                clut_cache_dir_from(xdg, some("/home/u")),
+                Some(PathBuf::from("/home/u/.cache/mshell/cluts"))
+            );
+        }
+        assert_eq!(clut_cache_dir_from(some("rel"), None), None);
+        assert_eq!(clut_cache_dir_from(None, None), None);
+    }
+
+    #[test]
+    fn cache_write_is_atomic_and_overwrites() {
+        let tmp = TempDir::new("write");
+        let path = tmp.0.join("nested").join("kenp.bin");
+        write_clut_cache(&path, b"first").expect("write");
+        write_clut_cache(&path, b"second").expect("overwrite");
+        assert_eq!(fs::read(&path).expect("read"), b"second");
+        // No temp files are left beside the cache entry.
+        assert_eq!(file_names(&tmp.0.join("nested")), vec!["kenp.bin"]);
+        let err = write_clut_cache(Path::new("/"), b"x").expect_err("no parent");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn load_clut_reads_a_valid_cache_without_regenerating() {
+        let tmp = TempDir::new("hit");
+        // Not a real CLUT: proves the cached bytes are returned as they are.
+        let fake = vec![7u8; CLUT_BYTE_LEN];
+        fs::write(tmp.0.join("kenp.bin"), &fake).expect("seed cache");
+        assert_eq!(
+            load_clut_in(Some(&tmp.0), &Themes::Kenp),
+            Some(fake.clone())
+        );
+        // Default resolves to the same cache entry.
+        assert_eq!(load_clut_in(Some(&tmp.0), &Themes::Default), Some(fake));
+    }
+
+    #[test]
+    fn load_clut_generates_caches_and_repairs_a_corrupt_cache() {
+        let tmp = TempDir::new("gen");
+        let dir = tmp.0.join("cluts");
+        let path = dir.join("tokyo_night.bin");
+
+        // Missing cache: generated, then written (directory created).
+        let generated = load_clut_in(Some(&dir), &Themes::TokyoNight).expect("generate");
+        assert_eq!(generated.len(), CLUT_BYTE_LEN);
+        assert_eq!(fs::read(&path).expect("cached"), generated);
+        assert_eq!(file_names(&dir), vec!["tokyo_night.bin"]);
+
+        // A truncated cache is regenerated and rewritten; generation is
+        // deterministic, so the bytes match the first run.
+        fs::write(&path, &generated[..1000]).expect("corrupt cache");
+        let repaired = load_clut_in(Some(&dir), &Themes::TokyoNight).expect("regenerate");
+        assert_eq!(repaired, generated);
+        assert_eq!(fs::read(&path).expect("rewritten"), generated);
+
+        // Wallpaper has no CLUT and must not touch the cache.
+        assert_eq!(load_clut_in(Some(&dir), &Themes::Wallpaper), None);
+        assert_eq!(file_names(&dir), vec!["tokyo_night.bin"]);
+    }
+
+    #[test]
+    fn load_clut_without_a_cache_dir_still_generates() {
+        let clut = load_clut_in(None, &Themes::Horizon).expect("generate");
+        assert_eq!(clut.len(), CLUT_BYTE_LEN);
+        assert_eq!(Some(clut), generate_clut(&Themes::Horizon));
+        assert_eq!(generate_clut(&Themes::Wallpaper), None);
+    }
+
     fn write_test_png(name: &str, w: u32, h: u32) -> PathBuf {
         let path = std::env::temp_dir().join(format!(
             "mshell-image-{name}-{}-{w}x{h}.png",
@@ -758,5 +915,104 @@ mod tests {
         let cancel = AtomicBool::new(true);
         assert!(decode_rgba_scaled(&path, |w, h| (w, h), &cancel).is_none());
         let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn pixbuf_decode_keeps_alpha_and_fills_it_for_rgb() {
+        let path = write_test_png("rgba", 23, 9);
+        let img = decode_pixbuf_rgba(&path).expect("decode rgba");
+        assert_eq!(img.as_raw(), test_image(23, 9).as_raw());
+        let _ = fs::remove_file(&path);
+
+        let tmp = TempDir::new("rgb");
+        let rgb_path = tmp.0.join("rgb.png");
+        let rgb = RgbImage::from_fn(5, 3, |x, y| Rgb([x as u8 * 40, y as u8 * 70, 9]));
+        rgb.save(&rgb_path).expect("write rgb png");
+        let img = decode_pixbuf_rgba(&rgb_path).expect("decode rgb");
+        assert_eq!(img.dimensions(), (5, 3));
+        for (x, y, p) in img.enumerate_pixels() {
+            assert_eq!(p.0, [x as u8 * 40, y as u8 * 70, 9, 255]);
+        }
+    }
+
+    #[test]
+    fn decoders_reject_missing_and_garbage_files() {
+        let tmp = TempDir::new("garbage");
+        let missing = tmp.0.join("missing.png");
+        let garbage = tmp.0.join("garbage.png");
+        fs::write(&garbage, b"definitely not an image").expect("write garbage");
+        let cancel = AtomicBool::new(false);
+        for path in [&missing, &garbage] {
+            assert!(decode_pixbuf_rgba(path).is_none());
+            assert!(decode_rgba_scaled(path, |w, h| (w, h), &cancel).is_none());
+            assert!(average_luminance(path).is_none());
+        }
+    }
+
+    #[test]
+    fn scaled_decode_ignores_a_zero_target_size() {
+        let path = write_test_png("zero", 30, 20);
+        let cancel = AtomicBool::new(false);
+        for target in [(0, 10), (10, 0), (0, 0)] {
+            let img = decode_rgba_scaled(&path, move |_, _| target, &cancel).expect("decode");
+            assert_eq!(img.dimensions(), (30, 20), "target {target:?}");
+        }
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn average_luminance_spans_black_to_white() {
+        let tmp = TempDir::new("luma");
+        let lum = |name: &str, rgb: [u8; 3]| {
+            let path = tmp.0.join(name);
+            RgbImage::from_pixel(100, 80, Rgb(rgb))
+                .save(&path)
+                .expect("write png");
+            average_luminance(&path).expect("luminance")
+        };
+        assert!(lum("black.png", [0, 0, 0]).abs() < 1e-9);
+        assert!((lum("white.png", [255, 255, 255]) - 1.0).abs() < 1e-6);
+        // Rec. 709 weights: green dominates, blue barely counts.
+        assert!((lum("green.png", [0, 255, 0]) - 0.7152).abs() < 1e-6);
+        assert!((lum("blue.png", [0, 0, 255]) - 0.0722).abs() < 1e-6);
+    }
+
+    #[test]
+    fn theme_filter_skips_wallpaper_and_honours_cancel() {
+        let path = write_test_png("filter", 12, 6);
+        let idle = AtomicBool::new(false);
+        let cancelled = AtomicBool::new(true);
+        assert!(apply_theme_filter(&path, &Themes::Wallpaper, 1.0, 1.0, 0.0, &idle).is_none());
+        assert!(
+            apply_theme_filter_rgba(test_image(4, 4), &Themes::Wallpaper, 1.0, 1.0, 0.0, &idle)
+                .is_none()
+        );
+        let clut = test_clut();
+        assert!(
+            filter_with_clut(
+                test_image(4, 4),
+                &clut,
+                &Themes::Kenp,
+                1.0,
+                1.0,
+                0.0,
+                &cancelled
+            )
+            .is_none()
+        );
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn filter_with_clut_grades_and_keeps_size_and_alpha() {
+        let clut = test_clut();
+        let cancel = AtomicBool::new(false);
+        let img = test_image(9, 5);
+        let mut expected = img.clone();
+        reference_grade(&mut expected, &clut, 0.6, 1.2);
+        let got =
+            filter_with_clut(img, &clut, &Themes::Kenp, 0.6, 1.2, 0.0, &cancel).expect("graded");
+        assert_eq!(got.dimensions(), (9, 5));
+        assert_eq!(got.as_raw(), expected.as_raw());
     }
 }
