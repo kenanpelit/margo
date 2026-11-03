@@ -1,191 +1,52 @@
-use gtk4::gdk;
-use gtk4::prelude::{BoxExt, GtkWindowExt, OrientableExt, RangeExt, WidgetExt};
-use gtk4_layer_shell::{Layer, LayerShell};
+//! Volume OSD — the default audio sink's level and mute state.
+
+use crate::level_osd::{LevelOsdCommand, LevelOsdInit, LevelOsdModel, LevelSource, OsdLevel};
 use mshell_common::WatcherToken;
 use mshell_services::audio_service;
 use mshell_utils::audio::{
     get_audio_out_icon, spawn_default_output_watcher, spawn_output_device_volume_mute_watcher,
 };
-use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use relm4::ComponentSender;
 use std::sync::Arc;
 use wayle_audio::core::device::output::OutputDevice;
 
-#[derive(Debug)]
-pub struct VolumeOsdModel {
-    active_device_watcher_token: WatcherToken,
-    hide_token: WatcherToken,
-    icon_name: String,
-    slider_value: f64,
-    value_label: String,
-    show_gate: crate::ShowGate,
+/// Level source for the default output device.
+pub struct VolumeSource;
+
+pub type VolumeOsdModel = LevelOsdModel<VolumeSource>;
+pub type VolumeOsdInit = LevelOsdInit;
+
+fn level(device: &Arc<OutputDevice>) -> OsdLevel {
+    let volume = device.volume.get();
+    crate::level_osd::audio_level(
+        get_audio_out_icon(device),
+        volume.average(),
+        volume.average_percentage(),
+    )
 }
 
-#[derive(Debug)]
-pub enum VolumeOsdInput {
-    UpdateDevice(Arc<OutputDevice>),
-    Show,
-    Hide,
-}
+impl LevelSource for VolumeSource {
+    const INITIAL_ICON: &'static str = "audio-volume-medium-symbolic";
 
-#[derive(Debug)]
-pub enum VolumeOsdOutput {}
-
-pub struct VolumeOsdInit {
-    pub monitor: gdk::Monitor,
-}
-
-#[derive(Debug)]
-pub enum VolumeOsdCommandOutput {
-    DeviceChanged,
-    VolumeChanged,
-    Hide,
-}
-
-#[relm4::component(pub)]
-impl Component for VolumeOsdModel {
-    type CommandOutput = VolumeOsdCommandOutput;
-    type Input = VolumeOsdInput;
-    type Output = VolumeOsdOutput;
-    type Init = VolumeOsdInit;
-
-    view! {
-        #[root]
-        gtk::Window {
-            set_css_classes: &["osd-window", "window-opacity"],
-            set_decorated: false,
-            set_visible: false,
-            set_default_height: 1,
-
-            gtk::Box {
-                set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 12,
-
-                gtk::Image {
-                    add_css_class: "osd-icon",
-                    #[watch]
-                    set_icon_name: Some(model.icon_name.as_str()),
-                },
-
-                gtk::Scale {
-                    add_css_class: "ok-progress-bar",
-                    set_hexpand: true,
-                    set_can_focus: false,
-                    set_focus_on_click: false,
-                    set_range: (0.0, 1.0),
-                    #[watch]
-                    set_value: model.slider_value,
-                },
-
-                // Numeric level — the value the user is dialling. Fixed
-                // width + tabular figures so the bar doesn't reflow as the
-                // digits change (DESIGN.md §13.7 state continuity).
-                gtk::Label {
-                    add_css_class: "osd-value",
-                    set_width_chars: 4,
-                    set_xalign: 1.0,
-                    #[watch]
-                    set_label: &model.value_label,
-                }
-            }
-        }
+    fn spawn_watchers(sender: &ComponentSender<LevelOsdModel<Self>>) {
+        spawn_default_output_watcher(sender, None, || LevelOsdCommand::Rebind);
     }
 
-    fn init(
-        params: Self::Init,
-        root: Self::Root,
-        sender: ComponentSender<Self>,
-    ) -> ComponentParts<Self> {
-        root.init_layer_shell();
-        root.set_monitor(Some(&params.monitor));
-        root.set_namespace(Some("mshell-osd"));
-        root.set_layer(Layer::Overlay);
-        root.set_exclusive_zone(0);
-        let (position, distance) = crate::osd_geometry::read();
-        crate::osd_geometry::apply(&root, &position, distance);
-
-        spawn_default_output_watcher(&sender, None, || VolumeOsdCommandOutput::DeviceChanged);
-
-        let model = VolumeOsdModel {
-            active_device_watcher_token: WatcherToken::new(),
-            hide_token: WatcherToken::new(),
-            icon_name: "audio-volume-medium-symbolic".to_string(),
-            slider_value: 0.0,
-            value_label: "0%".to_string(),
-            show_gate: crate::ShowGate::default(),
-        };
-
-        let widgets = view_output!();
-
-        ComponentParts { model, widgets }
+    fn rebind(
+        token: &mut WatcherToken,
+        sender: &ComponentSender<LevelOsdModel<Self>>,
+    ) -> Option<OsdLevel> {
+        let device = audio_service().default_output.get()?;
+        spawn_output_device_volume_mute_watcher(&device, token.reset(), sender, || {
+            LevelOsdCommand::Changed
+        });
+        Some(level(&device))
     }
 
-    fn update_with_view(
-        &mut self,
-        widgets: &mut Self::Widgets,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        root: &Self::Root,
-    ) {
-        match message {
-            VolumeOsdInput::UpdateDevice(device) => {
-                self.icon_name = get_audio_out_icon(&device).to_string();
-                let volume = device.volume.get();
-                self.slider_value = volume.average();
-                self.value_label = crate::percent_label(volume.average_percentage());
-
-                let token = self.hide_token.reset();
-                sender.command(|out, shutdown| {
-                    shutdown
-                        .register(async move {
-                            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                            if !token.is_cancelled() {
-                                out.send(VolumeOsdCommandOutput::Hide).ok();
-                            }
-                        })
-                        .drop_on_shutdown()
-                });
-            }
-            VolumeOsdInput::Show => {
-                if self.show_gate.allow() {
-                    root.set_visible(true);
-                }
-            }
-            VolumeOsdInput::Hide => {
-                root.set_visible(false);
-            }
-        }
-
-        self.update_view(widgets, sender);
-    }
-
-    fn update_cmd(
-        &mut self,
-        message: Self::CommandOutput,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
-        match message {
-            VolumeOsdCommandOutput::DeviceChanged => {
-                let default_output = audio_service().default_output.get();
-                if let Some(audio_device) = default_output {
-                    sender.input(VolumeOsdInput::UpdateDevice(audio_device.clone()));
-
-                    let token = self.active_device_watcher_token.reset();
-
-                    spawn_output_device_volume_mute_watcher(&audio_device, token, &sender, || {
-                        VolumeOsdCommandOutput::VolumeChanged
-                    });
-                }
-            }
-            VolumeOsdCommandOutput::VolumeChanged => {
-                if let Some(default_output) = audio_service().default_output.get() {
-                    sender.input(VolumeOsdInput::UpdateDevice(default_output));
-                    sender.input(VolumeOsdInput::Show);
-                }
-            }
-            VolumeOsdCommandOutput::Hide => {
-                sender.input(VolumeOsdInput::Hide);
-            }
-        }
+    fn read() -> Option<OsdLevel> {
+        audio_service()
+            .default_output
+            .get()
+            .map(|device| level(&device))
     }
 }

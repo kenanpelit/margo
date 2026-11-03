@@ -1,7 +1,9 @@
 pub mod brightness_osd;
+pub mod level_osd;
 pub mod mic_osd;
 pub mod network_osd;
 pub mod osd_geometry;
+pub(crate) mod osd_window;
 pub mod sound_alerts;
 pub mod toast;
 pub mod toast_producer;

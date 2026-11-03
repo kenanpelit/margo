@@ -12,13 +12,11 @@
 //! existing state being observed, not a real change), so opening
 //! a session doesn't pop a spurious "Connected" right at start.
 //!
-//! Layout-shell window pattern + 2 s auto-hide mirror the
-//! volume / brightness OSDs so visually all three feel like the
-//! same surface.
+//! Uses the shared OSD window shell ([`crate::osd_window`]) with a
+//! 2 s auto-hide, so it reads as the same surface as the level OSDs.
 
 use gtk4::gdk;
-use gtk4::prelude::{BoxExt, GtkWindowExt, OrientableExt, WidgetExt};
-use gtk4_layer_shell::{Layer, LayerShell};
+use gtk4::prelude::{BoxExt, OrientableExt, WidgetExt};
 use mshell_common::{WatcherToken, watch};
 use mshell_services::network_service;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -77,11 +75,7 @@ impl Component for NetworkOsdModel {
 
     view! {
         #[root]
-        gtk::Window {
-            set_css_classes: &["osd-window", "window-opacity"],
-            set_decorated: false,
-            set_visible: false,
-            set_default_height: 1,
+        crate::osd_window::new_window() -> gtk::Window {
 
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
@@ -122,13 +116,7 @@ impl Component for NetworkOsdModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        root.init_layer_shell();
-        root.set_monitor(Some(&params.monitor));
-        root.set_namespace(Some("mshell-osd"));
-        root.set_layer(Layer::Overlay);
-        root.set_exclusive_zone(0);
-        let (position, distance) = crate::osd_geometry::read();
-        crate::osd_geometry::apply(&root, &position, distance);
+        crate::osd_window::init_layer_shell(&root, &params.monitor);
 
         // Subscribe to the relevant network properties. Three
         // streams are merged: primary-connection-type, wifi SSID,
@@ -169,17 +157,12 @@ impl Component for NetworkOsdModel {
                     return;
                 }
                 root.set_visible(true);
-                let token = self.hide_token.reset();
-                sender.command(|out, shutdown| {
-                    shutdown
-                        .register(async move {
-                            tokio::time::sleep(HIDE_AFTER).await;
-                            if !token.is_cancelled() {
-                                out.send(NetworkOsdCommandOutput::Hide).ok();
-                            }
-                        })
-                        .drop_on_shutdown()
-                });
+                crate::osd_window::arm_hide(
+                    &sender,
+                    &mut self.hide_token,
+                    HIDE_AFTER,
+                    NetworkOsdCommandOutput::Hide,
+                );
             }
             NetworkOsdInput::Hide => {
                 root.set_visible(false);

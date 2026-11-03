@@ -1,177 +1,29 @@
-use gtk4::gdk;
-use gtk4::prelude::{BoxExt, GtkWindowExt, OrientableExt, RangeExt, WidgetExt};
-use gtk4_layer_shell::{Layer, LayerShell};
-use mshell_common::WatcherToken;
+//! Brightness OSD — the primary backlight's level.
+
+use crate::level_osd::{LevelOsdCommand, LevelOsdInit, LevelOsdModel, LevelSource, OsdLevel};
 use mshell_services::brightness_service;
 use mshell_utils::brightness::{get_brightness_icon, spawn_brightness_watcher};
-use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use relm4::ComponentSender;
 
-#[derive(Debug)]
-pub struct BrightnessOsdModel {
-    hide_token: WatcherToken,
-    icon_name: String,
-    slider_value: f64,
-    value_label: String,
-    show_gate: crate::ShowGate,
-}
+/// Level source for the primary backlight device.
+pub struct BrightnessSource;
 
-#[derive(Debug)]
-pub enum BrightnessOsdInput {
-    BrightnessChanged,
-    Show,
-    Hide,
-}
+pub type BrightnessOsdModel = LevelOsdModel<BrightnessSource>;
+pub type BrightnessOsdInit = LevelOsdInit;
 
-#[derive(Debug)]
-pub enum BrightnessOsdOutput {}
+impl LevelSource for BrightnessSource {
+    const INITIAL_ICON: &'static str = "brightness-medium-symbolic";
 
-pub struct BrightnessOsdInit {
-    pub monitor: gdk::Monitor,
-}
-
-#[derive(Debug)]
-pub enum BrightnessOsdCommandOutput {
-    BrightnessChanged,
-    Hide,
-}
-
-#[relm4::component(pub)]
-impl Component for BrightnessOsdModel {
-    type CommandOutput = BrightnessOsdCommandOutput;
-    type Input = BrightnessOsdInput;
-    type Output = BrightnessOsdOutput;
-    type Init = BrightnessOsdInit;
-
-    view! {
-        #[root]
-        gtk::Window {
-            set_css_classes: &["osd-window", "window-opacity"],
-            set_decorated: false,
-            set_visible: false,
-            set_default_height: 1,
-
-            gtk::Box {
-                set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 12,
-
-                gtk::Image {
-                    add_css_class: "osd-icon",
-                    #[watch]
-                    set_icon_name: Some(model.icon_name.as_str()),
-                },
-
-                gtk::Scale {
-                    add_css_class: "ok-progress-bar",
-                    set_hexpand: true,
-                    set_can_focus: false,
-                    set_focus_on_click: false,
-                    set_range: (0.0, 1.0),
-                    #[watch]
-                    set_value: model.slider_value,
-                },
-
-                // Numeric level — the value the user is dialling. Fixed
-                // width + tabular figures so the bar doesn't reflow as the
-                // digits change (DESIGN.md §13.7 state continuity).
-                gtk::Label {
-                    add_css_class: "osd-value",
-                    set_width_chars: 4,
-                    set_xalign: 1.0,
-                    #[watch]
-                    set_label: &model.value_label,
-                }
-            }
-        }
+    fn spawn_watchers(sender: &ComponentSender<LevelOsdModel<Self>>) {
+        spawn_brightness_watcher(sender, || LevelOsdCommand::Changed);
     }
 
-    fn init(
-        params: Self::Init,
-        root: Self::Root,
-        sender: ComponentSender<Self>,
-    ) -> ComponentParts<Self> {
-        root.init_layer_shell();
-        root.set_monitor(Some(&params.monitor));
-        root.set_namespace(Some("mshell-osd"));
-        root.set_layer(Layer::Overlay);
-        root.set_exclusive_zone(0);
-        let (position, distance) = crate::osd_geometry::read();
-        crate::osd_geometry::apply(&root, &position, distance);
-
-        spawn_brightness_watcher(&sender, || BrightnessOsdCommandOutput::BrightnessChanged);
-
-        let model = BrightnessOsdModel {
-            hide_token: WatcherToken::new(),
-            icon_name: "brightness-medium-symbolic".to_string(),
-            slider_value: 0.0,
-            value_label: "0%".to_string(),
-            show_gate: crate::ShowGate::default(),
-        };
-
-        let widgets = view_output!();
-
-        ComponentParts { model, widgets }
-    }
-
-    fn update_with_view(
-        &mut self,
-        widgets: &mut Self::Widgets,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        root: &Self::Root,
-    ) {
-        match message {
-            BrightnessOsdInput::BrightnessChanged => {
-                if let Some(service) = brightness_service() {
-                    let device = service.primary.get();
-
-                    if let Some(device) = device {
-                        let brightness = device.percentage();
-
-                        self.icon_name = get_brightness_icon(brightness.value()).to_string();
-                        self.slider_value = brightness.fraction();
-                        self.value_label = crate::percent_label(brightness.value());
-
-                        let token = self.hide_token.reset();
-                        sender.command(|out, shutdown| {
-                            shutdown
-                                .register(async move {
-                                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                                    if !token.is_cancelled() {
-                                        out.send(BrightnessOsdCommandOutput::Hide).ok();
-                                    }
-                                })
-                                .drop_on_shutdown()
-                        });
-                    }
-                }
-            }
-            BrightnessOsdInput::Show => {
-                if self.show_gate.allow() {
-                    root.set_visible(true);
-                }
-            }
-            BrightnessOsdInput::Hide => {
-                root.set_visible(false);
-            }
-        }
-
-        self.update_view(widgets, sender);
-    }
-
-    fn update_cmd(
-        &mut self,
-        message: Self::CommandOutput,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
-        match message {
-            BrightnessOsdCommandOutput::BrightnessChanged => {
-                sender.input(BrightnessOsdInput::BrightnessChanged);
-                sender.input(BrightnessOsdInput::Show);
-            }
-            BrightnessOsdCommandOutput::Hide => {
-                sender.input(BrightnessOsdInput::Hide);
-            }
-        }
+    fn read() -> Option<OsdLevel> {
+        let brightness = brightness_service()?.primary.get()?.percentage();
+        Some(OsdLevel {
+            icon: get_brightness_icon(brightness.value()),
+            fraction: brightness.fraction(),
+            label: crate::percent_label(brightness.value()),
+        })
     }
 }
