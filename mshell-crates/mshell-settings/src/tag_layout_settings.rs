@@ -219,18 +219,9 @@ fn write_files(default_sel: usize, rows: &[(usize, usize)], force: bool) -> Resu
 /// Ask margo to re-read its config, off the GTK main thread.
 fn spawn_reload(sender: ComponentSender<TagLayoutSettingsModel>) {
     relm4::spawn(async move {
-        let result = match tokio::process::Command::new("mctl")
-            .arg("reload")
-            .output()
+        let result = mshell_margo_client::ctl::dispatch_async("reload_config".into(), Vec::new())
             .await
-        {
-            Ok(o) if o.status.success() => Ok(()),
-            Ok(o) => Err(format!(
-                "mctl reload failed: {}",
-                String::from_utf8_lossy(&o.stderr).trim()
-            )),
-            Err(e) => Err(format!("mctl reload: {e}")),
-        };
+            .map_err(|e| format!("config reload failed: {e}"));
         // Fallible: the page can be torn down while the reload is in flight,
         // and an infallible `input()` on a dead runtime aborts the shell.
         let _ = sender

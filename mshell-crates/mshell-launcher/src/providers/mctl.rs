@@ -2,7 +2,8 @@
 //!
 //! Every entry here is a one-shot `mctl` / `mshellctl` /
 //! `mscreenshot` invocation that the user would otherwise have to
-//! type into a terminal or rig up as a keybind. Surfacing them in
+//! type into a terminal or rig up as a keybind. The `mctl` ones are
+//! sent straight to margo's IPC socket instead of forking `mctl`. Surfacing them in
 //! the launcher means a single search box drives the whole
 //! compositor without remembering CLI flags.
 //!
@@ -338,7 +339,24 @@ fn icon_for_layout(canonical: &str) -> &'static str {
     }
 }
 
+/// The margo socket request for an `mctl …` command vector, when `mctl`
+/// would only forward it as a dispatch. `None` for other binaries
+/// (`mshellctl`, `mscreenshot`) and non-dispatch `mctl` verbs.
+fn socket_request(command: &[String]) -> Option<(String, Vec<String>)> {
+    match command.split_first() {
+        Some((bin, args)) if bin == "mctl" => mshell_margo_client::ctl::mctl_dispatch_for(args),
+        _ => None,
+    }
+}
+
+/// Activate an action: `mctl` dispatches go straight over margo's IPC
+/// socket (no fork from the shell); everything else is spawned and reaped.
 fn run(command: &[String]) {
+    if let Some((action, args)) = socket_request(command) {
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        mshell_margo_client::ctl::dispatch_detached(&action, &refs);
+        return;
+    }
     let Some((bin, args)) = command.split_first() else {
         return;
     };
@@ -404,6 +422,34 @@ mod tests {
         assert!(names.contains(&"Screenshot: region"));
         assert!(names.contains(&"Screenshot: full screen"));
         assert!(names.contains(&"Screenshot: focused window"));
+    }
+
+    #[test]
+    fn every_mctl_action_goes_over_the_socket() {
+        let owned = |c: &[&str]| c.iter().map(|s| (*s).to_string()).collect::<Vec<String>>();
+        for action in ACTIONS {
+            let cmd = owned(action.command);
+            let mapped = socket_request(&cmd);
+            if action.command[0] == "mctl" {
+                assert!(mapped.is_some(), "{} would fork mctl", action.id);
+            } else {
+                assert!(mapped.is_none(), "{} is not an mctl command", action.id);
+            }
+        }
+        for (idx, _, _) in LAYOUTS {
+            let cmd = owned(&["mctl", "layout", &idx.to_string()]);
+            assert_eq!(
+                socket_request(&cmd),
+                Some(("setlayoutindex".to_string(), vec![idx.to_string()]))
+            );
+        }
+        assert_eq!(
+            socket_request(&owned(&["mctl", "twilight", "preview", "2700"])),
+            Some((
+                "twilight_preview".to_string(),
+                vec!["2700".to_string(), "100".to_string()]
+            ))
+        );
     }
 
     #[test]

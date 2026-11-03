@@ -90,6 +90,81 @@ pub fn dispatch_detached(action: &str, args: &[&str]) {
     }
 }
 
+/// [`dispatch`] on tokio's blocking pool, for async callers that want the
+/// result (e.g. to re-probe state after the request landed).
+pub async fn dispatch_async(action: String, args: Vec<String>) -> io::Result<()> {
+    tokio::task::spawn_blocking(move || {
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        dispatch(&action, &refs)
+    })
+    .await
+    .map_err(io::Error::other)?
+}
+
+/// The socket request an `mctl <args…>` invocation (argv without the
+/// leading `mctl`) boils down to, for the subcommands that are a plain
+/// IPC dispatch in `mctl` itself (`mctl/src/bin/mctl.rs`): `dispatch`,
+/// `reload`, `layout`, `tags` and the live `twilight` verbs. Argument
+/// defaults and clamps mirror mctl's clap definitions. `None` for
+/// anything else (`twilight preset …` edits files client-side, unknown
+/// verbs, malformed numbers) — the caller then runs the real `mctl`.
+pub fn mctl_dispatch_for<S: AsRef<str>>(args: &[S]) -> Option<(String, Vec<String>)> {
+    let a: Vec<&str> = args.iter().map(AsRef::as_ref).collect();
+    let num = |s: &str| s.parse::<u32>().ok();
+    let owned = |v: &[&str]| v.iter().map(|s| (*s).to_string()).collect::<Vec<_>>();
+    let (action, rest): (&str, Vec<String>) = match a.as_slice() {
+        ["dispatch", action, rest @ ..] => (*action, owned(rest)),
+        ["reload"] | ["reload", "--force"] => ("reload_config", Vec::new()),
+        ["layout", idx] => ("setlayoutindex", vec![num(idx)?.to_string()]),
+        ["tags", mask] => ("settagset", vec![num(mask)?.to_string(), "0".into()]),
+        ["tags", mask, toggle] => {
+            let toggle = if num(toggle)? != 0 { "1" } else { "0" };
+            ("settagset", vec![num(mask)?.to_string(), toggle.into()])
+        }
+        ["twilight", "toggle"] => ("twilight_toggle", Vec::new()),
+        ["twilight", "reset"] => ("twilight_reset", Vec::new()),
+        ["twilight", "preview", k] => ("twilight_preview", vec![num(k)?.to_string(), "100".into()]),
+        ["twilight", "preview", k, g] => (
+            "twilight_preview",
+            vec![num(k)?.to_string(), num(g)?.to_string()],
+        ),
+        ["twilight", "test"] => ("twilight_test", vec!["5".into()]),
+        ["twilight", "test", s] => ("twilight_test", vec![num(s)?.clamp(1, 60).to_string()]),
+        ["twilight", "set", spec] => ("twilight_set", vec![(*spec).to_string()]),
+        _ => return None,
+    };
+    Some((action.to_string(), rest))
+}
+
+/// Run `mctl <args…>` for the shell, awaiting completion: over the socket
+/// when [`mctl_dispatch_for`] maps it to a dispatch (no fork from the big
+/// shell process), otherwise by spawning and reaping the real `mctl`.
+/// `Err` carries a one-line description for logs / toasts.
+pub async fn run_mctl(args: Vec<String>) -> Result<(), String> {
+    if let Some((action, rest)) = mctl_dispatch_for(&args) {
+        return dispatch_async(action, rest)
+            .await
+            .map_err(|e| format!("mctl {}: {e}", args.join(" ")));
+    }
+    match tokio::process::Command::new("mctl")
+        .args(&args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .await
+    {
+        Ok(o) if o.status.success() => Ok(()),
+        Ok(o) => Err(format!(
+            "mctl {}: {} {}",
+            args.join(" "),
+            o.status,
+            String::from_utf8_lossy(&o.stderr).trim()
+        )),
+        Err(e) => Err(format!("mctl {}: spawn failed: {e}", args.join(" "))),
+    }
+}
+
 /// Re-read `config.conf` in the running compositor — the in-process
 /// `mctl reload`. margo validates the file itself and keeps the previous
 /// config when it has errors (`reload_config` returns early), so skipping
@@ -151,6 +226,65 @@ mod tests {
     fn dispatch_without_margo_is_an_error() {
         let dir = tempfile::tempdir().unwrap();
         assert!(dispatch_at(&dir.path().join("none.sock"), "reload_config", &[]).is_err());
+    }
+
+    fn mapped(args: &[&str]) -> Option<(String, Vec<String>)> {
+        mctl_dispatch_for(args)
+    }
+
+    fn d(action: &str, args: &[&str]) -> Option<(String, Vec<String>)> {
+        Some((
+            action.to_string(),
+            args.iter().map(|s| (*s).to_string()).collect(),
+        ))
+    }
+
+    #[test]
+    fn mctl_argv_maps_to_the_same_dispatch_mctl_sends() {
+        assert_eq!(mapped(&["reload"]), d("reload_config", &[]));
+        assert_eq!(mapped(&["dispatch", "view", "16"]), d("view", &["16"]));
+        assert_eq!(
+            mapped(&["dispatch", "reload_config"]),
+            d("reload_config", &[])
+        );
+        assert_eq!(mapped(&["layout", "3"]), d("setlayoutindex", &["3"]));
+        assert_eq!(mapped(&["tags", "4"]), d("settagset", &["4", "0"]));
+        assert_eq!(mapped(&["tags", "4", "7"]), d("settagset", &["4", "1"]));
+        assert_eq!(mapped(&["twilight", "toggle"]), d("twilight_toggle", &[]));
+        assert_eq!(mapped(&["twilight", "reset"]), d("twilight_reset", &[]));
+        assert_eq!(
+            mapped(&["twilight", "preview", "3500"]),
+            d("twilight_preview", &["3500", "100"])
+        );
+        assert_eq!(
+            mapped(&["twilight", "preview", "3500", "80"]),
+            d("twilight_preview", &["3500", "80"])
+        );
+        assert_eq!(mapped(&["twilight", "test"]), d("twilight_test", &["5"]));
+        assert_eq!(
+            mapped(&["twilight", "test", "600"]),
+            d("twilight_test", &["60"])
+        );
+        assert_eq!(
+            mapped(&["twilight", "set", "mode=schedule"]),
+            d("twilight_set", &["mode=schedule"])
+        );
+    }
+
+    #[test]
+    fn client_side_or_malformed_mctl_argv_is_not_mapped() {
+        // `twilight preset …` edits files inside mctl, no IPC.
+        assert_eq!(
+            mapped(&["twilight", "preset", "set", "night", "3000", "90"]),
+            None
+        );
+        assert_eq!(mapped(&["twilight", "status", "--json"]), None);
+        // mctl would reject these at argument parsing.
+        assert_eq!(mapped(&["layout", "tile"]), None);
+        assert_eq!(mapped(&["twilight", "preview", "warm"]), None);
+        assert_eq!(mapped(&["twilight", "set"]), None);
+        assert_eq!(mapped(&["dispatch"]), None);
+        assert_eq!(mapped(&[]), None);
     }
 
     #[test]

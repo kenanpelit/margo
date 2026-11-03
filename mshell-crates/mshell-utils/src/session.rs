@@ -103,7 +103,7 @@ pub fn run_session_action(action: SessionAction) {
         }
         SessionAction::Suspend => spawn(&["systemctl", "suspend"]),
         // margo closes every window first so apps (browsers) exit cleanly;
-        // outside margo (mctl unreachable) fall back to systemd directly.
+        // outside margo (socket unreachable) fall back to systemd directly.
         SessionAction::Logout => {
             session_end("logout", &["systemctl", "--user", "exit"]);
         }
@@ -112,19 +112,15 @@ pub fn run_session_action(action: SessionAction) {
     }
 }
 
-/// `mctl dispatch session_end <verb>`, or `fallback` when margo can't be
-/// reached.
+/// `dispatch session_end <verb>` on margo's socket, or `fallback` when
+/// margo can't be reached or rejects it.
 fn session_end(verb: &'static str, fallback: &[&str]) {
     let fallback: Vec<String> = fallback.iter().map(|s| s.to_string()).collect();
     tokio::spawn(async move {
-        let via_margo = Command::new("mctl")
-            .args(["dispatch", "session_end", verb])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .await
-            .is_ok_and(|s| s.success());
+        let via_margo =
+            mshell_margo_client::ctl::dispatch_async("session_end".into(), vec![verb.into()])
+                .await
+                .is_ok();
         if via_margo {
             return;
         }

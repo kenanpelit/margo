@@ -725,7 +725,8 @@ fn is_internal_connector(connector: &str) -> bool {
     l.starts_with("edp") || l.starts_with("lvds")
 }
 
-/// Run a sequence of `mctl dispatch <action> <connector>` commands, then
+/// Run a sequence of `dispatch <action> <connector>` requests on margo's
+/// IPC socket, then
 /// optionally launch `wl-mirror` to show `mirror.1` fullscreen on
 /// `mirror.0`. A `CommandResult` re-reads the catalogue + live outputs
 /// afterwards. Any running mirror is dropped first so switching is clean.
@@ -743,21 +744,14 @@ fn run_dispatches(
 
         let mut err: Option<String> = None;
         for d in &dispatches {
-            let res = tokio::process::Command::new("mctl")
-                .arg("dispatch")
-                .args(d)
-                .status()
-                .await;
-            match res {
-                Ok(s) if s.success() => {}
-                Ok(s) => {
-                    err = Some(format!("mctl dispatch {}: exit {s}", d.join(" ")));
-                    break;
-                }
-                Err(e) => {
-                    err = Some(format!("mctl dispatch {}: spawn failed: {e}", d.join(" ")));
-                    break;
-                }
+            let Some((action, args)) = d.split_first() else {
+                continue;
+            };
+            if let Err(e) =
+                mshell_margo_client::ctl::dispatch_async(action.clone(), args.to_vec()).await
+            {
+                err = Some(format!("dispatch {}: {e}", d.join(" ")));
+                break;
             }
         }
 

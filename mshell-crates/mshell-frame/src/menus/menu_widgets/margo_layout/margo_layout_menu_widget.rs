@@ -15,8 +15,8 @@
 //! marked `.selected`. The list is sourced from `state.json` so
 //! custom layout sets are honoured; a wired-in fallback covers
 //! the brief cold-start window before margo writes its first
-//! state file. Clicking a row spawns `mctl layout <idx>` (the
-//! dispatch path that actually flips the focused output's
+//! state file. Clicking a row dispatches `setlayoutindex <idx>`
+//! on margo's socket (what `mctl layout <idx>` sends — the dispatch path that actually flips the focused output's
 //! layout) and emits `CloseMenu` so the drawer collapses.
 
 use futures::StreamExt;
@@ -28,7 +28,6 @@ use relm4::{
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
-use tracing::warn;
 
 pub(crate) struct MargoLayoutMenuWidgetModel {
     /// Bare button refs so a layout change can flip CSS classes by
@@ -51,7 +50,7 @@ pub(crate) struct MargoLayoutMenuWidgetModel {
 
 #[derive(Debug)]
 pub(crate) enum MargoLayoutMenuWidgetInput {
-    /// Set the layout on the focused output via `mctl layout <idx>`,
+    /// Set the layout on the focused output (`dispatch setlayoutindex <idx>`),
     /// where `idx` is the *canonical* layout index (`state.layouts`
     /// position), not the row's on-screen position. Triggered by a
     /// row click.
@@ -275,15 +274,7 @@ impl Component for MargoLayoutMenuWidgetModel {
                 // push reconciles if margo rejects the dispatch.
                 self.last_active = Some(idx);
                 apply_active_class(&self.buttons.borrow(), &self.row_canonical, Some(idx));
-                tokio::spawn(async move {
-                    let mut command = tokio::process::Command::new("mctl");
-                    command.arg("layout").arg(idx.to_string());
-                    match command.status().await {
-                        Ok(s) if s.success() => {}
-                        Ok(s) => warn!(?s, idx, "mctl layout returned non-zero"),
-                        Err(e) => warn!(error = %e, idx, "mctl layout spawn failed"),
-                    }
-                });
+                mshell_margo_client::ctl::dispatch_detached("setlayoutindex", &[&idx.to_string()]);
                 let _ = sender.output(MargoLayoutMenuWidgetOutput::CloseMenu);
             }
             MargoLayoutMenuWidgetInput::FocusNext => {

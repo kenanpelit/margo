@@ -151,10 +151,11 @@ impl Component for TwilightModel {
             }
             TwilightInput::Toggle => {
                 sender.command(|out, _shutdown| async move {
-                    let _ = tokio::process::Command::new("mctl")
-                        .args(["twilight", "toggle"])
-                        .status()
-                        .await;
+                    let _ = mshell_margo_client::ctl::dispatch_async(
+                        "twilight_toggle".into(),
+                        Vec::new(),
+                    )
+                    .await;
                     tokio::time::sleep(POST_TOGGLE_DELAY).await;
                     if let Some(s) = twilight::probe().await {
                         let _ = out.send(TwilightCommandOutput::Refresh(s));

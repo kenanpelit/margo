@@ -22,8 +22,8 @@
 //! changes without waiting for the next state.json poll-cycle
 //! reactive cascade.
 //!
-//! Click dispatches `mctl dispatch view <bitmask>` directly via a
-//! subprocess — bypasses the Hyprland-shaped string parser in
+//! Click sends `dispatch view <bitmask>` directly on margo's IPC
+//! socket (`mshell_margo_client::ctl`) — bypasses the Hyprland-shaped string parser in
 //! `mshell-margo-client::dispatch` so the click path stays
 //! deterministic and easy to debug.
 
@@ -151,29 +151,18 @@ impl Component for MargoTagModel {
                     .any(|p| p.id == self.workspace.id.get());
             }
             MargoTagInput::WorkspaceClicked => {
-                // mctl dispatch view <bitmask>. Tag id 1..=9 maps
-                // directly to bit (id-1), so the bitmask is
-                // `1u32 << (id - 1)`. Spawn a non-blocking
-                // subprocess; we don't wait on it because the
-                // visible result (focus change) is observed via the
-                // next state.json poll → ActiveUpdate.
+                // `dispatch view <bitmask>` on margo's socket. Tag id
+                // 1..=9 maps directly to bit (id-1), so the bitmask is
+                // `1u32 << (id - 1)`. Fire-and-forget: the visible
+                // result (focus change) is observed via the next state
+                // push → ActiveUpdate.
                 let id = self.workspace.id.get();
                 if !(1..=32).contains(&id) {
                     warn!(id, "MargoTag: out-of-range workspace id, skipping dispatch");
                     return;
                 }
                 let mask = 1u32 << (id - 1) as u32;
-                tokio::spawn(async move {
-                    let mut command = tokio::process::Command::new("mctl");
-                    command.arg("dispatch").arg("view").arg(mask.to_string());
-                    match command.status().await {
-                        Ok(status) if status.success() => {}
-                        Ok(status) => {
-                            warn!(?status, tag = id, "mctl dispatch view returned non-zero")
-                        }
-                        Err(e) => warn!(error = %e, tag = id, "mctl dispatch view spawn failed"),
-                    }
-                });
+                mshell_margo_client::ctl::dispatch_detached("view", &[&mask.to_string()]);
             }
         }
     }

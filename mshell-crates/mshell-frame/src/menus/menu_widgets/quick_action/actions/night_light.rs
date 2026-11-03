@@ -147,13 +147,9 @@ async fn probe_twilight_enabled() -> Option<bool> {
 }
 
 async fn run_twilight_toggle() {
-    match tokio::process::Command::new("mctl")
-        .args(["twilight", "toggle"])
-        .status()
-        .await
+    if let Err(e) =
+        mshell_margo_client::ctl::dispatch_async("twilight_toggle".into(), Vec::new()).await
     {
-        Ok(s) if s.success() => {}
-        Ok(s) => warn!(?s, "mctl twilight toggle returned non-zero"),
-        Err(e) => warn!(error = %e, "mctl twilight toggle spawn failed"),
+        warn!(error = %e, "twilight toggle failed");
     }
 }

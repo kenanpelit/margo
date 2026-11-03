@@ -1581,35 +1581,30 @@ fn hhmm_from_seconds(secs: u32) -> String {
     format!("{h:02}:{m:02}")
 }
 
+/// Run one `mctl …` command, fire-and-forget: over margo's socket when it is
+/// a plain dispatch (`reload`, `twilight test|reset`), else the real `mctl`
+/// (see [`mshell_margo_client::ctl::run_mctl`]).
 fn spawn_mctl(args: &[&str]) {
     let owned: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     relm4::spawn(async move {
-        match tokio::process::Command::new("mctl")
-            .args(&owned)
-            .status()
-            .await
-        {
-            Ok(s) if s.success() => {}
-            Ok(s) => warn!(?s, args = ?owned, "mctl returned non-zero"),
-            Err(e) => warn!(error = %e, args = ?owned, "mctl spawn failed"),
+        if let Err(e) = mshell_margo_client::ctl::run_mctl(owned).await {
+            warn!(error = %e, "mctl request failed");
         }
     });
 }
 
-/// Run several `mctl` invocations in order, stopping on the first
-/// spawn failure. Used for preset edits where ordering matters
-/// (a `schedule set` must follow the `preset set` that creates the
-/// file, and the `reload` must come last).
+/// Run several `mctl` invocations in order. Used for preset edits where
+/// ordering matters (a `schedule set` must follow the `preset set` that
+/// creates the file, and the `reload` must come last). A failing step is
+/// logged and the sequence continues, as before (e.g. `schedule remove`
+/// of an already-gone time must not block the `set` + `reload`). The
+/// preset/schedule edits are file writes inside `mctl`, so they still run
+/// it; the trailing `reload` goes over the socket.
 fn run_mctl_seq(cmds: Vec<Vec<String>>) {
     relm4::spawn(async move {
         for c in cmds {
-            match tokio::process::Command::new("mctl").args(&c).status().await {
-                Ok(s) if s.success() => {}
-                Ok(s) => warn!(?s, args = ?c, "mctl seq returned non-zero"),
-                Err(e) => {
-                    warn!(error = %e, args = ?c, "mctl seq spawn failed");
-                    break;
-                }
+            if let Err(e) = mshell_margo_client::ctl::run_mctl(c).await {
+                warn!(error = %e, "mctl seq step failed");
             }
         }
     });

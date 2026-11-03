@@ -181,18 +181,14 @@ pub(crate) fn load_presets() -> Vec<Preset> {
     out
 }
 
-/// Fire a `mctl …` invocation, fire-and-forget. Used for the menu's
-/// toggle / mode / temperature / preset actions.
+/// Run an `mctl twilight …` command, fire-and-forget. Used for the menu's
+/// toggle / mode / temperature / preset actions; these are all plain
+/// dispatches, so they go over margo's socket
+/// ([`mshell_margo_client::ctl::run_mctl`]).
 pub(crate) fn run(args: Vec<String>) {
     relm4::spawn(async move {
-        match tokio::process::Command::new("mctl")
-            .args(&args)
-            .status()
-            .await
-        {
-            Ok(s) if s.success() => {}
-            Ok(s) => warn!(?s, ?args, "mctl twilight returned non-zero"),
-            Err(e) => warn!(error = %e, ?args, "mctl twilight spawn failed"),
+        if let Err(e) = mshell_margo_client::ctl::run_mctl(args).await {
+            warn!(error = %e, "twilight request failed");
         }
     });
 }

@@ -5368,6 +5368,7 @@ dependencies = [
  "dirs",
  "emojis",
  "evalexpr",
+ "mshell-margo-client",
  "mshell-process",
  "notify-rust",
  "nucleo-matcher",

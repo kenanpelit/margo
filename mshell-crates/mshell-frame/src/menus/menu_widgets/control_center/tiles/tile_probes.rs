@@ -56,10 +56,11 @@ pub(super) fn bytes_to_gib(bytes: u64) -> f64 {
 /// Flip the twilight filter (right-click quick toggle), settle briefly,
 /// then re-probe so the caller can refresh the tile to the new state.
 pub(super) async fn toggle_twilight_and_probe() -> Option<(bool, String)> {
-    let _ = tokio::process::Command::new("mctl")
-        .args(["twilight", "toggle"])
-        .status()
-        .await;
+    if let Err(e) =
+        mshell_margo_client::ctl::dispatch_async("twilight_toggle".into(), Vec::new()).await
+    {
+        tracing::warn!(error = %e, "twilight toggle failed");
+    }
     tokio::time::sleep(Duration::from_millis(150)).await;
     let status = crate::twilight::probe().await?;
     Some((status.enabled, twilight_subtitle(&status)))
