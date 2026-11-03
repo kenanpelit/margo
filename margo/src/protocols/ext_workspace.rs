@@ -230,9 +230,10 @@ fn remove_workspace_instances(groups: &HashMap<Output, GroupData>, data: &Worksp
 }
 
 /// Diff margo's monitors/tags against the tracked workspace set and emit
-/// events. Called once per repaint from `MargoState::post_repaint`.
+/// events. Called once per repaint batch from
+/// `MargoState::finish_repaint_batch`.
 pub fn refresh(state: &mut MargoState) {
-    // Runs after every rendered frame on every output; nearly always
+    // Runs after every repaint batch that queued a frame; nearly always
     // nothing changed. New managers are primed in `bind`, not here.
     let fingerprint = monitor_fingerprint(
         state

@@ -355,6 +355,8 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                             *entry = entry.wrapping_add(1);
                             state.send_frame_callbacks(&output, state.clock.now());
                             state.post_repaint(&output, state.clock.now());
+                            // One output per redraw: the batch ends here.
+                            state.finish_repaint_batch();
                             state.display_handle.flush_clients().ok();
                         }
                         Err(e) => warn!("submit failed: {e}"),

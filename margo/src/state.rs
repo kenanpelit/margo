@@ -619,6 +619,9 @@ pub struct MargoState {
     /// stamped by `send_frame_callbacks`. Feeds the animation sample-time
     /// prediction where no per-output frame clock tracks the vblank.
     pub last_present_at: std::collections::HashMap<String, std::time::Instant>,
+    /// An output queued a frame in the current repaint batch, so
+    /// `finish_repaint_batch` owes the space / popup / protocol refresh.
+    pub post_repaint_pending: bool,
     /// Compositor-painted wallpaper. `None` when no path resolves or
     /// the decode failed at startup — frame loop falls through to the
     /// solid `rootcolor` clear in that case. Re-decoded by
@@ -876,6 +879,7 @@ impl MargoState {
             animation_last_tick_ms: 0,
             animation_last_sample_ms: 0,
             last_present_at: std::collections::HashMap::new(),
+            post_repaint_pending: false,
             wallpaper: crate::wallpaper::WallpaperState::load(config.wallpaper.as_deref()),
             overview_backdrop: config
                 .overview_backdrop_image

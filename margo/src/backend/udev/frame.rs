@@ -375,6 +375,7 @@ pub(super) fn render_all_outputs(
         }
         render_output(renderer, od, state, reason, per_output);
     }
+    finish_repaint_batch(state);
 }
 
 /// Opt-in per-output frame-clock render. Renders ONLY the outputs in
@@ -397,6 +398,15 @@ pub(super) fn render_due_outputs(
         if due.contains(&od.output) {
             render_output(renderer, od, state, reason, true);
         }
+    }
+    finish_repaint_batch(state);
+}
+
+/// Run the once-per-batch post-render refresh
+/// ([`MargoState::finish_repaint_batch`]) and flush the events it queued.
+fn finish_repaint_batch(state: &mut MargoState) {
+    if state.finish_repaint_batch() {
+        state.display_handle.flush_clients().ok();
     }
 }
 

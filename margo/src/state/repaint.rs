@@ -307,21 +307,43 @@ impl MargoState {
         requested
     }
 
+    /// An output queued a frame. Frame callbacks are driven by
+    /// `note_vblank` (real VBlank) and `on_estimated_vblank_timer` (empty
+    /// render); this only notes that the post-render bookkeeping is owed,
+    /// which [`Self::finish_repaint_batch`] runs once for the whole batch.
     pub fn post_repaint(&mut self, output: &Output, time: impl Into<std::time::Duration>) {
-        // Frame callbacks are now driven by `note_vblank`
-        // (real VBlank) and `on_estimated_vblank_timer` (empty render)
-        // — both bump the per-output frame_callback_sequence and call
-        // `send_frame_callbacks`. The post-render hook stays only to
-        // refresh the smithay desktop space + popup map.
         let _ = time;
         let _ = output;
+        self.post_repaint_pending = true;
+    }
+
+    /// End of a repaint batch (every output the backend rendered in one
+    /// wake-up): refresh the smithay desktop space and popup map and mirror
+    /// state to the foreign-toplevel / ext-workspace clients, once, if any
+    /// output in the batch queued a frame. Returns whether it ran.
+    ///
+    /// These used to run after every output's frame. All four are global
+    /// (`Space::refresh` recomputes every element against every output) and
+    /// nothing between two outputs' renders in one batch moves an element,
+    /// kills a surface or changes a tag, so the later runs were no-ops. Nor
+    /// does rendering read what they update (space output membership,
+    /// wl_surface.enter/leave, the popup map's dead entries): membership is
+    /// read by frame callbacks, commit routing and the animation tick, all
+    /// of which run outside the batch. So running them once after the last
+    /// output leaves what every output draws, and everything after the
+    /// batch observes, unchanged.
+    pub fn finish_repaint_batch(&mut self) -> bool {
+        if !std::mem::take(&mut self.post_repaint_pending) {
+            return false;
+        }
         self.space.refresh();
         self.popups.cleanup();
-        // Mirror the toplevel set to wlr-foreign-toplevel-management clients.
-        // Diffing + idempotent, so running it per-output post-render is fine.
+        // Mirror the toplevel set to wlr-foreign-toplevel-management clients
+        // (diffing + idempotent).
         crate::protocols::wlr_foreign_toplevel::refresh(self);
         // Mirror tag state to ext-workspace clients (same diffing contract).
         crate::protocols::ext_workspace::refresh(self);
+        true
     }
 
     /// Send `wl_surface.frame` done callbacks to every surface visible

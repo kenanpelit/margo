@@ -1180,3 +1180,57 @@ fn output_clocks_follow_enabled_monitors() {
     fx.server.state.ensure_output_clocks();
     assert!(fx.server.state.per_output_clocks.contains_key("DP-2"));
 }
+
+#[test]
+fn post_repaint_refreshes_the_space_once_per_batch() {
+    let mut fx = Fixture::new();
+    fx.add_output("DP-1", (1920, 1080));
+    fx.add_output("DP-2", (1920, 1080));
+    let (id, parent) = map_window(&mut fx);
+    let buffer = fx.client(id).create_shm_buffer(640, 480);
+    parent.attach(Some(&buffer), 0, 0);
+    parent.damage_buffer(0, 0, 640, 480);
+    parent.commit();
+    fx.client(id).flush();
+    fx.roundtrip(id);
+    let window = fx.server.state.clients[0].window.clone();
+    let first = fx.server.state.monitors[0].output.clone();
+    let second = fx.server.state.monitors[1].output.clone();
+    fx.server.state.space.refresh();
+    assert_eq!(
+        fx.server.state.space.outputs_for_element(&window),
+        vec![first.clone()]
+    );
+
+    // Nothing queued yet: the batch end has nothing to do.
+    assert!(!fx.server.state.finish_repaint_batch());
+
+    // A move that left Smithay's cached membership stale.
+    fx.server
+        .state
+        .space
+        .map_element(window.clone(), (1920, 0), false);
+
+    // Both outputs present in one batch: the per-output hook defers the
+    // refresh, the batch end runs it once.
+    fx.server
+        .state
+        .post_repaint(&first, fx.server.state.clock.now());
+    fx.server
+        .state
+        .post_repaint(&second, fx.server.state.clock.now());
+    assert_eq!(
+        fx.server.state.space.outputs_for_element(&window),
+        vec![first],
+        "the per-output hook no longer refreshes the space itself",
+    );
+    assert!(fx.server.state.finish_repaint_batch());
+    assert_eq!(
+        fx.server.state.space.outputs_for_element(&window),
+        vec![second]
+    );
+    assert!(
+        !fx.server.state.finish_repaint_batch(),
+        "one refresh per batch"
+    );
+}

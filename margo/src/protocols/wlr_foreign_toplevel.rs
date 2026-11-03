@@ -139,8 +139,8 @@ pub fn toplevel_fingerprint<'a, S: Hash + 'a>(
 }
 
 /// Diff `state.clients` against the tracked toplevel set and emit the wlr
-/// events. Called once per output repaint from `MargoState::post_repaint`,
-/// so it first compares a cheap fingerprint of the client list and returns
+/// events. Called once per repaint batch from
+/// `MargoState::finish_repaint_batch`, so it first compares a cheap fingerprint of the client list and returns
 /// when nothing changed — the full pass clones every title and app id and
 /// builds a HashSet of surfaces.
 pub fn refresh(state: &mut MargoState) {
