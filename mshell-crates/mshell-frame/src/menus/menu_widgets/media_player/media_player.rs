@@ -1,7 +1,8 @@
+use super::seek::{seek_fraction, set_scale_silently, setup_debounced_seek};
 use mshell_common::WatcherToken;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields};
-use mshell_utils::media::spawn_media_player_watcher;
+use mshell_utils::media::{format_duration, spawn_media_player_watcher};
 use reactive_graph::prelude::GetUntracked;
 use relm4::gtk::glib;
 use relm4::gtk::pango;
@@ -454,7 +455,12 @@ impl Component for MediaPlayerModel {
         // them off until first reveal avoids two 30 ms timers spinning
         // from login for a menu most users never open.
 
-        model.scale_value_changed_signal = Some(setup_scale_seek(&widgets.scale, &sender));
+        model.scale_value_changed_signal = Some(setup_debounced_seek(
+            &widgets.scale,
+            &sender,
+            MediaPlayerInput::ScaleChanged,
+            MediaPlayerInput::ScaleClicked,
+        ));
 
         ComponentParts { model, widgets }
     }
@@ -474,9 +480,7 @@ impl Component for MediaPlayerModel {
                     self.pending_seek = Some((position, now));
                     self.current_track_time = format_duration(position);
                     if let Some(scale_signal) = &self.scale_value_changed_signal {
-                        widgets.scale.block_signal(scale_signal);
-                        widgets.scale.set_value(value);
-                        widgets.scale.unblock_signal(scale_signal);
+                        set_scale_silently(&widgets.scale, Some(scale_signal), value);
                     }
                 }
             }
@@ -653,70 +657,23 @@ impl Component for MediaPlayerModel {
                 }
 
                 self.current_track_time = format_duration(position);
-                if let Some(length) = self.player.metadata.length.get() {
-                    self.track_length = format_duration(length);
-                    if let Some(scale_signal) = &self.scale_value_changed_signal {
-                        if !length.is_zero() {
-                            widgets.scale.block_signal(scale_signal);
-                            widgets
-                                .scale
-                                .set_value(position.as_secs_f64() / length.as_secs_f64());
-                            widgets.scale.unblock_signal(scale_signal);
-                        } else {
-                            widgets.scale.set_value(0.0);
-                        }
-                    } else {
-                        widgets.scale.set_value(0.0);
+                let fraction = match self.player.metadata.length.get() {
+                    Some(length) => {
+                        self.track_length = format_duration(length);
+                        seek_fraction(position, length)
                     }
-                } else {
-                    widgets.scale.set_value(0.0);
-                }
+                    None => 0.0,
+                };
+                set_scale_silently(
+                    &widgets.scale,
+                    self.scale_value_changed_signal.as_ref(),
+                    fraction,
+                );
             }
         }
 
         self.update_view(widgets, sender);
     }
-}
-
-fn setup_scale_seek(
-    scale: &gtk::Scale,
-    sender: &ComponentSender<MediaPlayerModel>,
-) -> glib::SignalHandlerId {
-    let pending_source: Rc<Cell<Option<glib::SourceId>>> = Rc::new(Cell::new(None));
-
-    let sender = sender.clone();
-    scale.connect_value_changed(move |scale| {
-        // Cancel previous debounced seek
-        if let Some(source_id) = pending_source.take() {
-            source_id.remove();
-        }
-
-        let value = scale.value();
-
-        // Immediately update display so it doesn't jump while dragging.
-        // Use the fallible sender, not `input()`: `value_changed` also fires
-        // when the position is set programmatically, which can happen as the
-        // component tears down — and `input()` *panics* if the runtime is gone.
-        // From a glib callback that panic can't unwind (it aborts the whole
-        // process), so swallow a send-after-shutdown instead.
-        let _ = sender
-            .input_sender()
-            .send(MediaPlayerInput::ScaleChanged(value));
-
-        let seek_sender = sender.clone();
-        let pending = pending_source.clone();
-
-        // Only actually seek after dragging stops. This 300 ms timeout can fire
-        // after the component is dropped, so it must not panic either.
-        let source_id = glib::timeout_add_local_once(Duration::from_millis(300), move || {
-            pending.set(None);
-            let _ = seek_sender
-                .input_sender()
-                .send(MediaPlayerInput::ScaleClicked(value));
-        });
-
-        pending_source.set(Some(source_id));
-    })
 }
 
 fn start_scroll(scrolled_window: &gtk::ScrolledWindow) -> glib::SourceId {
@@ -769,18 +726,5 @@ fn apply_cover(image: &gtk::Image, player: &Player) {
         _ => {
             image.set_icon_name(Some("audio-x-generic-symbolic"));
         }
-    }
-}
-
-fn format_duration(d: Duration) -> String {
-    let total_secs = d.as_secs();
-    let hours = total_secs / 3600;
-    let minutes = (total_secs % 3600) / 60;
-    let seconds = total_secs % 60;
-
-    if hours > 0 {
-        format!("{hours}:{minutes:02}:{seconds:02}")
-    } else {
-        format!("{minutes}:{seconds:02}")
     }
 }

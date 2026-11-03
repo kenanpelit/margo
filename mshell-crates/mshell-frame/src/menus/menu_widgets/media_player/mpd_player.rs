@@ -6,16 +6,17 @@
 //! MPRIS's, and there is always at most one MPD player, so a second small
 //! independent component is easier to read and change than threading an
 //! `AnyPlayer` abstraction through the 700-line MPRIS card. Reuses the
-//! same CSS classes for visual parity in the switcher.
+//! same CSS classes for visual parity in the switcher, and the seek-bar
+//! plumbing in [`super::seek`].
 
+use super::seek::{seek_fraction, set_scale_silently, setup_debounced_seek};
 use mshell_common::WatcherToken;
 use mshell_services::mpd::MpdPlayer;
+use mshell_utils::media::format_duration;
 use relm4::gtk::glib;
 use relm4::gtk::pango;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::cell::Cell;
-use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 use wayle_media::types::PlaybackState;
@@ -228,7 +229,12 @@ impl Component for MpdPlayerModel {
 
         let widgets = view_output!();
 
-        model.scale_value_changed_signal = Some(setup_scale_seek(&widgets.scale, &sender));
+        model.scale_value_changed_signal = Some(setup_debounced_seek(
+            &widgets.scale,
+            &sender,
+            MpdPlayerInput::ScaleChanged,
+            MpdPlayerInput::ScaleClicked,
+        ));
 
         read_display(&mut model);
         apply_scale(&widgets, &model);
@@ -332,69 +338,16 @@ fn read_display(model: &mut MpdPlayerModel) {
 }
 
 fn apply_scale(widgets: &MpdPlayerModelWidgets, model: &MpdPlayerModel) {
-    let duration = model.player.duration.get();
-    let position = model.player.position.get();
-    let fraction = if duration.as_secs_f64() > 0.0 {
-        (position.as_secs_f64() / duration.as_secs_f64()).clamp(0.0, 1.0)
-    } else {
-        0.0
-    };
-    if let Some(signal) = &model.scale_value_changed_signal {
-        widgets.scale.block_signal(signal);
-        widgets.scale.set_value(fraction);
-        widgets.scale.unblock_signal(signal);
-    } else {
-        widgets.scale.set_value(fraction);
-    }
+    let fraction = seek_fraction(model.player.position.get(), model.player.duration.get());
+    set_scale_silently(
+        &widgets.scale,
+        model.scale_value_changed_signal.as_ref(),
+        fraction,
+    );
     widgets
         .cover
         .set_from_file(model.player.cover_art.get().as_deref());
     if model.player.cover_art.get().is_none() {
         widgets.cover.set_icon_name(Some("media-play-symbolic"));
-    }
-}
-
-/// Debounced seek: forward every drag tick as a display-only update, then
-/// commit the real seek 300 ms after dragging stops. Identical contract to
-/// `media_player.rs`'s `setup_scale_seek`.
-fn setup_scale_seek(
-    scale: &gtk::Scale,
-    sender: &ComponentSender<MpdPlayerModel>,
-) -> glib::SignalHandlerId {
-    let pending_source: Rc<Cell<Option<glib::SourceId>>> = Rc::new(Cell::new(None));
-
-    let sender = sender.clone();
-    scale.connect_value_changed(move |scale| {
-        if let Some(source_id) = pending_source.take() {
-            source_id.remove();
-        }
-
-        let value = scale.value();
-        let _ = sender
-            .input_sender()
-            .send(MpdPlayerInput::ScaleChanged(value));
-
-        let seek_sender = sender.clone();
-        let pending = pending_source.clone();
-        let source_id = glib::timeout_add_local_once(Duration::from_millis(300), move || {
-            pending.set(None);
-            let _ = seek_sender
-                .input_sender()
-                .send(MpdPlayerInput::ScaleClicked(value));
-        });
-        pending_source.set(Some(source_id));
-    })
-}
-
-fn format_duration(d: Duration) -> String {
-    let total_secs = d.as_secs();
-    let hours = total_secs / 3600;
-    let minutes = (total_secs % 3600) / 60;
-    let seconds = total_secs % 60;
-
-    if hours > 0 {
-        format!("{hours}:{minutes:02}:{seconds:02}")
-    } else {
-        format!("{minutes}:{seconds:02}")
     }
 }
