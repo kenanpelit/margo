@@ -14,7 +14,7 @@ use futures::StreamExt;
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
-    BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, TuneBarWidgetStoreFields,
+    BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, TuneBarWidget,
 };
 use mshell_services::mtune::{mtune_service, spawn_mtune};
 use mshell_services::tokio_rt_spawn;
@@ -370,165 +370,47 @@ fn clamp_label_width(chars: i32) -> i32 {
     chars.clamp(10, 80)
 }
 
-/// Read `bars.widgets.mtune` untracked, for the model's initial value.
-fn read_bar_config_untracked() -> TuneBarConfig {
-    TuneBarConfig {
-        show_cover: config_manager()
-            .config()
-            .bars()
-            .widgets()
-            .mtune()
-            .show_cover()
-            .get_untracked(),
-        show_track_info: config_manager()
-            .config()
-            .bars()
-            .widgets()
-            .mtune()
-            .show_track_info()
-            .get_untracked(),
-        show_queue_number: config_manager()
-            .config()
-            .bars()
-            .widgets()
-            .mtune()
-            .show_queue_number()
-            .get_untracked(),
-        show_time: config_manager()
-            .config()
-            .bars()
-            .widgets()
-            .mtune()
-            .show_time()
-            .get_untracked(),
-        show_transport: config_manager()
-            .config()
-            .bars()
-            .widgets()
-            .mtune()
-            .show_transport()
-            .get_untracked(),
-        show_repeat_badge: config_manager()
-            .config()
-            .bars()
-            .widgets()
-            .mtune()
-            .show_repeat_badge()
-            .get_untracked(),
-        show_progress_bar: config_manager()
-            .config()
-            .bars()
-            .widgets()
-            .mtune()
-            .show_progress_bar()
-            .get_untracked(),
-        show_playlist_remaining: config_manager()
-            .config()
-            .bars()
-            .widgets()
-            .mtune()
-            .show_playlist_remaining()
-            .get_untracked(),
-        cover_size_px: clamp_cover_size(
-            config_manager()
-                .config()
-                .bars()
-                .widgets()
-                .mtune()
-                .cover_size_px()
-                .get_untracked(),
-        ),
-        label_max_width_chars: clamp_label_width(
-            config_manager()
-                .config()
-                .bars()
-                .widgets()
-                .mtune()
-                .label_max_width_chars()
-                .get_untracked(),
-        ),
+impl From<TuneBarWidget> for TuneBarConfig {
+    /// The stored settings with the cover size / label width clamped to
+    /// what the pill can show.
+    fn from(cfg: TuneBarWidget) -> Self {
+        Self {
+            show_cover: cfg.show_cover,
+            show_track_info: cfg.show_track_info,
+            show_queue_number: cfg.show_queue_number,
+            show_time: cfg.show_time,
+            show_transport: cfg.show_transport,
+            show_repeat_badge: cfg.show_repeat_badge,
+            show_progress_bar: cfg.show_progress_bar,
+            show_playlist_remaining: cfg.show_playlist_remaining,
+            cover_size_px: clamp_cover_size(cfg.cover_size_px),
+            label_max_width_chars: clamp_label_width(cfg.label_max_width_chars),
+        }
     }
 }
 
-/// Read `bars.widgets.mtune`, tracked — call only from inside an effect;
-/// every field read here becomes a dependency that re-fires it.
+/// Read `bars.widgets.mtune` untracked, for the model's initial value.
+fn read_bar_config_untracked() -> TuneBarConfig {
+    config_manager()
+        .config()
+        .bars()
+        .widgets()
+        .mtune()
+        .get_untracked()
+        .into()
+}
+
+/// Read `bars.widgets.mtune`, tracked — call only from inside an effect.
+/// Reading the whole subtree tracks it as one: a change to any of its
+/// fields re-fires the effect.
 fn read_bar_config() -> TuneBarConfig {
-    TuneBarConfig {
-        show_cover: config_manager()
-            .config()
-            .bars()
-            .widgets()
-            .mtune()
-            .show_cover()
-            .get(),
-        show_track_info: config_manager()
-            .config()
-            .bars()
-            .widgets()
-            .mtune()
-            .show_track_info()
-            .get(),
-        show_queue_number: config_manager()
-            .config()
-            .bars()
-            .widgets()
-            .mtune()
-            .show_queue_number()
-            .get(),
-        show_time: config_manager()
-            .config()
-            .bars()
-            .widgets()
-            .mtune()
-            .show_time()
-            .get(),
-        show_transport: config_manager()
-            .config()
-            .bars()
-            .widgets()
-            .mtune()
-            .show_transport()
-            .get(),
-        show_repeat_badge: config_manager()
-            .config()
-            .bars()
-            .widgets()
-            .mtune()
-            .show_repeat_badge()
-            .get(),
-        show_progress_bar: config_manager()
-            .config()
-            .bars()
-            .widgets()
-            .mtune()
-            .show_progress_bar()
-            .get(),
-        show_playlist_remaining: config_manager()
-            .config()
-            .bars()
-            .widgets()
-            .mtune()
-            .show_playlist_remaining()
-            .get(),
-        cover_size_px: clamp_cover_size(
-            config_manager()
-                .config()
-                .bars()
-                .widgets()
-                .mtune()
-                .cover_size_px()
-                .get(),
-        ),
-        label_max_width_chars: clamp_label_width(
-            config_manager()
-                .config()
-                .bars()
-                .widgets()
-                .mtune()
-                .label_max_width_chars()
-                .get(),
-        ),
-    }
+    config_manager()
+        .config()
+        .bars()
+        .widgets()
+        .mtune()
+        .get()
+        .into()
 }
 
 fn read(model: &mut MtuneModel) {
@@ -681,4 +563,37 @@ fn apply(widgets: &MtuneModelWidgets, model: &MtuneModel) {
     } else {
         "Tune".to_string()
     }));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bar_config_copies_the_toggles() {
+        let stored = TuneBarWidget {
+            show_cover: false,
+            show_time: false,
+            show_playlist_remaining: false,
+            ..TuneBarWidget::default()
+        };
+        let cfg = TuneBarConfig::from(stored);
+        assert!(!cfg.show_cover);
+        assert!(!cfg.show_time);
+        assert!(!cfg.show_playlist_remaining);
+        assert!(cfg.show_track_info && cfg.show_transport && cfg.show_progress_bar);
+        assert_eq!(cfg.cover_size_px, 16);
+        assert_eq!(cfg.label_max_width_chars, 40);
+    }
+
+    #[test]
+    fn bar_config_clamps_sizes() {
+        let cfg = TuneBarConfig::from(TuneBarWidget {
+            cover_size_px: 200,
+            label_max_width_chars: 1,
+            ..TuneBarWidget::default()
+        });
+        assert_eq!(cfg.cover_size_px, 28);
+        assert_eq!(cfg.label_max_width_chars, 10);
+    }
 }

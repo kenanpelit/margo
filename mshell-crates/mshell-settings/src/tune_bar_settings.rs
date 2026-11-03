@@ -509,77 +509,23 @@ impl Component for TuneBarSettingsModel {
         push_effect!(cover_size_px, CoverSize);
         push_effect!(label_max_width_chars, LabelWidth);
 
+        let cfg = config_manager()
+            .config()
+            .bars()
+            .widgets()
+            .mtune()
+            .get_untracked();
         let model = TuneBarSettingsModel {
-            show_cover: config_manager()
-                .config()
-                .bars()
-                .widgets()
-                .mtune()
-                .show_cover()
-                .get_untracked(),
-            show_track_info: config_manager()
-                .config()
-                .bars()
-                .widgets()
-                .mtune()
-                .show_track_info()
-                .get_untracked(),
-            show_queue_number: config_manager()
-                .config()
-                .bars()
-                .widgets()
-                .mtune()
-                .show_queue_number()
-                .get_untracked(),
-            show_time: config_manager()
-                .config()
-                .bars()
-                .widgets()
-                .mtune()
-                .show_time()
-                .get_untracked(),
-            show_transport: config_manager()
-                .config()
-                .bars()
-                .widgets()
-                .mtune()
-                .show_transport()
-                .get_untracked(),
-            show_repeat_badge: config_manager()
-                .config()
-                .bars()
-                .widgets()
-                .mtune()
-                .show_repeat_badge()
-                .get_untracked(),
-            show_progress_bar: config_manager()
-                .config()
-                .bars()
-                .widgets()
-                .mtune()
-                .show_progress_bar()
-                .get_untracked(),
-            show_playlist_remaining: config_manager()
-                .config()
-                .bars()
-                .widgets()
-                .mtune()
-                .show_playlist_remaining()
-                .get_untracked(),
-            cover_size: config_manager()
-                .config()
-                .bars()
-                .widgets()
-                .mtune()
-                .cover_size_px()
-                .get_untracked() as f64,
-            label_width: config_manager()
-                .config()
-                .bars()
-                .widgets()
-                .mtune()
-                .label_max_width_chars()
-                .get_untracked() as f64,
+            show_cover: cfg.show_cover,
+            show_track_info: cfg.show_track_info,
+            show_queue_number: cfg.show_queue_number,
+            show_time: cfg.show_time,
+            show_transport: cfg.show_transport,
+            show_repeat_badge: cfg.show_repeat_badge,
+            show_progress_bar: cfg.show_progress_bar,
+            show_playlist_remaining: cfg.show_playlist_remaining,
+            cover_size: cfg.cover_size_px as f64,
+            label_width: cfg.label_max_width_chars as f64,
             _effects: effects,
         };
 
