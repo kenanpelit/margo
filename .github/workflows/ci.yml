@@ -154,6 +154,11 @@ jobs:
           ./scripts/test-file-size-gate.sh
           ./scripts/file-size-gate.sh
 
+      - name: mlogind old theme-sync retirement (test)
+        # The packaging helper that replaces an /etc/mlogind/variables.toml
+        # the old `mlogind sync-theme` wrote, and only such a file.
+        run: ./scripts/test-retire-old-sync-variables.sh
+
       - name: mtune de-brand (gate)
         # The mtune/ tree is a fork of an upstream GPL-3.0 GTK player; the
         # upstream project name and app-id namespace must not survive it.

@@ -15,6 +15,21 @@ _refresh() {
   fi
 }
 
-post_install() { _refresh; }
-post_upgrade() { _refresh; }
+# Before 4.5.1 `mlogind sync-theme` copied a user's palette over the
+# /etc/mlogind/variables.toml backup file. Put the packaged default back
+# over such a copy (and only such a copy: the helper checks the old sync's
+# header and leaves every other file alone, keeping the old one as
+# .old-sync). A .pacnew identical to the restored default is redundant.
+_mlogind_retire_old_sync() {
+  local helper=/usr/lib/mlogind/retire-old-sync-variables.sh
+  local etc=/etc/mlogind/variables.toml
+  [ -x "$helper" ] || return 0
+  "$helper" "$etc" /usr/lib/mlogind/variables.toml.default || return 0
+  if [ -f "$etc.pacnew" ] && cmp -s "$etc.pacnew" "$etc"; then
+    rm -f "$etc.pacnew"
+  fi
+}
+
+post_install() { _refresh; _mlogind_retire_old_sync; }
+post_upgrade() { _refresh; _mlogind_retire_old_sync; }
 post_remove()  { _refresh; }

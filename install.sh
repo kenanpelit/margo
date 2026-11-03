@@ -401,6 +401,12 @@ debian_install_files() {
   # real config an admin may have edited: an existing file is left alone
   # and deliberately NOT recorded in the manifest, so uninstall never
   # deletes an admin's edits (pacman gets the same via backup=()).
+  # One exception: a variables.toml the old `mlogind sync-theme` copied out
+  # of a user's home is not an admin's edit. The helper puts the packaged
+  # default back over that file only (it keeps it as .old-sync).
+  $SUDO sh "${REPO_ROOT}/mlogind/extra/retire-old-sync-variables.sh" \
+    /etc/mlogind/variables.toml "${REPO_ROOT}/mlogind/extra/variables.toml" ||
+    warn "could not check /etc/mlogind/variables.toml for an old theme-sync copy"
   local mlogind_src mlogind_dst mlogind_mode
   while IFS='|' read -r mlogind_mode mlogind_src mlogind_dst; do
     if [[ -e "$mlogind_dst" ]]; then

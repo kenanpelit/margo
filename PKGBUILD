@@ -657,6 +657,14 @@ package() {
     "$pkgdir/etc/mlogind/config.toml"
   install -Dm644 "mlogind/extra/variables.toml" \
     "$pkgdir/etc/mlogind/variables.toml"
+  # Before 4.5.1 `mlogind sync-theme` overwrote that backup file with a
+  # user's palette, so pacman keeps it as "modified". post_upgrade runs this
+  # helper to put the default back over such a copy only (see the script);
+  # the pristine default rides along for it.
+  install -Dm755 "mlogind/extra/retire-old-sync-variables.sh" \
+    "$pkgdir/usr/lib/mlogind/retire-old-sync-variables.sh"
+  install -Dm644 "mlogind/extra/variables.toml" \
+    "$pkgdir/usr/lib/mlogind/variables.toml.default"
   install -Dm644 "mlogind/extra/mlogind.pam" \
     "$pkgdir/etc/pam.d/mlogind"
   # The greeter runs as an unprivileged system user and gets its logind
