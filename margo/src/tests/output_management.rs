@@ -109,6 +109,7 @@ fn state_snapshot_reports_live_logical_output_size() {
 
 use smithay::output::Mode as OutputMode;
 use smithay::reexports::wayland_protocols_wlr::output_management::v1::client::zwlr_output_manager_v1::ZwlrOutputManagerV1;
+use smithay::reexports::wayland_protocols_wlr::output_management::v1::client::zwlr_output_mode_v1::ZwlrOutputModeV1;
 
 use super::client::ClientId;
 use super::wlr_output_client::ConfigOutcome;
@@ -170,10 +171,125 @@ fn set_mode_queues_the_advertised_mode_the_client_picked() {
     let om = &fx.client(id).state.output_management;
     let mode = om.mode(&om.head("DP-1"), (1920, 1080, 120_000));
     let outcome = apply_set_mode(&mut fx, id, &manager, "DP-1", &mode);
-    assert_eq!(outcome, Some(ConfigOutcome::Succeeded));
+    assert_eq!(outcome, None, "no reply until the backend has set the mode");
     assert_eq!(
         queued_modes(&fx),
         vec![("DP-1".to_string(), 1920, 1080, 120_000)]
+    );
+}
+
+/// What the udev backend does after trying each queued mode change:
+/// report `ok` for every one, in queue order.
+fn finish_queued_modes(fx: &mut Fixture, ok: &[bool]) {
+    let changes: Vec<_> = fx
+        .server
+        .state
+        .output_pending
+        .mode_changes
+        .drain(..)
+        .collect();
+    assert_eq!(changes.len(), ok.len(), "queued mode changes");
+    for (change, ok) in changes.into_iter().zip(ok) {
+        change.reply.finish(*ok);
+    }
+}
+
+fn dp1_fast_mode(fx: &mut Fixture, id: ClientId) -> ZwlrOutputModeV1 {
+    let om = &fx.client(id).state.output_management;
+    om.mode(&om.head("DP-1"), (1920, 1080, 120_000))
+}
+
+#[test]
+fn set_mode_succeeds_once_the_backend_has_set_the_mode() {
+    let (mut fx, id, manager) = wlr_desk(true);
+    let mode = dp1_fast_mode(&mut fx, id);
+    assert_eq!(apply_set_mode(&mut fx, id, &manager, "DP-1", &mode), None);
+    finish_queued_modes(&mut fx, &[true]);
+    fx.roundtrip(id);
+    assert_eq!(
+        fx.client(id)
+            .state
+            .output_management
+            .outcomes
+            .values()
+            .copied()
+            .collect::<Vec<_>>(),
+        vec![ConfigOutcome::Succeeded],
+        "exactly one reply"
+    );
+}
+
+#[test]
+fn set_mode_fails_when_the_backend_cannot_set_the_mode() {
+    // No DRM mode matched, or the atomic test refused `use_mode`.
+    let (mut fx, id, manager) = wlr_desk(true);
+    let mode = dp1_fast_mode(&mut fx, id);
+    assert_eq!(apply_set_mode(&mut fx, id, &manager, "DP-1", &mode), None);
+    finish_queued_modes(&mut fx, &[false]);
+    fx.roundtrip(id);
+    assert_eq!(
+        fx.client(id)
+            .state
+            .output_management
+            .outcomes
+            .values()
+            .copied()
+            .collect::<Vec<_>>(),
+        vec![ConfigOutcome::Failed]
+    );
+}
+
+#[test]
+fn a_mode_change_dropped_unattempted_fails_the_configuration() {
+    let (mut fx, id, manager) = wlr_desk(true);
+    let mode = dp1_fast_mode(&mut fx, id);
+    assert_eq!(apply_set_mode(&mut fx, id, &manager, "DP-1", &mode), None);
+    fx.server.state.output_pending.mode_changes.clear();
+    fx.roundtrip(id);
+    assert_eq!(
+        fx.client(id)
+            .state
+            .output_management
+            .outcomes
+            .values()
+            .copied()
+            .collect::<Vec<_>>(),
+        vec![ConfigOutcome::Failed]
+    );
+}
+
+#[test]
+fn a_configuration_destroyed_before_its_mode_is_set_gets_no_reply() {
+    let (mut fx, id, manager) = wlr_desk(true);
+    let mode = dp1_fast_mode(&mut fx, id);
+    let c = fx.client(id);
+    let serial = c.state.output_management.serial.unwrap();
+    let head = c.state.output_management.head("DP-1");
+    let cfg = manager.create_configuration(serial, &c.qh, ());
+    cfg.enable_head(&head, &c.qh, ()).set_mode(&mode);
+    cfg.apply();
+    cfg.destroy();
+    c.flush();
+    fx.roundtrip(id);
+    finish_queued_modes(&mut fx, &[true]);
+    fx.roundtrip(id);
+    assert!(fx.client(id).state.output_management.outcomes.is_empty());
+}
+
+#[test]
+fn a_configuration_without_a_mode_replies_at_once() {
+    let (mut fx, id, manager) = wlr_desk(true);
+    let c = fx.client(id);
+    let serial = c.state.output_management.serial.unwrap();
+    let head = c.state.output_management.head("DP-2");
+    let cfg = manager.create_configuration(serial, &c.qh, ());
+    cfg.enable_head(&head, &c.qh, ()).set_position(4000, 0);
+    cfg.apply();
+    c.flush();
+    fx.roundtrip(id);
+    assert_eq!(
+        fx.client(id).state.output_management.outcome(&cfg),
+        Some(ConfigOutcome::Succeeded)
     );
 }
 

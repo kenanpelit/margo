@@ -137,7 +137,7 @@ pub enum PendingImageCopySource {
 // Defined at the crate root so both `state.rs` (handler) and
 // `backend/udev.rs` (drainer) can name the type without a circular
 // module dep.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PendingOutputModeChange {
     pub output_name: String,
     pub width: i32,
@@ -145,6 +145,10 @@ pub struct PendingOutputModeChange {
     /// Refresh rate in mHz, as the protocol delivers it. Convert
     /// to Hz at match time (drm-rs `Mode::vrefresh()` returns Hz).
     pub refresh_mhz: i32,
+    /// Report whether the mode was set; the configuration that asked
+    /// for it replies once all of its changes have reported. Dropping
+    /// it unreported counts as a failure.
+    pub reply: protocols::output_management::ModeReplyPart,
 }
 
 // ── CLI ───────────────────────────────────────────────────────────────────────

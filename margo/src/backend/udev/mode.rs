@@ -24,13 +24,18 @@ use crate::state::MargoState;
 /// `DrmCompositor::use_mode`, then update the smithay `Output` so
 /// wl_output mode events reach clients (kanshi, status bar).
 ///
-/// Failure modes — each just skips the entry with a warning:
-///   * Output name not in `state.monitors` → output went away.
-///   * Connector info read fails → DRM in a weird state, retry next frame.
+/// Failure modes — each skips the entry with a warning and reports it
+/// failed, so the wlr-output-management configuration that asked for it
+/// gets `failed`:
+///   * Output name not in `bd.outputs` → output went away.
+///   * Connector info read fails → DRM in a weird state.
 ///   * No DRM mode matches the (w, h, refresh) triple → kanshi
 ///     asked for a mode the panel doesn't actually advertise.
 ///   * `compositor.use_mode` fails → atomic test failed (the kernel
 ///     refused the modeset, e.g. CRTC pixel-clock limit).
+///
+/// The outcomes are reported after the topology re-publish, so a
+/// client that hears `succeeded` has already been sent the new mode.
 pub(super) fn apply_pending_mode_changes(bd: &mut BackendData, state: &mut MargoState) {
     let drained: Vec<crate::PendingOutputModeChange> =
         state.output_pending.mode_changes.drain(..).collect();
@@ -38,99 +43,114 @@ pub(super) fn apply_pending_mode_changes(bd: &mut BackendData, state: &mut Margo
         return;
     }
 
+    let mut outcomes = Vec::with_capacity(drained.len());
     for change in drained {
-        // Find the OutputDevice by output name. The `Output` stored
-        // on each device has the same name we surface to clients.
-        let Some((_crtc, od)) = bd
-            .outputs
-            .iter_mut()
-            .find(|(_, od)| od.output.name() == change.output_name)
-        else {
-            tracing::warn!(
-                "output_management: pending mode change for unknown output {} dropped",
-                change.output_name,
-            );
-            continue;
-        };
-
-        // Read the current connector info so we can match the
-        // requested mode against the real KMS mode list. The drm
-        // crate's `Mode` is what `use_mode` wants; smithay's
-        // `OutputMode` is the wl_output-side type, so we need the
-        // drm one for the apply path.
-        let conn_info = match bd.drm.get_connector(od.connector, false) {
-            Ok(info) => info,
-            Err(e) => {
-                tracing::warn!(
-                    "output_management: get_connector({:?}) failed: {e}",
-                    od.connector
-                );
-                continue;
-            }
-        };
-
-        let drm_mode = match find_matching_drm_mode(
-            conn_info.modes(),
-            change.width,
-            change.height,
-            change.refresh_mhz,
-        ) {
-            Some(m) => m,
-            None => {
-                tracing::warn!(
-                    "output_management: no DRM mode matches {}x{}@{}.{:03}Hz on {} \
-                     (advertised modes: {})",
-                    change.width,
-                    change.height,
-                    change.refresh_mhz / 1000,
-                    change.refresh_mhz % 1000,
-                    change.output_name,
-                    conn_info.modes().len(),
-                );
-                continue;
-            }
-        };
-
-        // Try the modeset. `use_mode` resizes the swapchain to the
-        // new dimensions internally; the next queue_frame will
-        // commit a frame at the new resolution. If atomic-test
-        // rejects (pixel clock cap, missing connector property,
-        // VRR-only mode), we log + leave the old mode in place.
-        if let Err(e) = od.compositor.use_mode(drm_mode) {
-            tracing::warn!(
-                "output_management: DrmCompositor::use_mode failed on {}: {e:?}",
-                change.output_name,
-            );
-            continue;
-        }
-
-        // Mirror the new mode into the smithay Output. Without
-        // this, the wl_output protocol never advertises the
-        // change, and clients keep believing the old mode is
-        // active.
-        let new_wl_mode = OutputMode::from(drm_mode);
-        od.output
-            .change_current_state(Some(new_wl_mode), None, None, None);
-        od.output.set_preferred(new_wl_mode);
-
-        tracing::info!(
-            "output_management: applied mode {}x{}@{}.{:03}Hz on {}",
-            change.width,
-            change.height,
-            change.refresh_mhz / 1000,
-            change.refresh_mhz % 1000,
-            change.output_name,
-        );
-
-        let output = od.output.clone();
-        state.refresh_output_work_area(&output);
+        let ok = apply_mode_change(bd, state, &change);
+        outcomes.push((change.reply, ok));
     }
 
     state.arrange_all();
     state.request_repaint();
     // Re-publish topology so output-management watchers see the
-    // new mode reflected in OutputSnapshot.current_mode.
+    // new mode reflected in OutputSnapshot.current_mode. After a
+    // failure the snapshot is unchanged (the old mode is still
+    // current), which is what clients were last told.
     state.publish_output_topology();
+
+    for (reply, ok) in outcomes {
+        reply.finish(ok);
+    }
+}
+
+/// Apply one queued mode change; `false` if it couldn't be set.
+fn apply_mode_change(
+    bd: &mut BackendData,
+    state: &mut MargoState,
+    change: &crate::PendingOutputModeChange,
+) -> bool {
+    // Find the OutputDevice by output name. The `Output` stored
+    // on each device has the same name we surface to clients.
+    let Some((_crtc, od)) = bd
+        .outputs
+        .iter_mut()
+        .find(|(_, od)| od.output.name() == change.output_name)
+    else {
+        tracing::warn!(
+            "output_management: pending mode change for unknown output {} dropped",
+            change.output_name,
+        );
+        return false;
+    };
+
+    // Read the current connector info so we can match the
+    // requested mode against the real KMS mode list. The drm
+    // crate's `Mode` is what `use_mode` wants; smithay's
+    // `OutputMode` is the wl_output-side type, so we need the
+    // drm one for the apply path.
+    let conn_info = match bd.drm.get_connector(od.connector, false) {
+        Ok(info) => info,
+        Err(e) => {
+            tracing::warn!(
+                "output_management: get_connector({:?}) failed: {e}",
+                od.connector
+            );
+            return false;
+        }
+    };
+
+    let Some(drm_mode) = find_matching_drm_mode(
+        conn_info.modes(),
+        change.width,
+        change.height,
+        change.refresh_mhz,
+    ) else {
+        tracing::warn!(
+            "output_management: no DRM mode matches {}x{}@{}.{:03}Hz on {} \
+             (advertised modes: {})",
+            change.width,
+            change.height,
+            change.refresh_mhz / 1000,
+            change.refresh_mhz % 1000,
+            change.output_name,
+            conn_info.modes().len(),
+        );
+        return false;
+    };
+
+    // Try the modeset. `use_mode` resizes the swapchain to the
+    // new dimensions internally; the next queue_frame will
+    // commit a frame at the new resolution. If atomic-test
+    // rejects (pixel clock cap, missing connector property,
+    // VRR-only mode), we log + leave the old mode in place.
+    if let Err(e) = od.compositor.use_mode(drm_mode) {
+        tracing::warn!(
+            "output_management: DrmCompositor::use_mode failed on {}: {e:?}",
+            change.output_name,
+        );
+        return false;
+    }
+
+    // Mirror the new mode into the smithay Output. Without
+    // this, the wl_output protocol never advertises the
+    // change, and clients keep believing the old mode is
+    // active.
+    let new_wl_mode = OutputMode::from(drm_mode);
+    od.output
+        .change_current_state(Some(new_wl_mode), None, None, None);
+    od.output.set_preferred(new_wl_mode);
+
+    tracing::info!(
+        "output_management: applied mode {}x{}@{}.{:03}Hz on {}",
+        change.width,
+        change.height,
+        change.refresh_mhz / 1000,
+        change.refresh_mhz % 1000,
+        change.output_name,
+    );
+
+    let output = od.output.clone();
+    state.refresh_output_work_area(&output);
+    true
 }
 
 /// Find a `drm::control::Mode` matching `(w, h, refresh_mhz)`.

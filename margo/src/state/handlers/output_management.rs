@@ -4,14 +4,16 @@
 //! Mode changes are deferred onto `output_pending.mode_changes`
 //! because the actual DRM re-modeset happens in the udev backend
 //! (which holds the DrmCompositor); doing it here would require
-//! plumbing a backend handle onto MargoState. Disable refuses to
+//! plumbing a backend handle onto MargoState. Each carries a part of
+//! the configuration's reply, so the client hears `succeeded` only
+//! after the mode is really set. Disable refuses to
 //! kill the last active output (would strand the user with a dark
 //! screen and no recovery short of TTY login).
 
 use crate::{
     PendingOutputModeChange, delegate_output_management,
     protocols::output_management::{
-        OutputManagementHandler, OutputManagementManagerState, PendingHeadConfig,
+        ModeReply, OutputManagementHandler, OutputManagementManagerState, PendingHeadConfig,
     },
     state::MargoState,
 };
@@ -24,6 +26,7 @@ impl OutputManagementHandler for MargoState {
     fn apply_output_pending(
         &mut self,
         pending: std::collections::HashMap<String, PendingHeadConfig>,
+        reply: &ModeReply,
     ) -> bool {
         // Mode changes are queued for the backend; refuse the whole
         // configuration up front when nothing would drain them.
@@ -140,6 +143,7 @@ impl OutputManagementHandler for MargoState {
                         width: w,
                         height: h,
                         refresh_mhz,
+                        reply: reply.part(),
                     });
                 tracing::info!(
                     "output_management: queued mode change {name}: {w}x{h}@{}.{:03}Hz",

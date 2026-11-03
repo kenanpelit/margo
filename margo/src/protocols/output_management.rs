@@ -1,36 +1,29 @@
 //! Server-side `wlr_output_management_v1` implementation.
 //!
 //! Adapted from niri's [`protocols/output_management.rs`], simplified for
-//! margo: we don't track per-client config persistence, no VRR, no mode
-//! switching (mode changes need DRM-level re-modeset which is risky and
-//! out of scope for the first cut). What we DO support:
+//! margo: we don't track per-client config persistence and have no VRR.
+//! What we support:
 //!
-//!   * Read-only topology discovery — clients (kanshi, wlr-randr,
-//!     swayrr, way-displays, …) see one [`ZwlrOutputHeadV1`] per
-//!     connected output, with the full mode list and the current
-//!     scale / transform / position. They can `done()` on the
-//!     [`ZwlrOutputManagerV1`] and use the topology however they
-//!     want.
-//!   * Apply requests — clients hand us a
-//!     [`ZwlrOutputConfigurationV1`] of per-head pending changes,
-//!     and we accept the subset we know how to apply: `scale`,
-//!     `transform`, `position`. Anything else (mode change,
-//!     enable/disable, adaptive_sync) gets the configuration
-//!     `cancelled()` so the client knows to fall back. The accepted
-//!     subset is what `wlr-randr --scale` / `--transform` /
-//!     `--pos` reach for, and it covers the common kanshi profile
-//!     types ("at this docked layout, scale eDP-1 by 1.5").
+//!   * Topology discovery — clients (kanshi, wlr-randr, swayrr,
+//!     way-displays, …) see one [`ZwlrOutputHeadV1`] per connected
+//!     output, with the full mode list and the current scale /
+//!     transform / position, followed by `done()` on the
+//!     [`ZwlrOutputManagerV1`].
+//!   * Apply requests — a [`ZwlrOutputConfigurationV1`] of per-head
+//!     changes: enable / disable (never the last enabled output),
+//!     `scale`, `transform`, `position`, and `set_mode` with one of the
+//!     head's advertised modes. Custom modes, and mode changes on a
+//!     backend that can't do them (winit, headless), fail the
+//!     configuration.
 //!
-//! Re-modeset can land later; the protocol surface this exposes is
-//! already what kanshi-style autoconfig needs to drive scale and
-//! position changes.
-//!
-//! Mode and enable changes that we can't honour come through as
-//! [`OutputConfigurationHeadState::Ok`] but the parent
-//! `apply_pending_config` returns `Err`, which we fold back into
-//! `cancelled()`.
+//! Enable/disable, scale, transform and position are applied while the
+//! `apply` request is dispatched. Mode changes are queued for the udev
+//! backend, so the reply of a configuration that sets a mode waits for
+//! the backend to have tried each one (see [`mode_reply`]).
 
 #![allow(clippy::too_many_arguments)]
+
+mod mode_reply;
 
 use std::collections::HashMap;
 
@@ -47,6 +40,8 @@ use smithay::reexports::wayland_server::protocol::wl_output::Transform as WlTran
 use smithay::reexports::wayland_server::{
     Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource, WEnum,
 };
+
+pub use mode_reply::{ModeReply, ModeReplyPart};
 
 /// Bumped on output topology change so clients know to invalidate
 /// their cached configuration tokens.
@@ -151,10 +146,17 @@ pub trait OutputManagementHandler {
     fn output_management_state(&mut self) -> &mut OutputManagementManagerState;
 
     /// Called when a client `apply`s a configuration we accepted.
-    /// Returns `true` if the compositor was actually able to put the
-    /// requested settings into effect, `false` to make us send a
-    /// `cancelled()` to the client.
-    fn apply_output_pending(&mut self, pending: HashMap<String, PendingHeadConfig>) -> bool;
+    /// Returns `true` if the compositor put the synchronous settings
+    /// (enable/disable, scale, transform, position) into effect,
+    /// `false` to make the configuration fail. A mode change can't be
+    /// applied here: the handler queues it with a [`ModeReply::part`] of
+    /// `reply`, and the client hears `succeeded` / `failed` only once
+    /// every part has reported.
+    fn apply_output_pending(
+        &mut self,
+        pending: HashMap<String, PendingHeadConfig>,
+        reply: &ModeReply,
+    ) -> bool;
 
     /// Whether the backend can apply a mode change (udev can; winit and
     /// headless can't). Configurations that set a mode fail without it.
@@ -543,12 +545,24 @@ where
                     cfg.failed();
                     return;
                 }
-                let ok = state.apply_output_pending(pending);
-                if ok {
-                    cfg.succeeded();
-                } else {
-                    cfg.failed();
-                }
+                // Sent once the synchronous settings are applied and
+                // every queued mode change has been tried by the
+                // backend — right away for a configuration without one.
+                let reply_cfg = cfg.clone();
+                let reply = ModeReply::new(move |ok| {
+                    // The client destroyed the configuration while a
+                    // mode change was pending: nobody to tell.
+                    if !reply_cfg.is_alive() {
+                        return;
+                    }
+                    if ok {
+                        reply_cfg.succeeded();
+                    } else {
+                        reply_cfg.failed();
+                    }
+                });
+                let ok = state.apply_output_pending(pending, &reply);
+                reply.seal(ok);
             }
             zwlr_output_configuration_v1::Request::Test => {
                 // We don't actually run a side-effect-free

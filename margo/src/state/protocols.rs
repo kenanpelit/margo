@@ -121,9 +121,11 @@ pub struct Protocols {
     /// `wlr_output_management_v1` state. Lets `kanshi`,
     /// `wlr-randr`, `way-displays` etc. discover the output
     /// topology and apply scale / transform / position changes
-    /// at runtime. Disable still rejected; mode changes are now
-    /// queued via `output_pending.mode_changes` for the udev
-    /// backend to drain at the next repaint.
+    /// at runtime, enable / disable outputs (never the last enabled
+    /// one) and switch to an advertised mode. Mode changes are
+    /// queued via `output_pending.mode_changes` for the udev backend
+    /// to drain at the next repaint; the configuration replies once
+    /// they have been tried.
     pub output_management: crate::protocols::output_management::OutputManagementManagerState,
     /// `wp_color_management_v1` (staging) — Phase 1 scaffolding.
     /// The global is registered so Chromium / mpv probe-detection

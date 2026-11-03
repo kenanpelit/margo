@@ -31,7 +31,8 @@ fn apply<const N: usize>(fx: &mut Fixture, heads: [(&str, PendingHeadConfig); N]
         .into_iter()
         .map(|(name, head)| (name.to_string(), head))
         .collect();
-    assert!(fx.server.state.apply_output_pending(pending));
+    let reply = crate::protocols::output_management::ModeReply::new(|_| {});
+    assert!(fx.server.state.apply_output_pending(pending, &reply));
 }
 
 fn head(
