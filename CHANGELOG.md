@@ -5,6 +5,121 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.5.1] – 2026-11-03
+
+**A hardening and performance release from a full code review: the lock
+screen can no longer be opened without a password, malformed input from
+clients, IPC, scripts or a session snapshot no longer crashes or freezes
+the compositor, animations present on every vblank, and mshell holds one
+screen-sized wallpaper instead of several full-resolution copies.**
+
+### Security
+
+- The default `super+ctrl+alt+BackSpace` → `force_unlock` bind is gone,
+  and `force_unlock` (bind or `mctl dispatch`) now only breaks a stuck
+  lock: the locker died, or showed no lock surface for 10 s. A working
+  mlock can no longer be bypassed, and a second client can't start its
+  own lock and unlock the session mlock holds. Existing `binds.conf`
+  lines are harmless.
+- Sandboxed clients (security-context socket, e.g. Flatpak) no longer see
+  privileged globals: screencopy, data-control, virtual keyboard/pointer,
+  input method, output management, gamma, layer-shell and the like
+  (niri's set plus three margo-only ones). Screen capture goes through
+  the portal.
+- mlock has its own PAM service (`/etc/pam.d/mlock`, pam_unix only), so
+  wrong passwords at the lock screen can't trip pam_faillock; only the
+  first hidden prompt gets the password. Its debug log refuses symlinks.
+- mlogind validates the palette users sync to the greeter (known colour
+  keys, short plain titles) and publishes it under `/var/lib/mgreet`; a
+  broken file no longer drops `/etc/mlogind/config.toml`. A missing
+  greeter user falls back to the TTY greeter instead of running the GUI
+  greeter as root. Greeter power keys are refused while another user is
+  logged in or an inhibitor blocks the action (new
+  `power_controls.ignore_inhibitors`, default false). Sessions start with
+  a clean environment, typed passwords live in scrubbed buffers, the
+  greeter socket reaches only the greeter, and Xorg/xauth run from argv.
+- The IPC socket is created owner-only in a 0700 directory and is never
+  taken over from a live session; `mctl` and the shell clients refuse
+  requests containing control characters, which could inject a second
+  command.
+
+### Fixed
+
+- Compositor crashes and freezes: tag masks above the nine tags (IPC,
+  binds, Rhai `tag()`), a corrupt session snapshot (crash loop at start),
+  bogus output-management scales and positions, zero-extent virtual
+  pointer moves, and a gamma-control client handing over a pipe that
+  never delivers (the compositor blocked forever).
+- Rhai `on_*` hooks from `init.rhai`, plugins and `mctl run` register and
+  fire again; they were silently dropped.
+- IPC: dropped connections really close the socket (clients see EOF and
+  re-sync), `watch perf` / `watch layers` push frames, and `mctl
+  dispatch` fails on a reply that isn't `ok: true`.
+- Closing a background window no longer moves focus to another window;
+  Wayland and X11 windows share one removal path.
+- The themed cursor hotspot is right (and the cursor sharp) on scaled
+  outputs; the lock screen keeps keyboard focus when its monitor is
+  unplugged, and mlock locks monitors connected while locked.
+- mshell: a profile that fails to load is kept (`.broken-<ts>` copy) and
+  never overwritten with defaults; `mshellctl` exits non-zero on errors
+  and unknown values; spawned helpers no longer leave zombie processes;
+  the wizard's keyboard-layout apply reloads margo again; sound effects
+  don't panic without an audio device; Settings → Lock patches
+  `mlock.conf` instead of regenerating it.
+- Screenshots and the colour picker: `mscreenshot` window capture works
+  again; regions and windows are cropped correctly on scaled outputs and
+  on monitors other than the first; near-red hues print 0, not 360.
+- Wallpaper grading and icon recolouring round instead of truncating
+  (contrast 1.0 darkened 20 of 256 values).
+- Also: Valent device names with quotes, ignored/obsoleting packages
+  counted as updates, the keybind cheatsheet (spawn flags, includes,
+  modifiers margo binds), repeated battery warnings, late lock screens
+  without a password entry, display profiles that would turn every
+  output off, very large idle timeouts, the dock missing focus moves to
+  another monitor, and `mctl plugin list` with inline comments.
+- mdots writes its state files atomically, refuses to prune on an
+  unreadable state, identifies hooks by SHA-256 (old entries migrate once
+  instead of re-running), and runs the AUR helper as argv. mlayout writes
+  atomically and keeps a symlinked `config.conf` a symlink.
+
+### Performance
+
+- The per-output frame clock presents on every vblank under continuous
+  motion (it presented every other one) and uses the kernel's flip
+  timestamps for presentation feedback.
+- An active screencast no longer busy-loops on a static scene.
+- Fewer per-frame costs: animations tick once per presented frame; the
+  resize crossfade, MRU switcher and overview stop re-capturing and
+  re-damaging every frame; SHM screencopy reuses its buffer and renders
+  only the region; shader failures are cached; foreign-toplevel and
+  ext-workspace refreshes skip unchanged state; the overview backdrop
+  decodes off the event loop; common cursors are preloaded.
+- mshell decodes the wallpaper at the size the largest monitor needs and
+  shares one texture between monitors and the lock screen (one decode
+  worker, no full-resolution copies); `~/.cache/mshell/wallpaper.raw` is
+  screen-sized and only written when it changes.
+- mshell wakes less: an event-driven privacy monitor (inotify +
+  `pw-dump --monitor`), pre-rendered catwalk frames, the layout pill
+  following `watch state`, and timers for the alarm, title marquee,
+  notification countdown and hidden menus only when needed. Restored
+  clipboard images keep only their thumbnail.
+
+### Changed
+
+- `tagall` selects the nine tags (511), not every bit.
+- Blur is skipped on rotated or flipped outputs.
+- mshell and mshellctl/mshellshare share one typed D-Bus proxy (new
+  `mshell-ipc` crate; upgrade them together); child processes go through
+  `mshell-process`.
+- `margo/src/state.rs` is split into grouped sub-structs and `state/`
+  modules (2986 → 1201 lines) and capped by `scripts/file-size-gate.sh`;
+  mdots moved to edition 2024 and its sync command into modules.
+- Build: 34 unused dependencies removed, mlogind on the workspace
+  nix/toml, workspace lints everywhere, the AUR build uses the pinned
+  toolchain, CI checks the MSRV and unused deps, and raising the panic
+  baseline needs a `PANIC-BASELINE-RAISE:` trailer (baseline 446 → 430).
+- About 470 new tests (1814 → 2281).
+
 ## [4.5.0] – 2026-10-28
 
 **mdots shows what an update would bring in before it installs anything,
