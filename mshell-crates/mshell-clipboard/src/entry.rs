@@ -193,6 +193,14 @@ pub enum EntryPreview {
         mime_type: String,
         size: usize,
     },
+    /// An image restored from disk whose thumbnail has not been decoded
+    /// yet. Decoding every restored image at startup cost a full image
+    /// decode per entry before the history was ever looked at; instead the
+    /// clipboard menu asks [`crate::ClipboardHistory::resolve_preview`]
+    /// for it when the row is first shown.
+    ImagePending {
+        mime_type: String,
+    },
 }
 
 impl EntryPreview {

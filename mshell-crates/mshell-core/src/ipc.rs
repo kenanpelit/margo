@@ -115,6 +115,9 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                                 mshell_clipboard::EntryPreview::Image { width, height, .. } => {
                                     format!("[image {width}x{height}]")
                                 }
+                                mshell_clipboard::EntryPreview::ImagePending { mime_type } => {
+                                    format!("[image {mime_type}]")
+                                }
                                 mshell_clipboard::EntryPreview::Binary { mime_type, size } => {
                                     format!("[{mime_type} {size}B]")
                                 }

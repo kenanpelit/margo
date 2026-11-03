@@ -702,6 +702,11 @@ impl Component for ClipboardModel {
         // a lightweight `EntryView` doesn't carry the raw bytes. Colour
         // copies are tiny (a hex string) so this per-bind lookup is cheap.
         let bind_history = history.clone();
+        // Restored images arrive with a pending thumbnail; it is decoded
+        // off the main thread the first time its row is bound. Ids being
+        // decoded, so a scroll that re-binds the row doesn't start a
+        // second decode.
+        let decoding: Rc<RefCell<std::collections::HashSet<u64>>> = Rc::default();
         factory.connect_bind(move |_, list_item| {
             let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
             let Some(rw) = (unsafe { list_item.data::<RowWidgets>(ROW_DATA_KEY) }) else {
@@ -765,6 +770,20 @@ impl Component for ClipboardModel {
             clear_box(&rw.preview_box);
             let query = bind_query.borrow();
             build_preview(&rw.preview_box, &row.preview, &query);
+
+            if matches!(row.preview, EntryPreview::ImagePending { .. })
+                && decoding.borrow_mut().insert(row.id)
+            {
+                let id = row.id;
+                drop(row);
+                decode_pending_thumbnail(
+                    id,
+                    bind_history.clone(),
+                    bo,
+                    list_item.downgrade(),
+                    decoding.clone(),
+                );
+            }
         });
 
         factory.connect_unbind(move |_, list_item| {
@@ -1196,6 +1215,37 @@ impl ClipboardModel {
     }
 }
 
+/// Decode a restored image's thumbnail on the blocking pool, store it in
+/// the row's model data (so later binds paint it directly) and repaint the
+/// row if it still shows entry `id`.
+fn decode_pending_thumbnail(
+    id: u64,
+    history: ClipboardHistory,
+    model_item: glib::BoxedAnyObject,
+    list_item: glib::WeakRef<gtk::ListItem>,
+    decoding: Rc<RefCell<std::collections::HashSet<u64>>>,
+) {
+    glib::spawn_future_local(async move {
+        let resolved = gio::spawn_blocking(move || history.resolve_preview(id)).await;
+        decoding.borrow_mut().remove(&id);
+        let Ok(Some(preview)) = resolved else {
+            return;
+        };
+        model_item.borrow_mut::<EntryView>().preview = preview.clone();
+        let Some(list_item) = list_item.upgrade() else {
+            return;
+        };
+        if row_id_of(&list_item) != Some(id) {
+            return;
+        }
+        if let Some(rw) = unsafe { list_item.data::<RowWidgets>(ROW_DATA_KEY) } {
+            let rw = unsafe { rw.as_ref() };
+            clear_box(&rw.preview_box);
+            build_preview(&rw.preview_box, &preview, "");
+        }
+    });
+}
+
 /// Clipboard id of the row currently bound to a `ListItem`, read live
 /// so a recycled row's overlay buttons always act on what they show.
 fn row_id_of(list_item: &gtk::ListItem) -> Option<u64> {
@@ -1306,14 +1356,13 @@ fn build_preview(preview_box: &gtk::Box, preview: &EntryPreview, query_lower: &s
             picture.set_content_fit(gtk::ContentFit::Cover);
             picture.set_hexpand(true);
 
-            let frame = gtk::Box::new(gtk::Orientation::Vertical, 0);
-            frame.set_overflow(gtk::Overflow::Hidden);
-            frame.set_height_request(200);
-            frame.set_hexpand(true);
+            let frame = image_frame();
             frame.append(&picture);
-            frame.add_css_class("clipboard-item-image");
             preview_box.append(&frame);
         }
+        // Same-size empty frame while the thumbnail decodes, so the row
+        // doesn't change height when it arrives.
+        EntryPreview::ImagePending { .. } => preview_box.append(&image_frame()),
         EntryPreview::Binary { mime_type, size } => {
             let label = gtk::Label::builder()
                 .label(format!("{mime_type}  ({})", format_size(*size)))
@@ -1323,6 +1372,16 @@ fn build_preview(preview_box: &gtk::Box, preview: &EntryPreview, query_lower: &s
             preview_box.append(&label);
         }
     }
+}
+
+/// The fixed-height, clipped container an image preview sits in.
+fn image_frame() -> gtk::Box {
+    let frame = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    frame.set_overflow(gtk::Overflow::Hidden);
+    frame.set_height_request(200);
+    frame.set_hexpand(true);
+    frame.add_css_class("clipboard-item-image");
+    frame
 }
 
 /// Short type-badge code for the refined text categories (URL / colour /

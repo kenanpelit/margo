@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
-use crate::entry::{ClipboardEntry, EntryView};
+use crate::entry::{ClipboardEntry, EntryPreview, EntryView};
 
 #[derive(Clone)]
 pub struct ClipboardHistory {
@@ -97,6 +97,46 @@ impl ClipboardHistory {
         inner.entries.iter().map(ClipboardEntry::to_view).collect()
     }
 
+    /// The display preview of entry `id`, decoding a pending image
+    /// thumbnail ([`EntryPreview::ImagePending`]) from its blob on first
+    /// call and caching it on the entry. Blocking (file read + image
+    /// decode, done outside the history lock): call it off the GTK main
+    /// thread. `None` when the entry is gone.
+    pub fn resolve_preview(&self, id: u64) -> Option<EntryPreview> {
+        self.resolve_preview_with(id, crate::persist::read_blob)
+    }
+
+    fn resolve_preview_with(
+        &self,
+        id: u64,
+        read_blob: impl FnOnce(u64) -> Option<Vec<u8>>,
+    ) -> Option<EntryPreview> {
+        let (content_hash, mime_type) = {
+            let inner = self.inner.lock().ok()?;
+            let entry = inner.entries.iter().find(|e| e.id == id)?;
+            match &entry.preview {
+                EntryPreview::ImagePending { mime_type } => (entry.content_hash, mime_type.clone()),
+                ready => return Some(ready.clone()),
+            }
+        };
+        let preview = match read_blob(content_hash) {
+            Some(data) => EntryPreview::build(&mime_type, &data),
+            // The blob vanished under us: show it as an (empty) binary
+            // rather than retrying the read on every bind.
+            None => EntryPreview::Binary { mime_type, size: 0 },
+        };
+        let mut inner = self.inner.lock().ok()?;
+        if let Some(entry) = inner
+            .entries
+            .iter_mut()
+            .find(|e| e.id == id && e.content_hash == content_hash)
+            && matches!(entry.preview, EntryPreview::ImagePending { .. })
+        {
+            entry.preview = preview.clone();
+        }
+        Some(preview)
+    }
+
     pub fn get(&self, id: u64) -> Option<ClipboardEntry> {
         let inner = self.inner.lock().unwrap();
         inner.entries.iter().find(|e| e.id == id).cloned()
@@ -177,5 +217,72 @@ impl HistoryInner {
                 break;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+
+    fn png_bytes() -> Vec<u8> {
+        let img = image::RgbaImage::from_pixel(8, 6, image::Rgba([10, 20, 30, 255]));
+        let mut out = std::io::Cursor::new(Vec::new());
+        img.write_to(&mut out, image::ImageFormat::Png)
+            .expect("encode png");
+        out.into_inner()
+    }
+
+    fn pending_image(id: u64) -> ClipboardEntry {
+        ClipboardEntry {
+            id,
+            timestamp: time::OffsetDateTime::now_utc(),
+            mime_type: "image/png".into(),
+            data: Vec::new(),
+            data_in_blob: true,
+            preview: EntryPreview::ImagePending {
+                mime_type: "image/png".into(),
+            },
+            content_hash: 42,
+            pinned: false,
+        }
+    }
+
+    #[test]
+    fn pending_thumbnail_is_decoded_once_on_demand() {
+        let history = ClipboardHistory::new(10);
+        history.load_snapshot(vec![pending_image(1)]);
+        let png = png_bytes();
+        let reads = Cell::new(0);
+        let read = |hash: u64| {
+            assert_eq!(hash, 42);
+            reads.set(reads.get() + 1);
+            Some(png.clone())
+        };
+
+        let first = history.resolve_preview_with(1, read).unwrap();
+        assert!(matches!(first, EntryPreview::Image { .. }));
+        // Cached on the entry: the views (menu model) see the decoded
+        // thumbnail and a second resolve reads nothing.
+        assert!(matches!(
+            history.views()[0].preview,
+            EntryPreview::Image { .. }
+        ));
+        let again = history
+            .resolve_preview_with(1, |_| panic!("decoded twice"))
+            .unwrap();
+        assert!(matches!(again, EntryPreview::Image { .. }));
+        assert_eq!(reads.get(), 1);
+    }
+
+    #[test]
+    fn missing_blob_degrades_to_binary_and_unknown_id_is_none() {
+        let history = ClipboardHistory::new(10);
+        history.load_snapshot(vec![pending_image(1)]);
+        assert!(matches!(
+            history.resolve_preview_with(1, |_| None),
+            Some(EntryPreview::Binary { size: 0, .. })
+        ));
+        assert!(history.resolve_preview_with(7, |_| None).is_none());
     }
 }

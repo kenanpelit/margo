@@ -40,6 +40,7 @@ fn render_label(entry: &ClipboardEntry) -> String {
         EntryPreview::Image { width, height, .. } => {
             format!("[image] {width}×{height}")
         }
+        EntryPreview::ImagePending { mime_type } => format!("[image] {mime_type}"),
         EntryPreview::Binary { mime_type, size } => {
             format!("[binary] {mime_type} · {} bytes", size)
         }
@@ -49,7 +50,7 @@ fn render_label(entry: &ClipboardEntry) -> String {
 fn render_description(entry: &ClipboardEntry) -> String {
     let kind = match &entry.preview {
         EntryPreview::Text(text) => format!("{} chars", text.chars().count()),
-        EntryPreview::Image { .. } => "image".to_string(),
+        EntryPreview::Image { .. } | EntryPreview::ImagePending { .. } => "image".to_string(),
         EntryPreview::Binary { .. } => "binary".to_string(),
     };
     format!("Clipboard · {kind}")
@@ -58,7 +59,9 @@ fn render_description(entry: &ClipboardEntry) -> String {
 fn icon_for_entry(entry: &ClipboardEntry) -> &'static str {
     match &entry.preview {
         EntryPreview::Text(_) => "edit-paste-symbolic",
-        EntryPreview::Image { .. } => "image-x-generic-symbolic",
+        EntryPreview::Image { .. } | EntryPreview::ImagePending { .. } => {
+            "image-x-generic-symbolic"
+        }
         EntryPreview::Binary { .. } => "application-octet-stream-symbolic",
     }
 }

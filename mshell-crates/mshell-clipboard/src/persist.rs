@@ -52,7 +52,11 @@ fn blob_path(dir: &Path, content_hash: u64) -> PathBuf {
 /// The payload of a blob-backed entry (see `ClipboardEntry::data_in_blob`).
 /// `None` when the blob has been removed.
 pub fn read_blob(content_hash: u64) -> Option<Vec<u8>> {
-    fs::read(blob_path(&data_dir(), content_hash)).ok()
+    read_blob_in(&data_dir(), content_hash)
+}
+
+fn read_blob_in(dir: &Path, content_hash: u64) -> Option<Vec<u8>> {
+    fs::read(blob_path(dir, content_hash)).ok()
 }
 
 /// Persist the given entries according to `mode`. `entries` is the
@@ -114,10 +118,12 @@ fn save_to(dir: &Path, entries: &[ClipboardEntry], mode: PersistMode) {
     }
 }
 
-/// Load the persisted history, reconstructing previews. Entries
-/// whose blob is missing are skipped. Returned newest-first. Blob
-/// payloads are read only to build the preview, then dropped
-/// (`data_in_blob`), so they don't sit in memory for the session.
+/// Load the persisted history. Entries whose blob is missing are
+/// skipped. Returned newest-first. Blob payloads are not read at all:
+/// image entries get an [`EntryPreview::ImagePending`] preview that is
+/// decoded on first display, binary entries take their size from the
+/// file metadata, and the payload is read back only on paste
+/// (`data_in_blob`).
 pub fn load() -> Vec<ClipboardEntry> {
     load_from(&data_dir())
 }
@@ -137,25 +143,35 @@ fn load_from(dir: &Path) -> Vec<ClipboardEntry> {
 
     let mut out = Vec::with_capacity(persisted.len());
     for p in persisted {
-        let (data, data_in_blob) = if let Some(text) = p.inline_text {
-            (text.into_bytes(), false)
+        let (data, data_in_blob, preview) = if let Some(text) = p.inline_text {
+            let preview = EntryPreview::build(&p.mime_type, text.as_bytes());
+            (text.into_bytes(), false, preview)
         } else {
-            match fs::read(blob_path(dir, p.content_hash)) {
-                Ok(d) => (d, true),
-                Err(_) => continue, // blob gone — drop the entry
-            }
+            let Ok(meta) = fs::metadata(blob_path(dir, p.content_hash)) else {
+                continue; // blob gone — drop the entry
+            };
+            let preview = if p.mime_type.starts_with("image/") {
+                EntryPreview::ImagePending {
+                    mime_type: p.mime_type.clone(),
+                }
+            } else {
+                EntryPreview::Binary {
+                    mime_type: p.mime_type.clone(),
+                    size: usize::try_from(meta.len()).unwrap_or(usize::MAX),
+                }
+            };
+            // The blob stays the source of truth; nothing is held in memory.
+            (Vec::new(), true, preview)
         };
         let timestamp = OffsetDateTime::from_unix_timestamp(p.timestamp)
             .unwrap_or_else(|_| OffsetDateTime::now_utc());
-        let preview = EntryPreview::build(&p.mime_type, &data);
         out.push(ClipboardEntry {
             id: p.id,
             timestamp,
             mime_type: p.mime_type,
             content_hash: p.content_hash,
             preview,
-            // The blob stays the source of truth; keep only the preview.
-            data: if data_in_blob { Vec::new() } else { data },
+            data,
             data_in_blob,
             pinned: p.pinned,
         });
@@ -228,8 +244,16 @@ mod tests {
         assert!(img.data_in_blob, "image payload stays on disk");
         assert!(img.data.is_empty(), "no payload copy in memory");
         assert!(
-            matches!(img.preview, EntryPreview::Image { .. }),
-            "thumbnail still built from the blob"
+            matches!(img.preview, EntryPreview::ImagePending { .. }),
+            "no thumbnail decode at load"
+        );
+        let decoded = EntryPreview::build(
+            &img.mime_type,
+            &read_blob_in(&dir, img.content_hash).unwrap(),
+        );
+        assert!(
+            matches!(decoded, EntryPreview::Image { .. }),
+            "the blob still decodes to the thumbnail"
         );
         assert_eq!(
             fs::read(blob_path(&dir, img.content_hash)).ok(),
@@ -237,6 +261,7 @@ mod tests {
             "the blob still holds the payload for paste"
         );
         let txt = &restored[1];
+        assert!(matches!(txt.preview, EntryPreview::Text(ref t) if t == "hello"));
         assert!(!txt.data_in_blob);
         assert_eq!(txt.data, b"hello");
 
