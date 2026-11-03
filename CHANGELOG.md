@@ -5,6 +5,80 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.6.0] – 2026-11-03
+
+**Scaled and rotated outputs are right everywhere: the compositor keeps
+every monitor in logical coordinates, blur lands where the surface is
+drawn, wlr-output-management mode changes really apply, and mshell uses
+a third less memory.**
+
+### Added
+
+- The state JSON (`mctl` / `watch state`) reports each output's
+  `logical_width` / `logical_height` and whether it holds an exclusive
+  fullscreen window; `transform` is the live wl_output transform (0–7)
+  and `scale` the live scale.
+- A cargo-fuzz target for margo-config's parser (`fuzz/`, see
+  `fuzz/README.md`).
+
+### Fixed
+
+- Each monitor's area is kept in logical coordinates (mode → transform →
+  scale) and follows every mode, scale and transform change. On scaled or
+  rotated outputs, exclusive fullscreen windows now get the output's
+  size, and pointer clamping, the monitor under the pointer, focus and
+  pointer warps, the scroller overview and the D-Bus display config use
+  the right rectangle.
+- Blur was sampled from, and drawn at, the vertically mirrored region (a
+  top bar blurred the bottom of the screen); it now follows the surface
+  on all eight output transforms, so it is enabled on rotated and flipped
+  outputs again.
+- wlr-output-management: `SetMode` applies the mode the client picked,
+  and a configuration with a mode change replies `succeeded` / `failed`
+  only after the mode was set (or refused); other heads' or stale modes,
+  custom modes and backends without mode switching fail cleanly. The
+  D-Bus logical output reports the live transform.
+- A NUL byte in a bind's key name (or in a portal global-shortcut
+  trigger from any app) no longer crashes the parser or the compositor.
+- A window cast keeps updating while its window is on a hidden tag.
+- mshell's lock screen authenticates on the `mlock` PAM service (falling
+  back to `login`), and only the first hidden prompt gets the password.
+- Only mgreet receives the greeter's auth socket (mlogind now starts the
+  greeter through `mlogind __greeter-startup`); an
+  `/etc/mlogind/variables.toml` left by the old theme sync is ignored and
+  retired on install/upgrade, admin-written files are never touched.
+- The keybind editor no longer loses data on save: `hyper`, `super_l` /
+  `code:N` spellings, flag suffixes and `bindc` lines are kept, binds
+  margo ignores are no longer written back as working ones, and lines it
+  can't parse stay where they were.
+- The bar colour pickers start from the live theme.
+- Screenshots: full-desktop captures stitch mixed-scale outputs
+  correctly, real ultrawide selections are labelled 21:9, and file names
+  use local time.
+
+### Performance
+
+- mshell runs with `MIMALLOC_ALLOW_THP=0`: mean PSS 309 MB → 206 MB in a
+  20-minute measurement with the wallpaper rotating.
+- Animations are sampled at the predicted presentation time; the space
+  and popups refresh once per repaint batch; the compositor drops the
+  wallpaper's CPU pixels after the GPU upload.
+- mshell sends its remaining `mctl` calls over margo's socket, decodes
+  restored clipboard thumbnails on first display, and pauses the catwalk
+  under exclusive fullscreen.
+
+### Changed
+
+- serde_yaml is replaced by `yaml_serde` (the YAML organisation's
+  maintained fork); existing mshell profiles are written byte-for-byte as
+  before. The WASM plugin host moved to wasmtime 36 LTS, and rustls,
+  webpki, tokio and zstd picked up their RUSTSEC fixes; `cargo deny check
+  advisories` is clean.
+- mshell's OSDs, audio device rows, media seek bars and mtune bar
+  settings share one implementation each.
+- The 4.5.1 note "Blur is skipped on rotated or flipped outputs" no longer
+  applies.
+
 ## [4.5.1] – 2026-11-03
 
 **A hardening and performance release from a full code review: the lock
