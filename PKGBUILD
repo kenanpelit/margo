@@ -180,9 +180,11 @@ backup=(
 # render aborts. The Cargo release profile sets `strip = "none"`;
 # this line keeps makepkg's outer strip from overriding it.
 options=(!lto !strip)
-# No install scriptlet: mtune's GSettings schema, desktop entry and
-# hicolor icons are picked up by the system pacman hooks (glib2's
-# glib-compile-schemas, desktop-file-utils, gtk-update-icon-cache).
+# The install scriptlet retires an /etc/mlogind/variables.toml that the
+# pre-4.5.1 `mlogind sync-theme` wrote (post_install/post_upgrade run the
+# helper installed below). It also refreshes mtune's GSettings schema,
+# desktop and icon caches, which the system pacman hooks cover as well.
+install=margo-git.install
 source=("git+${url}.git#branch=main")
 sha256sums=("SKIP")
 
