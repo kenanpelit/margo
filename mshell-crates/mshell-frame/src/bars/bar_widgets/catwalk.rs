@@ -11,7 +11,9 @@
 //! rasterised once, at the sprite's device-pixel size, into `gdk::Texture`s;
 //! a frame step only swaps the paintable (re-rendered only when the size or
 //! the monitor scale changes). The animation stops while the pill is unmapped
-//! (bar hidden) and resumes on map.
+//! (bar hidden) or an exclusive-fullscreen window covers its output (margo
+//! then renders no layer surfaces there — `MargoService::fullscreen_outputs`),
+//! and resumes on map / when the output is uncovered.
 //!
 //! The walk cadence uses the RunCat easing — `5000/√(cpu+35) − 400` ms per
 //! frame, floored at 30 ms — so the cat eases smoothly from a saunter to a
@@ -20,6 +22,7 @@
 //! cat's mood ("Cat is ZOOMING!! · 94%").
 
 use crate::bars::bar_widgets::sysstat::read_cpu_stat_pub;
+use futures::StreamExt;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
     BarWidgetsStoreFields, BarsStoreFields, CatStyle, CatwalkConfig, CatwalkConfigStoreFields,
@@ -123,6 +126,8 @@ pub(crate) struct CatwalkModel {
     last_display: Option<CatwalkDisplay>,
     /// Last sprite size applied — guards needless `set_pixel_size`.
     last_size: Option<u32>,
+    /// Outputs margo reports as covered by an exclusive-fullscreen window.
+    fullscreen_outputs: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -130,6 +135,8 @@ pub(crate) enum CatwalkInput {
     Tick,
     /// The pill was mapped again: restart the animation if it stopped.
     Mapped,
+    /// margo's set of exclusive-fullscreen outputs changed.
+    FullscreenOutputs(Vec<String>),
     Clicked,
 }
 
@@ -217,6 +224,7 @@ impl Component for CatwalkModel {
             last_pct: None,
             last_display: None,
             last_size: None,
+            fullscreen_outputs: Vec::new(),
         };
 
         let widgets = view_output!();
@@ -230,6 +238,27 @@ impl Component for CatwalkModel {
 
         let map_sender = sender.clone();
         root.connect_map(move |_| map_sender.input(CatwalkInput::Mapped));
+
+        // Follow margo's exclusive-fullscreen outputs (snapshot on subscribe).
+        let input = sender.input_sender().clone();
+        sender.command(move |_out, shutdown| async move {
+            let mut stream = mshell_services::margo_service().fullscreen_outputs.watch();
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            loop {
+                tokio::select! {
+                    () = &mut shutdown_fut => return,
+                    next = stream.next() => match next {
+                        Some(outputs) => {
+                            if input.send(CatwalkInput::FullscreenOutputs(outputs)).is_err() {
+                                return;
+                            }
+                        }
+                        None => return,
+                    },
+                }
+            }
+        });
 
         ComponentParts { model, widgets }
     }
@@ -253,10 +282,25 @@ impl Component for CatwalkModel {
                 }
                 return;
             }
+            CatwalkInput::FullscreenOutputs(outputs) => {
+                self.fullscreen_outputs = outputs;
+                if !self.ticking
+                    && root.is_mapped()
+                    && !is_covered(widget_connector(root).as_deref(), &self.fullscreen_outputs)
+                {
+                    self.ticking = true;
+                    arm_tick(&sender, 0);
+                }
+                return;
+            }
             CatwalkInput::Tick => {
-                // Nobody can see the cat (bar hidden / output gone): let the
-                // chain lapse; `Mapped` restarts it.
-                if !root.is_mapped() {
+                // Nobody can see the cat (bar hidden / output gone, or an
+                // exclusive-fullscreen window over this output): let the
+                // chain lapse; `Mapped` / `FullscreenOutputs` restart it.
+                if !root.is_mapped()
+                    || (!self.fullscreen_outputs.is_empty()
+                        && is_covered(widget_connector(root).as_deref(), &self.fullscreen_outputs))
+                {
                     self.ticking = false;
                     return;
                 }
@@ -352,6 +396,21 @@ impl Component for CatwalkModel {
 
         self.update_view(widgets, sender);
     }
+}
+
+/// Connector name of the monitor `widget`'s surface is on (e.g. `DP-1`),
+/// `None` before it is realized.
+fn widget_connector(widget: &impl IsA<gtk::Widget>) -> Option<String> {
+    let surface = widget.native()?.surface()?;
+    let monitor = widget.display().monitor_at_surface(&surface)?;
+    monitor.connector().map(|c| c.to_string())
+}
+
+/// Whether the output `connector` is covered by an exclusive-fullscreen
+/// window. An unknown output is never treated as covered, so the cat keeps
+/// walking rather than freezing on a lookup miss.
+fn is_covered(connector: Option<&str>, fullscreen_outputs: &[String]) -> bool {
+    connector.is_some_and(|c| fullscreen_outputs.iter().any(|o| o == c))
 }
 
 /// Milliseconds until the next frame: the RunCat easing
@@ -463,6 +522,15 @@ mod tests {
             let pixbuf = render_svg(svg, 44).expect("bundled SVG renders");
             assert_eq!(pixbuf.width().max(pixbuf.height()), 44);
         }
+    }
+
+    #[test]
+    fn only_a_known_covered_output_pauses_the_cat() {
+        let covered = vec!["DP-1".to_string()];
+        assert!(is_covered(Some("DP-1"), &covered));
+        assert!(!is_covered(Some("HDMI-A-1"), &covered));
+        assert!(!is_covered(None, &covered));
+        assert!(!is_covered(Some("DP-1"), &[]));
     }
 
     #[test]
