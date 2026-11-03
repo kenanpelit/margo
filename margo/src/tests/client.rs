@@ -118,6 +118,9 @@ pub struct ClientState {
     /// Map xdg_surface.id() → xdg_toplevel.id() so the surface
     /// configure event can find the right pending entry.
     pub xdg_surface_to_toplevel: BTreeMap<u32, u32>,
+    /// What a bound `zwlr_output_manager_v1` reported (see
+    /// `wlr_output_client.rs`).
+    pub output_management: super::wlr_output_client::OutputManagementEvents,
 }
 
 /// Sync sentinel: each `roundtrip` mints one and the fixture spins
@@ -210,7 +213,7 @@ impl Client {
     /// Bind a global by its `interface` name and return the proxy.
     /// Panics if the global hasn't been advertised yet — the test
     /// is expected to call `Fixture::roundtrip` once before binding.
-    fn bind_global<I>(&self, version_cap: u32) -> I
+    pub(super) fn bind_global<I>(&self, version_cap: u32) -> I
     where
         I: Proxy + 'static,
         ClientState: Dispatch<I, ()>,

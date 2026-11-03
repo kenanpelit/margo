@@ -25,6 +25,15 @@ impl OutputManagementHandler for MargoState {
         &mut self,
         pending: std::collections::HashMap<String, PendingHeadConfig>,
     ) -> bool {
+        // Mode changes are queued for the backend; refuse the whole
+        // configuration up front when nothing would drain them.
+        if !self.supports_mode_changes() && pending.values().any(|p| p.mode().is_some()) {
+            tracing::warn!(
+                "output_management: rejecting mode change — unsupported by this backend"
+            );
+            return false;
+        }
+
         // Disable / re-enable handled BEFORE the geometry-update
         // loop — toggling `monitor.enabled` is cheap, but if a
         // pending head says "disable + change mode" we'd want the
@@ -156,6 +165,10 @@ impl OutputManagementHandler for MargoState {
             self.publish_output_topology();
         }
         changed
+    }
+
+    fn supports_mode_changes(&self) -> bool {
+        self.output_pending.mode_changes_supported
     }
 }
 delegate_output_management!(MargoState);

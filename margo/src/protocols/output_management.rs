@@ -82,7 +82,7 @@ pub struct ModeSnapshot {
 
 #[derive(Debug, Default)]
 struct ClientData {
-    heads: HashMap<String, (ZwlrOutputHeadV1, Vec<ZwlrOutputModeV1>)>,
+    heads: HashMap<String, (ZwlrOutputHeadV1, Vec<(ZwlrOutputModeV1, ModeSnapshot)>)>,
     configs: HashMap<ZwlrOutputConfigurationV1, ConfigurationState>,
     manager: Option<ZwlrOutputManagerV1>,
 }
@@ -105,9 +105,8 @@ pub struct PendingHeadConfig {
     scale: Option<f64>,
     transform: Option<WlTransform>,
     position: Option<(i32, i32)>,
-    /// `(width, height, refresh_mhz)` — accepted into the pending
-    /// state but rejected at apply time because we don't do mode
-    /// changes yet.
+    /// `(width, height, refresh_mhz)` of the advertised mode the
+    /// client picked with `set_mode`; queued for the backend at apply.
     mode: Option<(i32, i32, i32)>,
     /// A request carried a value margo refuses (see [`valid_scale`],
     /// [`valid_position`]); the whole configuration then fails.
@@ -156,6 +155,10 @@ pub trait OutputManagementHandler {
     /// requested settings into effect, `false` to make us send a
     /// `cancelled()` to the client.
     fn apply_output_pending(&mut self, pending: HashMap<String, PendingHeadConfig>) -> bool;
+
+    /// Whether the backend can apply a mode change (udev can; winit and
+    /// headless can't). Configurations that set a mode fail without it.
+    fn supports_mode_changes(&self) -> bool;
 }
 
 pub struct OutputManagementManagerState {
@@ -213,7 +216,7 @@ impl OutputManagementManagerState {
             // changed identity. Simpler: finish them all and
             // republish, the protocol allows that.
             for (_name, (head, modes)) in data.heads.drain() {
-                for mode in modes {
+                for (mode, _) in modes {
                     mode.finished();
                 }
                 head.finished();
@@ -236,7 +239,7 @@ fn publish_head(
     client: &Client,
     manager: &ZwlrOutputManagerV1,
     snap: &OutputSnapshot,
-    heads: &mut HashMap<String, (ZwlrOutputHeadV1, Vec<ZwlrOutputModeV1>)>,
+    heads: &mut HashMap<String, (ZwlrOutputHeadV1, Vec<(ZwlrOutputModeV1, ModeSnapshot)>)>,
 ) {
     let Ok(head) = client.create_resource::<ZwlrOutputHeadV1, _, crate::state::MargoState>(
         display,
@@ -277,7 +280,7 @@ fn publish_head(
         if Some(i) == snap.current_mode {
             head.current_mode(&mode);
         }
-        modes_out.push(mode);
+        modes_out.push((mode, m.clone()));
     }
 
     heads.insert(snap.name.clone(), (head, modes_out));
@@ -441,6 +444,7 @@ where
             Some(c) => c.id(),
             None => return,
         };
+        let mode_changes = state.supports_mode_changes();
         let mgr_state = state.output_management_state();
         let client_data = match mgr_state.clients.get_mut(&client_id) {
             Some(c) => c,
@@ -549,12 +553,13 @@ where
             zwlr_output_configuration_v1::Request::Test => {
                 // We don't actually run a side-effect-free
                 // simulation; declare success only if the request
-                // doesn't touch features we don't support
-                // (mode/enable). Anything else: reject.
+                // doesn't touch features we don't support (disable,
+                // or a mode change the backend can't do). Anything
+                // else: reject.
                 if let Some(ConfigurationState::Ongoing(map)) = client_data.configs.get(cfg) {
                     let supportable = map
                         .values()
-                        .all(|p| p.enabled && p.mode.is_none() && !p.invalid);
+                        .all(|p| p.enabled && (p.mode.is_none() || mode_changes) && !p.invalid);
                     if supportable {
                         cfg.succeeded();
                     } else {
@@ -601,6 +606,17 @@ where
             Some(c) => c,
             None => return,
         };
+        // `set_mode` names one of the mode objects this head advertised
+        // to this client in the current topology; anything else (another
+        // head's mode, or one finished by a re-publish) isn't found.
+        let picked_mode = match &request {
+            zwlr_output_configuration_head_v1::Request::SetMode { mode } => client_data
+                .heads
+                .get(name)
+                .and_then(|(_, modes)| modes.iter().find(|(m, _)| m == mode))
+                .map(|(_, s)| (s.width, s.height, s.refresh)),
+            _ => None,
+        };
         let pending = match client_data.configs.get_mut(cfg) {
             Some(ConfigurationState::Ongoing(map)) => match map.get_mut(name) {
                 Some(p) => p,
@@ -631,14 +647,21 @@ where
                     pending.invalid = true;
                 }
             }
-            zwlr_output_configuration_head_v1::Request::SetMode { mode } => {
-                if let Some(m) = mode.data::<()>() {
-                    let _ = m;
+            zwlr_output_configuration_head_v1::Request::SetMode { .. } => match picked_mode {
+                Some(mode) => pending.mode = Some(mode),
+                None => {
+                    tracing::warn!(
+                        output = %name,
+                        "output_management: rejecting a mode this head doesn't advertise"
+                    );
+                    pending.invalid = true;
                 }
-                // We honour the request slot but apply will reject
-                // it. The client gets a `failed` then, not
-                // `succeeded`.
-                pending.mode = Some((0, 0, 0));
+            },
+            zwlr_output_configuration_head_v1::Request::SetCustomMode { .. } => {
+                // Only advertised modes can be applied (the udev path
+                // matches against the connector's mode list).
+                tracing::warn!(output = %name, "output_management: rejecting custom mode");
+                pending.invalid = true;
             }
             _ => {}
         }

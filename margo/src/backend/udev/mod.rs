@@ -767,6 +767,9 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
         }
         Err(e) => warn!("wp_drm_lease_device_v1 unavailable: {e}"),
     }
+    // `apply_pending_mode_changes` drains wlr-output-management mode
+    // changes on this backend.
+    state.output_pending.mode_changes_supported = true;
     state.dmabuf_import_hook = Some(Rc::new(RefCell::new({
         let backend_data = backend_data.clone();
         move |dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf| {

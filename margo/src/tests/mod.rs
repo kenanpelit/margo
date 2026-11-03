@@ -32,6 +32,7 @@ mod client;
 mod config_no_effect;
 mod fixture;
 mod server;
+mod wlr_output_client;
 
 mod active_output;
 mod arrange;

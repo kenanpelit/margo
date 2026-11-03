@@ -104,3 +104,149 @@ fn state_snapshot_reports_live_logical_output_size() {
     assert_eq!(o["logical_height"], 1280);
     assert_eq!(o["scale"], 2.0, "the live scale, not the configured one");
 }
+
+// ── SetMode through a real zwlr_output_configuration_v1 ──────────────────────
+
+use smithay::output::Mode as OutputMode;
+use smithay::reexports::wayland_protocols_wlr::output_management::v1::client::zwlr_output_manager_v1::ZwlrOutputManagerV1;
+
+use super::client::ClientId;
+use super::wlr_output_client::ConfigOutcome;
+
+/// DP-1 (2560×1440@60, plus 1920×1080@120) and DP-2 (1280×1024@60), with
+/// a client that has read the heads. `mode_changes` says whether the
+/// backend can change modes (udev can; winit / headless can't).
+fn wlr_desk(mode_changes: bool) -> (Fixture, ClientId, ZwlrOutputManagerV1) {
+    let mut fx = Fixture::new();
+    fx.add_output("DP-1", (2560, 1440));
+    fx.add_output("DP-2", (1280, 1024));
+    fx.server.state.monitors[0].output.add_mode(OutputMode {
+        size: (1920, 1080).into(),
+        refresh: 120_000,
+    });
+    fx.server.state.output_pending.mode_changes_supported = mode_changes;
+    fx.server.state.publish_output_topology();
+    let id = fx.add_client();
+    fx.roundtrip(id);
+    let manager = fx.client(id).bind_output_manager();
+    fx.roundtrip(id);
+    (fx, id, manager)
+}
+
+/// `enable_head(head)` + `set_mode(mode)` on a fresh configuration, then
+/// apply it; returns the outcome.
+fn apply_set_mode(
+    fx: &mut Fixture,
+    id: ClientId,
+    manager: &ZwlrOutputManagerV1,
+    head_name: &str,
+    mode: &smithay::reexports::wayland_protocols_wlr::output_management::v1::client::zwlr_output_mode_v1::ZwlrOutputModeV1,
+) -> Option<ConfigOutcome> {
+    let c = fx.client(id);
+    let serial = c.state.output_management.serial.unwrap();
+    let head = c.state.output_management.head(head_name);
+    let cfg = manager.create_configuration(serial, &c.qh, ());
+    let cfg_head = cfg.enable_head(&head, &c.qh, ());
+    cfg_head.set_mode(mode);
+    cfg.apply();
+    c.flush();
+    fx.roundtrip(id);
+    fx.client(id).state.output_management.outcome(&cfg)
+}
+
+fn queued_modes(fx: &Fixture) -> Vec<(String, i32, i32, i32)> {
+    fx.server
+        .state
+        .output_pending
+        .mode_changes
+        .iter()
+        .map(|m| (m.output_name.clone(), m.width, m.height, m.refresh_mhz))
+        .collect()
+}
+
+#[test]
+fn set_mode_queues_the_advertised_mode_the_client_picked() {
+    let (mut fx, id, manager) = wlr_desk(true);
+    let om = &fx.client(id).state.output_management;
+    let mode = om.mode(&om.head("DP-1"), (1920, 1080, 120_000));
+    let outcome = apply_set_mode(&mut fx, id, &manager, "DP-1", &mode);
+    assert_eq!(outcome, Some(ConfigOutcome::Succeeded));
+    assert_eq!(
+        queued_modes(&fx),
+        vec![("DP-1".to_string(), 1920, 1080, 120_000)]
+    );
+}
+
+#[test]
+fn set_mode_with_another_heads_mode_fails() {
+    let (mut fx, id, manager) = wlr_desk(true);
+    let om = &fx.client(id).state.output_management;
+    let dp2_mode = om.mode(&om.head("DP-2"), (1280, 1024, 60_000));
+    let outcome = apply_set_mode(&mut fx, id, &manager, "DP-1", &dp2_mode);
+    assert_eq!(outcome, Some(ConfigOutcome::Failed));
+    assert!(queued_modes(&fx).is_empty());
+}
+
+#[test]
+fn set_mode_with_a_stale_mode_fails() {
+    let (mut fx, id, manager) = wlr_desk(true);
+    let c = fx.client(id);
+    let om = &c.state.output_management;
+    let head = om.head("DP-1");
+    let stale = om.mode(&head, (1920, 1080, 120_000));
+    let serial = om.serial.unwrap();
+    let cfg = manager.create_configuration(serial, &c.qh, ());
+    let cfg_head = cfg.enable_head(&head, &c.qh, ());
+    c.flush();
+    fx.roundtrip(id);
+    // The topology changes under the configuration: every head and mode
+    // is re-announced and the old mode objects are finished.
+    fx.server.state.monitors[0].output.add_mode(OutputMode {
+        size: (1280, 720).into(),
+        refresh: 60_000,
+    });
+    fx.server.state.publish_output_topology();
+    fx.roundtrip(id);
+
+    let c = fx.client(id);
+    cfg_head.set_mode(&stale);
+    cfg.apply();
+    c.flush();
+    fx.roundtrip(id);
+    assert_eq!(
+        fx.client(id).state.output_management.outcome(&cfg),
+        Some(ConfigOutcome::Failed)
+    );
+    assert!(queued_modes(&fx).is_empty());
+}
+
+#[test]
+fn set_mode_fails_when_the_backend_cannot_change_modes() {
+    // winit / headless: nothing drains `mode_changes`.
+    let (mut fx, id, manager) = wlr_desk(false);
+    let om = &fx.client(id).state.output_management;
+    let mode = om.mode(&om.head("DP-1"), (1920, 1080, 120_000));
+    let outcome = apply_set_mode(&mut fx, id, &manager, "DP-1", &mode);
+    assert_eq!(outcome, Some(ConfigOutcome::Failed));
+    assert!(queued_modes(&fx).is_empty());
+}
+
+#[test]
+fn custom_modes_are_refused() {
+    let (mut fx, id, manager) = wlr_desk(true);
+    let c = fx.client(id);
+    let serial = c.state.output_management.serial.unwrap();
+    let head = c.state.output_management.head("DP-1");
+    let cfg = manager.create_configuration(serial, &c.qh, ());
+    let cfg_head = cfg.enable_head(&head, &c.qh, ());
+    cfg_head.set_custom_mode(1920, 1080, 120_000);
+    cfg_head.set_scale(2.0);
+    cfg.apply();
+    c.flush();
+    fx.roundtrip(id);
+    assert_eq!(
+        fx.client(id).state.output_management.outcome(&cfg),
+        Some(ConfigOutcome::Failed)
+    );
+    assert!(queued_modes(&fx).is_empty());
+}

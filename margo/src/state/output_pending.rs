@@ -25,6 +25,10 @@ pub struct OutputPending {
     /// Held outside the apply path because the handler runs on
     /// MargoState and doesn't have a borrow on the udev BackendData.
     pub mode_changes: Vec<crate::PendingOutputModeChange>,
+    /// The backend drains `mode_changes` (udev sets this at startup).
+    /// Under winit / headless nothing does, so wlr-output-management
+    /// refuses mode changes there instead of reporting success.
+    pub mode_changes_supported: bool,
     /// Last udev `Changed` event timestamp, used by the hotplug
     /// debouncer in `backend/udev/mod.rs`. A burst of udev events
     /// (gamma daemon racing the lock screen, kernel firing
