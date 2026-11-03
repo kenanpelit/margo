@@ -5,6 +5,17 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **A reboot or logout no longer counts as a crash.** margo now stops
+  cleanly on SIGTERM, SIGINT and SIGHUP, as `mctl dispatch quit` does.
+  Before, the SIGTERM a reboot or logout sends killed it on the spot, so
+  the crash autosave was never dropped: every next login warned
+  "unclean shutdown detected" and replayed the old session as a crash
+  restore.
+
 ## [4.6.0] – 2026-11-03
 
 **Scaled and rotated outputs are right everywhere: the compositor keeps

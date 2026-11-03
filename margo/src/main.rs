@@ -1374,18 +1374,37 @@ fn main() -> Result<()> {
     //   pkill -USR1 margo
     // The dump goes through `tracing::info!` so it lands wherever the
     // user's MARGO_LOG filter sends regular output.
+    //
+    // SIGTERM / SIGINT / SIGHUP → quit the way `mctl dispatch quit` does. A reboot or logout stops the session with SIGTERM;
+    // without a handler its default action killed margo on the spot, so the clean-shutdown step after the event loop (dropping
+    // the crash autosave) never ran and every next login reported "unclean shutdown" and replayed the old session as a crash
+    // restore.
+    use smithay::reexports::calloop::signals::Signal;
     match smithay::reexports::calloop::signals::Signals::new(&[
-        smithay::reexports::calloop::signals::Signal::SIGUSR1,
+        Signal::SIGUSR1,
+        Signal::SIGTERM,
+        Signal::SIGINT,
+        Signal::SIGHUP,
     ]) {
         Ok(signals) => {
-            if let Err(e) = loop_handle.insert_source(signals, |_, _, state: &mut MargoState| {
-                state.debug_dump();
-            }) {
-                warn!("SIGUSR1 source: {e}");
+            if let Err(e) =
+                loop_handle.insert_source(signals, |event, _, state: &mut MargoState| {
+                    if event.signal() == Signal::SIGUSR1 {
+                        state.debug_dump();
+                    } else {
+                        info!(signal = ?event.signal(), "asked to stop: shutting down cleanly");
+                        state.should_quit = true;
+                        state.loop_signal.stop();
+                    }
+                })
+            {
+                warn!("signal source: {e}");
             }
         }
         _ => {
-            warn!("could not register SIGUSR1 — `pkill -USR1 margo` won't work");
+            warn!(
+                "could not register SIGUSR1/SIGTERM — `pkill -USR1 margo` won't work and a SIGTERM kills margo uncleanly"
+            );
         }
     }
 
