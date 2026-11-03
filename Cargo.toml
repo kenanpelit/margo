@@ -139,8 +139,8 @@ base64 = "0.22"
 tracing = "0.1"
 # WASM plugin host (mplugins WASM tier). Heavy — only pulled when the
 # `mshell-plugin-host` crate's `wasm` feature is enabled.
-wasmtime = "27"
-wasmtime-wasi = "27"
+wasmtime = "36.0.20"
+wasmtime-wasi = "36.0.20"
 # Blocking HTTP for the plugin host's `http` capability (W3). Pure-Rust + rustls.
 ureq = "2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

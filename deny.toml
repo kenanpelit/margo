@@ -28,7 +28,7 @@ yanked = "deny"
 # RUSTSEC-2026-0196 (cgmath) is gone from the tree, so it was dropped.
 ignore = [
     # --- Unmaintained crates, no security vuln, no safe upgrade path ---------
-    { id = "RUSTSEC-2025-0057", reason = "fxhash unmaintained, no vuln; only via fxprof-processed-profile in the optional, unshipped wasmtime stack" },
+    { id = "RUSTSEC-2025-0057", reason = "fxhash unmaintained, no vuln; only via fxprof-processed-profile behind wasmtime's `profiling` feature, which is compiled in but only runs when a profiler is configured (mshell never does)" },
     { id = "RUSTSEC-2025-0119", reason = "number_prefix unmaintained, no vuln; transitive via indicatif" },
     { id = "RUSTSEC-2024-0436", reason = "paste unmaintained proc-macro, no vuln; deep transitive and ubiquitous" },
     { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 unmaintained, no vuln; build-time proc-macro via reactive_stores_macro" },
@@ -39,28 +39,6 @@ ignore = [
     { id = "RUSTSEC-2025-0040", reason = "users: root appended to group listings; no fixed release, and mlogind never uses group listings for authorization" },
     { id = "RUSTSEC-2026-0194", reason = "quick-xml quadratic duplicate-attribute check; only wayland-scanner (build time) parses our vendored, trusted protocol XML; fix in 0.41 is blocked by wayland-scanner's ^0.39 pin" },
     { id = "RUSTSEC-2026-0195", reason = "quick-xml NsReader namespace-allocation DoS; same build-time-only, trusted-input wayland-scanner path; fix blocked by the ^0.39 pin" },
-
-    # --- wasmtime cluster: feature-gated OFF, not in the shipped binary ------
-    # deny only sees these because [graph] all-features = true. Revisit when the
-    # plugin runtime graduates (tracked in docs/code-quality-roadmap.md).
-    { id = "RUSTSEC-2025-0046", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (fd_renumber host panic)" },
-    { id = "RUSTSEC-2025-0118", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (shared linear memory API unsound)" },
-    { id = "RUSTSEC-2026-0020", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (WASI resource exhaustion)" },
-    { id = "RUSTSEC-2026-0021", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (wasi:http fields panic; wasi-http not used)" },
-    { id = "RUSTSEC-2026-0085", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (panic lifting `flags` component value)" },
-    { id = "RUSTSEC-2026-0086", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (64-bit tables + Winch data leak)" },
-    { id = "RUSTSEC-2026-0087", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (f64x2.splat on Cranelift x86-64)" },
-    { id = "RUSTSEC-2026-0088", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (pooling allocator data leak)" },
-    { id = "RUSTSEC-2026-0089", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (Winch table.fill panic)" },
-    { id = "RUSTSEC-2026-0091", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (component-model string transcoding OOB write)" },
-    { id = "RUSTSEC-2026-0092", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (misaligned UTF-16 transcoding panic)" },
-    { id = "RUSTSEC-2026-0093", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (UTF-16 to latin1+utf16 transcoding OOB read)" },
-    { id = "RUSTSEC-2026-0094", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (Winch table.grow masking)" },
-    { id = "RUSTSEC-2026-0095", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (Winch sandbox-escaping access)" },
-    { id = "RUSTSEC-2026-0096", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (aarch64 Cranelift heap miscompile)" },
-    { id = "RUSTSEC-2026-0149", reason = "wasmtime-wasi is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (path_open TRUNCATE bypasses FilePerms::WRITE)" },
-    { id = "RUSTSEC-2026-0182", reason = "wasmtime-wasi is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (WASIp1 fd_renumber leak)" },
-    { id = "RUSTSEC-2026-0188", reason = "wasmtime-wasi is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (hard links / renames bypass FilePerms)" },
 ]
 
 [bans]

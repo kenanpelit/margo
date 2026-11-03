@@ -17,9 +17,9 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
-use wasmtime::component::{Component, Linker};
+use wasmtime::component::{Component, HasSelf, Linker, ResourceTable};
 use wasmtime::{Config, Engine, Store, StoreLimits, StoreLimitsBuilder};
-use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiView};
+use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
 wasmtime::component::bindgen!({
     path: "wit",
@@ -256,11 +256,11 @@ struct HostState {
 }
 
 impl WasiView for HostState {
-    fn ctx(&mut self) -> &mut WasiCtx {
-        &mut self.wasi
-    }
-    fn table(&mut self) -> &mut ResourceTable {
-        &mut self.table
+    fn ctx(&mut self) -> WasiCtxView<'_> {
+        WasiCtxView {
+            ctx: &mut self.wasi,
+            table: &mut self.table,
+        }
     }
 }
 
@@ -756,8 +756,8 @@ impl PluginRuntime {
         let component = Component::from_file(&self.engine, wasm_path)?;
         let mut linker = Linker::new(&self.engine);
         // wasip2 guests link the WASI std interfaces; provide them.
-        wasmtime_wasi::add_to_linker_sync(&mut linker)?;
-        Plugin::add_to_linker(&mut linker, |s: &mut HostState| s)?;
+        wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
+        Plugin::add_to_linker::<_, HasSelf<_>>(&mut linker, |s: &mut HostState| s)?;
         let (stream_tx, stream_rx) = mpsc::channel::<StreamMsg>();
         let inflight = Arc::new(AtomicUsize::new(0));
         let data_dir = dirs::data_dir()
