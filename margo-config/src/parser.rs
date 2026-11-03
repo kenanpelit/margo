@@ -1436,6 +1436,23 @@ fn parse_modifiers(s: &str) -> Result<Modifiers> {
 
 // ── Key parsing ──────────────────────────────────────────────────────────────
 
+/// xkbcommon's `keysym_from_name` as a raw keysym, 0 (`NoSymbol`) when the
+/// name is unknown. Use this instead of calling xkbcommon directly on text
+/// from a config file or a client: xkbcommon 0.8 builds a CString with
+/// `unwrap()`, so a name containing a NUL byte panics; here it is simply not
+/// a key name.
+pub fn keysym_raw_from_name(name: &str, case_insensitive: bool) -> u32 {
+    if name.contains('\0') {
+        return 0;
+    }
+    let flags = if case_insensitive {
+        xkb::KEYSYM_CASE_INSENSITIVE
+    } else {
+        xkb::KEYSYM_NO_FLAGS
+    };
+    xkb::keysym_from_name(name, flags).raw()
+}
+
 fn parse_key(s: &str, prefer_sym: bool) -> Result<KeySymCode> {
     let s = s.trim();
 
@@ -1455,9 +1472,9 @@ fn parse_key(s: &str, prefer_sym: bool) -> Result<KeySymCode> {
     // Exact (case-sensitive) match first — XF86 keysyms are canonically
     // mixed-case — then a case-insensitive pass (unless the caller prefers the
     // symbol) so plain names like `return` / `escape` / `f1` parse in any case.
-    let mut raw = xkb::keysym_from_name(s, xkb::KEYSYM_NO_FLAGS).raw();
+    let mut raw = keysym_raw_from_name(s, false);
     if raw == 0u32 && !prefer_sym {
-        raw = xkb::keysym_from_name(s, xkb::KEYSYM_CASE_INSENSITIVE).raw();
+        raw = keysym_raw_from_name(s, true);
     }
     if raw == 0u32 {
         // Some valid XF86 keysyms are missing from xkbcommon's name table in
@@ -2017,6 +2034,19 @@ mod tests {
         clamp_keyword, config_source_files, expand_tilde_in_env, parse_config, parse_config_str,
         parse_config_str_with_defaults, parse_key, strip_inline_comment,
     };
+
+    /// Regression (cargo-fuzz `parse_config_str`): a NUL byte in a bind's key
+    /// name reached xkbcommon's `keysym_from_name`, whose CString conversion
+    /// unwraps and panicked — a stray NUL in config.conf took margo down at
+    /// load / `mctl reload`. It must be an ordinary bad line instead.
+    #[test]
+    fn nul_byte_in_bind_key_is_rejected_without_panicking() {
+        let c = parse_config_str("bind = SUPER,a\0b,spawn,kitty\nborderpx = 3\n", None)
+            .expect("parse returns");
+        assert_eq!(c.borderpx, 3, "later lines still parse");
+        assert!(parse_key("a\0b", false).is_err());
+        assert!(parse_key("\0", true).is_err());
+    }
 
     #[test]
     fn var_expands_in_later_lines_and_across_definitions() {

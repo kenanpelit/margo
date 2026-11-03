@@ -24,7 +24,6 @@
 use std::collections::HashMap;
 
 use margo_config::Modifiers;
-use smithay::input::keyboard::xkb;
 
 pub struct RegisteredShortcut {
     pub id: String,
@@ -102,9 +101,9 @@ pub fn parse_trigger(s: &str) -> Option<(Modifiers, u32)> {
             "ALT" | "MOD1" => mods |= Modifiers::ALT,
             "LOGO" | "SUPER" | "META" | "MOD4" => mods |= Modifiers::LOGO,
             _ => {
-                let mut raw = xkb::keysym_from_name(token, xkb::KEYSYM_NO_FLAGS).raw();
+                let mut raw = margo_config::keysym_raw_from_name(token, false);
                 if raw == 0 {
-                    raw = xkb::keysym_from_name(token, xkb::KEYSYM_CASE_INSENSITIVE).raw();
+                    raw = margo_config::keysym_raw_from_name(token, true);
                 }
                 if raw == 0 {
                     return None;
@@ -254,6 +253,7 @@ impl crate::state::MargoState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use smithay::input::keyboard::xkb;
 
     #[test]
     fn trigger_grammar_parses_portal_conventions() {
@@ -266,6 +266,15 @@ mod tests {
 
         assert!(parse_trigger("CTRL+").is_none(), "no key token");
         assert!(parse_trigger("CTRL+NotAKeyName42x").is_none());
+    }
+
+    /// The trigger string comes from the portal client. A NUL byte in it used
+    /// to reach xkbcommon's `keysym_from_name`, which unwraps a CString
+    /// conversion and panicked the compositor.
+    #[test]
+    fn trigger_with_nul_byte_is_rejected_without_panicking() {
+        assert!(parse_trigger("CTRL+a\0b").is_none());
+        assert!(parse_trigger("\0").is_none());
     }
 
     #[test]
