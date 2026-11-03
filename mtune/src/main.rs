@@ -46,7 +46,13 @@ fn main() -> glib::ExitCode {
 
     // Set up gettext translations
     debug!("Setting up locale data");
-    setlocale(LocaleCategory::LcAll, "");
+    // SAFETY: setlocale reads the environment and mutates process-global
+    // locale state; it is sound only while no other thread exists. This is
+    // the start of `main`: the logger above spawns no threads and GTK /
+    // gstreamer are not initialised yet.
+    unsafe {
+        setlocale(LocaleCategory::LcAll, "");
+    }
 
     bindtextdomain(GETTEXT_PACKAGE, config::localedir()).expect("Unable to bind the text domain");
     bind_textdomain_codeset(GETTEXT_PACKAGE, "UTF-8")
