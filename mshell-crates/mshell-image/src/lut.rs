@@ -480,8 +480,12 @@ pub fn average_luminance(path: &Path) -> Option<f64> {
     (count > 0).then(|| sum / count as f64)
 }
 
+/// Blend `a` toward `b` by `t`, rounded to the nearest value (truncating
+/// would bias every blend dark by up to one step).
 fn lerp_u8(a: u8, b: u8, t: f64) -> u8 {
-    (a as f64 + (b as f64 - a as f64) * t).clamp(0.0, 255.0) as u8
+    (a as f64 + (b as f64 - a as f64) * t)
+        .round()
+        .clamp(0.0, 255.0) as u8
 }
 
 /// Render a paintable to pixels via snapshot, apply the CLUT, return a new texture.
@@ -535,9 +539,13 @@ pub fn rgba_to_texture(buf: &[u8], width: u32, height: u32) -> Option<gtk::gdk::
 }
 
 /// One channel of the contrast curve: `factor` > 1.0 increases contrast,
-/// < 1.0 decreases it, 1.0 is no change.
+/// < 1.0 decreases it, 1.0 is no change. The result is rounded: the float
+/// round trip lands a hair below many integers, and truncating it made 1.0
+/// darken 20 of the 256 values by one step.
 fn contrast_channel(v: u8, factor: f64) -> u8 {
-    ((((v as f64 / 255.0) - 0.5) * factor + 0.5) * 255.0).clamp(0.0, 255.0) as u8
+    ((((v as f64 / 255.0) - 0.5) * factor + 0.5) * 255.0)
+        .round()
+        .clamp(0.0, 255.0) as u8
 }
 
 /// Desaturate toward a tint color.
@@ -553,9 +561,10 @@ fn apply_monochrome(buf: &mut [u8], tint: [u8; 3], factor: f64) {
         let tinted_g = tint[1] as f32 * (luma / 255.0);
         let tinted_b = tint[2] as f32 * (luma / 255.0);
 
-        chunk[0] = lerp_u8(chunk[0], tinted_r as u8, factor);
-        chunk[1] = lerp_u8(chunk[1], tinted_g as u8, factor);
-        chunk[2] = lerp_u8(chunk[2], tinted_b as u8, factor);
+        // Rounded, not truncated, so a white tint keeps greys as they were.
+        chunk[0] = lerp_u8(chunk[0], tinted_r.round() as u8, factor);
+        chunk[1] = lerp_u8(chunk[1], tinted_g.round() as u8, factor);
+        chunk[2] = lerp_u8(chunk[2], tinted_b.round() as u8, factor);
         // alpha untouched
     }
 }
@@ -592,8 +601,9 @@ mod tests {
         correct_image(img, clut);
         for chunk in img.as_mut().chunks_exact_mut(4) {
             for c in chunk.iter_mut().take(3) {
-                *c = ((((*c as f64 / 255.0) - 0.5) * contrast + 0.5) * 255.0).clamp(0.0, 255.0)
-                    as u8;
+                *c = ((((*c as f64 / 255.0) - 0.5) * contrast + 0.5) * 255.0)
+                    .round()
+                    .clamp(0.0, 255.0) as u8;
             }
         }
         if let Some(original) = original {
@@ -624,6 +634,84 @@ mod tests {
                 "strength {strength} contrast {contrast}"
             );
         }
+    }
+
+    #[test]
+    fn contrast_factor_one_is_the_identity() {
+        for v in 0..=255u8 {
+            assert_eq!(contrast_channel(v, 1.0), v, "value {v}");
+        }
+    }
+
+    #[test]
+    fn contrast_rounds_to_the_nearest_value() {
+        // 0.5 + (200/255 - 0.5) * 1.5 = 0.926… → 236.25 → 236
+        assert_eq!(contrast_channel(200, 1.5), 236);
+        // 0.5 + (100/255 - 0.5) * 0.5 = 0.446… → 113.75 rounds up, not down.
+        assert_eq!(contrast_channel(100, 0.5), 114);
+        // Clamped at both ends.
+        assert_eq!(contrast_channel(0, 3.0), 0);
+        assert_eq!(contrast_channel(255, 3.0), 255);
+        // Factor 0 flattens everything to mid-grey.
+        assert_eq!(contrast_channel(17, 0.0), 128);
+        assert_eq!(contrast_channel(240, 0.0), 128);
+    }
+
+    #[test]
+    fn lerp_rounds_and_is_symmetric() {
+        assert_eq!(lerp_u8(10, 20, 0.0), 10);
+        assert_eq!(lerp_u8(10, 20, 1.0), 20);
+        // Midpoint 127.5 rounds to 128 from either side.
+        assert_eq!(lerp_u8(0, 255, 0.5), 128);
+        assert_eq!(lerp_u8(255, 0, 0.5), 128);
+        for (a, b) in [(0u8, 1u8), (10, 11), (3, 250), (200, 7)] {
+            for t in [0.1, 0.25, 0.5, 0.7, 0.9] {
+                assert_eq!(lerp_u8(a, b, t), lerp_u8(b, a, 1.0 - t), "{a} {b} {t}");
+            }
+        }
+    }
+
+    #[test]
+    fn contrast_one_adds_nothing_to_the_clut_lookup() {
+        // The wallpaper grade calls with contrast 1.0: the result must be the
+        // CLUT lookup itself, for every channel value.
+        let clut = test_clut();
+        let cancel = AtomicBool::new(false);
+        let mut img = RgbaImage::from_fn(256, 3, |x, y| {
+            let v = x as u8;
+            let w = (x as u8).wrapping_mul(7).wrapping_add(y as u8 * 50);
+            image::Rgba([v, w, 255 - v, 255])
+        });
+        let expected: Vec<u8> = img
+            .pixels()
+            .flat_map(|p| {
+                let [r, g, b] = correct_pixel(&[p.0[0], p.0[1], p.0[2]], &clut, HALD_LEVEL);
+                [r, g, b, p.0[3]]
+            })
+            .collect();
+        assert!(grade_in_place(img.as_mut(), &clut, 1.0, 1.0, &cancel));
+        assert_eq!(img.as_raw(), &expected);
+    }
+
+    #[test]
+    fn white_monochrome_keeps_greys() {
+        // Fully tinting a grey toward white leaves it as it was.
+        let mut buf: Vec<u8> = (0..=255u8).flat_map(|v| [v, v, v, 7]).collect();
+        let original = buf.clone();
+        apply_monochrome(&mut buf, [255, 255, 255], 1.0);
+        assert_eq!(buf, original);
+    }
+
+    #[test]
+    fn monochrome_tints_by_luma_and_keeps_alpha() {
+        let mut buf = vec![255, 0, 0, 9, 0, 0, 0, 200];
+        apply_monochrome(&mut buf, [100, 200, 50], 1.0);
+        // Pure red has luma 0.2126 → 21/43/11 of the tint (rounded).
+        assert_eq!(buf, vec![21, 43, 11, 9, 0, 0, 0, 200]);
+        // Factor 0 is a no-op.
+        let mut buf = vec![12, 34, 56, 78];
+        apply_monochrome(&mut buf, [1, 2, 3], 0.0);
+        assert_eq!(buf, vec![12, 34, 56, 78]);
     }
 
     #[test]
