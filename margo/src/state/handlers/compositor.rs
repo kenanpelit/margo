@@ -551,7 +551,10 @@ impl CompositorHandler for MargoState {
             }
         }
         self.popups.commit(surface);
-        match repaint_target_for_root(self, &root) {
+        let repaint = repaint_target_for_root(self, &root);
+        #[cfg(feature = "xdp-gnome-screencast")]
+        self.wake_window_casts_on_commit(&root, !matches!(repaint, CommitRepaint::None));
+        match repaint {
             CommitRepaint::Output(output) => self.request_repaint_output(&output),
             CommitRepaint::Outputs(outputs) => {
                 for output in outputs {

@@ -898,6 +898,12 @@ impl Cast {
         self.inner.borrow().is_active
     }
 
+    /// Whether this cast's own redraw timer is armed (it was throttled or
+    /// is retrying a missing buffer).
+    pub fn has_scheduled_redraw(&self) -> bool {
+        self.scheduled_redraw.get().is_some()
+    }
+
     pub fn node_id(&self) -> Option<u32> {
         self.inner.borrow().node_id
     }

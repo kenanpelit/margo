@@ -66,6 +66,27 @@ pub fn cast_self_wake(
     }
 }
 
+/// Whether a commit on a window that an active cast captures has to wake
+/// the render loop for that cast itself.
+///
+/// Casts render from the repaint path, so a commit that already repaints
+/// an output (`commit_repaints`) gives the cast its frame on that repaint,
+/// and a cast that was throttled has its own redraw timer armed
+/// (`redraw_scheduled`). Only a commit that repaints nothing — the window
+/// is on a hidden tag, minimized, scrolled off-screen — would otherwise
+/// leave the cast stale until some unrelated repaint. Waking per such
+/// commit can't spin: the wake renders no output and sends no frame
+/// callback, so it never prompts the client's next commit, and a cast
+/// that is ahead of its frame rate arms one timer instead of rendering
+/// (after which this returns `false` until the timer fires).
+pub fn cast_wake_on_commit(
+    cast_active: bool,
+    commit_repaints: bool,
+    redraw_scheduled: bool,
+) -> bool {
+    cast_active && !commit_repaints && !redraw_scheduled
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,5 +150,23 @@ mod tests {
                 Some(last + FRAME_60)
             );
         }
+    }
+
+    #[test]
+    fn hidden_window_commit_wakes_its_cast() {
+        // Hidden tag: the commit repaints nothing, so only the wake
+        // gets the new buffer into the stream.
+        assert!(cast_wake_on_commit(true, false, false));
+    }
+
+    #[test]
+    fn commit_does_not_wake_when_something_else_delivers_the_frame() {
+        // A visible commit's repaint renders the cast anyway.
+        assert!(!cast_wake_on_commit(true, true, false));
+        // Throttled cast: its redraw timer is already armed; waking per
+        // commit would re-run the throttle check for nothing.
+        assert!(!cast_wake_on_commit(true, false, true));
+        // Inactive (paused / negotiating) cast renders nothing.
+        assert!(!cast_wake_on_commit(false, false, false));
     }
 }

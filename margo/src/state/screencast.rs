@@ -52,6 +52,61 @@ impl MargoState {
         }
     }
 
+    /// A surface tree rooted at `root` committed; `commit_repaints` says
+    /// whether the commit requested a repaint of some output. Wake the
+    /// render loop when an active cast captures the committing window and
+    /// nothing else will render it (see
+    /// [`crate::screencasting::pacing::cast_wake_on_commit`]) — e.g. the
+    /// window sits on a hidden tag, so its commits repaint no output.
+    #[cfg(feature = "xdp-gnome-screencast")]
+    pub(crate) fn wake_window_casts_on_commit(
+        &mut self,
+        root: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        commit_repaints: bool,
+    ) {
+        use crate::screencasting::CastTarget;
+        use crate::screencasting::pacing::cast_wake_on_commit;
+        use smithay::wayland::seat::WaylandFocus;
+
+        let Some(casting) = self.screencasting.as_ref() else {
+            return;
+        };
+        if commit_repaints
+            || self.session_locked
+            || !casting
+                .casts
+                .iter()
+                .any(|cast| matches!(cast.target, CastTarget::Window { .. }))
+        {
+            return;
+        }
+        // Popups are captured with their toplevel.
+        let popup_root = self
+            .popups
+            .find_popup(root)
+            .and_then(|popup| smithay::desktop::find_popup_root_surface(&popup).ok());
+        let target_root = popup_root.as_ref().unwrap_or(root);
+        let Some(id) = self
+            .clients
+            .iter()
+            .find(|client| client.window.wl_surface().as_deref() == Some(target_root))
+            .map(|client| client.id)
+        else {
+            return;
+        };
+        let wake = casting.casts.iter().any(|cast| {
+            matches!(cast.target, CastTarget::Window { id: cast_id } if cast_id == id)
+                && cast_wake_on_commit(
+                    cast.is_active(),
+                    commit_repaints,
+                    cast.has_scheduled_redraw(),
+                )
+        });
+        if wake {
+            self.wake_repaint_backend();
+        }
+    }
+
     /// Tear down every cast belonging to the given session. Called
     /// from xdp-gnome's `Session.Stop` D-Bus method (via the
     /// `ScreenCastToCompositor` channel) and from `on_pw_msg` when
