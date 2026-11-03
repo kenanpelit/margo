@@ -1479,7 +1479,7 @@ fn build_scroller_overview_elements(
             scale.x,
         )
     {
-        elements.push(MargoRenderElement::Cursor(elem));
+        elements.push(MargoRenderElement::Wallpaper(elem));
     }
 
     let backdrop = Rectangle::<i32, Physical>::new(

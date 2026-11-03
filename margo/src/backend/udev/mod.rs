@@ -77,14 +77,12 @@ use render_elements::{
 render_elements! {
     pub MargoRenderElement<=GlesRenderer>;
     Space=SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>,
-    // Wallpaper elements ride this same variant — both Cursor and
-    // Wallpaper use `MemoryRenderBufferRenderElement<GlesRenderer>`,
-    // and `render_elements!` rejects two variants of the same
-    // underlying type (conflicting `From` impls). The wallpaper
-    // element is pushed to the *bottom* of the element vec by the
-    // render loop, so it z-orders behind windows / layers / shadows
-    // / cursor regardless of sharing the variant.
+    // Cursor images and text labels (memory buffers).
     Cursor=MemoryRenderBufferRenderElement<GlesRenderer>,
+    // Compositor wallpaper and the overview backdrop image (one uploaded
+    // texture, see `crate::wallpaper`). Pushed to the *bottom* of the
+    // element vec, so it z-orders behind everything else.
+    Wallpaper=smithay::backend::renderer::element::texture::TextureRenderElement<smithay::backend::renderer::gles::GlesTexture>,
     WaylandSurface=WaylandSurfaceRenderElement<GlesRenderer>,
     Border=crate::render::rounded_border::RoundedBorderElement,
     Shadow=crate::render::shadow::ShadowRenderElement,
@@ -1628,7 +1626,7 @@ fn screencopy_capture_elements(
             od.output.current_scale().fractional_scale(),
         )
     {
-        elements.push(MargoRenderElement::Cursor(wp_elem));
+        elements.push(MargoRenderElement::Wallpaper(wp_elem));
     }
     elements
 }

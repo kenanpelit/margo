@@ -469,7 +469,7 @@ fn render_output(
             state.config.wallpaper_fit,
             od.output.current_scale().fractional_scale(),
         ) {
-            elements.push(MargoRenderElement::Cursor(wp_elem));
+            elements.push(MargoRenderElement::Wallpaper(wp_elem));
         }
     }
 

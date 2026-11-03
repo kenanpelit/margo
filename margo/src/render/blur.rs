@@ -1138,7 +1138,7 @@ mod tests {
 /// rendering into an offscreen texture, no display needed). Skips with a
 /// note when no render node / EGL is available (headless CI).
 #[cfg(test)]
-mod gpu_tests {
+pub(crate) mod gpu_tests {
     use super::*;
     use smithay::backend::allocator::Fourcc;
     use smithay::backend::allocator::gbm::GbmDevice;
@@ -1156,7 +1156,8 @@ mod gpu_tests {
         Transform::Flipped270,
     ];
 
-    fn renderer() -> Option<GlesRenderer> {
+    /// A GLES renderer on the first render node, or `None` (no GPU/EGL).
+    pub(crate) fn renderer() -> Option<GlesRenderer> {
         let file = std::fs::OpenOptions::new()
             .read(true)
             .write(true)
