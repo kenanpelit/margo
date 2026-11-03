@@ -422,7 +422,11 @@ mod camera_watch {
         watch_devices(&fd);
 
         relm4::spawn(async move {
-            let Ok(afd) = AsyncFd::with_interest(fd, Interest::READABLE) else {
+            // SAFETY: the AsyncFd takes ownership of the `OwnedFd`, so the fd
+            // stays open and names the same inotify instance until the
+            // AsyncFd drops it; nothing else closes or replaces it.
+            let Ok(afd) = (unsafe { AsyncFd::register_with_interest(fd, Interest::READABLE) })
+            else {
                 tracing::warn!("privacy: cannot register inotify fd; camera stays as last seen");
                 return;
             };
