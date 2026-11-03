@@ -385,11 +385,14 @@ fn draw_overlay(
     }
 }
 
-/// Friendly description of `w:h` — named tag when it matches a
-/// common screen / social format within a small ε, otherwise the
-/// reduced fraction so e.g. 800×600 reads as "4:3" and 1700×973
-/// reads as "1700:973" (the user's odd custom drag). ε is 0.5 %
-/// to absorb sub-pixel drift from the drag clamp.
+/// Friendly description of `w:h` — the named format whose ratio is
+/// *nearest* to it, when that is within [`ASPECT_TOLERANCE`], otherwise
+/// the reduced fraction so e.g. 800×600 reads as "4:3" and 1700×973
+/// reads as "1700:973" (the user's odd custom drag).
+///
+/// "21:9" is a marketing name: real ultrawide panels are 64:27
+/// (2560×1080), 43:18 (3440×1440) or 12:5 (3840×1600), all 1.6–2.9 %
+/// off 21/9 itself, so each of those ratios is listed under that name.
 fn aspect_label(w: i32, h: i32) -> String {
     if w <= 0 || h <= 0 {
         return "—".into();
@@ -402,21 +405,32 @@ fn aspect_label(w: i32, h: i32) -> String {
         ("16:10", 16.0 / 10.0),
         ("16:9", 16.0 / 9.0),
         ("21:9", 21.0 / 9.0),
+        ("21:9", 64.0 / 27.0),
+        ("21:9", 43.0 / 18.0),
+        ("21:9", 12.0 / 5.0),
         ("32:9", 32.0 / 9.0),
         ("9:16", 9.0 / 16.0),
         ("3:4", 3.0 / 4.0),
         ("2:3", 2.0 / 3.0),
     ];
-    for (name, target) in presets {
-        if (ratio - target).abs() / target < 0.005 {
-            return name.into();
-        }
+    let nearest = presets
+        .iter()
+        .map(|&(name, target)| (name, (ratio - target).abs() / target))
+        .min_by(|a, b| a.1.total_cmp(&b.1));
+    if let Some((name, err)) = nearest
+        && err <= ASPECT_TOLERANCE
+    {
+        return name.into();
     }
     // Fall back to the reduced fraction so odd drags still carry
     // a readable label (e.g. "5:3" for 1920×1152).
     let g = gcd(w.unsigned_abs(), h.unsigned_abs()) as i32;
     format!("{}:{}", w / g.max(1), h / g.max(1))
 }
+
+/// Relative ratio error still read as a named format: 0.5 % absorbs the
+/// sub-pixel drift of a drag clamp without swallowing genuinely odd drags.
+const ASPECT_TOLERANCE: f64 = 0.005;
 
 fn gcd(mut a: u32, mut b: u32) -> u32 {
     while b != 0 {
@@ -600,6 +614,11 @@ mod tests {
             ((600, 800), "3:4"),
             ((1920, 1200), "16:10"),
             ((2520, 1080), "21:9"),
+            // Real ultrawides — none is exactly 21:9.
+            ((2560, 1080), "21:9"),
+            ((3440, 1440), "21:9"),
+            ((3840, 1600), "21:9"),
+            ((5120, 2160), "21:9"),
             ((5120, 1440), "32:9"),
             ((1500, 1000), "3:2"),
             ((1000, 1500), "2:3"),
