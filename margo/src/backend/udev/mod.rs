@@ -660,8 +660,6 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
             is_overview: false,
             overview_backup_tagset: 1,
             minimap_visible: false,
-            scale: 1.0,
-            transform: 0,
             enabled: true,
             gamma_size: 0, // backfilled by GAMMA_LUT discovery below
             focus_history: std::collections::VecDeque::new(),

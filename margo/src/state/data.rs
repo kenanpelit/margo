@@ -641,8 +641,6 @@ pub struct MargoMonitor {
     pub is_overview: bool,
     pub overview_backup_tagset: u32,
     pub minimap_visible: bool,
-    pub scale: f32,
-    pub transform: i32,
     pub enabled: bool,
     /// Last N focused-client stable ids for this monitor (MRU order,
     /// most recent first). Capped at `FOCUS_HISTORY_DEPTH`.

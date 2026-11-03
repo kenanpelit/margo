@@ -126,8 +126,7 @@ pub fn snapshot(state: &crate::state::MargoState) -> IpcOutputMap {
             y: mon.monitor_area.y,
             width: mon.monitor_area.width.max(0) as u32,
             height: mon.monitor_area.height.max(0) as u32,
-            // The live scale `monitor_area` (logical) was derived with;
-            // `mon.scale` isn't kept in step with the output.
+            // The live scale `monitor_area` (logical) was derived with.
             scale: mon.output.current_scale().fractional_scale(),
             transform: IpcTransform::Normal,
         });

@@ -7,6 +7,8 @@
 //! Unix socket is the only state egress.
 
 use super::MargoState;
+use smithay::reexports::wayland_server::protocol::wl_output::Transform as WlTransform;
+
 use crate::MAX_TAGS;
 
 impl MargoState {
@@ -100,10 +102,10 @@ impl MargoState {
                 // `monitor_area` is the output's live layout-space rect
                 // (mode → transform → scale), the same rect the renderer
                 // and layer maps use; it is reported as `logical_*`.
-                // `mon.scale` isn't kept in step with the output (a
-                // runtime wlr-output-management change doesn't touch it),
-                // so the scale comes from the live `Output`.
+                // Scale and transform are read from the live `Output`,
+                // the one source of truth wlr-output-management changes.
                 let live_scale = mon.output.current_scale().fractional_scale();
+                let transform = u32::from(WlTransform::from(mon.output.current_transform()));
                 let logical = (mon.monitor_area.width, mon.monitor_area.height);
                 let active_tag = mon.tagset[mon.seltags];
                 let prev_tag = mon.tagset[mon.seltags ^ 1];
@@ -128,7 +130,7 @@ impl MargoState {
                     "logical_width": logical.0,
                     "logical_height": logical.1,
                     "scale": live_scale,
-                    "transform": mon.transform,
+                    "transform": transform,
                     "mode": {
                         "physical_width": phys_w,
                         "physical_height": phys_h,

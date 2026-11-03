@@ -241,3 +241,26 @@ fn state_json_keeps_the_mode_size_and_reports_the_logical_size() {
         (800.into(), 1280.into())
     );
 }
+
+#[test]
+fn state_json_reports_the_live_transform_and_scale() {
+    let cases = [
+        (WlTransform::Normal, 0),
+        (WlTransform::_90, 1),
+        (WlTransform::_180, 2),
+        (WlTransform::_270, 3),
+        (WlTransform::Flipped, 4),
+        (WlTransform::Flipped90, 5),
+        (WlTransform::Flipped180, 6),
+        (WlTransform::Flipped270, 7),
+    ];
+    let mut fx = Fixture::new();
+    fx.add_output("DP-1", (2560, 1600));
+    for (transform, wire) in cases {
+        apply(&mut fx, [("DP-1", head(Some(2.0), Some(transform), None))]);
+        let snapshot = fx.server.state.build_state_snapshot();
+        let o = &snapshot["outputs"][0];
+        assert_eq!(o["transform"], wire, "{transform:?}");
+        assert_eq!(o["scale"], 2.0, "{transform:?}");
+    }
+}

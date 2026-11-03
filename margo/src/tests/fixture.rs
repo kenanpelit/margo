@@ -149,8 +149,6 @@ impl Fixture {
             is_overview: false,
             overview_backup_tagset: 1,
             minimap_visible: false,
-            scale: 1.0,
-            transform: 0,
             enabled: true,
             gamma_size,
             focus_history: std::collections::VecDeque::new(),
