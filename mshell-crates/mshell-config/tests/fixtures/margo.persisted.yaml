@@ -1,0 +1,220 @@
+general:
+  clock_format_24_h: true
+  weather_poll_minutes: 180
+  media_large_album_art: true
+  settings_panel_width: 1440
+  settings_panel_height: 1080
+theme:
+  icons:
+    app_icon_theme: kora
+  theme: Default
+  attributes:
+    font:
+      primary: Maple Mono NF
+      secondary: Maple Mono NF
+      tertiary: Maple Mono NF
+      monospace: Maple Mono NF
+    sizing:
+      radius_widget: 12
+      radius_window: 12
+      bar_hover_strength: 32
+      frame_color: '#1f1f2eff'
+      frame_border_color: '#303345ff'
+bars:
+  widgets:
+    system_update:
+      check_interval_minutes: 720
+      check_flatpak: false
+    catwalk:
+      minimum_threshold: 20
+    privacy:
+      hide_inactive: true
+  top_bar:
+    minimum_height: 36
+    left_widgets:
+    - MargoTags
+    - Separator
+    - MargoLayoutSwitcher
+    - Separator
+    - ActiveWindow
+    - Separator
+    - MediaPlayer
+    center_widgets:
+    - Weather
+    - Separator
+    - Mdash
+    - Separator
+    - RecordingIndicator
+    - Catwalk
+    - Separator
+    - Notifications
+    - Separator
+    - HiddenBar
+    right_widgets:
+    - Network
+    - Separator
+    - CpuDashboard
+    - Separator
+    - AudioDashboard
+    - Separator
+    - Bluetooth
+    - Separator
+    - Valent
+    - Separator
+    - Clipboard
+    - Separator
+    - Podman
+    - Separator
+    - Vpn
+    - Separator
+    - Ufw
+    - Separator
+    - Power
+    - Separator
+    - ControlCenter
+    - Privacy
+    - Separator
+    - Tray
+    hidden_widgets:
+    - Twilight
+    - Screenshot
+    - AlarmClock
+    - KeepAwake
+    - Notes
+    - SystemUpdate
+    - Keybinds
+    - Ai
+  bottom_bar:
+    enabled: false
+    minimum_height: 28
+    reveal_by_default: false
+    left_widgets:
+    - Separator
+    - !Spacer 8
+    - ActiveWindow
+    center_widgets:
+    - Separator
+    - !Spacer 8
+    - MediaPlayer
+    - !Spacer 8
+    - Separator
+    right_widgets:
+    - Power
+    - !Spacer 8
+    - Separator
+    - Tray
+    - Separator
+menus:
+  clipboard_menu:
+    minimum_width: 620
+    maximum_height: 1080
+  notification_menu:
+    minimum_width: 520
+    maximum_height: 1200
+  screenshot_menu:
+    position: Top
+  app_launcher_menu:
+    position: Top
+  screenshare_menu:
+    position: Top
+  dns_menu:
+    widgets:
+    - Dns
+    - !Spacer
+      size: 16
+    - Ip
+  vpn_menu:
+    minimum_width: 520
+    maximum_height: 720
+  ai_menu:
+    minimum_width: 520
+    maximum_height: 920
+  notes_menu:
+    position: Top
+    minimum_width: 540
+  bluetooth_menu:
+    position: TopRight
+  cpu_dashboard_menu:
+    position: TopRight
+  audio_dashboard_menu:
+    position: TopRight
+  keep_awake_menu:
+    position: Top
+    minimum_width: 450
+  weather_menu:
+    position: Top
+    minimum_width: 680
+    maximum_height: 780
+  twilight_menu:
+    position: Top
+  keybinds_menu:
+    minimum_width: 820
+    maximum_height: 1440
+  alarmclock_menu:
+    position: Top
+  control_center_menu:
+    maximum_height: 1080
+  media_player_menu:
+    position: TopLeft
+    minimum_width: 460
+  session_menu:
+    position: Bottom
+  margo_layout_menu:
+    position: TopLeft
+notifications:
+  group_notifications: false
+wallpaper:
+  rotation_enabled: true
+  daily_wallpaper_source: nasa
+idle:
+  dim_timeout_minutes: 20
+  lock_timeout_minutes: 25
+session:
+  suspend_command: systemctl suspend -i
+clipboard:
+  max_entries: 1000
+launcher:
+  compact_rows: true
+dock:
+  standalone: true
+  style: popup
+  behavior: toggle
+  position: right
+pass:
+  store_path: ~/.pass
+login_network:
+  enabled: true
+  wifi_connection: Ken_5
+  delay_secs: 6
+bluetooth:
+  autoconnect_enabled: true
+  autoconnect_delay_secs: 10
+  devices:
+  - mac: F4:9D:8A:3D:CB:30
+    name: SLP4
+  - mac: E8:EE:CC:4D:29:00
+    name: SL4
+audio:
+  hide_hdmi_outputs: true
+  restore_volume_on_start: true
+  default_output_volume: 30
+  default_input_volume: 5
+control_center:
+  tile_order:
+  - wifi
+  - bluetooth
+  - audio_out
+  - mic
+  - vpn
+  - valent
+  - battery
+  - airplane_mode
+  - night_light
+  - keep_awake
+  - ufw
+  - podman
+  - disk
+  - dnd
+  - dark_mode
+  - color_picker
+config_version: 4

@@ -320,14 +320,7 @@ pub(crate) fn persist_config_layer(
     // at whatever the default was the first time the profile was written.
     // Diffing kills that shadowing for every field at once — a field is
     // only persisted once it actually diverges from the default.
-    let full = serde_yaml::to_value(value)?;
-    let base = serde_yaml::to_value(Config::default())?;
-    let diff = diff_against_default(&full, &base).unwrap_or_else(|| Value::Mapping(Mapping::new()));
-
-    // Pin the current format version at the top of the serialized profile;
-    // the Config struct deliberately omits the meta key (migration.rs), so we
-    // stamp it on the way out.
-    let yaml = crate::migration::stamp_version(&serde_yaml::to_string(&diff)?);
+    let yaml = profile_layer_yaml(value)?;
 
     // Atomic write via the symlink-preserving helper so dcli /
     // stow / chezmoi users keep their `~/.config/margo/mshell/
@@ -338,6 +331,22 @@ pub(crate) fn persist_config_layer(
     crate::atomic_write::atomic_write(path, yaml.as_bytes())?;
 
     Ok(())
+}
+
+/// The sparse profile YAML `persist_config_layer` writes for `value`: only
+/// the fields that differ from `Config::default()`, stamped with the current
+/// `config_version`.
+fn profile_layer_yaml(value: &Config) -> Result<String, serde_yaml::Error> {
+    let full = serde_yaml::to_value(value)?;
+    let base = serde_yaml::to_value(Config::default())?;
+    let diff = diff_against_default(&full, &base).unwrap_or_else(|| Value::Mapping(Mapping::new()));
+
+    // Pin the current format version at the top of the serialized profile;
+    // the Config struct deliberately omits the meta key (migration.rs), so we
+    // stamp it on the way out.
+    Ok(crate::migration::stamp_version(&serde_yaml::to_string(
+        &diff,
+    )?))
 }
 
 /// Recursively strip from `value` everything that equals the matching entry
@@ -463,6 +472,53 @@ mod tests {
         assert_eq!(
             reloaded, cfg,
             "diff + figment-merge must reproduce the config exactly"
+        );
+    }
+
+    /// Compare `actual` with the golden file `tests/fixtures/<name>`; with
+    /// `MSHELL_BLESS_GOLDEN=1` set, (re)write the file instead.
+    fn assert_golden(name: &str, actual: &str) {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures")
+            .join(name);
+        if std::env::var_os("MSHELL_BLESS_GOLDEN").is_some() {
+            std::fs::write(&path, actual).unwrap();
+        }
+        let golden = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            actual, golden,
+            "{name}: YAML output changed; existing user profiles would be rewritten differently"
+        );
+    }
+
+    /// A real, heavily customised profile (the shipped margo.yaml) goes
+    /// through the same path as a live one: migrate pre-pass, figment merge
+    /// over the defaults, diff-persist, reload. The bytes written at each step
+    /// are pinned by golden files (generated with serde_yaml 0.9), so a YAML
+    /// library change cannot silently alter how users' profiles are rewritten,
+    /// and the reloaded config must equal the loaded one.
+    #[test]
+    fn real_profile_round_trips_byte_stable() {
+        let raw = bundled_profile_yaml("margo").unwrap();
+        let migrated = crate::migration::migrate_yaml(raw).unwrap();
+        assert_golden("margo.migrated.yaml", &migrated.yaml);
+
+        let loaded = Figment::from(Serialized::defaults(Config::default()))
+            .merge(Yaml::string(&migrated.yaml))
+            .extract::<Config>()
+            .expect("margo profile loads");
+        let persisted = profile_layer_yaml(&loaded).unwrap();
+        assert_golden("margo.persisted.yaml", &persisted);
+
+        let reloaded = Figment::from(Serialized::defaults(Config::default()))
+            .merge(Yaml::string(&persisted))
+            .extract::<Config>()
+            .expect("persisted margo profile reloads");
+        assert_eq!(reloaded, loaded, "persist + reload must be lossless");
+        assert_eq!(
+            profile_layer_yaml(&reloaded).unwrap(),
+            persisted,
+            "persisting is a fixed point"
         );
     }
 
