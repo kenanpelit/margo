@@ -23,6 +23,7 @@ mod cli;
 mod config;
 mod console_palette;
 mod daemon;
+mod greeter_startup;
 mod info_caching;
 mod post_login;
 mod runner;
@@ -245,9 +246,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     // The unprivileged theme reader (see theme_sync): dispatched before any
     // config is parsed or log opened — it is already running as the user.
     let mut raw_args = std::env::args_os().skip(1);
-    if raw_args.next().as_deref() == Some(std::ffi::OsStr::new(theme_sync::READER_ARG)) {
+    let first = raw_args.next();
+    if first.as_deref() == Some(std::ffi::OsStr::new(theme_sync::READER_ARG)) {
         let rest: Vec<std::ffi::OsString> = raw_args.collect();
         std::process::exit(theme_sync::reader_main(&rest));
+    }
+    // The GUI greeter's launcher (see greeter_startup), run by margo as the
+    // greeter user: same early dispatch, for the same reasons.
+    if first.as_deref() == Some(std::ffi::OsStr::new(greeter_startup::ARG)) {
+        let rest: Vec<std::ffi::OsString> = raw_args.collect();
+        std::process::exit(greeter_startup::main(&rest));
     }
 
     let cli = Cli::parse().unwrap_or_else(|err| {

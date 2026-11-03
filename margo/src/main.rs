@@ -1205,7 +1205,8 @@ fn main() -> Result<()> {
         unsafe { std::env::remove_var("MARGO_HEARTBEAT_USEC") };
     }
     // mlogind's greeter host: the runner's PAM conversation socket, which margo
-    // only carries to its startup command (mgreet). Take it out of the
+    // only carries to its startup command (mlogind's greeter launcher, which
+    // passes it on to mgreet alone). Take it out of the
     // environment and keep it close-on-exec here, so exec-once commands, binds
     // and every other child margo spawns never inherit a socket that carries
     // the password.

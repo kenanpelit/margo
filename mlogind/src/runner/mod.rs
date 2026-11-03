@@ -69,8 +69,9 @@ impl Host {
     /// missing binary falls down the ladder instead of costing a fork per loop.
     pub fn preflight(self) -> Result<(), Box<dyn Error>> {
         let needed: &[&str] = match self {
-            // mgreet tears margo down with `mctl dispatch quit`; require mctl up
-            // front rather than launching a greeter we could never shut down.
+            // The greeter launcher tears margo down with `mctl dispatch quit`
+            // once mgreet exits; require mctl up front rather than launching a
+            // greeter we could never shut down.
             Self::Gui => &["margo", "mgreet", "mctl"],
             Self::Cage => &["cage", "foot"],
             Self::Tty => &[],
@@ -267,7 +268,14 @@ fn spawn_greeter(
             let greeter_conf = runtime_dir.join("greeter.conf");
             let background = crate::write_greeter_conf(&greeter_conf, config)?;
 
-            let startup = greeter_startup(&mgreet, &mctl, mkeys.as_deref());
+            // This binary, as the launcher that gives the socket to mgreet
+            // alone (see `crate::greeter_startup`). By PATH like the others,
+            // not /proc/self/exe: after a package upgrade that names the
+            // deleted old binary, and margo would come up with no greeter.
+            let launcher = crate::which("mlogind")
+                .or_else(|| std::env::current_exe().ok())
+                .ok_or("`mlogind` not found in PATH")?;
+            let startup = greeter_startup(&launcher, &mgreet, &mctl, mkeys.as_deref());
 
             let mut cmd = Command::new(&margo);
             cmd.arg("--config")
@@ -367,25 +375,33 @@ fn spawn_greeter(
     Ok(Some(Greeter { pid, log }))
 }
 
-/// The shell line the greeter compositor runs as its startup command.
+/// The shell line the greeter compositor runs as its startup command: an
+/// `exec` of this binary's greeter launcher, so the shell is gone before
+/// anything runs and the launcher alone decides who gets the greeter socket —
+/// mgreet does; mkeys and `mctl dispatch quit` do not.
 ///
-/// However mgreet exits, quit margo so this host returns — the `;` runs the
-/// quit even if mgreet crashed. mgreet's output flows through margo's stderr
-/// into the log the runner opens, as root, and passes down as an inherited fd.
-///
-/// With an OSK, mkeys floats over the card for touch login and is killed the
-/// moment mgreet is done — margo's quit would reap it anyway, but not before
-/// it repainted over a session that is trying to start.
-fn greeter_startup(mgreet: &Path, mctl: &Path, mkeys: Option<&Path>) -> String {
-    let mgreet = mgreet.display();
-    let mctl = mctl.display();
-    match mkeys {
-        Some(mkeys) => format!(
-            "{mkeys} & OSK=$!; {mgreet}; kill $OSK 2>/dev/null; {mctl} dispatch quit",
-            mkeys = mkeys.display(),
-        ),
-        None => format!("{mgreet}; {mctl} dispatch quit"),
-    }
+/// However mgreet exits, the launcher quits margo so this host returns.
+/// mgreet's output flows through margo's stderr into the log the runner opens,
+/// as root, and passes down as an inherited fd. With an OSK, mkeys floats over
+/// the card for touch login and is stopped the moment mgreet is done — margo's
+/// quit would reap it anyway, but not before it repainted over a session that
+/// is trying to start.
+fn greeter_startup(launcher: &Path, mgreet: &Path, mctl: &Path, mkeys: Option<&Path>) -> String {
+    let mut words = vec![
+        launcher.as_os_str(),
+        std::ffi::OsStr::new(crate::greeter_startup::ARG),
+        mgreet.as_os_str(),
+        mctl.as_os_str(),
+    ];
+    words.extend(mkeys.map(Path::as_os_str));
+    let quoted: Vec<String> = words.into_iter().map(sh_quote).collect();
+    format!("exec {}", quoted.join(" "))
+}
+
+/// One shell word, single-quoted: margo hands the line to `sh -c`, and a path
+/// with a space or a `$` must stay one literal argument.
+fn sh_quote(word: &std::ffi::OsStr) -> String {
+    format!("'{}'", word.to_string_lossy().replace('\'', r"'\''"))
 }
 
 /// Every configured power action, base entries first.
@@ -797,29 +813,50 @@ mod tests {
             "the runner's copy stays CLOEXEC"
         );
     }
-    use super::greeter_startup;
+    use super::{greeter_startup, sh_quote};
+    use std::ffi::OsStr;
     use std::path::Path;
 
     #[test]
-    fn the_startup_line_quits_margo_however_mgreet_ends() {
+    fn the_startup_line_execs_the_launcher_with_mgreet_and_mctl() {
         let line = greeter_startup(
+            Path::new("/usr/bin/mlogind"),
             Path::new("/usr/bin/mgreet"),
             Path::new("/usr/bin/mctl"),
             None,
         );
-        assert_eq!(line, "/usr/bin/mgreet; /usr/bin/mctl dispatch quit");
+        assert_eq!(
+            line,
+            "exec '/usr/bin/mlogind' '__greeter-startup' '/usr/bin/mgreet' '/usr/bin/mctl'"
+        );
     }
 
     #[test]
-    fn the_osk_floats_beside_the_greeter_and_dies_with_it() {
+    fn the_osk_is_the_launchers_third_path() {
         let line = greeter_startup(
+            Path::new("/usr/bin/mlogind"),
             Path::new("/usr/bin/mgreet"),
             Path::new("/usr/bin/mctl"),
             Some(Path::new("/usr/bin/mkeys")),
         );
         assert_eq!(
             line,
-            "/usr/bin/mkeys & OSK=$!; /usr/bin/mgreet; kill $OSK 2>/dev/null; /usr/bin/mctl dispatch quit"
+            "exec '/usr/bin/mlogind' '__greeter-startup' '/usr/bin/mgreet' '/usr/bin/mctl' '/usr/bin/mkeys'"
         );
+    }
+
+    #[test]
+    fn shell_words_stay_literal() {
+        assert_eq!(sh_quote(OsStr::new("/opt/my apps/$x")), "'/opt/my apps/$x'");
+        assert_eq!(sh_quote(OsStr::new("it's")), r"'it'\''s'");
+        let out = std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg(format!(
+                "printf %s {}",
+                sh_quote(OsStr::new("a 'b' $c \\d"))
+            ))
+            .output()
+            .unwrap();
+        assert_eq!(out.stdout, b"a 'b' $c \\d");
     }
 }

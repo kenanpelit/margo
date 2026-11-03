@@ -116,11 +116,11 @@ impl State {
 fn runner_socket() -> Option<OwnedFd> {
     let raw: RawFd = std::env::var("MLOGIND_SOCK_FD").ok()?.parse().ok()?;
     // SAFETY: the descriptor was inherited for exactly this purpose and nothing
-    // else in this process refers to it. We are not its only holder: the
-    // runner keeps its end of the pair, and the startup shell that launched us
-    // (with the mkeys/mctl it runs) still holds an inherited copy of ours —
-    // margo itself drops its copy once that shell is spawned, and nothing else
-    // margo starts receives it.
+    // else in this process refers to it. The runner keeps its end of the pair;
+    // ours exists only here. margo passes it to its startup command alone and
+    // drops its copy, and that command (`mlogind __greeter-startup`) hands it
+    // to us alone — not to mkeys or mctl — and closes its own copy as soon as
+    // we are spawned.
     let fd = unsafe { OwnedFd::from_raw_fd(raw) };
     // The fd was left inheritable so it could ride the runner's exec into us.
     // Now that we own it, re-arm close-on-exec: this socket carries PAM's

@@ -672,7 +672,7 @@ fn build_card(state: &Rc<State>) -> CardWidgets {
 /// password is a bad place to discover the machine booted `us`. With more
 /// than one it becomes a switcher: a click steps margo's `cyclekblayout`
 /// dispatch (mgreet inherits `MARGO_SOCKET` from the greeter compositor's
-/// startup shell — the same channel the existing `mctl dispatch quit` rides)
+/// startup command — the same channel its `mctl dispatch quit` rides)
 /// and relabels itself. The badge and the compositor both start at group 0
 /// and both step +1, so they stay in lock step; a `grp:` XKBOPTIONS hotkey
 /// switching behind our back can stale the label until the next click, which
