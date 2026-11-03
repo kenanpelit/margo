@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::os::fd::AsFd;
 use std::sync::{Arc, Mutex};
 
-use super::{HyprlandWindow, Result, ScreenshotError};
+use super::{HyprlandWindow, OutputInfo, Result, ScreenshotError};
 use crate::selectors::area_selector::RegionSelection;
 use crate::utils::query_outputs;
 use wayland_client::{
@@ -59,46 +59,30 @@ impl CaptureBackend {
         Ok(Self)
     }
 
-    /// Capture all outputs and stitch them together.
+    /// Capture all outputs and stitch them together (see [`stitch_plan`]
+    /// for the canvas geometry).
     pub fn capture_all(&self) -> Result<image::RgbaImage> {
         let outputs = query_outputs()?;
-        if outputs.is_empty() {
-            return Err(ScreenshotError::CaptureFailed("no outputs found".into()));
-        }
+        let plan = stitch_plan(&outputs)
+            .ok_or_else(|| ScreenshotError::CaptureFailed("no outputs found".into()))?;
 
-        // Determine bounding box across all outputs. The non-
-        // empty check above guarantees `Iterator::min/max`
-        // returns `Some` — `expect` documents that invariant.
-        let min_x = outputs
-            .iter()
-            .map(|o| o.x)
-            .min()
-            .expect("outputs non-empty");
-        let min_y = outputs
-            .iter()
-            .map(|o| o.y)
-            .min()
-            .expect("outputs non-empty");
-        let max_x = outputs
-            .iter()
-            .map(|o| o.x + o.width)
-            .max()
-            .expect("outputs non-empty");
-        let max_y = outputs
-            .iter()
-            .map(|o| o.y + o.height)
-            .max()
-            .expect("outputs non-empty");
-        let total_w = (max_x - min_x) as u32;
-        let total_h = (max_y - min_y) as u32;
-
-        let mut canvas = image::RgbaImage::new(total_w, total_h);
-
-        for output_info in &outputs {
+        let mut canvas = image::RgbaImage::new(plan.width, plan.height);
+        for (output_info, tile) in outputs.iter().zip(&plan.tiles) {
             let frame = self.capture_output_raw(&output_info.name)?;
-            let offset_x = (output_info.x - min_x) as u32;
-            let offset_y = (output_info.y - min_y) as u32;
-            image::imageops::overlay(&mut canvas, &frame, offset_x as i64, offset_y as i64);
+            // A frame at a lower scale than the canvas (or one whose buffer
+            // size disagrees with the reported geometry) is resampled to
+            // its tile, so every output covers exactly its layout rect.
+            let frame = if frame.dimensions() == (tile.width, tile.height) {
+                frame
+            } else {
+                image::imageops::resize(
+                    &frame,
+                    tile.width,
+                    tile.height,
+                    image::imageops::FilterType::CatmullRom,
+                )
+            };
+            image::imageops::overlay(&mut canvas, &frame, tile.x, tile.y);
         }
 
         Ok(canvas)
@@ -281,6 +265,69 @@ impl CaptureBackend {
 
         Ok(image)
     }
+}
+
+/// Where one output's frame goes on the stitched canvas, in canvas pixels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Tile {
+    x: i64,
+    y: i64,
+    width: u32,
+    height: u32,
+}
+
+/// Geometry of a full-desktop capture.
+#[derive(Debug, Clone, PartialEq)]
+struct StitchPlan {
+    width: u32,
+    height: u32,
+    /// Canvas pixels per logical pixel.
+    scale: f64,
+    /// One tile per output, in the order of the `outputs` slice.
+    tiles: Vec<Tile>,
+}
+
+/// Lay the outputs out on one canvas. Output positions *and* sizes are in
+/// layout (logical) coordinates; screencopy frames are buffer pixels
+/// (logical × each output's own scale). With mixed scales those can't be
+/// stitched 1:1, so the canvas is the logical bounding box rendered at the
+/// **largest** output scale (as `grim` does): the sharpest output keeps
+/// every pixel, lower-scale outputs are upscaled into their rect, and the
+/// arrangement matches the layout exactly. Tile edges are rounded from
+/// the absolute logical edges so neighbouring outputs neither overlap nor
+/// leave a gap. `None` for an empty output list.
+fn stitch_plan(outputs: &[OutputInfo]) -> Option<StitchPlan> {
+    let min_x = outputs.iter().map(|o| o.x).min()?;
+    let min_y = outputs.iter().map(|o| o.y).min()?;
+    let max_x = outputs.iter().map(|o| o.x + o.width.max(0)).max()?;
+    let max_y = outputs.iter().map(|o| o.y + o.height.max(0)).max()?;
+    let scale = outputs
+        .iter()
+        .map(|o| o.scale)
+        .filter(|s| s.is_finite() && *s > 0.0)
+        .fold(1.0_f64, f64::max);
+    let px = |logical: i32, origin: i32| (f64::from(logical - origin) * scale).round() as i64;
+
+    let tiles = outputs
+        .iter()
+        .map(|o| {
+            let (x0, y0) = (px(o.x, min_x), px(o.y, min_y));
+            let x1 = px(o.x + o.width.max(0), min_x);
+            let y1 = px(o.y + o.height.max(0), min_y);
+            Tile {
+                x: x0,
+                y: y0,
+                width: (x1 - x0).max(0) as u32,
+                height: (y1 - y0).max(0) as u32,
+            }
+        })
+        .collect();
+    Some(StitchPlan {
+        width: px(max_x, min_x).max(0) as u32,
+        height: px(max_y, min_y).max(0) as u32,
+        scale,
+        tiles,
+    })
 }
 
 /// Logical rect `(x, y, w, h)` → the buffer-pixel rect covering it on an
@@ -515,6 +562,100 @@ impl Dispatch<zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1, ()> for CaptureSt
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn out(name: &str, x: i32, y: i32, w: i32, h: i32, scale: f64) -> OutputInfo {
+        OutputInfo {
+            name: name.into(),
+            x,
+            y,
+            width: w,
+            height: h,
+            scale,
+        }
+    }
+
+    #[test]
+    fn stitch_plan_of_same_scale_outputs_is_one_to_one() {
+        let plan = stitch_plan(&[
+            out("A", 0, 0, 1920, 1080, 1.0),
+            out("B", 1920, 0, 2560, 1440, 1.0),
+        ])
+        .unwrap();
+        assert_eq!((plan.width, plan.height, plan.scale), (4480, 1440, 1.0));
+        assert_eq!(
+            plan.tiles,
+            vec![
+                Tile {
+                    x: 0,
+                    y: 0,
+                    width: 1920,
+                    height: 1080
+                },
+                Tile {
+                    x: 1920,
+                    y: 0,
+                    width: 2560,
+                    height: 1440
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn stitch_plan_with_mixed_scales_uses_the_largest_and_keeps_the_layout() {
+        // A 4K laptop panel at scale 2 (1920x1080 logical) left of a 1080p
+        // monitor at scale 1, top-aligned. The old canvas summed the mode
+        // sizes against logical positions: B was drawn on top of A's
+        // right half and the canvas was 3840 + … wide.
+        let plan = stitch_plan(&[
+            out("eDP-1", 0, 0, 1920, 1080, 2.0),
+            out("DP-1", 1920, 0, 1920, 1080, 1.0),
+        ])
+        .unwrap();
+        assert_eq!((plan.width, plan.height, plan.scale), (7680, 2160, 2.0));
+        assert_eq!(
+            plan.tiles[0],
+            Tile {
+                x: 0,
+                y: 0,
+                width: 3840,
+                height: 2160
+            }
+        );
+        // B's 1920x1080 frame is upscaled into the 3840x2160 tile.
+        assert_eq!(
+            plan.tiles[1],
+            Tile {
+                x: 3840,
+                y: 0,
+                width: 3840,
+                height: 2160
+            }
+        );
+    }
+
+    #[test]
+    fn stitch_plan_fractional_scale_tiles_abut_and_negative_origins_shift() {
+        let plan = stitch_plan(&[
+            out("L", -1366, 100, 1366, 768, 1.0),
+            out("R", 0, 0, 1707, 1067, 1.5),
+        ])
+        .unwrap();
+        assert_eq!(plan.scale, 1.5);
+        let (l, r) = (plan.tiles[0], plan.tiles[1]);
+        assert_eq!((l.x, l.y), (0, 150));
+        assert_eq!(l.x + i64::from(l.width), r.x, "no gap or overlap");
+        assert_eq!(r.y, 0);
+        assert_eq!(plan.width as i64, r.x + i64::from(r.width));
+        assert_eq!(plan.height, r.height.max(l.height + 150));
+    }
+
+    #[test]
+    fn stitch_plan_of_no_outputs_is_none_and_bogus_scale_counts_as_one() {
+        assert!(stitch_plan(&[]).is_none());
+        let plan = stitch_plan(&[out("A", 0, 0, 100, 50, f64::NAN)]).unwrap();
+        assert_eq!((plan.width, plan.height, plan.scale), (100, 50, 1.0));
+    }
 
     #[test]
     fn clamp_crop_keeps_rects_inside_the_frame() {

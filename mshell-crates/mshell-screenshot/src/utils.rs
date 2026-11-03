@@ -63,8 +63,8 @@ pub fn query_outputs() -> crate::common::Result<Vec<OutputInfo>> {
             name: m.name.get(),
             x: m.x.get(),
             y: m.y.get(),
-            width: m.width.get() as i32,
-            height: m.height.get() as i32,
+            width: m.logical_width.get() as i32,
+            height: m.logical_height.get() as i32,
             scale: m.scale.get() as f64,
         })
         .collect())

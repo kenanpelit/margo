@@ -31,6 +31,10 @@ pub enum ScreenshotError {
     Cancelled,
 }
 
+/// One output in the compositor's layout space. `x`/`y`/`width`/`height`
+/// are all logical pixels (the space window geometry and the selectors
+/// use); `scale` maps them to the output's buffer pixels, which is what a
+/// screencopy frame holds.
 #[derive(Debug, Clone)]
 pub struct OutputInfo {
     pub name: String,
