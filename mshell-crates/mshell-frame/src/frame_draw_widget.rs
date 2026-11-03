@@ -1,3 +1,4 @@
+use mshell_common::css_vars::CssVars;
 use relm4::gtk::{
     self,
     cairo::{Context, LineCap, LineJoin, Operator, RectangleInt, Region},
@@ -6,7 +7,6 @@ use relm4::gtk::{
     subclass::prelude::*,
 };
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Clone)]
@@ -66,117 +66,34 @@ impl Default for FrameStyle {
 // CSS custom-property helpers
 // ---------------------------------------------------------------------------
 
-fn collect_css_vars(css: &str) -> HashMap<String, String> {
-    let mut vars = HashMap::new();
-    for line in css.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("--")
-            && let Some((name, value)) = rest.split_once(':')
-        {
-            let name = format!("--{}", name.trim());
-            let value = value.trim().trim_end_matches(';').trim().to_string();
-            vars.insert(name, value);
-        }
-    }
-    vars
-}
-
-fn resolve_var<'a>(value: &'a str, vars: &'a HashMap<String, String>) -> &'a str {
-    let trimmed = value.trim();
-    if let Some(inner) = trimmed
-        .strip_prefix("var(")
-        .and_then(|s| s.strip_suffix(')'))
-    {
-        let var_name = inner.trim();
-        if let Some(resolved) = vars.get(var_name) {
-            return resolve_var(resolved, vars);
-        }
-    }
-    trimmed
-}
-
-fn parse_color(s: &str) -> Option<(f64, f64, f64, f64)> {
-    let s = s.trim();
-
-    if s.starts_with('#') {
-        return mshell_common::color::parse_hex_rgba(s);
-    }
-
-    if let Some(inner) = s.strip_prefix("rgba(").and_then(|s| s.strip_suffix(')')) {
-        let parts: Vec<&str> = inner.split(',').collect();
-        if parts.len() == 4 {
-            let r = parse_channel(parts[0])?;
-            let g = parse_channel(parts[1])?;
-            let b = parse_channel(parts[2])?;
-            let a = parse_channel(parts[3])?;
-            return Some((r, g, b, a));
-        }
-    }
-
-    if let Some(inner) = s.strip_prefix("rgb(").and_then(|s| s.strip_suffix(')')) {
-        let parts: Vec<&str> = inner.split(',').collect();
-        if parts.len() == 3 {
-            let r = parse_channel(parts[0])?;
-            let g = parse_channel(parts[1])?;
-            let b = parse_channel(parts[2])?;
-            return Some((r, g, b, 1.0));
-        }
-    }
-
-    None
-}
-
-fn parse_channel(s: &str) -> Option<f64> {
-    let s = s.trim();
-    let v: f64 = s.parse().ok()?;
-    if v > 1.0 {
-        Some((v / 255.0).clamp(0.0, 1.0))
-    } else {
-        Some(v.clamp(0.0, 1.0))
-    }
-}
-
 fn parse_number(s: &str) -> Option<f64> {
     s.trim().trim_end_matches("px").parse().ok()
 }
 
-fn apply_css_vars(style: &mut FrameStyle, vars: &HashMap<String, String>) {
-    if let Some(raw) = vars.get("--frame-bg") {
-        let resolved = resolve_var(raw, vars);
-        if let Some(c) = parse_color(resolved) {
-            style.background_rgba = c;
-        }
+fn apply_css_vars(style: &mut FrameStyle, vars: &CssVars) {
+    if let Some(c) = vars.color("--frame-bg") {
+        style.background_rgba = c;
     }
 
     // Shell-surface opacity (Settings → Appearance). A percentage that scales
     // the painted frame fill so the wallpaper shows through (ashell-style);
     // the border stays at full alpha for definition. Clamped 60–100 %.
-    if let Some(raw) = vars.get("--surface-opacity") {
-        let pct = resolve_var(raw, vars).trim().trim_end_matches('%');
-        if let Ok(p) = pct.parse::<f64>() {
-            style.background_rgba.3 *= (p / 100.0).clamp(0.6, 1.0);
-        }
+    if let Some(pct) = vars.get("--surface-opacity")
+        && let Ok(p) = pct.trim().trim_end_matches('%').parse::<f64>()
+    {
+        style.background_rgba.3 *= (p / 100.0).clamp(0.6, 1.0);
     }
 
-    if let Some(raw) = vars.get("--frame-border") {
-        let resolved = resolve_var(raw, vars);
-        if let Some(c) = parse_color(resolved) {
-            style.border_rgba = c;
-        }
+    if let Some(c) = vars.color("--frame-border") {
+        style.border_rgba = c;
     }
 
-    if let Some(raw) = vars.get("--frame-border-width") {
-        let resolved = resolve_var(raw, vars);
-        if let Some(n) = parse_number(resolved) {
-            style.border_width = n;
-        }
+    if let Some(n) = vars.get("--frame-border-width").and_then(parse_number) {
+        style.border_width = n;
     }
 
-    if let Some(raw) = vars.get("--frame-border-radius") {
-        let resolved = resolve_var(raw, vars);
-        if let Some(n) = parse_number(resolved) {
-            style.border_radius = n;
-        }
+    if let Some(n) = vars.get("--frame-border-radius").and_then(parse_number) {
+        style.border_radius = n;
     }
 }
 
@@ -955,7 +872,7 @@ mod imp {
 
             if new_hash != self.css_hash.get() || self.resolved_style.borrow().is_none() {
                 let mut style = self.style.borrow().clone();
-                let vars = collect_css_vars(css_str.as_str());
+                let vars = CssVars::parse(css_str.as_str());
                 apply_css_vars(&mut style, &vars);
 
                 self.css_hash.set(new_hash);

@@ -3,6 +3,7 @@ use crate::bar_settings::bar_widget_section::{
 };
 use crate::bar_settings::monitor_chip::{MonitorChipModel, MonitorChipOutput};
 use crate::color_input::parse_hex_rgba;
+use mshell_common::css_vars::CssVars;
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::bar_widgets::BarWidget;
@@ -27,6 +28,41 @@ fn rgba_to_css(c: gdk::RGBA) -> String {
         q(c.blue()),
         q(c.alpha())
     )
+}
+
+/// The live theme's frame fill / border / separator colours — what each
+/// colour picker shows while its "custom colour" switch is off. Read from the
+/// settings page's own resolved style, the same variables the bar paints
+/// with (`--bar-separator-color` falls back to `--outline` as in the SCSS).
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct ThemeSeeds {
+    fill: Option<gdk::RGBA>,
+    border: Option<gdk::RGBA>,
+    separator: Option<gdk::RGBA>,
+}
+
+impl ThemeSeeds {
+    fn from_vars(vars: &CssVars) -> Self {
+        let rgba = |name: &str| {
+            vars.color(name)
+                .map(|(r, g, b, a)| gdk::RGBA::new(r as f32, g as f32, b as f32, a as f32))
+        };
+        Self {
+            fill: rgba("--frame-bg"),
+            border: rgba("--frame-border"),
+            separator: rgba("--bar-separator-color").or_else(|| rgba("--outline")),
+        }
+    }
+}
+
+/// What a picker shows after a theme read: the theme colour while the user
+/// hasn't set a custom one, else (or when the theme colour is unknown) what
+/// it already shows.
+fn seeded(current: gdk::RGBA, custom: bool, theme: Option<gdk::RGBA>) -> gdk::RGBA {
+    match theme {
+        Some(theme) if !custom => theme,
+        _ => current,
+    }
 }
 
 #[derive(Debug)]
@@ -106,6 +142,8 @@ pub(crate) enum BarSettingsInput {
     FrameBorderColorSet(gdk::RGBA),
     SeparatorColorCustomToggled(bool),
     SeparatorColorSet(gdk::RGBA),
+    /// The page was shown — seed the non-custom pickers from the theme.
+    SeedFromTheme(ThemeSeeds),
     IslandsToggled(bool),
     IslandsChanged(bool),
     /// SpinButton edited → write `bars.slide_duration_ms`.
@@ -1236,13 +1274,16 @@ impl Component for BarSettingsModel {
             enable_frame: false,
             islands: false,
             frame_color_custom: !init_frame_fill.trim().is_empty(),
-            frame_color: gdk::RGBA::parse(init_frame_fill.trim())
-                .unwrap_or_else(|_| gdk::RGBA::new(0.12, 0.12, 0.18, 1.0)), // design-lint: allow-colour picker seed until a custom colour is set (TODO: seed from the live theme)
+            // Without a custom colour the pickers start transparent and take
+            // the theme's colours when the page is first shown (the theme's
+            // variables only reach a widget inside a window) — see
+            // `SeedFromTheme`.
+            frame_color: gdk::RGBA::parse(init_frame_fill.trim()).unwrap_or(gdk::RGBA::TRANSPARENT),
             frame_border_color: gdk::RGBA::parse(init_frame_border.trim())
-                .unwrap_or_else(|_| gdk::RGBA::new(0.19, 0.20, 0.27, 1.0)), // design-lint: allow-colour picker seed until a custom colour is set (TODO: seed from the live theme)
+                .unwrap_or(gdk::RGBA::TRANSPARENT),
             separator_color_custom: !init_separator.trim().is_empty(),
             separator_color: gdk::RGBA::parse(init_separator.trim())
-                .unwrap_or_else(|_| gdk::RGBA::new(0.27, 0.28, 0.35, 1.0)), // design-lint: allow-colour picker seed until a custom colour is set (TODO: seed from the live theme)
+                .unwrap_or(gdk::RGBA::TRANSPARENT),
             slide_duration: config_manager()
                 .config()
                 .bars()
@@ -1329,6 +1370,15 @@ impl Component for BarSettingsModel {
 
         let widgets = view_output!();
 
+        // Re-read on every show so a theme change since the last visit is
+        // reflected while the pickers follow the theme.
+        let seed_sender = sender.clone();
+        root.connect_map(move |root| {
+            seed_sender.input(BarSettingsInput::SeedFromTheme(ThemeSeeds::from_vars(
+                &CssVars::of_widget(root),
+            )));
+        });
+
         ComponentParts { model, widgets }
     }
 
@@ -1400,6 +1450,19 @@ impl Component for BarSettingsModel {
                 config_manager().update_config(|config| {
                     config.theme.attributes.sizing.separator_color = val;
                 });
+            }
+            BarSettingsInput::SeedFromTheme(seeds) => {
+                self.frame_color = seeded(self.frame_color, self.frame_color_custom, seeds.fill);
+                self.frame_border_color = seeded(
+                    self.frame_border_color,
+                    self.frame_color_custom,
+                    seeds.border,
+                );
+                self.separator_color = seeded(
+                    self.separator_color,
+                    self.separator_color_custom,
+                    seeds.separator,
+                );
             }
             BarSettingsInput::SeparatorColorSet(rgba) => {
                 self.separator_color = rgba;
@@ -1663,5 +1726,59 @@ impl BarSettingsModel {
             .add_monitor_button
             .insert_action_group("monitor", Some(&action_group));
         widgets.add_monitor_button.set_menu_model(Some(&menu));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rgba(r: f32, g: f32, b: f32) -> gdk::RGBA {
+        gdk::RGBA::new(r, g, b, 1.0)
+    }
+
+    #[test]
+    fn seeds_come_from_the_frame_variables() {
+        let vars = CssVars::parse(
+            "--surface: #ff0000;\n--outline: #0000ff;\n\
+             --frame-bg: var(--surface);\n--frame-border: var(--outline);",
+        );
+        let seeds = ThemeSeeds::from_vars(&vars);
+        assert_eq!(seeds.fill, Some(rgba(1.0, 0.0, 0.0)));
+        assert_eq!(seeds.border, Some(rgba(0.0, 0.0, 1.0)));
+        // No `--bar-separator-color` override → the SCSS fallback, --outline.
+        assert_eq!(seeds.separator, Some(rgba(0.0, 0.0, 1.0)));
+    }
+
+    #[test]
+    fn a_separator_override_wins_over_the_outline() {
+        let vars = CssVars::parse("--outline: #0000ff;\n--bar-separator-color: #00ff00;");
+        assert_eq!(
+            ThemeSeeds::from_vars(&vars).separator,
+            Some(rgba(0.0, 1.0, 0.0))
+        );
+    }
+
+    #[test]
+    fn missing_theme_variables_seed_nothing() {
+        let seeds = ThemeSeeds::from_vars(&CssVars::parse(""));
+        assert!(seeds.fill.is_none() && seeds.border.is_none() && seeds.separator.is_none());
+    }
+
+    #[test]
+    fn only_a_picker_following_the_theme_is_seeded() {
+        let current = rgba(0.5, 0.5, 0.5);
+        let theme = rgba(1.0, 0.0, 0.0);
+        assert_eq!(seeded(current, false, Some(theme)), theme);
+        assert_eq!(
+            seeded(current, true, Some(theme)),
+            current,
+            "custom colour kept"
+        );
+        assert_eq!(
+            seeded(current, false, None),
+            current,
+            "unknown theme colour"
+        );
     }
 }
