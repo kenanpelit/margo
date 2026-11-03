@@ -34,6 +34,10 @@ ignore = [
     { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 unmaintained, no vuln; build-time proc-macro via reactive_stores_macro" },
     { id = "RUSTSEC-2026-0192", reason = "ttf-parser unmaintained, no vuln; via fontdue, no maintained drop-in yet" },
     { id = "RUSTSEC-2023-0040", reason = "users unmaintained; via the pam 0.7 crate (mlogind/mlock), no maintained drop-in yet" },
+    { id = "RUSTSEC-2026-0249", reason = "smartstring unmaintained (archived), no vuln; rhai's inline string type, still a hard dependency of rhai 1.27 (latest), only parses the user's own init.rhai" },
+    { id = "RUSTSEC-2026-0370", reason = "zvariant unmaintained as a standalone crate (merged into zbus 6), no vuln; the whole D-Bus stack (wayle-*, ksni, notify-rust, mpris-server, secret-service) is on zbus 5, revisit when it moves to zbus 6" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names unmaintained as a standalone crate (merged into zbus 6), no vuln; same zbus 5 stack as zvariant above" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive unmaintained as a standalone crate (merged into zbus 6), no vuln; proc-macro of the same zbus 5 stack" },
 
     # --- Vulnerabilities with no reachable safe upgrade in our tree ----------
     { id = "RUSTSEC-2025-0040", reason = "users: root appended to group listings; no fixed release, and mlogind never uses group listings for authorization" },
