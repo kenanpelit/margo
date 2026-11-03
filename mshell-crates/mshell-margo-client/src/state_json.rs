@@ -88,17 +88,53 @@ pub struct RawOutput {
     #[serde(default)]
     pub focus_history_v2: Vec<RawFocusHistoryEntry>,
     pub layout_idx: usize,
+    /// The output's *mode* size in physical pixels (margo's
+    /// `monitor_area`, captured before transform and scale) — not its
+    /// size in layout coordinates. Use [`RawOutput::logical_size`] for
+    /// anything placed in the same space as `x`/`y`.
     pub width: i32,
     pub height: i32,
+    /// Layout-space position (logical pixels).
     pub x: i32,
     pub y: i32,
     pub scale: f32,
+    /// Layout-space size (mode → transform → scale), as margo's renderer
+    /// sees it. `None` from a margo that predates the fields.
+    #[serde(default)]
+    pub logical_width: Option<i32>,
+    #[serde(default)]
+    pub logical_height: Option<i32>,
+    /// An exclusive-fullscreen client covers this output and margo is not
+    /// rendering its layer surfaces (the bar). `false` from older margo.
+    #[serde(default)]
+    pub exclusive_fullscreen: bool,
     #[serde(default)]
     pub mode: Option<RawMode>,
     #[serde(default)]
     pub wallpaper: String,
     #[serde(default)]
     pub wallpapers_by_tag: Vec<String>,
+}
+
+impl RawOutput {
+    /// Size in layout (logical) coordinates — the space `x`/`y` live in.
+    /// margo reports it directly; for an older margo it is derived from
+    /// the mode size and scale (rotation can't be accounted for then, as
+    /// that margo's `transform` was not kept in sync).
+    pub fn logical_size(&self) -> (i32, i32) {
+        if let (Some(w), Some(h)) = (self.logical_width, self.logical_height) {
+            return (w, h);
+        }
+        let s = if self.scale.is_finite() && self.scale > 0.0 {
+            f64::from(self.scale)
+        } else {
+            1.0
+        };
+        (
+            (f64::from(self.width) / s).round() as i32,
+            (f64::from(self.height) / s).round() as i32,
+        )
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]

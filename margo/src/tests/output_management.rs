@@ -76,3 +76,28 @@ fn pointer_clamp_survives_extreme_output_geometry() {
     state.clamp_pointer_to_outputs();
     assert_eq!((state.input_pointer.x, state.input_pointer.y), (0.0, 0.0));
 }
+
+#[test]
+fn state_snapshot_reports_live_logical_output_size() {
+    // `width`/`height` are the mode size; on a scaled/rotated output the
+    // layout-space size differs and must be reported separately, from the
+    // live output state (a runtime scale change included).
+    let mut fx = Fixture::new();
+    fx.add_output("DP-1", (2560, 1600));
+    let output = fx.server.state.monitors[0].output.clone();
+    output.change_current_state(
+        None,
+        Some(smithay::utils::Transform::_90),
+        Some(smithay::output::Scale::Fractional(2.0)),
+        None,
+    );
+    fx.server.state.space.map_output(&output, (0, 0));
+
+    let snapshot = fx.server.state.build_state_snapshot();
+    let o = &snapshot["outputs"][0];
+    assert_eq!(o["width"], 2560, "mode width stays physical");
+    assert_eq!(o["height"], 1600);
+    assert_eq!(o["logical_width"], 800, "rotated, then / scale");
+    assert_eq!(o["logical_height"], 1280);
+    assert_eq!(o["scale"], 2.0, "the live scale, not the configured one");
+}

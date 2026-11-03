@@ -1234,3 +1234,29 @@ fn post_repaint_refreshes_the_space_once_per_batch() {
         "one refresh per batch"
     );
 }
+
+#[test]
+fn state_snapshot_flags_outputs_whose_layers_exclusive_fullscreen_hides() {
+    let mut fx = Fixture::new();
+    fx.add_output("DP-1", (1920, 1080));
+    let _window = map_window(&mut fx);
+    let flag = |fx: &Fixture| {
+        fx.server.state.build_state_snapshot()["outputs"][0]["exclusive_fullscreen"].clone()
+    };
+    assert_eq!(flag(&fx), false);
+
+    // Work-area fullscreen keeps the bar: not flagged.
+    fx.server
+        .state
+        .set_client_fullscreen_mode(0, crate::state::FullscreenMode::WorkArea);
+    assert_eq!(flag(&fx), false);
+
+    fx.server
+        .state
+        .set_client_fullscreen_mode(0, crate::state::FullscreenMode::Exclusive);
+    assert_eq!(flag(&fx), true);
+
+    // Classic overview shows the layers again.
+    fx.server.state.monitors[0].is_overview = true;
+    assert_eq!(flag(&fx), false);
+}

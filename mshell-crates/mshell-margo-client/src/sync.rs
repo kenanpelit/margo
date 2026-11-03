@@ -135,6 +135,16 @@ fn apply(service: &MargoService, state: &StateJson) {
         service.keyboard_layout.set(state.keyboard_layout.clone());
     }
 
+    let fullscreen_outputs: Vec<String> = state
+        .outputs
+        .iter()
+        .filter(|o| o.exclusive_fullscreen)
+        .map(|o| o.name.clone())
+        .collect();
+    if service.fullscreen_outputs.get() != fullscreen_outputs {
+        service.fullscreen_outputs.set(fullscreen_outputs);
+    }
+
     // Mirror the focused output's layout (change-only).
     let layout = active_layout(state);
     if service.active_layout.get() != layout {
@@ -311,6 +321,8 @@ fn apply(service: &MargoService, state: &StateJson) {
             .map(|m| m.refresh_mhz as f32 / 1000.0)
             .unwrap_or(60.0);
 
+        let (logical_w, logical_h) = o.logical_size();
+        let (logical_w, logical_h) = (logical_w.max(0) as u32, logical_h.max(0) as u32);
         let mon = if let Some(existing) = current_mons.iter().find(|m| m.id.get() == mid) {
             if existing.name.get() != o.name {
                 existing.name.set(o.name.clone());
@@ -321,6 +333,12 @@ fn apply(service: &MargoService, state: &StateJson) {
             }
             if existing.height.get() != o.height as u32 {
                 existing.height.set(o.height as u32);
+            }
+            if existing.logical_width.get() != logical_w {
+                existing.logical_width.set(logical_w);
+            }
+            if existing.logical_height.get() != logical_h {
+                existing.logical_height.set(logical_h);
             }
             if (existing.refresh_rate.get() - refresh_rate).abs() > f32::EPSILON {
                 existing.refresh_rate.set(refresh_rate);
@@ -352,6 +370,8 @@ fn apply(service: &MargoService, state: &StateJson) {
                 serial: Reactive::new(String::new()),
                 width: Reactive::new(o.width as u32),
                 height: Reactive::new(o.height as u32),
+                logical_width: Reactive::new(logical_w),
+                logical_height: Reactive::new(logical_h),
                 refresh_rate: Reactive::new(refresh_rate),
                 x: Reactive::new(o.x),
                 y: Reactive::new(o.y),
@@ -776,6 +796,9 @@ mod tests {
             x: 0,
             y: 0,
             scale: 1.0,
+            logical_width: None,
+            logical_height: None,
+            exclusive_fullscreen: false,
             mode: None,
             wallpaper: String::new(),
             wallpapers_by_tag: Vec::new(),
@@ -917,6 +940,7 @@ mod apply_tests {
             keyboard_layout: Reactive::new(String::new()),
             config_errors: Reactive::new(Vec::new()),
             active_layout: Reactive::new(None),
+            fullscreen_outputs: Reactive::new(Vec::new()),
             event_tx,
         }
     }
@@ -945,6 +969,9 @@ mod apply_tests {
             x: 0,
             y: 0,
             scale: 1.0,
+            logical_width: None,
+            logical_height: None,
+            exclusive_fullscreen: false,
             mode: None,
             wallpaper: String::new(),
             wallpapers_by_tag: Vec::new(),
@@ -1293,6 +1320,32 @@ mod apply_tests {
     }
 
     #[test]
+    fn logical_size_and_fullscreen_outputs_are_mirrored() {
+        let svc = service();
+        let mut out = output("DP-1", true, 1, &[]);
+        out.width = 2560;
+        out.height = 1600;
+        out.scale = 2.0;
+        out.logical_width = Some(800);
+        out.logical_height = Some(1280);
+        out.exclusive_fullscreen = true;
+        let mut f = frame();
+        f.outputs = vec![out];
+        apply(&svc, &f);
+        let mon = svc.monitors.get().pop().unwrap();
+        assert_eq!((mon.width.get(), mon.height.get()), (2560, 1600));
+        assert_eq!(
+            (mon.logical_width.get(), mon.logical_height.get()),
+            (800, 1280)
+        );
+        assert_eq!(svc.fullscreen_outputs.get(), vec!["DP-1".to_string()]);
+
+        f.outputs[0].exclusive_fullscreen = false;
+        apply(&svc, &f);
+        assert!(svc.fullscreen_outputs.get().is_empty());
+    }
+
+    #[test]
     fn keyboard_layout_and_config_errors_are_mirrored() {
         let svc = service();
         let mut f = frame();
@@ -1336,6 +1389,13 @@ mod apply_tests {
         let svc = service();
         apply(&svc, &state);
         let mon = svc.monitors.get().pop().unwrap();
+        // An older frame without `logical_*`: derived from mode / scale.
+        assert_eq!((mon.width.get(), mon.height.get()), (2560, 1600));
+        assert_eq!(
+            (mon.logical_width.get(), mon.logical_height.get()),
+            (1707, 1067)
+        );
+        assert!(svc.fullscreen_outputs.get().is_empty());
         assert_eq!(mon.active_workspace.get().id, 3);
         assert_eq!(mon.refresh_rate.get(), 165.0);
         assert_eq!(mon.scale.get(), 1.5);

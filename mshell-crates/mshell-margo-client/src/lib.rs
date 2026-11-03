@@ -324,8 +324,15 @@ pub struct Monitor {
     pub make: Reactive<String>,
     pub model: Reactive<String>,
     pub serial: Reactive<String>,
+    /// Mode size in physical pixels (like Hyprland's monitor
+    /// `width`/`height`).
     pub width: Reactive<u32>,
     pub height: Reactive<u32>,
+    /// Size in layout coordinates — the space `x`/`y` (and window
+    /// geometry) are in. Differs from `width`/`height` on scaled or
+    /// rotated outputs.
+    pub logical_width: Reactive<u32>,
+    pub logical_height: Reactive<u32>,
     pub refresh_rate: Reactive<f32>,
     pub x: Reactive<i32>,
     pub y: Reactive<i32>,
@@ -487,6 +494,10 @@ pub struct MargoService {
     /// is what lets the shell react to a keybind conflict introduced
     /// by `mctl reload` — not just one present at shell startup.
     pub config_errors: Reactive<Vec<RawConfigDiagnostic>>,
+    /// Names of the outputs an exclusive-fullscreen client currently
+    /// covers (margo renders no layer surfaces there, so the bar is not
+    /// visible). Bar widgets with animations pause on these outputs.
+    pub fullscreen_outputs: Reactive<Vec<String>>,
     /// Diff-driven typed-event channel for the OkShell widget
     /// pattern (`hyprland.events()` consumers). `sync::apply`
     /// computes the diff between two state.json snapshots and
@@ -521,6 +532,7 @@ impl MargoService {
             keyboard_layout: Reactive::new(String::new()),
             active_layout: Reactive::new(None),
             config_errors: Reactive::new(Vec::new()),
+            fullscreen_outputs: Reactive::new(Vec::new()),
             event_tx,
         });
         // Prime once over the socket (`get state`) so widgets see
