@@ -305,6 +305,28 @@ pub fn animation_tick_due(
         || now_ms.wrapping_sub(last_tick_ms) >= ANIMATION_TICK_FALLBACK_MS
 }
 
+/// Time (in `now_ms` units) an animation tick should sample at: the
+/// predicted presentation time of the frame it feeds (`now_ms + lead`, see
+/// [`crate::frame_clock::predicted_present_lead`]) instead of the moment the
+/// loop woke up, so the frame shows the curve where it is when it reaches
+/// the screen rather than one refresh late.
+///
+/// Never steps back behind the previous sample (`last_sample_ms`): two
+/// ticks before the same present (an animation starting between vblanks)
+/// would otherwise predict the same or an earlier vblank and run the
+/// spring's `dt` negative. A previous sample more than a second ahead is
+/// stale (wrapped clock, wall-clock jump) and ignored.
+pub fn animation_sample_ms(now_ms: u32, lead: std::time::Duration, last_sample_ms: u32) -> u32 {
+    let lead_ms = u32::try_from(lead.as_micros().div_ceil(1000)).unwrap_or(u32::MAX);
+    let sample = now_ms.wrapping_add(lead_ms.min(1000));
+    let behind = last_sample_ms.wrapping_sub(sample);
+    if behind > 0 && behind < 1000 {
+        last_sample_ms
+    } else {
+        sample
+    }
+}
+
 // ── Layer-surface animation state ─────────────────────────────────────────────
 
 #[derive(Debug, Clone, Default)]
@@ -350,6 +372,44 @@ mod tick_pacing_tests {
         assert!(animation_tick_due(false, true, 1_050, 1_000));
         // `now_ms` wraps (it's u32 milliseconds since the epoch).
         assert!(animation_tick_due(false, true, 20, u32::MAX - 40));
+    }
+
+    #[test]
+    fn samples_at_the_predicted_present() {
+        use std::time::Duration;
+        // 10 ms until the next vblank: sample 10 ms ahead of the wake-up.
+        assert_eq!(
+            animation_sample_ms(5_000, Duration::from_millis(10), 0),
+            5_010
+        );
+        // Sub-millisecond leads round up, never onto an earlier ms.
+        assert_eq!(
+            animation_sample_ms(5_000, Duration::from_micros(6_944), 0),
+            5_007
+        );
+        // No prediction: sample at the wake-up, as before.
+        assert_eq!(animation_sample_ms(5_000, Duration::ZERO, 4_990), 5_000);
+        // Leads are capped at a second.
+        assert_eq!(animation_sample_ms(5_000, Duration::from_secs(9), 0), 6_000);
+    }
+
+    #[test]
+    fn sample_time_never_runs_backwards() {
+        use std::time::Duration;
+        // A second tick before the same present (an animation started
+        // between vblanks) predicted 5_016 last time; now it predicts
+        // 5_012 → hold at 5_016.
+        assert_eq!(
+            animation_sample_ms(5_004, Duration::from_millis(8), 5_016),
+            5_016
+        );
+        // Across the u32 wrap.
+        assert_eq!(
+            animation_sample_ms(u32::MAX - 3, Duration::from_millis(2), 5),
+            5
+        );
+        // A last sample far ahead (stale / clock jump) doesn't pin us.
+        assert_eq!(animation_sample_ms(5_000, Duration::ZERO, 900_000), 5_000);
     }
 }
 

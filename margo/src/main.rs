@@ -423,7 +423,19 @@ fn on_loop_iteration(state: &mut MargoState) {
     ) {
         state.animation_presented_since_tick = false;
         state.animation_last_tick_ms = now;
-        state.animating_at_last_tick = tick_frame_animations(state, now);
+        // Sample the curves at the predicted presentation time of the
+        // frame this tick feeds (last vblank + refresh interval), not at
+        // the loop wake-up: that frame reaches the screen up to one
+        // refresh later, and sampling at wake-up showed every animation
+        // one frame behind. `animation_last_tick_ms` stays wall-clock: it
+        // only paces the 50 ms no-present fallback above.
+        let sample = animation::animation_sample_ms(
+            now,
+            state.animation_present_lead(),
+            state.animation_last_sample_ms,
+        );
+        state.animation_last_sample_ms = sample;
+        state.animating_at_last_tick = tick_frame_animations(state, sample);
     }
 
     // Scroller-overview open/close zoom animation. Advances the

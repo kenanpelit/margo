@@ -149,6 +149,45 @@ pub fn instant_at_monotonic(event: Duration, now_monotonic: Duration, now: Insta
         .unwrap_or(now)
 }
 
+/// Presents older than this don't predict anything: the output has been
+/// idle (static screen, DPMS off, disabled) long enough that its last
+/// present says nothing about when the next frame reaches the screen.
+pub const PRESENT_PREDICTION_MAX_AGE: Duration = Duration::from_secs(1);
+
+/// How far ahead of `now` the next frame rendered now will most likely be
+/// presented, given each output's last present and refresh interval.
+///
+/// A frame rendered now lands on the first vblank after `now`; vblanks
+/// keep their phase, so that is `last + k * interval` for the smallest
+/// `k >= 1` past `now`. The earliest such time over every output with a
+/// recent present wins (it is the first frame that can show the sample).
+/// No recent present → `Duration::ZERO` (sample at `now`, as before).
+/// The lead is in `(0, interval]` for the chosen output.
+///
+/// Pure: clocks are passed in so it is unit-testable.
+pub fn predicted_present_lead(
+    now: Instant,
+    presents: impl IntoIterator<Item = (Instant, Duration)>,
+) -> Duration {
+    presents
+        .into_iter()
+        .filter_map(|(last, interval)| {
+            let age = now.checked_duration_since(last).unwrap_or(Duration::ZERO);
+            if age > PRESENT_PREDICTION_MAX_AGE {
+                return None;
+            }
+            let interval_ns = interval.as_nanos().max(1);
+            let age_ns = age.as_nanos();
+            let frames = age_ns / interval_ns + 1;
+            let lead_ns = frames * interval_ns - age_ns;
+            Some(Duration::from_nanos(
+                u64::try_from(lead_ns).unwrap_or(u64::MAX),
+            ))
+        })
+        .min()
+        .unwrap_or(Duration::ZERO)
+}
+
 /// Next `wp_presentation_feedback` sequence number for an output. Uses the
 /// kernel's vblank counter from the page-flip event when it moves forward,
 /// so clients can count missed vblanks; otherwise (no event metadata, or the
@@ -371,6 +410,54 @@ mod tests {
         // smaller value.
         assert_eq!(next_vblank_seq(5003, Some(7)), 5004);
         assert_eq!(next_vblank_seq(5004, Some(5004)), 5005);
+    }
+
+    #[test]
+    fn predicted_present_is_the_next_vblank_after_now() {
+        let interval = Duration::from_millis(16);
+        let last = Instant::now();
+        // Right at the vblank: the next frame is one interval away.
+        assert_eq!(predicted_present_lead(last, [(last, interval)]), interval);
+        // 3 ms after it: 13 ms left.
+        assert_eq!(
+            predicted_present_lead(last + Duration::from_millis(3), [(last, interval)]),
+            Duration::from_millis(13)
+        );
+        // Two frames skipped (static screen): still on the vblank phase.
+        assert_eq!(
+            predicted_present_lead(last + Duration::from_millis(37), [(last, interval)]),
+            Duration::from_millis(11)
+        );
+    }
+
+    #[test]
+    fn predicted_present_takes_the_soonest_output() {
+        let now = Instant::now();
+        let slow = (now - Duration::from_millis(2), Duration::from_millis(16));
+        let fast = (now - Duration::from_millis(1), Duration::from_millis(7));
+        assert_eq!(
+            predicted_present_lead(now, [slow, fast]),
+            Duration::from_millis(6)
+        );
+    }
+
+    #[test]
+    fn stale_or_missing_presents_predict_now() {
+        let now = Instant::now() + Duration::from_secs(5);
+        assert_eq!(predicted_present_lead(now, []), Duration::ZERO);
+        let stale = (now - Duration::from_secs(2), Duration::from_millis(16));
+        assert_eq!(predicted_present_lead(now, [stale]), Duration::ZERO);
+        // A present stamped after `now` (DRM time vs. our reading) counts
+        // as "just presented", and a zero interval can't divide by zero.
+        let future = (now + Duration::from_millis(1), Duration::from_millis(16));
+        assert_eq!(
+            predicted_present_lead(now, [future]),
+            Duration::from_millis(16)
+        );
+        assert_eq!(
+            predicted_present_lead(now, [(now, Duration::ZERO)]),
+            Duration::from_nanos(1)
+        );
     }
 
     #[test]

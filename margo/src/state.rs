@@ -612,6 +612,13 @@ pub struct MargoState {
     pub animating_at_last_tick: bool,
     /// `utils::now_ms()` of the last animation tick.
     pub animation_last_tick_ms: u32,
+    /// Time the last animation tick sampled at: its frame's predicted
+    /// presentation time (see [`crate::animation::animation_sample_ms`]).
+    pub animation_last_sample_ms: u32,
+    /// When each output (by name) last presented, real or estimated,
+    /// stamped by `send_frame_callbacks`. Feeds the animation sample-time
+    /// prediction where no per-output frame clock tracks the vblank.
+    pub last_present_at: std::collections::HashMap<String, std::time::Instant>,
     /// Compositor-painted wallpaper. `None` when no path resolves or
     /// the decode failed at startup — frame loop falls through to the
     /// solid `rootcolor` clear in that case. Re-decoded by
@@ -867,6 +874,8 @@ impl MargoState {
             animation_presented_since_tick: false,
             animating_at_last_tick: false,
             animation_last_tick_ms: 0,
+            animation_last_sample_ms: 0,
+            last_present_at: std::collections::HashMap::new(),
             wallpaper: crate::wallpaper::WallpaperState::load(config.wallpaper.as_deref()),
             overview_backdrop: config
                 .overview_backdrop_image

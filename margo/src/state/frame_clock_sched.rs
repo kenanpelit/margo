@@ -48,6 +48,29 @@ impl MargoState {
             .unwrap_or_else(|| refresh_interval_from_mhz(0))
     }
 
+    /// How far ahead the next frame rendered now will be presented, over
+    /// every enabled output — the lead the animation tick samples at
+    /// ([`crate::frame_clock::predicted_present_lead`]). Takes the last
+    /// present from the per-output frame clock when it has one (the DRM
+    /// page-flip timestamp), else the time `send_frame_callbacks` ran for
+    /// it (the global udev path's vblank handler, empty-render timers, and
+    /// winit's post-submit hook all go through it).
+    pub fn animation_present_lead(&self) -> Duration {
+        let now = Instant::now();
+        let presents = self.monitors.iter().filter(|m| m.enabled).filter_map(|m| {
+            // A clock left over from before a reload that turned the
+            // per-output clock off stops updating, so only trust it while on.
+            let clock = self
+                .per_output_frame_clock_enabled()
+                .then(|| self.per_output_clocks.get(&m.name))
+                .flatten()
+                .and_then(|clock| clock.last_present);
+            let last = clock.or_else(|| self.last_present_at.get(&m.name).copied())?;
+            Some((last, Self::output_refresh_interval(&m.output)))
+        });
+        crate::frame_clock::predicted_present_lead(now, presents)
+    }
+
     /// Ensure a clock entry exists for every currently-known output.
     /// Cheap + idempotent; called before arming timers so freshly
     /// hotplugged outputs join the per-output schedule.

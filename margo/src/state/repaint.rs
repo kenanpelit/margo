@@ -338,6 +338,12 @@ impl MargoState {
         // Every real or estimated present ends here: the next post-dispatch
         // hook may advance running animations for the next frame.
         self.animation_presented_since_tick = true;
+        let presented_at = std::time::Instant::now();
+        if let Some(at) = self.last_present_at.get_mut(output.name().as_str()) {
+            *at = presented_at;
+        } else {
+            self.last_present_at.insert(output.name(), presented_at);
+        }
         // Current sequence for this output. Bumped by `note_vblank`
         // and `on_estimated_vblank_timer`; surfaces stamped with this
         // value already received a frame_done this cycle.
