@@ -26,6 +26,13 @@ Type=simple
 # light allocation rate while collapsing that fragmentation.
 Environment=MALLOC_ARENA_MAX=2
 
+# mshell links mimalloc, whose arenas are eligible for transparent huge pages
+# (THP is `always` on many distros). Its large wallpaper/texture allocations
+# then sit in 2 MB pages that are returned lazily: measured on a 2-monitor
+# laptop over 20 min each (wallpaper rotating every 5 min), mean PSS 309 MB
+# with THP (76-146 MB AnonHugePages) vs 206 MB without, same restart.
+Environment=MIMALLOC_ALLOW_THP=0
+
 ExecStart=/usr/bin/mshell
 Restart=on-failure
 RestartSec=2
