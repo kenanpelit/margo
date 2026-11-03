@@ -354,12 +354,9 @@ pub(super) fn setup_connector(
         }
     };
 
-    let monitor_area = crate::layout::Rect {
-        x: position.0,
-        y: position.1,
-        width: wl_mode.size.w,
-        height: wl_mode.size.h,
-    };
+    // Layout-space rect: the final mode (after any custom-mode fallback)
+    // with the rule's transform and scale applied, as the Space sees it.
+    let monitor_area = crate::state::logical_output_rect(&output, position.0, position.1);
     let mut pertag = crate::layout::Pertag::new(
         state.default_layout(),
         state.config.default_mfact,

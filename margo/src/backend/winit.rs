@@ -118,12 +118,7 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
     output.set_preferred(mode);
     state.space.map_output(&output, (0, 0));
 
-    let monitor_area = crate::layout::Rect {
-        x: 0,
-        y: 0,
-        width: mode.size.w,
-        height: mode.size.h,
-    };
+    let monitor_area = crate::state::logical_output_rect(&output, 0, 0);
     let mut pertag = crate::layout::Pertag::new(
         state.default_layout(),
         state.config.default_mfact,
@@ -182,17 +177,8 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                     output.change_current_state(Some(new_mode), None, None, None);
                     output.set_preferred(new_mode);
                     state.space.map_output(&output, (0, 0));
-                    // Update monitor geometry to match new window size
-                    let new_area = crate::layout::Rect {
-                        x: 0,
-                        y: 0,
-                        width: size.w,
-                        height: size.h,
-                    };
-                    if let Some(mon) = state.monitors.iter_mut().find(|m| m.output == output) {
-                        mon.monitor_area = new_area;
-                        mon.work_area = new_area;
-                    }
+                    // Monitor rect and work area follow the new window size.
+                    state.update_output_work_area(&output);
                     info!("winit resized to {}x{}", size.w, size.h);
                     state.arrange_all();
                 }

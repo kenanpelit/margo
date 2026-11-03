@@ -97,20 +97,14 @@ impl MargoState {
                 let phys_w = mode.map(|m| m.size.w).unwrap_or(0);
                 let phys_h = mode.map(|m| m.size.h).unwrap_or(0);
                 let refresh = mode.map(|m| m.refresh).unwrap_or(0);
-                // The output's live layout-space size (mode → transform →
-                // scale), the same rect the renderer and layer maps use.
-                // `monitor_area.width/height` is the *mode* size captured
-                // at hotplug (physical pixels), and `mon.scale` is the
-                // configured scale, which a runtime wlr-output-management
-                // change doesn't update — so both are reported from the
-                // live `Output` here for clients that place things in
-                // layout coordinates (screenshot stitching, region crop).
+                // `monitor_area` is the output's live layout-space rect
+                // (mode → transform → scale), the same rect the renderer
+                // and layer maps use; it is reported as `logical_*`.
+                // `mon.scale` isn't kept in step with the output (a
+                // runtime wlr-output-management change doesn't touch it),
+                // so the scale comes from the live `Output`.
                 let live_scale = mon.output.current_scale().fractional_scale();
-                let logical = self
-                    .space
-                    .output_geometry(&mon.output)
-                    .map(|g| (g.size.w, g.size.h))
-                    .unwrap_or((mon.monitor_area.width, mon.monitor_area.height));
+                let logical = (mon.monitor_area.width, mon.monitor_area.height);
                 let active_tag = mon.tagset[mon.seltags];
                 let prev_tag = mon.tagset[mon.seltags ^ 1];
                 let active_output = i == focused_mon_idx;
@@ -124,11 +118,13 @@ impl MargoState {
                     "active": active_output,
                     "x": mon.monitor_area.x,
                     "y": mon.monitor_area.y,
-                    // Mode size in physical pixels (pre-transform, pre-scale);
-                    // kept for compatibility. Layout-space size is
+                    // Current mode size in physical pixels (pre-transform,
+                    // pre-scale), as older margo reported it — clients
+                    // (mlock, mlayout, mscreenshot, mshell's mode / scale
+                    // fallback) read it as such. Layout-space size is
                     // `logical_width` / `logical_height`.
-                    "width": mon.monitor_area.width,
-                    "height": mon.monitor_area.height,
+                    "width": phys_w,
+                    "height": phys_h,
                     "logical_width": logical.0,
                     "logical_height": logical.1,
                     "scale": live_scale,

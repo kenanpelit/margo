@@ -78,9 +78,11 @@ impl Fixture {
     /// — tests can probe layout / layer-shell / output-placement
     /// logic without a real GPU.
     ///
-    /// `(width, height)` is the logical size; scale is fixed at
-    /// 1.0 (tests that need fractional scale should set it on
-    /// `state.monitors[idx]` directly after the call). Outputs
+    /// `(width, height)` is the mode size; scale is 1.0 and the
+    /// transform normal, so it is also the logical size. Tests that
+    /// need a scaled or rotated output apply it through
+    /// `apply_output_pending` (see `tests/logical_output_area.rs`),
+    /// which keeps `monitor_area` logical. Outputs
     /// land left-to-right based on the cumulative width already in
     /// `state.space`, mirroring the udev backend's default layout.
     /// `gamma_size` of 0 disables gamma control on this output;

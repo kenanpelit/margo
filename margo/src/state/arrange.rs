@@ -1347,40 +1347,51 @@ impl MargoState {
     /// suppressed (lock, exclusive fullscreen, scroller Top/Overlay) can keep
     /// layout state current without scheduling invisible client animations or
     /// a physical repaint; the normal reveal path arranges the monitor later.
+    ///
+    /// Also the single place `monitor_area`'s size follows the output: a
+    /// mode, scale or transform change on the `Output` lands here (every
+    /// such path calls [`Self::refresh_output_work_area`]), and the
+    /// layer map is re-arranged against the new logical size before its
+    /// zone is read.
     pub(crate) fn update_output_work_area(&mut self, output: &Output) -> Option<usize> {
+        let mon_idx = self.monitors.iter().position(|m| m.output == *output)?;
+        let old_area = self.monitors[mon_idx].monitor_area;
+        let monitor_area = crate::state::logical_output_rect(output, old_area.x, old_area.y);
+        let area_changed = monitor_area != old_area;
+        self.monitors[mon_idx].monitor_area = monitor_area;
+
         let work_area = {
-            let map = layer_map_for_output(output);
+            let mut map = layer_map_for_output(output);
+            if area_changed {
+                map.arrange();
+            }
             map.non_exclusive_zone()
         };
 
-        if let Some(mon_idx) = self.monitors.iter().position(|m| m.output == *output) {
-            let monitor_area = self.monitors[mon_idx].monitor_area;
-            let new_work_area = crate::layout::Rect {
-                x: monitor_area.x + work_area.loc.x,
-                y: monitor_area.y + work_area.loc.y,
-                width: work_area.size.w,
-                height: work_area.size.h,
-            };
-            // Compositor commit handler calls us on every layer
-            // surface commit. mshell-frame's GTK4 + gtk4-layer-shell
-            // pair commits a fresh buffer 60 times a second during
-            // every menu Revealer animation — without this guard
-            // each one re-tiles the monitor (`arrange_monitor`
-            // re-computes geometry for every visible client and
-            // can spawn move-animation snapshots, each a full-size
-            // GlesTexture). That's the asymmetry between mshell
-            // (heavy churn → bar flicker, GPU memory spikes) and
-            // noctalia / Qt (commits less aggressively, work_area
-            // change check skips this entirely). Skip when the
-            // geometry is identical; the layer-shell exclusive zone
-            // is the only thing that can actually move the work
-            // area, and mshell-frame doesn't claim one.
-            if self.monitors[mon_idx].work_area == new_work_area {
-                return None;
-            }
-            self.monitors[mon_idx].work_area = new_work_area;
-            return Some(mon_idx);
+        let new_work_area = crate::layout::Rect {
+            x: monitor_area.x + work_area.loc.x,
+            y: monitor_area.y + work_area.loc.y,
+            width: work_area.size.w,
+            height: work_area.size.h,
+        };
+        // Compositor commit handler calls us on every layer
+        // surface commit. mshell-frame's GTK4 + gtk4-layer-shell
+        // pair commits a fresh buffer 60 times a second during
+        // every menu Revealer animation — without this guard
+        // each one re-tiles the monitor (`arrange_monitor`
+        // re-computes geometry for every visible client and
+        // can spawn move-animation snapshots, each a full-size
+        // GlesTexture). That's the asymmetry between mshell
+        // (heavy churn → bar flicker, GPU memory spikes) and
+        // noctalia / Qt (commits less aggressively, work_area
+        // change check skips this entirely). Skip when the
+        // geometry is identical; the layer-shell exclusive zone
+        // and the output's own size are the only things that can
+        // move it, and mshell-frame doesn't claim a zone.
+        if !area_changed && self.monitors[mon_idx].work_area == new_work_area {
+            return None;
         }
-        None
+        self.monitors[mon_idx].work_area = new_work_area;
+        Some(mon_idx)
     }
 }

@@ -92,6 +92,9 @@ fn state_snapshot_reports_live_logical_output_size() {
         None,
     );
     fx.server.state.space.map_output(&output, (0, 0));
+    // What every scale / transform / mode path does after changing the
+    // output: `monitor_area` follows.
+    fx.server.state.refresh_output_work_area(&output);
 
     let snapshot = fx.server.state.build_state_snapshot();
     let o = &snapshot["outputs"][0];

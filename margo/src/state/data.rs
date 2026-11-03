@@ -621,7 +621,13 @@ pub(crate) fn clamp_size(w: &mut i32, h: &mut i32, min_w: i32, min_h: i32, max_w
 pub struct MargoMonitor {
     pub name: String,
     pub output: Output,
+    /// The output's rect in layout (logical) space: position, and the
+    /// current mode's size after transform and fractional scale — the
+    /// same rect as `Space::output_geometry`. Built with
+    /// [`logical_output_rect`]; `update_output_work_area` keeps the size
+    /// in step with mode / scale / transform changes.
     pub monitor_area: Rect,
+    /// `monitor_area` minus the layer-shell exclusive zones (logical).
     pub work_area: Rect,
     pub seltags: usize,
     pub tagset: [u32; 2],
@@ -678,6 +684,31 @@ impl MargoMonitor {
     }
     pub fn current_nmaster(&self) -> u32 {
         self.pertag.nmasters[self.pertag.curtag]
+    }
+}
+
+/// `output`'s rect in layout space with its top-left at `(x, y)`: the
+/// current mode's size, transformed, then divided by the fractional scale
+/// and rounded up — exactly what `Space::output_geometry` reports, but
+/// usable before the output is mapped into the space (or after it is
+/// unmapped). An output without a mode is 0×0.
+pub fn logical_output_rect(output: &Output, x: i32, y: i32) -> Rect {
+    let size = output
+        .current_mode()
+        .map(|mode| {
+            output
+                .current_transform()
+                .transform_size(mode.size)
+                .to_f64()
+                .to_logical(output.current_scale().fractional_scale())
+                .to_i32_ceil::<i32>()
+        })
+        .unwrap_or_default();
+    Rect {
+        x,
+        y,
+        width: size.w,
+        height: size.h,
     }
 }
 

@@ -668,6 +668,24 @@ impl PendingHeadConfig {
     pub fn mode(&self) -> Option<(i32, i32, i32)> {
         self.mode
     }
+
+    /// An enabled head carrying the given changes, as a client's
+    /// `zwlr_output_configuration_head_v1` requests would build it —
+    /// lets tests drive the real apply handler.
+    #[cfg(test)]
+    pub(crate) fn for_test(
+        scale: Option<f64>,
+        transform: Option<WlTransform>,
+        position: Option<(i32, i32)>,
+    ) -> Self {
+        Self {
+            enabled: true,
+            scale,
+            transform,
+            position,
+            ..Self::default()
+        }
+    }
 }
 
 // ── Helper: build snapshot from a smithay Output ─────────────────────────────
