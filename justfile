@@ -89,6 +89,7 @@ reload:
 check:
     cargo fmt --all -- --check
     cargo clippy --workspace --all-targets -- -D warnings
+    cargo clippy --all-targets -p mshell -p mshell-frame -p mshell-plugin-ui -p mshell-plugin-host --features mshell/wasm-plugins,mshell-plugin-ui/wasm -- -D warnings
     ./scripts/panic-ratchet.sh
     ./scripts/file-size-gate.sh
     ./scripts/design-lint.sh

@@ -111,6 +111,17 @@ jobs:
         # lints. `--all-targets` so tests/examples are linted too.
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
+      - name: cargo clippy (wasm plugin feature, gate)
+        # The packaged shell is built with `--features mshell/wasm-plugins`
+        # (PKGBUILD), which the workspace run above never enables, so the
+        # wasmtime host, the plugin panel renderer and mshell-frame's
+        # cfg(feature = "wasm-plugins") code are linted here.
+        run: >-
+          cargo clippy --locked --all-targets
+          -p mshell -p mshell-frame -p mshell-plugin-ui -p mshell-plugin-host
+          --features mshell/wasm-plugins,mshell-plugin-ui/wasm
+          -- -D warnings
+
       - name: design lint (gate)
         # DESIGN.md §15 L1–L7: no hardcoded hex, no raw ≥4px
         # spacing/radius/font, --radius-widget only in bar/frame styles,

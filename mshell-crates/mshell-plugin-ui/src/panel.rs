@@ -211,10 +211,10 @@ fn apply_node_properties(widget: &gtk::Widget, props: &HashMap<String, String>) 
     if let Some(px) = props.get("height").and_then(|s| s.parse::<i32>().ok()) {
         widget.set_size_request(widget.width_request(), px);
     }
-    if let Some(px) = props.get("spacing").and_then(|s| s.parse::<i32>().ok()) {
-        if let Some(b) = widget.downcast_ref::<gtk::Box>() {
-            b.set_spacing(px);
-        }
+    if let Some(px) = props.get("spacing").and_then(|s| s.parse::<i32>().ok())
+        && let Some(b) = widget.downcast_ref::<gtk::Box>()
+    {
+        b.set_spacing(px);
     }
 }
 
@@ -621,10 +621,10 @@ fn build(
             };
             revealer.set_transition_type(transition);
             revealer.set_reveal_child(revealed);
-            if let Some(child_id) = node.children.first() {
-                if let Some(child) = by_id.get(child_id.as_str()) {
-                    revealer.set_child(Some(&build(child, by_id, inner, depth + 1)));
-                }
+            if let Some(child_id) = node.children.first()
+                && let Some(child) = by_id.get(child_id.as_str())
+            {
+                revealer.set_child(Some(&build(child, by_id, inner, depth + 1)));
             }
             revealer.upcast()
         }
