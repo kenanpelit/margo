@@ -398,7 +398,10 @@ fn expand_vars(value: &str, vars: &Vars) -> String {
     out
 }
 
-fn is_bind_key(k: &str) -> bool {
+/// Is `k` a keyboard-bind key margo loads: `bind` plus any of the flag
+/// suffixes `s` (keysym), `l` (lock), `r` (release), `p` (pass), `c` (allow
+/// conflict)? Public so editors of the config text classify lines the same way.
+pub fn is_bind_key(k: &str) -> bool {
     if !k.starts_with("bind") {
         return false;
     }
@@ -1378,7 +1381,11 @@ fn build_arg(parts: &[String]) -> Arg {
 
 // ── Modifier parsing ─────────────────────────────────────────────────────────
 
-fn parse_modifiers(s: &str) -> Result<Modifiers> {
+/// Parse a bind's MODS field (`super+shift`, `NONE`, `code:133`, …) the way
+/// margo does. Unknown names are skipped with a warning; a non-empty field with
+/// no name margo knows is an error — margo drops that bind. Public so editors
+/// of the config text agree with the compositor on what a bind's modifiers are.
+pub fn parse_modifiers(s: &str) -> Result<Modifiers> {
     if s.is_empty() || s.eq_ignore_ascii_case("none") {
         return Ok(Modifiers::empty());
     }

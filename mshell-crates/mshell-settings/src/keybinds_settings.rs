@@ -115,6 +115,9 @@ pub(crate) struct Bind {
     m_ctrl: bool,
     m_shift: bool,
     m_alt: bool,
+    /// Hyper (margo's `hyper`, Mod3). No editor chip; kept so a rewrite of
+    /// `binds.conf` doesn't drop it.
+    m_hyper: bool,
     /// Raw keysym name (`Return`, `d`, `XF86AudioRaiseVolume`).
     key: String,
     action: String,
@@ -139,6 +142,9 @@ impl Bind {
         }
         if self.m_shift {
             v.push("shift");
+        }
+        if self.m_hyper {
+            v.push("hyper");
         }
         if v.is_empty() {
             "NONE".to_string()
@@ -240,16 +246,28 @@ impl Bind {
         b
     }
 
-    fn set_mods(&mut self, mods: &str) {
-        for m in mods.split('+') {
-            match m.trim().to_ascii_lowercase().as_str() {
-                "super" | "mod" | "mod4" | "logo" | "win" => self.m_super = true,
-                "ctrl" | "control" => self.m_ctrl = true,
-                "shift" => self.m_shift = true,
-                "alt" | "mod1" => self.m_alt = true,
-                _ => {}
-            }
-        }
+    /// Carry over from `original` (the bind being edited) what the editor
+    /// has no control for — the flag suffix and Hyper — so saving an edit
+    /// doesn't silently drop them.
+    fn keep_hidden_from(&mut self, original: &Bind) {
+        self.flags = original.flags.clone();
+        self.m_hyper = original.m_hyper;
+    }
+
+    /// Set the modifiers from a MODS field, read the way margo reads it
+    /// ([`margo_config::parse_modifiers`]). `false` when margo would reject
+    /// the field (no modifier it knows) — the modifiers are then left unset.
+    fn set_mods(&mut self, mods: &str) -> bool {
+        use margo_config::Modifiers as M;
+        let Ok(m) = margo_config::parse_modifiers(mods.trim()) else {
+            return false;
+        };
+        self.m_super = m.contains(M::LOGO);
+        self.m_ctrl = m.contains(M::CTRL);
+        self.m_shift = m.contains(M::SHIFT);
+        self.m_alt = m.contains(M::ALT);
+        self.m_hyper = m.contains(M::MOD3);
+        true
     }
 
     // ── Tag-key helpers (move / toggle the focused window's tags) ─────
@@ -473,12 +491,15 @@ fn conflict_summary_text() -> String {
     )
 }
 
-/// Is `key` a `bind` variant (`bind`, `binds`, `bindr`, `bindl`, `bindp`, …)?
-fn is_bind_key(k: &str) -> bool {
-    k.starts_with("bind") && k[4..].chars().all(|c| matches!(c, 's' | 'l' | 'r' | 'p'))
-}
+use margo_config::is_bind_key;
 
-/// Parse one `bind* = …` line into a [`Bind`]. `None` for non-bind lines.
+/// Parse one `bind* = …` line into a [`Bind`]. `None` for non-bind lines and
+/// for binds margo itself drops (a MODS field with no modifier it knows, fewer
+/// than MODS,KEY,ACTION fields) — the flag suffixes and modifiers are read
+/// with margo-config's own functions, and a golden test
+/// (`sees_the_same_binds_as_margo`) holds the rest to margo's parser. Kept as
+/// a text-level parser because the editor needs what margo's `KeyBinding`
+/// drops: the raw argument text and the description comment.
 fn parse_bind_line(line: &str) -> Option<Bind> {
     let t = line.trim();
     if !t.starts_with("bind") {
@@ -513,16 +534,7 @@ fn parse_bind_line(line: &str) -> Option<Bind> {
         desc: desc.unwrap_or_default(),
         ..Default::default()
     };
-    for m in mods.split('+') {
-        match m.trim().to_ascii_lowercase().as_str() {
-            "super" | "mod" | "mod4" | "logo" | "win" => b.m_super = true,
-            "ctrl" | "control" => b.m_ctrl = true,
-            "shift" => b.m_shift = true,
-            "alt" | "mod1" => b.m_alt = true,
-            _ => {}
-        }
-    }
-    Some(b)
+    b.set_mods(mods).then_some(b)
 }
 
 /// Pull a trailing `#"quoted"` or ` # plain` description off a bind body.
@@ -688,9 +700,12 @@ fn migrate(all: &[Bind]) -> std::io::Result<()> {
     std::fs::write(&cfg, plan_config_rewrite(&text))
 }
 
-/// Pure core of the migration: strip every inline `bind*` line and ensure a
-/// single `source = binds.conf` is present (inserted after the last existing
-/// `source`/`include`, else where the first bind was). No IO — testable.
+/// Pure core of the migration: strip every inline bind the editor takes over
+/// (the ones [`load_binds`] reads, which `binds.conf` is written from) and
+/// ensure a single `source = binds.conf` is present (inserted after the last
+/// existing `source`/`include`, else where the first bind was). A bind line
+/// the editor doesn't take over — one margo drops, or a plugin keybind — stays
+/// where it is rather than being deleted. No IO — testable.
 fn plan_config_rewrite(text: &str) -> String {
     let mut kept: Vec<String> = Vec::new();
     let mut first_bind_at: Option<usize> = None;
@@ -698,8 +713,8 @@ fn plan_config_rewrite(text: &str) -> String {
     let mut already_sources = false;
     for line in text.lines() {
         let t = line.trim();
-        let is_bind = t.find('=').is_some_and(|eq| is_bind_key(t[..eq].trim()));
-        if is_bind {
+        let taken_over = parse_bind_line(t).is_some_and(|b| !b.is_plugin_keybind());
+        if taken_over {
             first_bind_at.get_or_insert(kept.len());
             continue;
         }
@@ -1280,8 +1295,12 @@ impl Component for KeybindsSettingsModel {
                 let Some(bind) = self.read_draft() else {
                     return; // invalid (no key/action) — keep editing
                 };
+                let mut bind = bind;
                 match self.mode {
-                    Mode::Edit(Some(idx)) if idx < self.binds.len() => self.binds[idx] = bind,
+                    Mode::Edit(Some(idx)) if idx < self.binds.len() => {
+                        bind.keep_hidden_from(&self.binds[idx]);
+                        self.binds[idx] = bind;
+                    }
                     _ => self.binds.push(bind),
                 }
                 self.binds.sort_by(sort_key);
@@ -1362,6 +1381,7 @@ impl KeybindsSettingsModel {
             m_ctrl: self.ctrl_btn.is_active(),
             m_shift: self.shift_btn.is_active(),
             m_alt: self.alt_btn.is_active(),
+            m_hyper: false,
             key,
             action,
             args: self.args_entry.text().trim().to_string(),
@@ -1467,6 +1487,9 @@ fn bind_row(b: &Bind) -> gtk::ListBoxRow {
     }
     if b.m_shift {
         add_chip("Shift", Some("mod-shift"));
+    }
+    if b.m_hyper {
+        add_chip("Hyper", Some("mod-hyper"));
     }
     add_chip(&b.pretty_key(), None);
     // Fixed-ish width so the action column lines up.
@@ -1796,5 +1819,130 @@ env = FOO,bar
                 .to_string(),
         )];
         assert_eq!(conflicts_in(&sources).len(), 1);
+    }
+
+    // ── Agreement with margo's own parser ───────────────────────────────
+
+    #[test]
+    fn margo_modifier_spellings_are_understood() {
+        // margo accepts the _l/_r spellings and code:N keycodes.
+        let b = parse_bind_line("bind = SUPER_L+shift_r,a,killclient").expect("parse");
+        assert!(b.m_super && b.m_shift && !b.m_ctrl && !b.m_alt);
+        let b = parse_bind_line("bind = code:133,a,killclient").expect("parse");
+        assert!(b.m_super);
+    }
+
+    #[test]
+    fn hyper_survives_a_rewrite() {
+        // Every save rewrites binds.conf from the parsed binds, so a modifier
+        // the parser drops is deleted from the user's bind.
+        let b = parse_bind_line("bind = super+hyper,a,spawn,x").expect("parse");
+        assert_eq!(b.to_line(), "bind = super+hyper,a,spawn,x");
+    }
+
+    #[test]
+    fn bindc_is_a_bind() {
+        let b = parse_bind_line("bindc = super,a,killclient").expect("parse");
+        assert_eq!(b.to_line(), "bindc = super,a,killclient");
+    }
+
+    #[test]
+    fn a_bind_margo_drops_is_not_loaded_and_stays_in_config() {
+        // `MOD` / `$mod` are not modifiers margo knows, so margo drops these
+        // binds. The editor must neither list them (as Super / no-modifier
+        // binds) nor delete them from config.conf on migration.
+        for line in ["bind = MOD,q,killclient", "bind = $mod,q,killclient"] {
+            assert!(parse_bind_line(line).is_none(), "{line}");
+            let cfg = format!("gaps_out = 8\n{line}\nbind = super,w,killclient\n");
+            let rewritten = plan_config_rewrite(&cfg);
+            assert!(rewritten.contains(line), "lost {line}:\n{rewritten}");
+            assert!(!rewritten.contains("super,w"), "managed bind not moved");
+        }
+    }
+
+    #[test]
+    fn editing_keeps_what_the_editor_cannot_show() {
+        // The editor has no control for bind flags or Hyper; saving an edit
+        // must not drop them.
+        let original = parse_bind_line("binds = super+hyper,a,spawn,x").expect("parse");
+        let mut edited = Bind {
+            m_super: true,
+            key: "b".into(),
+            action: "spawn".into(),
+            args: "y".into(),
+            ..Default::default()
+        };
+        edited.keep_hidden_from(&original);
+        assert_eq!(edited.to_line(), "binds = super+hyper,b,spawn,y");
+    }
+
+    /// Lines covering every way margo's bind parsing can differ from a
+    /// text-level parser: flag suffixes (incl. Hyprland ones margo skips),
+    /// modifier spellings, unknown modifiers, too few fields, comments.
+    const GOLDEN: &str = "\
+bind = super,Return,spawn,kitty
+binds = SUPER+SHIFT,q,killclient
+bindr = super_l,space,toggle_overview
+bindlp = NONE,XF86AudioMute,spawn,wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
+bindc = alt+ctrl,t,spawn,kitty  #\"terminal\"
+bind = shift+super,m,spawn,x # plain comment
+bind = super+hyper,h,focusdir,left
+bind = code:133+code:50,j,focusstack,1
+bind = CTRL_R+Alt_L,k,focusstack,-1
+bind = super+bogus,b,zoom
+bind = MOD,q,killclient
+bind = bogus,q,killclient
+bind = super,x
+binde = super,e,spawn,hypr-only
+bindm = super,mouse:272,movewindow
+bindx = super,z,zoom
+bind = super,v,toggle_named_scratchpad,^clipse$,none,kitty --class clipse -e clipse
+";
+
+    #[test]
+    fn sees_the_same_binds_as_margo() {
+        use margo_config::Modifiers as M;
+        // Never read: parse_config_str only resolves `source` lines against it.
+        let path = std::path::Path::new("/nonexistent/margo/binds.conf");
+        // margo appends its default chvt binds to every config; not ours.
+        let margo_binds = |text: &str| -> Vec<margo_config::KeyBinding> {
+            margo_config::parse_config_str(text, Some(path))
+                .expect("margo parse")
+                .key_bindings
+                .into_iter()
+                .filter(|k| k.action != "chvt")
+                .collect()
+        };
+        let margo = margo_binds(GOLDEN);
+        let ours: Vec<Bind> = GOLDEN.lines().filter_map(parse_bind_line).collect();
+
+        assert_eq!(
+            ours.len(),
+            margo.len(),
+            "bind count differs: ours {:?}",
+            ours.iter().map(Bind::to_line).collect::<Vec<_>>()
+        );
+        for (b, m) in ours.iter().zip(&margo) {
+            let want = (
+                m.modifiers.contains(M::LOGO),
+                m.modifiers.contains(M::CTRL),
+                m.modifiers.contains(M::SHIFT),
+                m.modifiers.contains(M::ALT),
+                m.modifiers.contains(M::MOD3),
+            );
+            let got = (b.m_super, b.m_ctrl, b.m_shift, b.m_alt, b.m_hyper);
+            assert_eq!(got, want, "modifiers differ for {}", b.to_line());
+            assert_eq!(b.action, m.action, "action differs for {}", b.to_line());
+            assert_eq!(b.flags.contains('r'), m.release_apply, "{}", b.to_line());
+            assert_eq!(b.flags.contains('l'), m.lock_apply, "{}", b.to_line());
+            assert_eq!(b.flags.contains('p'), m.pass_apply, "{}", b.to_line());
+            assert_eq!(b.flags.contains('c'), m.allow_conflict, "{}", b.to_line());
+
+            // What we write back must load in margo as the same bind.
+            let regen = margo_binds(&b.to_line());
+            assert_eq!(regen.len(), 1, "{}", b.to_line());
+            assert_eq!(regen[0].modifiers, m.modifiers, "{}", b.to_line());
+            assert_eq!(regen[0].action, m.action, "{}", b.to_line());
+        }
     }
 }
