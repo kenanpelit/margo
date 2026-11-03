@@ -68,6 +68,8 @@ members = [
 # WASM plugin authoring SDK + test fixtures — built standalone for
 # wasm32-wasip2, not part of the host workspace build.
 exclude = [
+    # cargo-fuzz targets: nightly + libFuzzer, own workspace (fuzz/README.md).
+    "fuzz",
     "mplugin-sdk",
     "mshell-crates/mshell-plugin-host/tests/fixtures/hello-guest",
     "mshell-crates/mshell-plugin-host/tests/fixtures/sdk-guest",

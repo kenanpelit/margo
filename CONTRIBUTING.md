@@ -71,6 +71,7 @@ cargo insta review                 # accept new layout snapshots
 scripts/smoke-winit.sh             # end-to-end (nested mode)
 scripts/post-install-smoke.sh      # post-install validation
 mctl check-config <conf>           # offline config validation
+cargo +nightly fuzz run parse_config_str -- -max_total_time=120  # config parser fuzzing (fuzz/README.md)
 ```
 
 `margo/src/layout/snapshot_tests.rs` locks the geometry output of every
