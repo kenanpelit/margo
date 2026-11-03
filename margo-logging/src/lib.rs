@@ -250,8 +250,29 @@ fn initial_filter(env_override: Option<&str>, app: &str, level: &str, enabled: b
 
 /// Session file name for "now": `{app}-YYYYMMDD-HHMMSS.log`.
 fn session_file_name(app: &str) -> String {
-    let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    let ts = local_timestamp("%Y%m%d-%H%M%S");
     format!("{app}-{ts}.log")
+}
+
+/// "Now" in the local time zone, formatted with a `strftime`-style
+/// `format` (chrono syntax) — the one clock every timestamped file name in
+/// margo's tools uses (log sessions, screenshots, recordings), so names
+/// match the user's wall clock everywhere. An invalid `format` yields the
+/// Unix time in seconds instead of panicking.
+pub fn local_timestamp(format: &str) -> String {
+    format_timestamp(&chrono::Local::now(), format)
+}
+
+fn format_timestamp<Tz: chrono::TimeZone>(t: &chrono::DateTime<Tz>, format: &str) -> String
+where
+    Tz::Offset: std::fmt::Display,
+{
+    use std::fmt::Write;
+    let mut out = String::new();
+    if write!(out, "{}", t.format(format)).is_err() {
+        return t.timestamp().to_string();
+    }
+    out
 }
 
 /// Delete the oldest `{app}-*.log` session files until at most `max_remaining`
@@ -415,6 +436,40 @@ impl LogHandle {
     /// The shared log directory.
     pub fn dir(&self) -> &Path {
         &self.dir
+    }
+}
+
+#[cfg(test)]
+mod timestamp_tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    #[test]
+    fn timestamps_use_the_given_zone_wall_clock() {
+        let utc = chrono::Utc.with_ymd_and_hms(2026, 1, 2, 22, 30, 5).unwrap();
+        let istanbul = utc.with_timezone(&chrono::FixedOffset::east_opt(3 * 3600).unwrap());
+        assert_eq!(
+            format_timestamp(&istanbul, "%Y-%m-%d_%H-%M-%S"),
+            "2026-01-03_01-30-05"
+        );
+        assert_eq!(format_timestamp(&utc, "%Y%m%d-%H%M%S"), "20260102-223005");
+    }
+
+    #[test]
+    fn local_timestamp_is_local_time() {
+        let before = chrono::Local::now().format("%Y%m%d%H%M%S").to_string();
+        let stamp = local_timestamp("%Y%m%d%H%M%S");
+        let after = chrono::Local::now().format("%Y%m%d%H%M%S").to_string();
+        assert!(
+            before <= stamp && stamp <= after,
+            "{before} {stamp} {after}"
+        );
+    }
+
+    #[test]
+    fn bad_format_does_not_panic() {
+        let utc = chrono::Utc.with_ymd_and_hms(2026, 1, 2, 0, 0, 0).unwrap();
+        assert_eq!(format_timestamp(&utc, "%Q"), utc.timestamp().to_string());
     }
 }
 

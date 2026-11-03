@@ -638,25 +638,10 @@ fn default_filename() -> String {
     format!("screenshot_{}.png", current_timestamp())
 }
 
+/// `YYYY-MM-DD_HH-MM-SS` in local time (shared clock with mshell's
+/// screenshot/recording names and the log files).
 fn current_timestamp() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as libc::time_t)
-        .unwrap_or(0);
-    unsafe {
-        let mut tm: libc::tm = std::mem::zeroed();
-        libc::localtime_r(&secs, &mut tm);
-        format!(
-            "{:04}-{:02}-{:02}_{:02}-{:02}-{:02}",
-            tm.tm_year + 1900,
-            tm.tm_mon + 1,
-            tm.tm_mday,
-            tm.tm_hour,
-            tm.tm_min,
-            tm.tm_sec,
-        )
-    }
+    margo_logging::local_timestamp("%Y-%m-%d_%H-%M-%S")
 }
 
 // ── Open / dir ──────────────────────────────────────────────

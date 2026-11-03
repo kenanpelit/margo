@@ -5097,6 +5097,7 @@ dependencies = [
  "anyhow",
  "clap",
  "libc",
+ "margo-logging",
  "serde_json",
 ]
 
@@ -5540,6 +5541,7 @@ dependencies = [
  "gtk4",
  "gtk4-layer-shell",
  "image",
+ "margo-logging",
  "memmap2",
  "mshell-process",
  "mshell-services",
@@ -5547,7 +5549,6 @@ dependencies = [
  "relm4",
  "rustix 1.1.4",
  "thiserror 2.0.18",
- "time",
  "wayland-client",
  "wayland-protocols-wlr",
 ]

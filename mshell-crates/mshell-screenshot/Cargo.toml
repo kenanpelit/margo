@@ -13,13 +13,13 @@ dirs.workspace = true
 gtk4.workspace = true
 gtk4-layer-shell.workspace = true
 image.workspace = true
+margo-logging = { path = "../../margo-logging" }
 memmap2.workspace = true
 mshell-process.workspace = true
 nix.workspace = true
 mshell-services.workspace = true
 relm4.workspace = true
 rustix.workspace = true
-time.workspace = true
 thiserror.workspace = true
 wayland-client.workspace = true
 wayland-protocols-wlr.workspace = true

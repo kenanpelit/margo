@@ -20,42 +20,30 @@ pub(crate) fn find_gdk_monitor(
     None
 }
 
+/// `YYYY_MM_DD_HH_MM_SS` in local time (what the user's clock shows, like
+/// `mscreenshot` and the log files — see `margo_logging::local_timestamp`).
+fn file_stamp() -> String {
+    margo_logging::local_timestamp("%Y_%m_%d_%H_%M_%S")
+}
+
 pub(crate) fn default_screenshot_path() -> PathBuf {
     let dir = dirs::picture_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
         .join("Screenshots");
-
-    let now = time::OffsetDateTime::now_utc();
-    let timestamp = now
-        .format(
-            &time::format_description::parse("[year]_[month]_[day]_[hour]_[minute]_[second]")
-                .unwrap(),
-        )
-        .unwrap_or_else(|_| "screenshot".into());
-
-    dir.join(format!("{timestamp}_screenshot.png"))
+    dir.join(format!("{}_screenshot.png", file_stamp()))
 }
 
 pub(crate) fn default_recording_path() -> PathBuf {
     let dir = dirs::video_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
         .join("ScreenRecordings");
-
-    let now = time::OffsetDateTime::now_utc();
-    let timestamp = now
-        .format(
-            &time::format_description::parse("[year]_[month]_[day]_[hour]_[minute]_[second]")
-                .unwrap(),
-        )
-        .unwrap_or_else(|_| "record".into());
-
-    dir.join(format!("{timestamp}_record.mp4"))
+    dir.join(format!("{}_record.mp4", file_stamp()))
 }
 
-/// Query Hyprland for all connected outputs via hyprctl.
+/// The compositor's outputs, in layout (logical) coordinates — position
+/// *and* size, see [`OutputInfo`].
 pub fn query_outputs() -> crate::common::Result<Vec<OutputInfo>> {
-    let hyprland = margo_service();
-    let monitors = hyprland.monitors.get();
+    let monitors = margo_service().monitors.get();
 
     Ok(monitors
         .into_iter()
@@ -104,5 +92,19 @@ mod tests {
             "ScreenRecordings"
         );
         assert_stamped(rec.file_name().unwrap().to_str().unwrap(), "_record.mp4");
+    }
+
+    #[test]
+    fn file_names_use_local_time() {
+        let fmt = "%Y_%m_%d_%H_%M_%S";
+        let before = margo_logging::local_timestamp(fmt);
+        let shot = default_screenshot_path();
+        let after = margo_logging::local_timestamp(fmt);
+        let name = shot.file_name().unwrap().to_str().unwrap();
+        let stamp = name.strip_suffix("_screenshot.png").unwrap();
+        assert!(
+            before.as_str() <= stamp && stamp <= after.as_str(),
+            "{before} <= {stamp} <= {after}"
+        );
     }
 }
