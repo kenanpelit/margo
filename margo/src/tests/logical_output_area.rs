@@ -264,3 +264,23 @@ fn state_json_reports_the_live_transform_and_scale() {
         assert_eq!(o["scale"], 2.0, "{transform:?}");
     }
 }
+
+#[cfg(feature = "dbus")]
+#[test]
+fn dbus_logical_output_reports_the_live_transform() {
+    use crate::dbus::ipc_output::{IpcTransform, snapshot};
+
+    let mut fx = Fixture::new();
+    fx.add_output("DP-1", (2560, 1600));
+    apply(
+        &mut fx,
+        [("DP-1", head(Some(2.0), Some(WlTransform::Flipped90), None))],
+    );
+    let map = snapshot(&fx.server.state);
+    let logical = map.values().next().and_then(|o| o.logical.clone()).unwrap();
+    assert_eq!(logical.transform, IpcTransform::Flipped90);
+    assert_eq!(
+        (logical.width, logical.height, logical.scale),
+        (800, 1280, 2.0)
+    );
+}

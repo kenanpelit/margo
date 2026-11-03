@@ -81,6 +81,22 @@ impl IpcTransform {
     }
 }
 
+impl From<smithay::utils::Transform> for IpcTransform {
+    fn from(t: smithay::utils::Transform) -> Self {
+        use smithay::utils::Transform as T;
+        match t {
+            T::Normal => Self::Normal,
+            T::_90 => Self::_90,
+            T::_180 => Self::_180,
+            T::_270 => Self::_270,
+            T::Flipped => Self::Flipped,
+            T::Flipped90 => Self::Flipped90,
+            T::Flipped180 => Self::Flipped180,
+            T::Flipped270 => Self::Flipped270,
+        }
+    }
+}
+
 /// Build a fresh `IpcOutputMap` from the live `MargoState::monitors`.
 /// xdp-gnome calls `GetCurrentState` / monitors listing on every
 /// chooser dialog so taking a fresh snapshot per call is fine
@@ -126,9 +142,10 @@ pub fn snapshot(state: &crate::state::MargoState) -> IpcOutputMap {
             y: mon.monitor_area.y,
             width: mon.monitor_area.width.max(0) as u32,
             height: mon.monitor_area.height.max(0) as u32,
-            // The live scale `monitor_area` (logical) was derived with.
+            // The live scale and transform `monitor_area` (logical) was
+            // derived with.
             scale: mon.output.current_scale().fractional_scale(),
-            transform: IpcTransform::Normal,
+            transform: mon.output.current_transform().into(),
         });
 
         let mut hasher = DefaultHasher::new();
@@ -153,4 +170,28 @@ pub fn snapshot(state: &crate::state::MargoState) -> IpcOutputMap {
         );
     }
     map
+}
+
+#[cfg(test)]
+mod tests {
+    use super::IpcTransform;
+    use smithay::utils::Transform;
+
+    #[test]
+    fn every_output_transform_maps_to_its_ipc_transform() {
+        let cases = [
+            (Transform::Normal, IpcTransform::Normal, 0),
+            (Transform::_90, IpcTransform::_90, 1),
+            (Transform::_180, IpcTransform::_180, 2),
+            (Transform::_270, IpcTransform::_270, 3),
+            (Transform::Flipped, IpcTransform::Flipped, 4),
+            (Transform::Flipped90, IpcTransform::Flipped90, 5),
+            (Transform::Flipped180, IpcTransform::Flipped180, 6),
+            (Transform::Flipped270, IpcTransform::Flipped270, 7),
+        ];
+        for (t, ipc, wire) in cases {
+            assert_eq!(IpcTransform::from(t), ipc, "{t:?}");
+            assert_eq!(ipc.as_u32(), wire, "{t:?}");
+        }
+    }
 }
