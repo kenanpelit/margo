@@ -1,293 +1,59 @@
-use crate::common_widgets::revealer_button::revealer_button_icon_label::{
-    RevealerButtonIconLabelInit, RevealerButtonIconLabelInput, RevealerButtonIconLabelModel,
+//! The source side of the shared audio device row
+//! ([`crate::menus::menu_widgets::audio_device_revealer_button`]).
+
+use crate::menus::menu_widgets::audio_device_revealer_button::{
+    AudioDeviceKind, DeviceRevealerButtonCommandOutput, DeviceRevealerButtonInit,
+    DeviceRevealerButtonModel,
 };
-use mshell_common::WatcherToken;
 use mshell_services::audio_service;
 use mshell_utils::audio::{get_audio_in_icon_device_aware, spawn_default_input_watcher};
-use mshell_utils::audio_prefs::{display_alias, lock_prefs};
-use relm4::gtk::prelude::*;
-use relm4::{
-    Component, ComponentController, ComponentParts, ComponentSender, Controller, RelmWidgetExt, gtk,
-};
+use relm4::ComponentSender;
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 use wayle_audio::core::device::input::InputDevice;
 
-pub(crate) struct InputDeviceRevealerButtonModel {
-    input_device: Arc<InputDevice>,
-    content: Controller<RevealerButtonIconLabelModel>,
-    watcher_token: WatcherToken,
-    hidden: bool,
-    is_default: bool,
-}
+pub(crate) use crate::menus::menu_widgets::audio_device_revealer_button::DeviceRevealerButtonInput as InputDeviceRevealerButtonInput;
 
-#[derive(Debug)]
-pub(crate) enum InputDeviceRevealerButtonInput {
-    Clicked,
-    DefaultDeviceChanged,
-    Revealed,
-    Hidden,
-    /// The rename popover closed — read its entry and persist.
-    EditCommitted(String),
-    /// Hide-from-cycling eye toggled — immediate, no popover.
-    ToggleHidden,
-}
+pub(crate) struct InputKind;
 
-#[derive(Debug)]
-pub(crate) enum InputDeviceRevealerButtonOutput {}
+pub(crate) type InputDeviceRevealerButtonModel = DeviceRevealerButtonModel<InputKind>;
+pub(crate) type InputDeviceRevealerButtonInit = DeviceRevealerButtonInit<InputKind>;
 
-pub(crate) struct InputDeviceRevealerButtonInit {
-    pub input_device: Arc<InputDevice>,
-}
+impl AudioDeviceKind for InputKind {
+    type Device = InputDevice;
 
-#[derive(Debug)]
-pub(crate) enum InputDeviceRevealerButtonCommandOutput {
-    DefaultDeviceChanged,
-}
-
-#[relm4::component(pub)]
-impl Component for InputDeviceRevealerButtonModel {
-    type CommandOutput = InputDeviceRevealerButtonCommandOutput;
-    type Input = InputDeviceRevealerButtonInput;
-    type Output = InputDeviceRevealerButtonOutput;
-    type Init = InputDeviceRevealerButtonInit;
-
-    view! {
-        #[root]
-        gtk::Box {
-            set_spacing: 4,
-
-            #[name = "content_button"]
-            gtk::Button {
-                add_css_class: "audio-dashboard-device-row",
-                set_hexpand: true,
-                set_vexpand: false,
-                connect_clicked[sender] => move |_| {
-                    sender.input(InputDeviceRevealerButtonInput::Clicked);
-                },
-
-                model.content.widget().clone() {},
-            },
-
-            #[name = "use_button"]
-            gtk::Button {
-                add_css_class: "audio-dashboard-use-button",
-                set_label: "Use",
-                set_valign: gtk::Align::Center,
-                #[watch]
-                set_visible: !model.is_default,
-                connect_clicked[sender] => move |_| {
-                    sender.input(InputDeviceRevealerButtonInput::Clicked);
-                },
-            },
-
-            #[name = "hide_button"]
-            gtk::Button {
-                add_css_class: "ok-button-surface",
-                add_css_class: "audio-dashboard-icon-button",
-                set_valign: gtk::Align::Center,
-                #[watch]
-                set_icon_name: if model.hidden { "view-conceal-symbolic" } else { "view-reveal-symbolic" },
-                #[watch]
-                set_tooltip_text: Some(if model.hidden { "Hidden — click to show in cycling" } else { "Visible — click to hide from cycling" }),
-                connect_clicked[sender] => move |_| {
-                    sender.input(InputDeviceRevealerButtonInput::ToggleHidden);
-                },
-            },
-
-            #[name = "edit_button"]
-            gtk::MenuButton {
-                add_css_class: "ok-button-surface",
-                add_css_class: "audio-dashboard-icon-button",
-                set_icon_name: "document-edit-symbolic",
-                set_valign: gtk::Align::Center,
-                set_tooltip_text: Some("Rename this device"),
-
-                #[wrap(Some)]
-                set_popover = &gtk::Popover {
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_spacing: 8,
-                        set_margin_start: 8,
-                        set_margin_end: 8,
-                        set_margin_top: 8,
-                        set_margin_bottom: 8,
-
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_label: "Display name",
-                            set_halign: gtk::Align::Start,
-                        },
-
-                        #[name = "alias_entry"]
-                        gtk::Entry {
-                            set_width_chars: 20,
-                        },
-                    },
-                },
-            },
-        }
+    fn name(device: &InputDevice) -> String {
+        device.name.get()
     }
 
-    fn init(
-        params: Self::Init,
-        root: Self::Root,
-        sender: ComponentSender<Self>,
-    ) -> ComponentParts<Self> {
-        let mut watcher_token = WatcherToken::new();
+    fn description(device: &InputDevice) -> String {
+        device.description.get()
+    }
 
-        let token = watcher_token.reset();
+    fn icon(device: &Arc<InputDevice>) -> &'static str {
+        get_audio_in_icon_device_aware(device)
+    }
 
-        spawn_default_input_watcher(&sender, Some(token), || {
-            InputDeviceRevealerButtonCommandOutput::DefaultDeviceChanged
+    fn is_default(device: &Arc<InputDevice>) -> bool {
+        audio_service()
+            .default_input
+            .get()
+            .map(|d| d.eq(device))
+            .unwrap_or(false)
+    }
+
+    fn spawn_default_watcher(
+        sender: &ComponentSender<DeviceRevealerButtonModel<Self>>,
+        token: CancellationToken,
+    ) {
+        spawn_default_input_watcher(sender, Some(token), || {
+            DeviceRevealerButtonCommandOutput::DefaultDeviceChanged
         });
-
-        let device_name = params.input_device.name.get();
-        let raw_description = params.input_device.description.get();
-        let prefs = lock_prefs().get(&device_name);
-        let is_default = is_current_default(&params.input_device);
-        let button_content = RevealerButtonIconLabelModel::builder()
-            .launch(RevealerButtonIconLabelInit {
-                label: display_alias(&device_name, &raw_description),
-                icon_name: get_audio_in_icon_device_aware(&params.input_device).to_string(),
-                secondary_icon_name: "".to_string(),
-                subtitle: compute_subtitle(is_default, prefs.alias.is_some(), &raw_description),
-            })
-            .detach();
-        button_content.emit(RevealerButtonIconLabelInput::SetActive(is_default));
-
-        let model = InputDeviceRevealerButtonModel {
-            input_device: params.input_device,
-            content: button_content,
-            watcher_token,
-            hidden: prefs.hidden,
-            is_default,
-        };
-
-        let widgets = view_output!();
-
-        widgets
-            .content_button
-            .set_class_active("active", model.is_default);
-
-        if let Some(popover) = widgets.edit_button.popover() {
-            let entry = widgets.alias_entry.clone();
-            let show_device_name = device_name.clone();
-            popover.connect_show(move |_| {
-                let prefs = lock_prefs().get(&show_device_name);
-                entry.set_text(prefs.alias.as_deref().unwrap_or(""));
-            });
-
-            let entry = widgets.alias_entry.clone();
-            let sender = sender.clone();
-            popover.connect_closed(move |_| {
-                sender.input(InputDeviceRevealerButtonInput::EditCommitted(
-                    entry.text().to_string(),
-                ));
-            });
-        }
-
-        ComponentParts { model, widgets }
     }
 
-    fn update_with_view(
-        &mut self,
-        widgets: &mut Self::Widgets,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
-        match message {
-            InputDeviceRevealerButtonInput::Clicked => {
-                let device = self.input_device.clone();
-                tokio::spawn(async move {
-                    let _ = device.set_as_default().await;
-                });
-            }
-            InputDeviceRevealerButtonInput::EditCommitted(alias) => {
-                let device_name = self.input_device.name.get();
-                let alias = alias.trim();
-                let alias = (!alias.is_empty()).then(|| alias.to_string());
-                let has_alias = alias.is_some();
-                lock_prefs().set_alias(&device_name, alias);
-                self.content
-                    .emit(RevealerButtonIconLabelInput::SetLabel(display_alias(
-                        &device_name,
-                        &self.input_device.description.get(),
-                    )));
-                self.content
-                    .emit(RevealerButtonIconLabelInput::SetSubtitle(compute_subtitle(
-                        self.is_default,
-                        has_alias,
-                        &self.input_device.description.get(),
-                    )));
-            }
-            InputDeviceRevealerButtonInput::ToggleHidden => {
-                self.hidden = !self.hidden;
-                let device_name = self.input_device.name.get();
-                lock_prefs().set_hidden(&device_name, self.hidden);
-            }
-            InputDeviceRevealerButtonInput::DefaultDeviceChanged => {
-                self.is_default = is_current_default(&self.input_device);
-                widgets
-                    .content_button
-                    .set_class_active("active", self.is_default);
-                let device_name = self.input_device.name.get();
-                let has_alias = lock_prefs().get(&device_name).alias.is_some();
-                self.content
-                    .emit(RevealerButtonIconLabelInput::SetSubtitle(compute_subtitle(
-                        self.is_default,
-                        has_alias,
-                        &self.input_device.description.get(),
-                    )));
-                self.content
-                    .emit(RevealerButtonIconLabelInput::SetActive(self.is_default));
-            }
-            InputDeviceRevealerButtonInput::Revealed => {
-                let token = self.watcher_token.reset();
-
-                spawn_default_input_watcher(&sender, Some(token), || {
-                    InputDeviceRevealerButtonCommandOutput::DefaultDeviceChanged
-                });
-            }
-            InputDeviceRevealerButtonInput::Hidden => {
-                self.watcher_token.reset();
-            }
-        }
-        self.update_view(widgets, sender);
-    }
-
-    fn update_cmd(
-        &mut self,
-        message: Self::CommandOutput,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
-        match message {
-            InputDeviceRevealerButtonCommandOutput::DefaultDeviceChanged => {
-                sender.input(InputDeviceRevealerButtonInput::DefaultDeviceChanged);
-            }
-        }
-    }
-}
-
-fn is_current_default(device: &Arc<InputDevice>) -> bool {
-    audio_service()
-        .default_input
-        .get()
-        .map(|d| d.eq(device))
-        .unwrap_or(false)
-}
-
-/// The active device's subtitle is always "Active"; an un-renamed device
-/// already shows its real name as the title, so the subtitle stays empty;
-/// a renamed one shows the real name underneath so the alias doesn't hide
-/// what it actually is.
-fn compute_subtitle(is_default: bool, has_alias: bool, raw_description: &str) -> String {
-    if is_default {
-        "Active".to_string()
-    } else if has_alias {
-        raw_description.to_string()
-    } else {
-        String::new()
+    fn make_default(device: Arc<InputDevice>) {
+        tokio::spawn(async move {
+            let _ = device.set_as_default().await;
+        });
     }
 }

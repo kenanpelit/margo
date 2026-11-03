@@ -69,9 +69,7 @@ impl Component for AudioInRevealedContentModel {
             create: Box::new(move |item| {
                 let device = item.clone();
                 let revealer_button = InputDeviceRevealerButtonModel::builder()
-                    .launch(InputDeviceRevealerButtonInit {
-                        input_device: device,
-                    })
+                    .launch(InputDeviceRevealerButtonInit { device })
                     .detach();
 
                 Box::new(revealer_button) as Box<dyn GenericWidgetController>
