@@ -82,9 +82,70 @@ pub fn subscribe() -> broadcast::Receiver<ToastEvent> {
     bus().subscribe()
 }
 
+/// Paths whose failed save was already toasted (cleared by a good save).
+static SIDE_SAVE_TOASTED: std::sync::Mutex<Vec<std::path::PathBuf>> =
+    std::sync::Mutex::new(Vec::new());
+
+/// Report the outcome of a side-file save (`ai.json`, `translate.json`,
+/// `mtune.toml`, …): a failure is logged every time and toasted once per
+/// file until a save to it succeeds again, so a slider drag over a broken
+/// file doesn't stack toasts.
+pub fn report_side_save(path: &std::path::Path, res: Result<(), margo_fs::side_file::SaveError>) {
+    let mut toasted = SIDE_SAVE_TOASTED.lock().unwrap_or_else(|e| e.into_inner());
+    match res {
+        Ok(()) => toasted.retain(|p| p != path),
+        Err(e) => {
+            tracing::warn!(error = %e, "settings not saved");
+            if toasted.iter().any(|p| p == path) {
+                return;
+            }
+            let delivered = try_push_toast(ToastEvent {
+                icon: "dialog-warning-symbolic".to_string(),
+                title: "Settings not saved".to_string(),
+                body: Some(e.to_string()),
+                severity: ToastSeverity::Warn,
+            });
+            if delivered {
+                toasted.push(path.to_path_buf());
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn side_save_failure_toasts_once_per_file_until_it_works() {
+        let mut rx = subscribe();
+        let path = std::path::Path::new("/nonexistent/side-save-test.json");
+        let fail = || {
+            Err(margo_fs::side_file::SaveError::Unparseable {
+                path: path.to_path_buf(),
+                error: "oops".into(),
+            })
+        };
+        report_side_save(path, fail());
+        report_side_save(path, fail());
+        let mut got = 0;
+        while let Ok(ev) = rx.try_recv() {
+            if ev
+                .body
+                .as_deref()
+                .is_some_and(|b| b.contains("side-save-test"))
+            {
+                got += 1;
+            }
+        }
+        assert_eq!(got, 1, "one toast for repeated failures");
+        report_side_save(path, Ok(()));
+        report_side_save(path, fail());
+        assert!(
+            rx.try_recv().is_ok(),
+            "a new failure after a good save toasts again"
+        );
+    }
 
     #[test]
     fn severity_parses_known_names_and_rejects_typos() {

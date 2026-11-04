@@ -249,7 +249,7 @@ impl Component for TranslateMenuWidgetModel {
             TranslateMenuWidgetInput::TargetLangChanged(lang) => {
                 let mut s = config::load();
                 s.target_lang = lang;
-                config::save(&s);
+                mshell_config::toast::report_side_save(&config::settings_path(), config::save(&s));
             }
             TranslateMenuWidgetInput::CopyResult => {
                 if let Some((r, _)) = &self.result {

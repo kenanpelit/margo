@@ -10,11 +10,16 @@ description = "GTK-free multi-provider AI chat engine for margo — streaming + 
 # Shared by the shell's AI bar widget / menu and the Settings → AI page.
 
 [dependencies]
+margo-fs.workspace = true
+tracing = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 ureq = { workspace = true }
 keyring = { workspace = true }
 zeroize = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
 
 [lints]
 workspace = true

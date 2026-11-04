@@ -7,7 +7,6 @@ pub mod migration;
 pub mod paths;
 pub mod plugin_bridge;
 pub mod schema;
-pub mod side_config;
 pub mod toast;
 
 /// Tests that touch `$HOME` (every path in `paths.rs` derives from it) share

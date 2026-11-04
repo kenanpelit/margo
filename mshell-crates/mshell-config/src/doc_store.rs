@@ -156,7 +156,7 @@ where
     fn mark_broken(&self, error: String) {
         let was_broken = self.state.borrow().broken.is_some();
         if !was_broken {
-            match crate::side_config::backup_broken(&self.path) {
+            match margo_fs::side_file::backup_broken(&self.path) {
                 Ok(bak) => tracing::warn!(
                     doc = self.label,
                     path = %self.path.display(),

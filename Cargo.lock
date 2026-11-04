@@ -4547,6 +4547,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "margo-fs"
+version = "4.6.1"
+dependencies = [
+ "tempfile",
+]
+
+[[package]]
 name = "margo-layouts"
 version = "4.6.1"
 dependencies = [
@@ -4984,8 +4991,11 @@ name = "mshell-ai"
 version = "4.6.1"
 dependencies = [
  "keyring",
+ "margo-fs",
  "serde",
  "serde_json",
+ "tempfile",
+ "tracing",
  "ureq",
  "zeroize",
 ]
@@ -5070,6 +5080,7 @@ version = "4.6.1"
 dependencies = [
  "dirs",
  "figment",
+ "margo-fs",
  "mshell-plugins",
  "notify",
  "reactive_graph",
@@ -5472,6 +5483,7 @@ dependencies = [
  "fontconfig",
  "futures",
  "margo-config",
+ "margo-fs",
  "margo-logging",
  "mcal",
  "mctl",
@@ -5497,6 +5509,7 @@ dependencies = [
  "relm4",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "toml",
  "tracing",
@@ -5539,10 +5552,13 @@ version = "4.6.1"
 dependencies = [
  "chrono",
  "keyring",
+ "margo-fs",
  "rustls",
  "serde",
  "serde_json",
  "sha2",
+ "tempfile",
+ "tracing",
  "tungstenite",
  "ureq",
  "uuid",

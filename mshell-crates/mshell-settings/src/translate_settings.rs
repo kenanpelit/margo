@@ -296,6 +296,9 @@ impl Component for TranslateSettingsModel {
 
 impl TranslateSettingsModel {
     fn save(&self) {
-        config::save(&self.settings);
+        mshell_config::toast::report_side_save(
+            &config::settings_path(),
+            config::save(&self.settings),
+        );
     }
 }

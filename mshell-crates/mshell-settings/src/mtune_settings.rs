@@ -6,17 +6,18 @@
 //! so it rescans immediately; the other knobs take effect on mtune's next
 //! launch.
 
+use margo_fs::side_file::{self, SaveError, SideLoad};
 use mshell_services::mtune::mtune_service;
 use mshell_services::tokio_rt_spawn;
 use relm4::gtk::glib;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 // ── mtune.toml mirror (only the fields this page edits are named; the
-//    rest round-trip through `#[serde(flatten)]` so a hand-edited file
-//    keeps its other keys). ────────────────────────────────────────────
+//    rest round-trip through `#[serde(flatten)]`, at the top level and in
+//    each section, so a hand-edited file keeps its other keys). ─────────
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 struct MtuneToml {
@@ -26,6 +27,10 @@ struct MtuneToml {
     playback: PlaybackSection,
     #[serde(default)]
     behaviour: BehaviourSection,
+    /// Every other top-level key/section mtune has (or adds later), kept
+    /// as is so a save from this page never drops it.
+    #[serde(flatten)]
+    rest: toml::Table,
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
@@ -85,27 +90,40 @@ fn config_path() -> PathBuf {
     base.join("margo").join("mtune.toml")
 }
 
+/// Load mtune.toml. A file that does not parse shows defaults (with a
+/// warning and a `mtune.toml.bak` copy); [`save`] then refuses to write.
 fn load() -> MtuneToml {
-    std::fs::read_to_string(config_path())
-        .ok()
-        .and_then(|s| toml::from_str(&s).ok())
-        .unwrap_or_default()
+    load_from(&config_path())
 }
 
+fn load_from(path: &Path) -> MtuneToml {
+    let loaded = side_file::load(path, toml::from_str::<MtuneToml>);
+    if let SideLoad::Broken { error, backup } = &loaded {
+        tracing::warn!(
+            path = %path.display(),
+            backup = ?backup,
+            error,
+            "mtune-settings: mtune.toml does not parse; showing defaults, not saving over it"
+        );
+    }
+    loaded.or_default()
+}
+
+/// Save mtune.toml (atomic). Never over a file that does not parse:
+/// mtune owns it, and `library.roots` would be reset to `[]`.
 fn save(cfg: &MtuneToml) {
     let path = config_path();
-    if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
-    }
-    match toml::to_string_pretty(cfg) {
-        Ok(body) => {
-            let tmp = path.with_extension("toml.tmp");
-            if std::fs::write(&tmp, body).is_ok() {
-                let _ = std::fs::rename(&tmp, &path);
-            }
-        }
-        Err(e) => tracing::warn!(error = %e, "mtune-settings: serialize failed"),
-    }
+    mshell_config::toast::report_side_save(&path, save_to(&path, cfg));
+}
+
+fn save_to(path: &Path, cfg: &MtuneToml) -> Result<(), SaveError> {
+    let body = toml::to_string_pretty(cfg).map_err(|e| SaveError::Io {
+        path: path.to_path_buf(),
+        error: std::io::Error::other(e),
+    })?;
+    side_file::save(path, body.as_bytes(), |raw| {
+        toml::from_str::<MtuneToml>(raw).map(|_| ())
+    })
 }
 
 const ON_START: &[(&str, &str)] = &[
@@ -452,5 +470,42 @@ fn rebuild_roots(list: &gtk::Box, roots: &[String], sender: &ComponentSender<Mtu
         row.append(&label);
         row.append(&remove);
         list.append(&row);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// One typo in mtune.toml must not cost the user their library roots.
+    #[test]
+    fn unparseable_mtune_toml_is_never_overwritten() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mtune.toml");
+        let broken = "[library]\nroots = [\"/music\"\n[behaviour]\nclose_to_tray = false\n";
+        std::fs::write(&path, broken).unwrap();
+        let mut cfg = load_from(&path);
+        cfg.behaviour.close_to_tray = true;
+        assert!(save_to(&path, &cfg).is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), broken);
+        assert!(dir.path().join("mtune.toml.bak").exists());
+    }
+
+    /// Sections and keys this page doesn't know (mtune adds them) survive.
+    #[test]
+    fn unknown_sections_and_keys_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mtune.toml");
+        let body = "volume = 0.5\n\n[library]\nroots = [\"/music\"]\nscan = \"auto\"\n\n[ui]\ntheme = \"dark\"\n";
+        std::fs::write(&path, body).unwrap();
+        let mut cfg = load_from(&path);
+        cfg.behaviour.start_hidden = true;
+        save_to(&path, &cfg).unwrap();
+        let back: toml::Table = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(back["volume"].as_float(), Some(0.5));
+        assert_eq!(back["ui"]["theme"].as_str(), Some("dark"));
+        assert_eq!(back["library"]["scan"].as_str(), Some("auto"));
+        assert_eq!(back["library"]["roots"][0].as_str(), Some("/music"));
+        assert_eq!(back["behaviour"]["start_hidden"].as_bool(), Some(true));
     }
 }

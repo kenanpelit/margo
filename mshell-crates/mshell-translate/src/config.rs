@@ -6,8 +6,9 @@
 //! widget / menu read through here, so they always agree.
 
 use crate::{Provider, TranslateConfig};
+use margo_fs::side_file::{self, SaveError, SideLoad};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const KEYRING_SERVICE: &str = "margo-translate";
 const KEYRING_USER: &str = "deepl_api_key";
@@ -65,25 +66,45 @@ fn config_dir() -> PathBuf {
         .join("margo")
 }
 
-fn settings_path() -> PathBuf {
+/// Where the settings file lives.
+pub fn settings_path() -> PathBuf {
     config_dir().join("translate.json")
 }
 
-/// Load settings (defaults when the file is missing or unparseable).
+/// Load settings. Defaults when the file is missing, and also when it does
+/// not parse — then with a warning and a `translate.json.bak` copy, and [`save`]
+/// refuses to write over it until it is fixed.
 pub fn load() -> TranslateSettings {
-    std::fs::read_to_string(settings_path())
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+    load_from(&settings_path())
 }
 
-/// Persist settings to `translate.json` (best-effort; creates the dir).
-pub fn save(s: &TranslateSettings) {
-    let dir = config_dir();
-    let _ = std::fs::create_dir_all(&dir);
-    if let Ok(json) = serde_json::to_string_pretty(s) {
-        let _ = std::fs::write(settings_path(), json);
+fn load_from(path: &Path) -> TranslateSettings {
+    let loaded = side_file::load(path, |raw| serde_json::from_str::<TranslateSettings>(raw));
+    if let SideLoad::Broken { error, backup } = &loaded {
+        tracing::warn!(
+            path = %path.display(),
+            backup = ?backup,
+            error,
+            "settings file does not parse; using defaults and not saving over it"
+        );
     }
+    loaded.or_default()
+}
+
+/// Persist settings to `translate.json` (atomic; creates the dir). Refuses while
+/// the file on disk does not parse, so a typo never costs the whole file.
+pub fn save(s: &TranslateSettings) -> Result<(), SaveError> {
+    save_to(&settings_path(), s)
+}
+
+fn save_to(path: &Path, s: &TranslateSettings) -> Result<(), SaveError> {
+    let json = serde_json::to_string_pretty(s).map_err(|e| SaveError::Io {
+        path: path.to_path_buf(),
+        error: std::io::Error::other(e),
+    })?;
+    side_file::save(path, json.as_bytes(), |raw| {
+        serde_json::from_str::<TranslateSettings>(raw).map(|_| ())
+    })
 }
 
 fn keyring_entry() -> Option<keyring::Entry> {
@@ -118,5 +139,41 @@ pub fn resolved() -> TranslateConfig {
         target_lang: s.target_lang,
         source_lang: (!s.source_lang.is_empty()).then_some(s.source_lang),
         deepl_api_key: deepl_api_key(),
+    }
+}
+
+#[cfg(test)]
+mod side_file_tests {
+    use super::*;
+
+    /// A translate.json with a typo must survive a Settings change: load falls
+    /// back to defaults, but save refuses to write those over the file.
+    #[test]
+    fn unparseable_file_is_never_overwritten() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("translate.json");
+        let broken = "{\"provider\": \"x\", oops}";
+        std::fs::write(&path, broken).unwrap();
+
+        let s = load_from(&path);
+        assert!(save_to(&path, &s).is_err(), "save is refused");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), broken);
+        assert!(
+            dir.path().join("translate.json.bak").exists(),
+            "a copy is kept"
+        );
+    }
+
+    #[test]
+    fn round_trips_through_an_atomic_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sub/translate.json");
+        let s = TranslateSettings::default();
+        save_to(&path, &s).unwrap();
+        let back = load_from(&path);
+        assert_eq!(
+            serde_json::to_string(&back).unwrap(),
+            serde_json::to_string(&s).unwrap()
+        );
     }
 }

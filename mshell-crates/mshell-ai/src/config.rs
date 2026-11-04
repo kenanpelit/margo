@@ -6,8 +6,9 @@
 //! here, so they always agree.
 
 use crate::{AiConfig, Provider};
+use margo_fs::side_file::{self, SaveError, SideLoad};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const KEYRING_SERVICE: &str = "margo-ai";
 const KEYRING_USER: &str = "api_key";
@@ -57,25 +58,45 @@ fn config_dir() -> PathBuf {
         .join("margo")
 }
 
-fn settings_path() -> PathBuf {
+/// Where the settings file lives.
+pub fn settings_path() -> PathBuf {
     config_dir().join("ai.json")
 }
 
-/// Load settings (defaults when the file is missing or unparseable).
+/// Load settings. Defaults when the file is missing, and also when it does
+/// not parse — then with a warning and a `ai.json.bak` copy, and [`save`]
+/// refuses to write over it until it is fixed.
 pub fn load() -> AiSettings {
-    std::fs::read_to_string(settings_path())
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+    load_from(&settings_path())
 }
 
-/// Persist settings to `ai.json` (best-effort; creates the dir).
-pub fn save(s: &AiSettings) {
-    let dir = config_dir();
-    let _ = std::fs::create_dir_all(&dir);
-    if let Ok(json) = serde_json::to_string_pretty(s) {
-        let _ = std::fs::write(settings_path(), json);
+fn load_from(path: &Path) -> AiSettings {
+    let loaded = side_file::load(path, |raw| serde_json::from_str::<AiSettings>(raw));
+    if let SideLoad::Broken { error, backup } = &loaded {
+        tracing::warn!(
+            path = %path.display(),
+            backup = ?backup,
+            error,
+            "settings file does not parse; using defaults and not saving over it"
+        );
     }
+    loaded.or_default()
+}
+
+/// Persist settings to `ai.json` (atomic; creates the dir). Refuses while
+/// the file on disk does not parse, so a typo never costs the whole file.
+pub fn save(s: &AiSettings) -> Result<(), SaveError> {
+    save_to(&settings_path(), s)
+}
+
+fn save_to(path: &Path, s: &AiSettings) -> Result<(), SaveError> {
+    let json = serde_json::to_string_pretty(s).map_err(|e| SaveError::Io {
+        path: path.to_path_buf(),
+        error: std::io::Error::other(e),
+    })?;
+    side_file::save(path, json.as_bytes(), |raw| {
+        serde_json::from_str::<AiSettings>(raw).map(|_| ())
+    })
 }
 
 fn keyring_entry() -> Option<keyring::Entry> {
@@ -113,5 +134,38 @@ pub fn resolved() -> AiConfig {
         temperature: s.temperature,
         max_tokens: s.max_tokens,
         system_prompt: s.system_prompt,
+    }
+}
+
+#[cfg(test)]
+mod side_file_tests {
+    use super::*;
+
+    /// A ai.json with a typo must survive a Settings change: load falls
+    /// back to defaults, but save refuses to write those over the file.
+    #[test]
+    fn unparseable_file_is_never_overwritten() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ai.json");
+        let broken = "{\"provider\": \"x\", oops}";
+        std::fs::write(&path, broken).unwrap();
+
+        let s = load_from(&path);
+        assert!(save_to(&path, &s).is_err(), "save is refused");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), broken);
+        assert!(dir.path().join("ai.json.bak").exists(), "a copy is kept");
+    }
+
+    #[test]
+    fn round_trips_through_an_atomic_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sub/ai.json");
+        let s = AiSettings::default();
+        save_to(&path, &s).unwrap();
+        let back = load_from(&path);
+        assert_eq!(
+            serde_json::to_string(&back).unwrap(),
+            serde_json::to_string(&s).unwrap()
+        );
     }
 }

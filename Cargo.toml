@@ -2,6 +2,7 @@
 members = [
     "margo",
     "margo-config",
+    "margo-fs",
     "margo-layouts",
     "margo-logging",
     "margo-portal",
@@ -279,6 +280,7 @@ wayle-weather = "0.1"
 
 # Internal crates — paths relative to workspace root.
 mcal = { path = "mcal" }
+margo-fs = { path = "margo-fs" }
 mshell-auth = { path = "mshell-crates/mshell-auth" }
 mshell-cache = { path = "mshell-crates/mshell-cache" }
 mshell-cli-style = { path = "mshell-crates/mshell-cli-style" }
