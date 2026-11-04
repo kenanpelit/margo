@@ -5,6 +5,20 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.9.2] – 2026-11-04
+
+**Menu height settings work for every list menu: AI Agents, GitHub,
+Crashes, USB, Discord voice, Podman, Notes, UFW, Network and the CPU
+dashboard tabs grow up to the height you set.**
+
+### Fixed
+
+- These menus scrolled their list inside a scroller with a constant cap
+  (320–560 px), so a larger height in Settings → Widgets changed nothing.
+  Like the clipboard and notification lists, each list now caps at the
+  menu's configured height (re-read every time the menu opens); with no
+  height set the old cap stays.
+
 ## [4.9.1] – 2026-11-04
 
 **The VPN pill shows the exit city again — for real this time, including
