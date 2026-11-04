@@ -105,6 +105,28 @@ impl MargoState {
         let (new_config, sources) =
             margo_config::parse_config_with_defaults_and_sources(self.config_path.as_deref())
                 .with_context(|| "reload margo config")?;
+        // The keymap is the last step that can still fail (an xkb layout
+        // typo passes the validator). Apply it before committing anything
+        // else: a reload that fails here must not become the newest "last
+        // good" generation, nor have its fingerprint recorded as applied.
+        // smithay keeps the old keymap when compiling the new one fails.
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            let xkb_options = new_config.xkb_rules.options_or_none();
+            keyboard
+                .set_xkb_config(
+                    self,
+                    smithay::input::keyboard::XkbConfig {
+                        rules: &new_config.xkb_rules.rules,
+                        model: &new_config.xkb_rules.model,
+                        layout: &new_config.xkb_rules.layout,
+                        variant: &new_config.xkb_rules.variant,
+                        options: xkb_options,
+                    },
+                )
+                .map_err(|e| anyhow::anyhow!("reload xkb config: {e:?}"))?;
+            keyboard.change_repeat_info(new_config.repeat_rate, new_config.repeat_delay);
+        }
+
         self.config_fingerprint = Some(config_fingerprint(&sources));
         self.config_sources = sources;
 
@@ -124,9 +146,14 @@ impl MargoState {
             && let Ok(raw) = std::fs::read_to_string(&path)
         {
             if auto {
-                let _ = generations::save_coalescing(&raw, 20, GENERATION_COALESCE_WINDOW);
+                let _ = generations::save_coalescing_to(
+                    &self.generations_dir,
+                    &raw,
+                    20,
+                    GENERATION_COALESCE_WINDOW,
+                );
             } else {
-                let _ = generations::save(&raw, 20);
+                let _ = generations::save_to(&self.generations_dir, &raw, 20);
             }
         }
 
@@ -138,23 +165,6 @@ impl MargoState {
         // A reload re-parses the rulebook from scratch — a `windowrule-once`
         // the user is actively iterating on should be able to fire again.
         self.rule_once_consumed.clear();
-
-        if let Some(keyboard) = self.seat.get_keyboard() {
-            let xkb_options = new_config.xkb_rules.options_or_none();
-            keyboard
-                .set_xkb_config(
-                    self,
-                    smithay::input::keyboard::XkbConfig {
-                        rules: &new_config.xkb_rules.rules,
-                        model: &new_config.xkb_rules.model,
-                        layout: &new_config.xkb_rules.layout,
-                        variant: &new_config.xkb_rules.variant,
-                        options: xkb_options,
-                    },
-                )
-                .map_err(|e| anyhow::anyhow!("reload xkb config: {e:?}"))?;
-            keyboard.change_repeat_info(new_config.repeat_rate, new_config.repeat_delay);
-        }
 
         self.input_keyboard.repeat_rate = new_config.repeat_rate;
         self.input_keyboard.repeat_delay = new_config.repeat_delay;

@@ -63,6 +63,7 @@ mod pacing;
 mod pointer_constraints;
 mod pointer_gestures;
 mod preferred_scale;
+mod reload;
 mod repaint;
 mod screencopy;
 mod scripting;

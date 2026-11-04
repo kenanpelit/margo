@@ -491,7 +491,11 @@ pub struct MargoState {
     /// fast as the loop can spin (between vblanks). The vblank handler
     /// decrements this and, if zero, re-emits the deferred ping.
     pending_vblanks: u32,
-    config_path: Option<PathBuf>,
+    pub(crate) config_path: Option<PathBuf>,
+    /// Where reloads save config generations ("last good" files boot can
+    /// fall back to): `generations::generations_dir()`; tests point it at
+    /// a scratch directory.
+    pub(crate) generations_dir: PathBuf,
     /// `auto_reload_config` (default on) — live filesystem watcher over
     /// the config file + everything it currently `source`s/`include`s.
     /// `None` when the setting is off or the watcher itself couldn't be
@@ -502,7 +506,7 @@ pub struct MargoState {
     /// from the last successful parse — the watcher's file set.
     config_sources: Vec<std::path::PathBuf>,
     /// [`config_fingerprint`] of `config_sources` as last applied.
-    config_fingerprint: Option<u64>,
+    pub(crate) config_fingerprint: Option<u64>,
     /// Where `config_watcher`'s background thread sends once a batch of
     /// filesystem changes has settled — see `set_config_reload_sender`.
     config_reload_tx: Option<calloop::channel::Sender<()>>,
@@ -807,6 +811,7 @@ impl MargoState {
             repaint_ping: None,
             pending_vblanks: 0,
             config_path,
+            generations_dir: margo_config::generations::generations_dir(),
             // Set up once the full `event_loop` handle exists — see
             // `main.rs`'s post-construction setup.
             config_watcher: None,
