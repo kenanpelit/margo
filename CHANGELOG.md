@@ -5,6 +5,83 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.9.0] – 2026-11-04
+
+**The best ideas of the noctalia community plugins, built natively into
+margo and mshell: output mirroring, a USB drives menu, a process / ports /
+drives dashboard, OCR and QR from a region, Arch news, rollback and
+.pacnew review in System Updates, real Claude plan limits, GitHub, Discord
+voice, a hotspot, mic noise suppression and eight new launcher providers.**
+Every new pill, tile and toast is opt-in; nothing changes until you add it.
+
+### Added
+
+- **Output mirroring.** `mirror_output`, `toggle_mirror`, `stop_mirror`
+  actions and `mctl mirror start|toggle|stop|status`: one output's picture is
+  scaled and letterboxed onto another (presentation mode). It stops on unplug.
+  A Mirror Control Center tile is available, and the Layout page's Mirror
+  profile now uses it instead of `wl-mirror`.
+- **Settings → Monitors rebuilt:** an arrangement map (drag to snap, or
+  Left/Right/Above/Below), resolution and refresh lists from the output's
+  real modes, rotation, scale and VRR. Apply tests the layout, applies it
+  live and reverts after 15 s unless you press Keep; Keep writes
+  `monitorrule` lines.
+- **USB drives** pill and menu over udisks2: open, unmount, unlock/lock LUKS,
+  safe removal, plug/unplug toasts.
+- **CPU dashboard tabs:** Processes (sort, search, group by app window,
+  confirmed kill), Ports (listening sockets, kill), Drives (NVMe temperature
+  and SMART health behind one polkit prompt), plus Intel iGPU load with
+  per-process GPU use and ThinkPad fan level / manual control.
+- **System Updates:** Arch news before upgrading, download size, a background
+  upgrade through pkexec with a live log, update history with per-package
+  rollback from the cache, .pacnew/.pacsave review (diff, 3-way merge,
+  replace/delete), hidden packages and `IgnorePkg`, arch-audit security
+  advisories (pill badge + Security tab) and an optional topgrade backend.
+- **Screenshots:** OCR a region to the clipboard (tesseract, eng+tur when
+  installed), scan QR codes and barcodes, extract a colour palette — from the
+  screenshot menu, `screenshot-ocr/qr/palette` actions and `mshellctl`.
+  Screen recording can mix desktop audio with the microphone and use
+  gpu-screen-recorder (VAAPI).
+- **Compositor indicators:** Keymode pill (+ optional toast), Scroller ribbon
+  showing columns outside the viewport, Scratchpad chips with
+  `togglescratchpadid`, an X11 tag for XWayland windows, `resetmfact` with a
+  reset button in the Layout menu, optional window icons after Margo Tags.
+- **Agents** pill and menu replacing the model-usage plugin: real Claude plan
+  limits with reset times and a burn-rate forecast, Codex limits, today's
+  local usage, live Claude Code sessions (jump to the terminal, resume).
+- **GitHub** pill and menu (inbox, mark read, my PRs with CI/review state)
+  through `gh`.
+- **Discord voice** pill and call panel over Discord's local RPC: mute,
+  deafen, leave, participants and per-user volume.
+- **Network and audio:** Wi-Fi hotspot with connected clients, an on-demand
+  speed test, RNNoise mic noise suppression, Bluetooth "Connect" rows in the
+  output picker, a tunnel throughput graph in the VPN menu, and Hotspot /
+  Noise suppression tiles.
+- **Power and idle:** battery history graph (6h/24h/7d), USB-C charger role
+  and power, and an optional lid-switch inhibitor while Keep Awake is on.
+- **Notifications:** auto do-not-disturb while the screen is shared,
+  per-app/contact sound rules, a Crashes menu (core dumps, per-program mute,
+  this boot's journal errors), JSON output mode and forced refresh for custom
+  pills, scrcpy phone mirroring in the Valent menu.
+- **Launcher:** `svc` systemd units, `fs` file search, pass OTP and fields,
+  `~/.ssh/config` hosts, a qalc calculator backend with history, path
+  completion and run-in-terminal for `>run`, `web` favourite sites and
+  `webapp` Chromium web-app maker.
+- `docs/community-plugins-review.md`: which noctalia community plugins were
+  worth porting, and why.
+
+### Fixed
+
+- The VPN pill shows the exit city again; the status stream arrives before
+  Mullvad knows the location.
+- margo advertised only the current mode of each output, so wlr-randr and
+  kanshi could not switch modes; every mode is listed now.
+- margo reported pid 0 for every window.
+- A screenshot region drawn on a monitor that is not at 0,0 captured the
+  wrong monitor.
+- The launcher's "Screenshot: region / full screen" entries did nothing.
+- A failed screen recording left the menu and pill on "Recording…".
+
 ## [4.8.2] – 2026-11-04
 
 **The camera indicator no longer stays on after login when nothing uses
