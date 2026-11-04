@@ -30,6 +30,11 @@ enum Cmd {
         /// Machine-readable JSON.
         #[arg(long)]
         json: bool,
+        /// Keep running and print a line on every change (from `mullvad
+        /// status listen`) until stdin closes. With `--json`, one JSON object
+        /// per line: mshell's VPN pill reads this instead of polling.
+        #[arg(long)]
+        follow: bool,
     },
     /// Connect using the current relay settings.
     Connect,
@@ -184,13 +189,18 @@ fn main() {
         pill: false,
         verbose: false,
         json: false,
+        follow: false,
     });
 
     let ok = match cmd {
         Cmd::Status {
+            json, follow: true, ..
+        } => follow_status(json),
+        Cmd::Status {
             pill,
             verbose,
             json,
+            follow: false,
         } => {
             print_status(pill, verbose, json);
             true
@@ -683,6 +693,38 @@ fn run_fastest(country: &str, add_to_fav: bool) -> bool {
     }
 }
 
+/// `mvpn status --follow`: one line per change, flushed at once (stdout is a
+/// pipe when mshell reads it). Returns `false` when the daemon stream ends.
+fn follow_status(json: bool) -> bool {
+    use std::io::Write as _;
+    status::follow(|st| {
+        let mut out = std::io::stdout().lock();
+        if json {
+            writeln!(
+                out,
+                "{}",
+                serde_json::to_string(st).unwrap_or_else(|_| "{}".into())
+            )?;
+        } else {
+            writeln!(out, "{}", status_line(st))?;
+        }
+        out.flush()
+    })
+}
+
+fn status_line(st: &status::Status) -> String {
+    if st.connected {
+        let where_ = if st.city.is_empty() {
+            st.country.clone()
+        } else {
+            format!("{}, {}", st.city, st.country)
+        };
+        format!("● Connected · {} · {}", st.relay, where_)
+    } else {
+        format!("○ {}", st.state)
+    }
+}
+
 fn print_status(pill: bool, verbose: bool, json: bool) {
     let st = status::query();
     if pill {
@@ -709,14 +751,5 @@ fn print_status(pill: bool, verbose: bool, json: bool) {
         println!();
         return;
     }
-    if st.connected {
-        let where_ = if st.city.is_empty() {
-            st.country.clone()
-        } else {
-            format!("{}, {}", st.city, st.country)
-        };
-        println!("● Connected · {} · {}", st.relay, where_);
-    } else {
-        println!("○ {}", st.state);
-    }
+    println!("{}", status_line(&st));
 }

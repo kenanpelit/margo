@@ -9,6 +9,7 @@ its own (the Mullvad daemon + `~/.mullvad/*` files are the source of truth).
 ```sh
 mvpn                       # status (no args)
 mvpn status [--pill|-v|--json]
+mvpn status --json --follow   # one line per change until stdin closes (mshell's VPN pill)
 mvpn connect | disconnect | toggle | reconnect
 mvpn de                    # random relay in a country
 mvpn us nyc                # random relay in a city

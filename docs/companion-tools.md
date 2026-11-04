@@ -297,6 +297,7 @@ engine (no extra service).
 ```bash
 mvpn                       # connection status (relay · country, city · protocol)
 mvpn status --json         # machine-readable; --pill for the bar feed, -v verbose
+mvpn status --json --follow  # a JSON line per change until stdin closes (mshell's VPN feed)
 mvpn connect / disconnect / toggle / reconnect
 mvpn de            ;  mvpn us nyc      # connect by country / country+city
 mvpn random [cc]                       # a random relay (optionally in a country)

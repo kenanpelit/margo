@@ -1,7 +1,8 @@
 //! Mullvad VPN bar pill — native, selectable widget driving the `mvpn` binary.
 //!
-//! Reads the shared VPN poll ([`VPN_POLL`]: `mvpn status --json` every few
-//! seconds, one loop for every pill and only while one is mapped); shows a
+//! Reads the shared VPN poll ([`VPN_POLL`]: pushed by `mvpn status --json
+//! --follow`, falling back to polling `mvpn status --json` for an older
+//! mvpn; one loop for every pill and only while one is mapped); shows a
 //! shield icon tinted
 //! with the accent (`secure` class) when the tunnel is up, with the relay +
 //! location in the tooltip. Left-click opens the shell's own native,

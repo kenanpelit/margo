@@ -3,7 +3,7 @@
 //! copy of a string-search JSON "parser" that broke on `"key": "v"` spacing
 //! or an escaped quote.)
 
-use crate::shared_poll::SharedPoll;
+use crate::shared_poll::{EventFeed, SharedPoll};
 use serde::Deserialize;
 use std::sync::LazyLock;
 use std::time::Duration;
@@ -48,22 +48,63 @@ pub struct VpnProbe {
     pub blocky: bool,
 }
 
-/// `mvpn` has no push API, so this polls every 5 s. One loop for the whole
-/// shell, shared by every VPN pill and the VPN toast, running only while one
-/// of them is active (a pill mapped, or the toast switched on). Each pill
-/// used to run its own `mvpn status` + `systemctl is-active` per bar, and the
-/// toast producer a third `mvpn status`.
-pub static VPN_POLL: LazyLock<SharedPoll<VpnProbe>> =
-    LazyLock::new(|| SharedPoll::new(|| Duration::from_secs(5), || Box::pin(probe_vpn())));
+/// One VPN source for the whole shell, shared by every pill and the VPN
+/// toast. `mvpn status --json --follow` streams Mullvad daemon changes;
+/// the 5 s probe only reads the in-memory status (and the blocky D-Bus
+/// property). With an older mvpn or a failed stream it falls back to the
+/// old CLI probe until the stream can restart.
+pub static VPN_POLL: LazyLock<SharedPoll<VpnProbe>> = LazyLock::new(|| {
+    SharedPoll::new(|| Duration::from_secs(5), || Box::pin(probe_vpn())).with_feed(EventFeed::new(
+        || {
+            let mut cmd = tokio::process::Command::new("mvpn");
+            cmd.args(["status", "--json", "--follow"]);
+            cmd
+        },
+        accept_status_line,
+        || Duration::from_secs(5),
+        Duration::from_secs(30),
+    ))
+});
+
+static STREAM_STATUS: std::sync::Mutex<Option<VpnStatus>> = std::sync::Mutex::new(None);
+
+fn accept_status_line(line: &str) -> bool {
+    let Ok(status) = serde_json::from_str::<VpnStatus>(line) else {
+        return false;
+    };
+    if let Ok(mut cur) = STREAM_STATUS.lock() {
+        *cur = Some(status);
+    }
+    true
+}
+
+/// The streamed status, while the stream runs. A stopped stream's last
+/// status is dropped, so a restarted one never serves a stale state before
+/// its first line (the probe asks the CLI until then).
+fn streamed_status(alive: bool, cache: &mut Option<VpnStatus>) -> Option<VpnStatus> {
+    if alive {
+        cache.clone()
+    } else {
+        *cache = None;
+        None
+    }
+}
 
 async fn probe_vpn() -> VpnProbe {
-    let status = match tokio::process::Command::new("mvpn")
-        .args(["status", "--json"])
-        .output()
-        .await
-    {
-        Ok(out) => VpnStatus::parse(&String::from_utf8_lossy(&out.stdout)),
-        Err(_) => VpnStatus::default(),
+    let cached = STREAM_STATUS
+        .lock()
+        .ok()
+        .and_then(|mut s| streamed_status(VPN_POLL.feed_alive(), &mut s));
+    let status = match cached {
+        Some(status) => status,
+        None => match tokio::process::Command::new("mvpn")
+            .args(["status", "--json"])
+            .output()
+            .await
+        {
+            Ok(out) => VpnStatus::parse(&String::from_utf8_lossy(&out.stdout)),
+            Err(_) => VpnStatus::default(),
+        },
     };
     // The blocky DNS guard: a D-Bus property read on the shared system-bus
     // connection, not a `systemctl` spawn.
@@ -147,6 +188,27 @@ mod tests {
         assert_eq!(s.summary(), "Disconnected");
         let s = VpnStatus::parse(r#"{"connected":true,"relay":"x"}"#);
         assert_eq!(s.summary(), "Connected · x");
+    }
+
+    #[test]
+    fn stream_status_is_used_only_while_the_stream_runs() {
+        let up = VpnStatus::parse(r#"{"connected":true,"relay":"x"}"#);
+        let mut cache = Some(up.clone());
+        assert_eq!(streamed_status(true, &mut cache), Some(up));
+        // Stream stopped: fall back to the CLI and forget the old value.
+        assert_eq!(streamed_status(false, &mut cache), None);
+        assert_eq!(streamed_status(true, &mut cache), None);
+    }
+
+    /// `mvpn status --json --follow` prints mvpn's full status struct;
+    /// extra fields are ignored.
+    #[test]
+    fn parses_a_follow_line() {
+        let s = VpnStatus::parse(
+            r#"{"connected":true,"connecting":false,"state":"Connected","relay":"de-fra-wg-002","location":"Germany, Frankfurt. IPv4: 1.2.3.4","ipv4":"1.2.3.4","country":"Germany","city":"Frankfurt","tunnel_type":"WireGuard"}"#,
+        );
+        assert!(s.connected);
+        assert_eq!(s.relay, "de-fra-wg-002");
     }
 
     #[test]
