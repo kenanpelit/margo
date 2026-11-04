@@ -23,7 +23,7 @@ unicode-width = "0.1"
 # Live clock on the greeter (matches mlock's centred clock).
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
-mio = { version = "0.8.8", features = ["os-poll", "os-ext"] }
+mio = { version = "1", features = ["os-poll", "os-ext"] }
 
 deentry = "0.0.1"
 

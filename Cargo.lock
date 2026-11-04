@@ -1639,7 +1639,7 @@ checksum = "829d955a0bb380ef178a640b91779e3987da38c9aea133b20614cfed8cdea9c6"
 dependencies = [
  "bitflags 2.11.1",
  "crossterm_winapi",
- "mio 1.2.0",
+ "mio",
  "parking_lot",
  "rustix 0.38.44",
  "signal-hook",
@@ -4743,18 +4743,6 @@ dependencies = [
 
 [[package]]
 name = "mio"
-version = "0.8.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4a650543ca06a924e8b371db273b2756685faae30f8487da1b56505a8f78b0c"
-dependencies = [
- "libc",
- "log",
- "wasi",
- "windows-sys 0.48.0",
-]
-
-[[package]]
-name = "mio"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "50b7e5b27aa02a74bac8c3f23f448f8d87ff11f92d3aac1a6ed369ee08cc56c1"
@@ -4828,7 +4816,7 @@ dependencies = [
  "env_logger",
  "libc",
  "log",
- "mio 0.8.11",
+ "mio",
  "mlogind-proto",
  "nix 0.31.2",
  "once_cell",
@@ -5852,7 +5840,7 @@ dependencies = [
  "kqueue",
  "libc",
  "log",
- "mio 1.2.0",
+ "mio",
  "notify-types",
  "objc2-core-foundation",
  "objc2-core-services",
@@ -7936,7 +7924,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b75a19a7a740b25bc7944bdee6172368f988763b744e3d4dfe753f6b4ece40cc"
 dependencies = [
  "libc",
- "mio 1.2.0",
+ "mio",
  "signal-hook",
 ]
 
@@ -8612,7 +8600,7 @@ checksum = "b52fd3255258d26fac7264ab5a76b53c13367136dc011d3d6ad4f8ed070396a3"
 dependencies = [
  "bytes",
  "libc",
- "mio 1.2.0",
+ "mio",
  "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
