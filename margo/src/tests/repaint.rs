@@ -1050,34 +1050,62 @@ fn legacy_render_retry_suppresses_immediate_global_wakes() {
     fx.server.state.config.per_output_frame_clock = false;
     let output = fx.server.state.monitors[0].output.clone();
 
+    // The repaint ping is counted on a loop of the test's own, so reading
+    // the count never dispatches the server loop. Only a server dispatch
+    // can fire the retry timer, so while we don't run one the gate is
+    // guaranteed to be closed, however long the requests take on a loaded
+    // machine (the old version dispatched the server between requests and
+    // failed whenever 100 of them outlasted the 16 ms backoff).
     let wakes = Arc::new(AtomicUsize::new(0));
     let seen = wakes.clone();
+    let mut wake_loop: calloop::EventLoop<'static, ()> =
+        calloop::EventLoop::try_new().expect("test wake loop");
     let (ping, source) = calloop::ping::make_ping().expect("test legacy retry ping");
-    fx.server
-        .state
-        .loop_handle
+    wake_loop
+        .handle()
         .insert_source(source, move |(), _, _| {
             seen.fetch_add(1, Ordering::Relaxed);
         })
         .expect("insert legacy retry ping source");
+    let mut count_wakes = || {
+        wake_loop
+            .dispatch(std::time::Duration::ZERO, &mut ())
+            .expect("dispatch test wake loop");
+        wakes.load(Ordering::Relaxed)
+    };
     fx.server.state.set_repaint_ping(ping);
 
     fx.server.state.defer_output_render_retry(&output, 1);
     for _ in 0..100 {
         fx.server.state.request_repaint_output(&output);
-        fx.server.dispatch();
+        assert!(fx.server.state.output_render_retry_pending(&output));
+        assert_eq!(
+            count_wakes(),
+            0,
+            "legacy animation damage must wait behind the output retry gate",
+        );
     }
-    assert_eq!(
-        wakes.load(Ordering::Relaxed),
-        0,
-        "legacy animation damage must wait behind the output retry gate",
-    );
 
-    std::thread::sleep(std::time::Duration::from_millis(25));
-    for _ in 0..10 {
-        fx.server.dispatch();
+    // Now let the retry timer fire, however late. The deadline only bounds
+    // a broken timer; it is not part of what is checked.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while fx.server.state.output_render_retry_pending(&output) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "render retry timer never fired",
+        );
+        fx.server
+            .event_loop
+            .dispatch(
+                Some(std::time::Duration::from_millis(5)),
+                &mut fx.server.state,
+            )
+            .expect("server dispatch");
     }
-    assert_eq!(wakes.load(Ordering::Relaxed), 1);
+    // The 100 suppressed requests come back as exactly one wake.
+    assert_eq!(count_wakes(), 1);
+    fx.server.dispatch();
+    assert_eq!(count_wakes(), 1);
 }
 
 #[test]
