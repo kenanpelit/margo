@@ -8,9 +8,9 @@
 //! The periodic [`probe`] (NameHasOwner, GetManagedObjects and the
 //! `org.gtk.Actions.Describe` state reads) goes over mshell's shared
 //! zbus session connection: it runs every few seconds, and the old
-//! `gdbus` spawns cost a process plus a fresh bus connection each. The
-//! user-triggered actions still shell out to `gdbus`, whose GVariant
-//! text form is the easy way to build their nested `av` parameters.
+//! `gdbus` spawns cost a process plus a fresh bus connection each. Actions
+//! use the same connection with typed `av` parameters (no GVariant text
+//! escaping or subprocesses).
 
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, ValentStoreFields};
@@ -361,26 +361,37 @@ fn as_f64(v: &Value<'_>) -> Option<f64> {
 /// Fire a parameterless GAction on a device (find / ping / browse /
 /// pair / unpair). Fire-and-forget — errors are logged, not surfaced.
 async fn activate(device_id: &str, action: &str) {
-    activate_param(device_id, action, "@av []").await;
+    activate_param(device_id, action, None).await;
 }
 
-async fn activate_param(device_id: &str, action: &str, param: &str) {
-    let path = device_path(device_id);
-    if let Err(e) = run(&[
-        "call",
-        "--session",
-        "--dest",
-        DEST,
-        "--object-path",
-        &path,
-        "--method",
-        "org.gtk.Actions.Activate",
+/// `org.gtk.Actions.Activate` body: `s av a{sv}`. A parameterless action
+/// gets an empty `av`; share actions get one string variant.
+fn action_body<'a>(
+    action: &'a str,
+    param: Option<&'a str>,
+) -> (&'a str, Vec<Value<'a>>, HashMap<&'a str, Value<'a>>) {
+    (
         action,
-        param,
-        "{}",
-    ])
-    .await
-    {
+        param.into_iter().map(Value::from).collect(),
+        HashMap::new(),
+    )
+}
+
+async fn activate_param(device_id: &str, action: &str, param: Option<&str>) {
+    let result = async {
+        let conn = mshell_services::systemd::session_bus().await?;
+        conn.call_method(
+            Some(DEST),
+            device_path(device_id).as_str(),
+            Some("org.gtk.Actions"),
+            "Activate",
+            &action_body(action, param),
+        )
+        .await?;
+        Ok::<_, zbus::Error>(())
+    }
+    .await;
+    if let Err(e) = result {
         warn!(error = %e, action, "valent: activate failed");
     }
 }
@@ -406,20 +417,20 @@ pub(crate) async fn unpair(device_id: String) {
 }
 
 /// Share a local file with the device. `path` is a filesystem path or
-/// a `file://` URI. We pass it as a GVariant `av` holding one
-/// double-quoted string so paths with single quotes are safe.
+/// a `file://` URI. It is passed as a typed string variant, so quotes and
+/// backslashes are ordinary data.
 pub(crate) async fn share_file(device_id: String, path: String) {
     let uri = if path.starts_with("file://") {
         path
     } else {
         format!("file://{path}")
     };
-    activate_param(&device_id, "share.uri", &quoted_string_param(&uri)).await;
+    activate_param(&device_id, "share.uri", Some(&uri)).await;
 }
 
 /// Share arbitrary text with the device (`share.text` GAction).
 pub(crate) async fn share_text(device_id: String, text: String) {
-    activate_param(&device_id, "share.text", &quoted_string_param(&text)).await;
+    activate_param(&device_id, "share.text", Some(&text)).await;
 }
 
 /// Push the local clipboard to the device.
@@ -430,13 +441,6 @@ pub(crate) async fn clipboard_push(device_id: String) {
 /// Pull the device's clipboard into the local one.
 pub(crate) async fn clipboard_pull(device_id: String) {
     activate(&device_id, "clipboard.pull").await;
-}
-
-/// Build a GVariant `av` param holding one double-quoted string,
-/// escaped so embedded backslashes/quotes are safe.
-fn quoted_string_param(s: &str) -> String {
-    let escaped = s.replace('\\', "\\\\").replace('"', "\\\"");
-    format!("[<\"{escaped}\">]")
 }
 
 /// Kick Valent's discovery by clearing then re-clearing its
@@ -450,20 +454,6 @@ pub(crate) async fn refresh_discovery() {
         )
         .output()
         .await;
-}
-
-// ── gdbus helper ────────────────────────────────────────────────
-
-async fn run(args: &[&str]) -> Result<String, String> {
-    match tokio::process::Command::new("gdbus")
-        .args(args)
-        .output()
-        .await
-    {
-        Ok(o) if o.status.success() => Ok(String::from_utf8_lossy(&o.stdout).into_owned()),
-        Ok(o) => Err(String::from_utf8_lossy(&o.stderr).trim().to_string()),
-        Err(e) => Err(format!("gdbus spawn: {e}")),
-    }
 }
 
 #[cfg(test)]
@@ -683,11 +673,20 @@ mod tests {
     }
 
     #[test]
-    fn string_param_is_escaped() {
-        assert_eq!(quoted_string_param("hi"), r#"[<"hi">]"#);
-        assert_eq!(quoted_string_param(r#"say "x""#), r#"[<"say \"x\"">]"#);
-        assert_eq!(quoted_string_param(r"C:\dir"), r#"[<"C:\\dir">]"#);
-        assert_eq!(quoted_string_param("it's"), r#"[<"it's">]"#);
+    fn action_parameters_are_typed_strings_not_gvariant_text() {
+        use zbus::zvariant::{LE, serialized::Context, to_bytes};
+        for text in ["hi", "it's", r#"say "x""#, r"C:\dir", "a\nb", "ü"] {
+            let body = action_body("share.text", Some(text));
+            let encoded = to_bytes(Context::new_dbus(LE, 0), &body).unwrap();
+            let ((action, values, platform), _): ((String, Vec<OwnedValue>, Props), _) =
+                encoded.deserialize().unwrap();
+            assert_eq!(action, "share.text");
+            assert_eq!(values.len(), 1);
+            assert_eq!(as_str(&values[0]), Some(text.into()));
+            assert!(platform.is_empty());
+        }
+        let (_, values, _) = action_body("ping.ping", None);
+        assert!(values.is_empty());
     }
 
     fn device(id: &str, reachable: bool) -> Device {
