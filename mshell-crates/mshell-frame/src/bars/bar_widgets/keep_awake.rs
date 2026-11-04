@@ -111,23 +111,27 @@ impl Component for KeepAwakeModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        // Combined refresh loop: inhibitor flips, session deadline
-        // changes, and a 1 s heartbeat for the countdown.
+        // Combined refresh loop: inhibitor flips and session deadline
+        // changes, plus a 1 s heartbeat only while a timed session's
+        // countdown is on screen (it used to tick every second forever,
+        // even when off, once per bar).
         sender.command(|out, shutdown| async move {
             let shutdown_fut = shutdown.wait();
             tokio::pin!(shutdown_fut);
             let mut inhib = IdleInhibitor::global().watch();
             let mut sess = KeepAwakeSession::global().watch();
-            let mut tick = tokio::time::interval(Duration::from_secs(1));
+            let mut active = IdleInhibitor::global().get();
+            let mut remaining = KeepAwakeSession::global().remaining();
             loop {
+                let tick = countdown_tick(active, remaining);
                 tokio::select! {
                     () = &mut shutdown_fut => break,
                     Some(_) = inhib.next() => {}
                     Ok(_) = sess.changed() => {}
-                    _ = tick.tick() => {}
+                    () = sleep_or_forever(tick) => {}
                 }
-                let active = IdleInhibitor::global().get();
-                let remaining = KeepAwakeSession::global().remaining();
+                active = IdleInhibitor::global().get();
+                remaining = KeepAwakeSession::global().remaining();
                 let _ = out.send(KeepAwakeCommandOutput::Refresh(active, remaining));
             }
         });
@@ -178,6 +182,19 @@ impl Component for KeepAwakeModel {
     }
 }
 
+/// The countdown label shows seconds, so refresh it every second while a
+/// timed session runs; with no countdown on screen there is nothing to tick.
+fn countdown_tick(active: bool, remaining: Option<Duration>) -> Option<Duration> {
+    (active && remaining.is_some()).then_some(Duration::from_secs(1))
+}
+
+async fn sleep_or_forever(delay: Option<Duration>) {
+    match delay {
+        Some(d) => tokio::time::sleep(d).await,
+        None => std::future::pending().await,
+    }
+}
+
 fn countdown_text(active: bool, remaining: Option<Duration>) -> String {
     match (active, remaining) {
         (true, Some(d)) => format_remaining(d),
@@ -193,4 +210,18 @@ fn tooltip(active: bool, remaining: Option<Duration>) -> String {
         (true, None) => "Keep Awake: on (no limit)".to_string(),
     };
     format!("{head}{footer}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_pill_ticks_only_while_a_timed_session_counts_down() {
+        let left = Some(Duration::from_secs(90));
+        assert_eq!(countdown_tick(true, left), Some(Duration::from_secs(1)));
+        assert_eq!(countdown_tick(false, None), None, "off");
+        assert_eq!(countdown_tick(true, None), None, "on with no limit");
+        assert_eq!(countdown_tick(false, left), None, "stale deadline");
+    }
 }

@@ -42,7 +42,7 @@ mod sync;
 /// Re-export so callers that want to peek at the raw snapshot
 /// (debug tooling, integration tests) can do so without a
 /// second JSON round-trip.
-pub use state_json::{RawConfigDiagnostic, StateJson, read as read_state_json};
+pub use state_json::{RawConfigDiagnostic, RawLockKeys, StateJson, read as read_state_json};
 
 // ── Reactive property ────────────────────────────────────────────────────────
 
@@ -488,6 +488,10 @@ pub struct MargoService {
     /// confirmation to unlock. `None` until the first snapshot or when the
     /// running margo predates the field.
     pub session_locked: Reactive<Option<bool>>,
+    /// Caps / Num / Scroll lock state, mirrored from the state document's
+    /// `lock_keys`. `None` until the first snapshot or when the running
+    /// margo predates the field (consumers then fall back to sysfs).
+    pub lock_keys: Reactive<Option<RawLockKeys>>,
     /// The focused output's tiling layout. `None` until the first
     /// snapshot, or while the output's `layout_idx` is past the
     /// layouts list (transient during a config reload). The layout
@@ -536,6 +540,7 @@ impl MargoService {
             focused_client: Reactive::new(None),
             keyboard_layout: Reactive::new(String::new()),
             session_locked: Reactive::new(None),
+            lock_keys: Reactive::new(None),
             active_layout: Reactive::new(None),
             config_errors: Reactive::new(Vec::new()),
             fullscreen_outputs: Reactive::new(Vec::new()),

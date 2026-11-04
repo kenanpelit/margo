@@ -122,12 +122,16 @@ pub enum ToastProducerCmd {
     PowerProfile,
     Dnd,
     Idle,
+    /// margo's pushed (Caps, Num) lock state; `None` when the running margo
+    /// doesn't report it (then the sysfs poll takes over).
+    LockKeys(Option<(bool, bool)>),
 }
 
 /// Poll cadence for the `mvpn` subprocess (no push API; mirrors the VPN pill).
 const VPN_POLL: Duration = Duration::from_secs(5);
 const VPN_STARTUP_DELAY: Duration = Duration::from_millis(800);
-/// Lock keys never toggle fast; a slow tick keeps CPU at zero.
+/// Fallback sysfs poll for a margo that doesn't publish `lock_keys`. Lock
+/// keys never toggle fast; a slow tick keeps CPU at zero.
 const LOCK_KEYS_TICK: Duration = Duration::from_millis(700);
 
 fn toasts_cfg() -> Toasts {
@@ -141,6 +145,21 @@ fn lock_keys_wanted() -> bool {
 
 thread_local! {
     static LOCK_KEYS_TIMER_RUNNING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// margo publishes the lock-key state, so no sysfs poll is needed.
+    static MARGO_REPORTS_LOCK_KEYS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// The sysfs poll runs only as a fallback: when the toast is on and margo
+/// doesn't push the lock-key state itself.
+fn sysfs_lock_keys_poll_needed(margo_reports: bool, toast_wanted: bool) -> bool {
+    !margo_reports && toast_wanted
+}
+
+fn lock_keys_poll_needed() -> bool {
+    sysfs_lock_keys_poll_needed(
+        MARGO_REPORTS_LOCK_KEYS.with(|m| m.get()),
+        lock_keys_wanted(),
+    )
 }
 
 /// Install the Caps/Num sysfs poller, but only while the toast is switched on.
@@ -152,7 +171,7 @@ thread_local! {
 /// GSource list — so the timer is created on demand and removes itself when the
 /// toggle goes off. Idempotent; main-thread only.
 fn ensure_lock_keys_timer(sender: &ComponentSender<ToastProducerModel>) {
-    if LOCK_KEYS_TIMER_RUNNING.with(|r| r.get()) || !lock_keys_wanted() {
+    if LOCK_KEYS_TIMER_RUNNING.with(|r| r.get()) || !lock_keys_poll_needed() {
         return;
     }
     LOCK_KEYS_TIMER_RUNNING.with(|r| r.set(true));
@@ -163,7 +182,7 @@ fn ensure_lock_keys_timer(sender: &ComponentSender<ToastProducerModel>) {
     glib::timeout_add_local(LOCK_KEYS_TICK, move || {
         // `Break` removes the source; never also call `SourceId::remove()` on
         // it, since removing an already-finished source aborts the process.
-        if !lock_keys_wanted()
+        if !lock_keys_poll_needed()
             || s.input_sender()
                 .send(ToastProducerInput::LockKeysTick)
                 .is_err()
@@ -260,9 +279,30 @@ impl Component for ToastProducerModel {
             }
         });
 
-        // Lock keys — sysfs LED poll on the glib main loop, armed only while the
-        // toast is enabled. The tracked read of `toasts()` re-runs this effect
-        // when the switch flips, which is what brings the poller back.
+        // Lock keys — pushed by margo in `watch state`. Only a margo that
+        // doesn't report them (`None`) arms the sysfs fallback poll below.
+        sender.command(|out, shutdown| async move {
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            let mut stream = margo_service().lock_keys.watch();
+            loop {
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    next = stream.next() => match next {
+                        Some(keys) => {
+                            let keys = keys.map(|k| (k.caps, k.num));
+                            let _ = out.send(ToastProducerCmd::LockKeys(keys));
+                        }
+                        None => break,
+                    },
+                }
+            }
+        });
+
+        // Fallback lock-key sysfs LED poll on the glib main loop, armed only
+        // while the toast is enabled and margo doesn't report the state. The
+        // tracked read of `toasts()` re-runs this effect when the switch
+        // flips, which is what brings the poller back.
         {
             let s = sender.clone();
             Effect::new(move |_| {
@@ -325,11 +365,7 @@ impl Component for ToastProducerModel {
         match message {
             ToastProducerInput::LockKeysTick => {
                 let (caps, num, _) = read_lock_state();
-                let cfg = toasts_cfg();
-                lock_key_step(self.prev_caps, caps, "Caps Lock", &cfg);
-                lock_key_step(self.prev_num, num, "Num Lock", &cfg);
-                self.prev_caps = Some(caps);
-                self.prev_num = Some(num);
+                self.on_lock_keys(caps, num);
             }
             ToastProducerInput::LockKeysReset => {
                 self.prev_caps = None;
@@ -373,11 +409,30 @@ impl Component for ToastProducerModel {
             ToastProducerCmd::PowerProfile => self.on_power_profile(),
             ToastProducerCmd::Dnd => self.on_dnd(),
             ToastProducerCmd::Idle => self.on_idle(),
+            ToastProducerCmd::LockKeys(Some((caps, num))) => {
+                MARGO_REPORTS_LOCK_KEYS.with(|m| m.set(true));
+                self.on_lock_keys(caps, num);
+            }
+            ToastProducerCmd::LockKeys(None) => {
+                MARGO_REPORTS_LOCK_KEYS.with(|m| m.set(false));
+                ensure_lock_keys_timer(&sender);
+            }
         }
     }
 }
 
 impl ToastProducerModel {
+    /// Toast a Caps/Num change against the last seen state. The state is
+    /// tracked even while the toast is off, so switching it on never fires
+    /// for a stale change.
+    fn on_lock_keys(&mut self, caps: bool, num: bool) {
+        let cfg = toasts_cfg();
+        lock_key_step(self.prev_caps, caps, "Caps Lock", &cfg);
+        lock_key_step(self.prev_num, num, "Num Lock", &cfg);
+        self.prev_caps = Some(caps);
+        self.prev_num = Some(num);
+    }
+
     fn on_charging(&mut self) {
         let Some(service) = line_power_service() else {
             return;
@@ -1132,6 +1187,14 @@ mod tests {
             ..cfg
         };
         assert!(lock_key_toast(Some(false), true, "Caps Lock", &disabled).is_none());
+    }
+
+    #[test]
+    fn sysfs_lock_keys_poll_is_only_a_fallback() {
+        assert!(sysfs_lock_keys_poll_needed(false, true));
+        assert!(!sysfs_lock_keys_poll_needed(true, true), "margo pushes it");
+        assert!(!sysfs_lock_keys_poll_needed(false, false), "toast off");
+        assert!(!sysfs_lock_keys_poll_needed(true, false));
     }
 
     fn led(dir: &Path, name: &str, brightness: Option<&str>) {

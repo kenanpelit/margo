@@ -47,11 +47,26 @@ pub struct StateJson {
     /// tell "unlocked" from "unknown" and fall back.
     #[serde(default)]
     pub session_locked: Option<bool>,
+    /// Caps / Num / Scroll lock LEDs of the seat keyboard. `None` on margo
+    /// builds that don't emit the field (callers then poll sysfs).
+    #[serde(default)]
+    pub lock_keys: Option<RawLockKeys>,
     /// Diagnostics from the most recent config parse/reload (`mctl
     /// config-errors`'s source). `#[serde(default)]` for forward-compat
     /// with older margo builds that don't emit the field.
     #[serde(default)]
     pub config_errors: Vec<RawConfigDiagnostic>,
+}
+
+/// margo's `lock_keys` object.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+pub struct RawLockKeys {
+    #[serde(default)]
+    pub caps: bool,
+    #[serde(default)]
+    pub num: bool,
+    #[serde(default)]
+    pub scroll: bool,
 }
 
 /// Mirrors margo's `ConfigDiagnostic` wire shape. Kept as an

@@ -72,10 +72,15 @@ impl PrivacyLive {
 static LIVE: LazyLock<ArcStore<PrivacyLive>> =
     LazyLock::new(|| ArcStore::new(PrivacyLive::default()));
 
-/// Latest detection snapshot — pills and the panel read this on their own
-/// tick (a cheap in-memory `read_untracked` clone).
+/// Latest detection snapshot (a cheap in-memory `read_untracked` clone).
 pub fn live_snapshot() -> PrivacyLive {
     (*LIVE.read_untracked()).clone()
+}
+
+/// Subscribe the running reactive effect to snapshot changes: the pills
+/// repaint from an effect that calls this instead of polling.
+pub fn track_live() {
+    LIVE.track();
 }
 
 static STARTED: AtomicBool = AtomicBool::new(false);

@@ -3,35 +3,38 @@
 //! `privacy-indicator` plugin.
 //!
 //! All detection lives in the shared [`monitor`] singleton (so it runs once
-//! regardless of monitor count); this pill is a thin reader: a 1 s tick
-//! pulls the live snapshot, paints one glyph per active sensor in the
+//! regardless of monitor count); this pill is a thin reader: a reactive
+//! effect on the live store (and the pill's config) repaints it on change,
+//! paints one glyph per active sensor in the
 //! configured accent, names the apps in the tooltip, and left-click opens
 //! the Privacy panel (live state + clearable access log).
 
 pub(crate) mod monitor;
 
 use monitor::PrivacyLive;
+use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
     BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, PrivacyAccent,
     PrivacyWidgetConfigStoreFields,
 };
-use reactive_graph::prelude::GetUntracked;
+use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::Orientation;
 use relm4::gtk::prelude::{BoxExt, GestureSingleExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::time::Duration;
 
 pub(crate) struct PrivacyModel {
     live: PrivacyLive,
     accent_class: &'static str,
     hide_inactive: bool,
     orientation: Orientation,
+    _effects: EffectScope,
 }
 
 #[derive(Debug)]
 pub(crate) enum PrivacyInput {
-    Tick,
+    /// The live snapshot or the pill's config changed.
+    Refresh,
     Clicked,
 }
 
@@ -105,11 +108,24 @@ impl Component for PrivacyModel {
         // Kick off the shared detection driver (idempotent).
         monitor::ensure_started();
 
+        // Repaint when the shared snapshot or the pill's config changes.
+        // This used to pull the snapshot on a 1 s timer per pill.
+        let mut effects = EffectScope::new();
+        let refresh_sender = sender.clone();
+        effects.push(move |_| {
+            monitor::track_live();
+            let privacy = config_manager().config().bars().widgets().privacy();
+            let _ = privacy.clone().accent().get();
+            let _ = privacy.hide_inactive().get();
+            let _ = refresh_sender.input_sender().send(PrivacyInput::Refresh);
+        });
+
         let model = PrivacyModel {
             live: monitor::live_snapshot(),
             accent_class: read_accent().css_class(),
             hide_inactive: read_hide_inactive(),
             orientation: params.orientation,
+            _effects: effects,
         };
 
         let widgets = view_output!();
@@ -123,22 +139,12 @@ impl Component for PrivacyModel {
         });
         root.add_controller(gesture);
 
-        // Pull the shared snapshot once a second (the driver itself only
-        // recomputes every 2 s; this is a cheap in-memory read + diff).
-        let tick_sender = sender.clone();
-        gtk::glib::timeout_add_local(Duration::from_secs(1), move || {
-            if tick_sender.input_sender().send(PrivacyInput::Tick).is_err() {
-                return gtk::glib::ControlFlow::Break;
-            }
-            gtk::glib::ControlFlow::Continue
-        });
-
         ComponentParts { model, widgets }
     }
 
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
-            PrivacyInput::Tick => {
+            PrivacyInput::Refresh => {
                 self.live = monitor::live_snapshot();
                 self.accent_class = read_accent().css_class();
                 self.hide_inactive = read_hide_inactive();

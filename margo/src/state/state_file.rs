@@ -297,6 +297,11 @@ impl MargoState {
             // gates lock-before-sleep and the lock sidecar on this instead
             // of guessing from process names.
             "session_locked": self.session_locked,
+            "lock_keys": {
+                "caps": self.lock_keys.caps,
+                "num": self.lock_keys.num,
+                "scroll": self.lock_keys.scroll,
+            },
             "outputs": outputs,
             "clients": clients,
             "layouts": layout_names,

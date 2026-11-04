@@ -596,6 +596,10 @@ pub struct MargoState {
     /// can show it without re-deriving the keymap. Updated on every
     /// key event that changes the effective layout group.
     pub current_kb_layout: String,
+    /// Caps / Num / Scroll lock LEDs of the seat keyboard, refreshed with
+    /// the layout after every key and published as `lock_keys` so the
+    /// shell's lock-key pill and toasts don't poll sysfs.
+    pub lock_keys: LockKeys,
     pub enable_gaps: bool,
     pub cursor_status: CursorImageStatus,
     pub cursor_manager: CursorManager,
@@ -841,6 +845,7 @@ impl MargoState {
             session_locked: false,
             session_lock_owner: None,
             current_kb_layout: String::new(),
+            lock_keys: LockKeys::default(),
             keyboard_shortcuts_inhibiting_surfaces: std::collections::HashMap::new(),
             idle_inhibitors: std::collections::HashSet::new(),
             rule_once_consumed: std::collections::HashSet::new(),
@@ -1105,15 +1110,34 @@ impl MargoState {
 
 // ── Keyboard layout ──────────────────────────────────────────────────────────
 
+/// Lock-key LED state of the seat keyboard (a missing LED reads as off).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct LockKeys {
+    pub caps: bool,
+    pub num: bool,
+    pub scroll: bool,
+}
+
 impl MargoState {
-    /// Re-read the seat keyboard's currently active xkb layout name
-    /// and, if it changed since the last cache, store it + mark
-    /// state snapshot dirty so the shell's keyboard-layout pill refreshes.
-    /// Cheap (a keymap name lookup) — safe to call on every key event.
+    /// Re-read the seat keyboard's currently active xkb layout name and
+    /// lock-key LEDs and, if either changed since the last cache, store it
+    /// + mark state snapshot dirty so the shell's keyboard-layout and
+    /// lock-key pills refresh. Cheap (a keymap name lookup and a cached LED
+    /// read) — safe to call on every key event.
     pub fn refresh_keyboard_layout(&mut self) {
         let Some(kbd) = self.seat.get_keyboard() else {
             return;
         };
+        let led = kbd.led_state();
+        let lock_keys = LockKeys {
+            caps: led.caps.unwrap_or(false),
+            num: led.num.unwrap_or(false),
+            scroll: led.scroll.unwrap_or(false),
+        };
+        if self.lock_keys != lock_keys {
+            self.lock_keys = lock_keys;
+            self.mark_state_dirty();
+        }
         let name = kbd.with_xkb_state(self, |ctx| {
             // Runs on every key event — recover a poisoned lock (the xkb
             // state is still valid to *read*) instead of panicking the

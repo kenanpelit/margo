@@ -53,6 +53,7 @@ mod hot_corner;
 mod idle;
 mod ipc;
 mod layer_shell;
+mod lock_keys;
 mod logical_output_area;
 mod mosaic_layout;
 mod move_client;
