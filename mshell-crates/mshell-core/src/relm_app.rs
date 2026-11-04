@@ -1114,8 +1114,30 @@ fn read_idle_config() -> IdleConfig {
     }
 }
 
+/// What an idle-stage change does to the dim overlay.
+#[derive(Debug, PartialEq, Eq)]
+enum DimStep {
+    /// Create (if needed) and show it.
+    Show,
+    /// Destroy it: a hidden-but-realized full-screen surface keeps its
+    /// whole swapchain (4 output-sized buffers, about 64 MB at 1440p).
+    Destroy,
+    /// Leave it as it is.
+    Keep,
+}
+
+fn dim_overlay_step(stage: IdleStage, inhibited: bool) -> DimStep {
+    match stage {
+        IdleStage::Active => DimStep::Destroy,
+        // The manual inhibitor vetoes everything but the un-dim.
+        IdleStage::Dim | IdleStage::Lock if !inhibited => DimStep::Show,
+        IdleStage::Dim | IdleStage::Lock | IdleStage::Suspend => DimStep::Keep,
+    }
+}
+
 /// A full-screen, input-transparent translucent overlay shown
-/// while the session is idle-dimmed.
+/// while the session is idle-dimmed. Built on demand and destroyed on
+/// return to active (see [`DimStep::Destroy`]).
 fn build_idle_dim_overlay() -> gtk::Window {
     let window = gtk::Window::new();
     window.add_css_class("idle-dim-overlay");
@@ -1129,7 +1151,6 @@ fn build_idle_dim_overlay() -> gtk::Window {
     for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
         window.set_anchor(edge, true);
     }
-    window.set_visible(false);
     window
 }
 
@@ -1154,7 +1175,7 @@ fn spawn_idle_manager() -> tokio::sync::watch::Sender<IdleConfig> {
     });
 
     // React to idle-stage changes on the GTK main loop.
-    let dim_overlay = build_idle_dim_overlay();
+    let mut dim_overlay: Option<gtk::Window> = None;
     relm4::gtk::glib::spawn_future_local(async move {
         let mut previous = IdleStage::Active;
         while stage_rx.changed().await.is_ok() {
@@ -1168,21 +1189,23 @@ fn spawn_idle_manager() -> tokio::sync::watch::Sender<IdleConfig> {
             // return-to-active (un-dim) transition.
             let inhibited = IdleInhibitor::global().get();
 
-            match stage {
-                IdleStage::Active => {
-                    dim_overlay.set_visible(false);
-                }
-                IdleStage::Dim => {
-                    if !inhibited {
-                        dim_overlay.set_visible(true);
+            match dim_overlay_step(stage, inhibited) {
+                DimStep::Show => dim_overlay
+                    .get_or_insert_with(build_idle_dim_overlay)
+                    .set_visible(true),
+                DimStep::Destroy => {
+                    if let Some(window) = dim_overlay.take() {
+                        window.destroy();
                     }
                 }
+                DimStep::Keep => {}
+            }
+
+            match stage {
+                IdleStage::Active | IdleStage::Dim => {}
                 IdleStage::Lock => {
-                    if !inhibited {
-                        dim_overlay.set_visible(true);
-                        if !session_locked() {
-                            lock_session();
-                        }
+                    if !inhibited && !session_locked() {
+                        lock_session();
                     }
                 }
                 IdleStage::Suspend => {
@@ -1231,5 +1254,21 @@ fn resolve_frame<'a>(
 impl Debug for WindowGroup {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WindowGroup").finish()
+    }
+}
+
+#[cfg(test)]
+mod dim_overlay_tests {
+    use super::*;
+
+    #[test]
+    fn the_dim_overlay_is_destroyed_on_activity_and_built_only_to_dim() {
+        assert_eq!(dim_overlay_step(IdleStage::Active, false), DimStep::Destroy);
+        assert_eq!(dim_overlay_step(IdleStage::Active, true), DimStep::Destroy);
+        assert_eq!(dim_overlay_step(IdleStage::Dim, false), DimStep::Show);
+        assert_eq!(dim_overlay_step(IdleStage::Lock, false), DimStep::Show);
+        assert_eq!(dim_overlay_step(IdleStage::Dim, true), DimStep::Keep);
+        assert_eq!(dim_overlay_step(IdleStage::Lock, true), DimStep::Keep);
+        assert_eq!(dim_overlay_step(IdleStage::Suspend, false), DimStep::Keep);
     }
 }
