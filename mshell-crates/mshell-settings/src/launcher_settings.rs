@@ -15,6 +15,7 @@ use mshell_config::schema::config::{
     ConfigStoreFields, LauncherStoreFields, MenuStoreFields, MenusStoreFields, PassStoreFields,
 };
 use mshell_config::schema::position::Position;
+use mshell_launcher::providers::websearch::parse_sites;
 use mshell_launcher::{frecency, history};
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::prelude::*;
@@ -26,6 +27,8 @@ pub(crate) struct LauncherSettingsModel {
     menu_min_width: i32,
     menu_max_height: i32,
     position_model: gtk::StringList,
+    /// Mirror of `config.launcher.web_sites` (`Name|url` lines).
+    web_sites: Vec<String>,
     _effects: EffectScope,
 }
 
@@ -43,6 +46,12 @@ pub(crate) enum LauncherSettingsInput {
     /// Set the GNU pass store directory (`config.pass.store_path`).
     /// Empty falls back to $PASSWORD_STORE_DIR / ~/.password-store.
     SetPassStorePath(String),
+    /// Append a `Name|url` favourite (validated first).
+    WebSiteAdd(String),
+    /// Remove the favourite at this index.
+    WebSiteRemove(usize),
+    /// Config changed externally (hand-edited YAML).
+    WebSitesEffect(Vec<String>),
     PositionPicked(u32),
     MinWidthChanged(i32),
     MaxHeightChanged(i32),
@@ -345,6 +354,84 @@ impl Component for LauncherSettingsModel {
                     },
                 },
 
+                // Favourite websites ───────────────────────────
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Favourite websites",
+                    set_halign: gtk::Align::Start,
+                    set_margin_top: 12,
+                },
+                gtk::Label {
+                    add_css_class: "label-small",
+                    set_label: "Sites listed by the launcher's `web` prefix, most recently opened first. Add them as Name|https://url (a bare URL works too).",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                },
+
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/launcher/web_site_favicons",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_label: "Site icons",
+                                set_halign: gtk::Align::Start,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_label: "Fetch each site's favicon once (the domain is sent to Google's favicon service) and cache it.",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                            },
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: config_manager().config().launcher().web_site_favicons().get_untracked(),
+                            connect_active_notify => move |sw| {
+                                let v = sw.is_active();
+                                config_manager().update_config(move |c| c.launcher.web_site_favicons = v);
+                            },
+                        },
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 8,
+                    set_widget_name: "setting:/launcher/web_sites",
+
+                    #[name = "web_site_entry"]
+                    gtk::Entry {
+                        set_hexpand: true,
+                        set_placeholder_text: Some("Name|https://example.com"),
+                    },
+
+                    #[name = "web_site_add"]
+                    gtk::Button {
+                        add_css_class: "ok-button-primary",
+                        set_valign: gtk::Align::Center,
+                        set_label: "Add",
+                    },
+                },
+
+                #[name = "web_sites_list"]
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+                },
+
                 // Cache ────────────────────────────────────────
                 gtk::Label {
                     add_css_class: "label-large-bold",
@@ -455,6 +542,12 @@ impl Component for LauncherSettingsModel {
 
         let sender_clone = sender.clone();
         effects.push(move |_| {
+            let list = config_manager().config().launcher().web_sites().get();
+            sender_clone.input(LauncherSettingsInput::WebSitesEffect(list));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
             let p = config_manager()
                 .config()
                 .menus()
@@ -504,10 +597,36 @@ impl Component for LauncherSettingsModel {
                 .maximum_height()
                 .get_untracked(),
             position_model,
+            web_sites: config_manager()
+                .config()
+                .launcher()
+                .web_sites()
+                .get_untracked(),
             _effects: effects,
         };
 
         let widgets = view_output!();
+
+        // Favourite websites: add entry + button, initial rows.
+        {
+            let submit = |entry: &gtk::Entry, sender: &ComponentSender<LauncherSettingsModel>| {
+                let line = entry.text().trim().to_string();
+                if !line.is_empty() {
+                    sender.input(LauncherSettingsInput::WebSiteAdd(line));
+                    entry.set_text("");
+                }
+            };
+            let entry = widgets.web_site_entry.clone();
+            let s = sender.clone();
+            widgets
+                .web_site_add
+                .connect_clicked(move |_| submit(&entry, &s));
+            let s = sender.clone();
+            widgets
+                .web_site_entry
+                .connect_activate(move |e| submit(e, &s));
+        }
+        rebuild_web_site_rows(&widgets.web_sites_list, &model.web_sites, &sender);
 
         widgets.pass_store_entry.set_text(
             &config_manager()
@@ -559,6 +678,33 @@ impl Component for LauncherSettingsModel {
                     config.pass.store_path = path;
                 });
             }
+            LauncherSettingsInput::WebSiteAdd(line) => {
+                if parse_sites(std::slice::from_ref(&line)).is_empty() {
+                    mshell_launcher::notify::toast(
+                        "Not a website",
+                        format!("“{line}” needs an http(s) URL, e.g. Name|https://example.com"),
+                    );
+                } else if !self.web_sites.contains(&line) {
+                    self.web_sites.push(line);
+                    let list = self.web_sites.clone();
+                    config_manager().update_config(move |c| c.launcher.web_sites = list);
+                    rebuild_web_site_rows(&widgets.web_sites_list, &self.web_sites, &sender);
+                }
+            }
+            LauncherSettingsInput::WebSiteRemove(idx) => {
+                if idx < self.web_sites.len() {
+                    self.web_sites.remove(idx);
+                    let list = self.web_sites.clone();
+                    config_manager().update_config(move |c| c.launcher.web_sites = list);
+                    rebuild_web_site_rows(&widgets.web_sites_list, &self.web_sites, &sender);
+                }
+            }
+            LauncherSettingsInput::WebSitesEffect(list) => {
+                if list != self.web_sites {
+                    self.web_sites = list;
+                    rebuild_web_site_rows(&widgets.web_sites_list, &self.web_sites, &sender);
+                }
+            }
             LauncherSettingsInput::PositionPicked(idx) => {
                 let p = Position::from_index(idx);
                 if self.menu_position != p {
@@ -589,5 +735,56 @@ impl Component for LauncherSettingsModel {
             LauncherSettingsInput::MaxHeightEffect(h) => self.menu_max_height = h,
         }
         self.update_view(widgets, sender);
+    }
+}
+
+/// Repaint the favourite-website rows: one action-row per entry (name +
+/// URL) with a trailing remove button. Lines that don't parse are still
+/// listed (by their raw text) so they can be removed.
+fn rebuild_web_site_rows(
+    list: &gtk::Box,
+    lines: &[String],
+    sender: &ComponentSender<LauncherSettingsModel>,
+) {
+    while let Some(child) = list.first_child() {
+        list.remove(&child);
+    }
+    list.set_visible(!lines.is_empty());
+    for (idx, line) in lines.iter().enumerate() {
+        let (title, subtitle) = match parse_sites(std::slice::from_ref(line)).into_iter().next() {
+            Some(site) => (site.name, site.url),
+            None => (line.clone(), "Invalid — not an http(s) URL".to_string()),
+        };
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        row.add_css_class("action-row");
+
+        let text = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        text.set_valign(gtk::Align::Center);
+        text.set_hexpand(true);
+        let name = gtk::Label::new(Some(&title));
+        name.add_css_class("label-medium-bold");
+        name.set_halign(gtk::Align::Start);
+        name.set_xalign(0.0);
+        let url = gtk::Label::new(Some(&subtitle));
+        url.add_css_class("label-small");
+        url.set_halign(gtk::Align::Start);
+        url.set_xalign(0.0);
+        url.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+        text.append(&name);
+        text.append(&url);
+        row.append(&text);
+
+        let remove = gtk::Button::new();
+        remove.add_css_class("ok-button-surface");
+        remove.set_valign(gtk::Align::Center);
+        remove.set_child(Some(&gtk::Image::from_icon_name("user-trash-symbolic")));
+        mshell_common::a11y::name(&remove, &format!("Remove {title}"));
+        let sender = sender.clone();
+        remove.connect_clicked(move |_| {
+            sender.input(LauncherSettingsInput::WebSiteRemove(idx));
+        });
+        row.append(&remove);
+
+        list.append(&row);
     }
 }

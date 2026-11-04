@@ -539,7 +539,8 @@ fn build_context_menu(pinned: bool, hidden: bool) -> (gtk::Popover, gtk::Button,
 
 /// Resolve the right icon for a launcher item. App entries get the
 /// full matugen-filtered treatment via `set_icon`; everything else
-/// falls back to a plain `set_icon_name`.
+/// falls back to a plain `set_icon_name` (or the image file when the
+/// provider set `icon_is_path`).
 fn apply_icon(image: &gtk::Image, item: &LauncherItem) {
     if let Some(app_id) = item.id.strip_prefix("apps:") {
         // The id matches a `.desktop` file; gio caches its lookup
@@ -552,6 +553,12 @@ fn apply_icon(image: &gtk::Image, item: &LauncherItem) {
             apply_app_icon(image, info);
             return;
         }
+    }
+    // Provider-supplied image file (e.g. a cached site favicon). GtkImage
+    // renders it at the row's icon pixel size like a themed icon.
+    if item.icon_is_path && std::path::Path::new(&item.icon).is_file() {
+        image.set_from_file(Some(&item.icon));
+        return;
     }
     image.set_icon_name(Some(&item.icon));
 }

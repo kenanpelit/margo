@@ -504,7 +504,16 @@ impl Component for AppLauncherModel {
                     .send(AppLauncherInput::SetSearchText(text.to_string()));
             }) as Rc<dyn Fn(&str) + 'static>
         };
-        let websearch_provider = WebsearchProvider::new().with_search_setter(make_search_setter());
+        let websearch_provider = WebsearchProvider::new()
+            .with_search_setter(make_search_setter())
+            // `web` favourites follow Settings → Launcher; re-read on open.
+            .with_sites_resolver(Box::new(|| {
+                let launcher = config_manager().config().launcher();
+                (
+                    launcher.clone().web_sites().get_untracked(),
+                    launcher.web_site_favicons().get_untracked(),
+                )
+            }));
         let archpkgs_provider =
             ArchLinuxPkgsProvider::new().with_search_setter(make_search_setter());
 

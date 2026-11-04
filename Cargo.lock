@@ -5388,6 +5388,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+ "ureq",
  "yaml_serde",
 ]
 

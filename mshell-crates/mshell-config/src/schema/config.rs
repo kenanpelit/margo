@@ -612,6 +612,29 @@ pub struct Launcher {
     pub compact_rows: bool,
     /// Lead app / window rows with a larger icon.
     pub large_app_icons: bool,
+    /// Favourite websites for the launcher's `web` prefix, one
+    /// `Name|https://url` entry each (a bare URL or domain works too).
+    /// Listed most-recently-opened first.
+    pub web_sites: Vec<String>,
+    /// Fetch favicons for `web_sites` (the domain is sent to Google's
+    /// favicon service; icons are cached in ~/.cache/margo/favicons).
+    pub web_site_favicons: bool,
+}
+
+/// Default `launcher.web_sites` — mirrors
+/// `mshell_launcher::providers::websearch::DEFAULT_SITES` (this crate
+/// can't depend on the launcher).
+pub fn default_web_sites() -> Vec<String> {
+    [
+        "GitHub|https://github.com",
+        "YouTube|https://www.youtube.com",
+        "Gmail|https://mail.google.com",
+        "Arch Wiki|https://wiki.archlinux.org",
+        "AUR|https://aur.archlinux.org",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect()
 }
 
 impl Default for Launcher {
@@ -621,6 +644,8 @@ impl Default for Launcher {
             show_preview: false,
             compact_rows: false,
             large_app_icons: true,
+            web_sites: default_web_sites(),
+            web_site_favicons: true,
         }
     }
 }
