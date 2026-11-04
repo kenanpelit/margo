@@ -1318,15 +1318,9 @@ impl MargoState {
             return;
         }
         let current = self.focused_monitor();
-        let len = self.monitors.len();
-        let next = if direction > 0 {
-            (current + 1) % len
-        } else {
-            (current + len - 1) % len
-        };
-        if next == current {
+        let Some(next) = self.step_enabled_monitor(current, direction) else {
             return;
-        }
+        };
 
         // Warp the cursor to the target monitor before changing
         // focus. Without this, sloppy-focus snaps focus right back
@@ -1378,6 +1372,24 @@ impl MargoState {
         self.request_repaint();
     }
 
+    /// The next enabled monitor after `from` in `direction` (wrapping),
+    /// skipping soft-disabled outputs; `None` when there is no other one.
+    pub(crate) fn step_enabled_monitor(&self, from: usize, direction: i32) -> Option<usize> {
+        let len = self.monitors.len();
+        if len == 0 {
+            return None;
+        }
+        (1..len)
+            .map(|step| {
+                if direction > 0 {
+                    (from + step) % len
+                } else {
+                    (from + len - step % len) % len
+                }
+            })
+            .find(|&i| i != from && self.monitors[i].enabled)
+    }
+
     pub fn tag_mon(&mut self, direction: i32) {
         if self.monitors.len() <= 1 {
             return;
@@ -1386,11 +1398,8 @@ impl MargoState {
             return;
         };
         let current_mon = self.clients[idx].monitor;
-        let len = self.monitors.len();
-        let target_mon = if direction > 0 {
-            (current_mon + 1) % len
-        } else {
-            (current_mon + len - 1) % len
+        let Some(target_mon) = self.step_enabled_monitor(current_mon, direction) else {
+            return;
         };
         let tagset = self.monitors[target_mon].current_tagset();
         // Source side never gets a normal arrange pass for this client

@@ -6,20 +6,6 @@
 use super::*;
 
 impl MargoState {
-    /// Soft-disable a monitor: mark it inactive, migrate every client
-    /// to the first remaining enabled monitor, and clear focus from it.
-    /// Render and arrange paths skip disabled monitors so the panel
-    /// stops getting dirty repaints; the underlying smithay `Output`
-    /// stays alive so a later `enable_monitor` call can restore it
-    /// without a full hotplug round-trip. Pertag state survives across
-    /// the cycle.
-    ///
-    /// Note: the DRM connector is NOT powered off here — that needs
-    /// the udev backend's DrmCompositor handle, plumbed separately.
-    /// What this fixes: the wlr-output-management protocol-level
-    /// "disable" request now succeeds, kanshi profiles that toggle
-    /// outputs flip cleanly, and the bar / state file see the right
-    /// active-output set. Power-off of the panel is a follow-up.
     /// Request a DPMS power change (real panel off/on via the udev
     /// backend's `DrmCompositor::clear()` / re-render). `on = Some(false)`
     /// powers the panel(s) OFF, `Some(true)` ON; `None` toggles globally
@@ -31,6 +17,7 @@ impl MargoState {
         let outputs: Vec<Output> = self
             .monitors
             .iter()
+            .filter(|m| m.enabled)
             .filter(|m| target.is_none_or(|t| m.output.name() == t))
             .map(|m| m.output.clone())
             .collect();
@@ -74,6 +61,17 @@ impl MargoState {
         false
     }
 
+    /// Soft-disable a monitor: mark it inactive, migrate every client
+    /// to the first remaining enabled monitor, and clear focus from it.
+    /// Render and arrange paths skip disabled monitors so the panel
+    /// stops getting dirty repaints; the underlying smithay `Output`
+    /// stays alive so a later `enable_monitor` call can restore it
+    /// without a full hotplug round-trip. Pertag state survives across
+    /// the cycle.
+    ///
+    /// The panel is blanked through the DPMS path
+    /// (`output_pending.dpms`, `DrmCompositor::clear()`), the output leaves
+    /// the space, and the pointer is moved onto an enabled output.
     pub fn disable_monitor(&mut self, mon_idx: usize) {
         if mon_idx >= self.monitors.len() {
             return;
@@ -112,6 +110,17 @@ impl MargoState {
             }
         }
         self.monitors[mon_idx].enabled = false;
+        // Blank the panel the way DPMS off does: otherwise the CRTC keeps
+        // scanning out the last frame, since the render loop skips a
+        // disabled output. And take it out of the space so surfaces leave
+        // it and nothing hit-tests against it.
+        let output = self.monitors[mon_idx].output.clone();
+        self.output_pending.dpms.push((output.clone(), false));
+        self.space.unmap_output(&output);
+        self.wake_repaint_backend();
+        // Move the pointer off the dark area onto an enabled output.
+        self.clamp_pointer_to_outputs();
+        self.refresh_pointer_monitor_tracking();
         self.drop_output_clock(&src_name);
         self.arrange_monitor(target);
         self.focus_most_recent_visible_or_clear(target);
@@ -135,6 +144,15 @@ impl MargoState {
             return;
         }
         self.monitors[mon_idx].enabled = true;
+        let output = self.monitors[mon_idx].output.clone();
+        let area = self.monitors[mon_idx].monitor_area;
+        self.space.map_output(&output, (area.x, area.y));
+        // Light the panel again (unless DPMS has every panel off: the
+        // next wake turns this one on with the rest).
+        if !self.any_dpms_off {
+            self.output_pending.dpms.push((output, true));
+            self.wake_repaint_backend();
+        }
         self.arrange_monitor(mon_idx);
         self.publish_output_topology();
         self.mark_state_dirty();

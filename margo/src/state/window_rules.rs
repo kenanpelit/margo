@@ -35,7 +35,9 @@ impl MargoState {
             .iter()
             .find(|r| r.id == id && r.monitor_name.is_some())
             .and_then(|r| r.monitor_name.clone())?;
-        self.monitors.iter().position(|m| m.name == name)
+        self.monitors
+            .iter()
+            .position(|m| m.enabled && m.name == name)
     }
 
     pub fn apply_tag_rules_to_monitor(&mut self, mon_idx: usize) {
@@ -352,7 +354,9 @@ impl MargoState {
             }
             if place
                 && let Some(monitor_name) = &rule.monitor
-                && let Some(mon_idx) = monitors.iter().position(|mon| &mon.name == monitor_name)
+                && let Some(mon_idx) = monitors
+                    .iter()
+                    .position(|mon| mon.enabled && &mon.name == monitor_name)
             {
                 client.monitor = mon_idx;
                 placed = true;

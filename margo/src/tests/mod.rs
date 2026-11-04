@@ -39,6 +39,7 @@ mod arrange;
 mod bootstrap;
 mod client_removal;
 mod color_management;
+mod disabled_output;
 mod dispatch;
 mod dmabuf;
 mod floating_layout;

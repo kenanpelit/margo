@@ -269,6 +269,7 @@ impl MargoState {
         self.focused_client_idx()
             .map(|i| self.clients[i].monitor)
             .or_else(|| self.pointer_monitor())
+            .or_else(|| self.monitors.iter().position(|m| m.enabled))
             .unwrap_or(0)
     }
 
@@ -767,44 +768,90 @@ impl MargoState {
         }
     }
 
+    /// The enabled monitor under `(x, y)`. A soft-disabled output is dark
+    /// and takes no pointer, windows or layers.
     fn monitor_at_point(&self, x: f64, y: f64) -> Option<usize> {
         self.monitors.iter().position(|mon| {
             let area = mon.monitor_area;
-            x >= area.x as f64
-                && y >= area.y as f64
-                && x < (area.x + area.width) as f64
-                && y < (area.y + area.height) as f64
+            mon.enabled && point_in_area(area, x, y)
         })
     }
 
     pub fn clamp_pointer_to_outputs(&mut self) {
-        if self.monitors.is_empty() {
-            return;
-        }
-
-        // i64: `x + width` of an output placed near i32::MAX overflows i32
-        // (a panic — release builds keep overflow checks).
-        let edges = |a: crate::layout::Rect| {
-            let (x, y) = (i64::from(a.x), i64::from(a.y));
-            (x, y, x + i64::from(a.width), y + i64::from(a.height))
+        // Soft-disabled outputs are not part of the pointer's world; fall
+        // back to every output only if none is enabled.
+        let enabled: Vec<crate::layout::Rect> = self
+            .monitors
+            .iter()
+            .filter(|m| m.enabled)
+            .map(|m| m.monitor_area)
+            .collect();
+        let areas: Vec<crate::layout::Rect> = if enabled.is_empty() {
+            self.monitors.iter().map(|m| m.monitor_area).collect()
+        } else {
+            enabled
         };
-        let (mut min_x, mut min_y, mut max_x, mut max_y) = edges(self.monitors[0].monitor_area);
-        for mon in &self.monitors[1..] {
-            let (x0, y0, x1, y1) = edges(mon.monitor_area);
+        let Some(&first) = areas.first() else {
+            return;
+        };
+
+        let (mut min_x, mut min_y, mut max_x, mut max_y) = area_edges(first);
+        for &area in &areas[1..] {
+            let (x0, y0, x1, y1) = area_edges(area);
             min_x = min_x.min(x0);
             min_y = min_y.min(y0);
             max_x = max_x.max(x1);
             max_y = max_y.max(y1);
         }
+        let (x, y) = clamp_to_edges(
+            (self.input_pointer.x, self.input_pointer.y),
+            (min_x, min_y, max_x, max_y),
+        );
+        self.input_pointer.x = x;
+        self.input_pointer.y = y;
 
-        // `f64::clamp` panics when min > max — a zero-sized output gives
-        // `max - 1 < min`.
-        let (min_x, min_y) = (min_x as f64, min_y as f64);
-        let max_x = ((max_x - 1) as f64).max(min_x);
-        let max_y = ((max_y - 1) as f64).max(min_y);
-        self.input_pointer.x = self.input_pointer.x.clamp(min_x, max_x);
-        self.input_pointer.y = self.input_pointer.y.clamp(min_y, max_y);
+        // Still inside a disabled output's rectangle (it sits within the
+        // enabled outputs' bounding box): move to the closest point of the
+        // nearest enabled output.
+        let on_disabled = self
+            .monitors
+            .iter()
+            .any(|m| !m.enabled && point_in_area(m.monitor_area, x, y));
+        if on_disabled && !areas.iter().any(|&a| point_in_area(a, x, y)) {
+            let nearest = areas
+                .iter()
+                .map(|&a| clamp_to_edges((x, y), area_edges(a)))
+                .min_by(|a, b| {
+                    let d = |p: (f64, f64)| (p.0 - x).powi(2) + (p.1 - y).powi(2);
+                    d(*a).total_cmp(&d(*b))
+                });
+            if let Some((nx, ny)) = nearest {
+                self.input_pointer.x = nx;
+                self.input_pointer.y = ny;
+            }
+        }
     }
+}
+
+/// i64 edges of `a`: `x + width` of an output placed near i32::MAX
+/// overflows i32 (a panic — release builds keep overflow checks).
+fn area_edges(a: crate::layout::Rect) -> (i64, i64, i64, i64) {
+    let (x, y) = (i64::from(a.x), i64::from(a.y));
+    (x, y, x + i64::from(a.width), y + i64::from(a.height))
+}
+
+fn point_in_area(a: crate::layout::Rect, x: f64, y: f64) -> bool {
+    let (x0, y0, x1, y1) = area_edges(a);
+    x >= x0 as f64 && y >= y0 as f64 && x < x1 as f64 && y < y1 as f64
+}
+
+/// Clamp `p` into the half-open box `(x0, y0, x1, y1)`. `f64::clamp`
+/// panics when min > max — a zero-sized output gives `max - 1 < min`.
+fn clamp_to_edges(p: (f64, f64), (x0, y0, x1, y1): (i64, i64, i64, i64)) -> (f64, f64) {
+    let (min_x, min_y) = (x0 as f64, y0 as f64);
+    let max_x = ((x1 - 1) as f64).max(min_x);
+    let max_y = ((y1 - 1) as f64).max(min_y);
+    (p.0.clamp(min_x, max_x), p.1.clamp(min_y, max_y))
 }
 
 /// Where the element at index `i` lands after moving the element at
