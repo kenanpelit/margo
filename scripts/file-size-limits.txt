@@ -12,3 +12,6 @@ margo/src/state.rs 1300
 # IPC dispatch (IPCCommand -> ShellInput). The D-Bus interface, audio/media
 # renderers, plugin watcher, daily wallpaper and alarms live in ipc/*.rs.
 mshell-crates/mshell-core/src/ipc.rs 1100
+# Settings panel component (view, init, update). Page registry, search,
+# sidebar and the Widgets sub-page catalogue live in settings/*.rs.
+mshell-crates/mshell-settings/src/settings.rs 1100
