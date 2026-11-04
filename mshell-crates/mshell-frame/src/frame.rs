@@ -33,48 +33,6 @@ pub use input::*;
 use layout::*;
 pub use menu_id::*;
 
-const CLOCK_MENU: &str = "clock";
-const CLIPBOARD_MENU: &str = "clipboard";
-const APP_LAUNCHER_MENU: &str = "app_launcher";
-const SCREENSHOT_MENU: &str = "screenshot";
-const NOTIFICATION_MENU: &str = "notification";
-const WALLPAPER_MENU: &str = "wallpaper";
-const SCREENSHARE_MENU: &str = "screenshare";
-const WIZARD_MENU: &str = "wizard";
-const NUFW_MENU: &str = "ufw";
-const PRIVACY_MENU: &str = "privacy";
-const BLUETOOTH_MENU: &str = "bluetooth";
-const CPU_DASHBOARD_MENU: &str = "cpu_dashboard";
-const AUDIO_DASHBOARD_MENU: &str = "audio_dashboard";
-const SYSTEM_UPDATE_MENU: &str = "system_update";
-const VALENT_MENU: &str = "valent";
-const WEATHER_MENU: &str = "weather";
-const KEEP_AWAKE_MENU: &str = "keep_awake";
-const TWILIGHT_MENU: &str = "twilight";
-const KEYBINDS_MENU: &str = "keybinds";
-const ALARMCLOCK_MENU: &str = "alarmclock";
-const DOCK_MENU: &str = "dock";
-const CONTROL_CENTER_MENU: &str = "control_center";
-const SSH_MENU: &str = "ssh_sessions";
-const USB_MENU: &str = "usb";
-const DISCORD_MENU: &str = "discord_voice";
-const CRASHES_MENU: &str = "crashes";
-const NDNS_MENU: &str = "dns";
-const NVPN_MENU: &str = "vpn";
-const NAI_MENU: &str = "ai";
-const NPODMAN_MENU: &str = "podman";
-const NNOTES_MENU: &str = "notes";
-const NPLUGIN_PANEL_MENU: &str = "plugin-panel";
-const NIP_MENU: &str = "ip";
-const NVPN_INDICATOR_MENU: &str = "vpn_indicator";
-const NNETWORK_MENU: &str = "network";
-const NPOWER_MENU: &str = "power";
-const MEDIA_PLAYER_MENU: &str = "media_player";
-const MTUNE_MENU: &str = "mtune";
-const LYRICS_MENU: &str = "lyrics";
-const SESSION_MENU: &str = "session";
-const SETTINGS_MENU: &str = "settings";
-
 /// Read an `i32` out of a `connect_local` signal argument list.
 ///
 /// The `resized` signal always delivers `(widget, width: i32, height: i32)`, so
@@ -89,9 +47,6 @@ fn signal_i32(values: &[glib::Value], index: usize) -> i32 {
         .and_then(|v| v.get::<i32>().ok())
         .unwrap_or(0)
 }
-const MDASH_MENU: &str = "mdash";
-const MARGO_LAYOUT_MENU: &str = "margo_layout";
-const TRANSLATE_MENU: &str = "translate";
 
 pub struct Frame {
     // Margo's mshell ships only horizontal bars — vertical Left /

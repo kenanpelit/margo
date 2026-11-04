@@ -2,8 +2,52 @@
 
 use super::*;
 
-// Stack names of the newer menus (kept here, beside their ids, rather
-// than in frame.rs).
+// Stack names of every menu (the `GtkStack` child name / config key),
+// kept here beside their ids.
+pub(super) const CLOCK_MENU: &str = "clock";
+pub(super) const CLIPBOARD_MENU: &str = "clipboard";
+pub(super) const APP_LAUNCHER_MENU: &str = "app_launcher";
+pub(super) const SCREENSHOT_MENU: &str = "screenshot";
+pub(super) const NOTIFICATION_MENU: &str = "notification";
+pub(super) const WALLPAPER_MENU: &str = "wallpaper";
+pub(super) const SCREENSHARE_MENU: &str = "screenshare";
+pub(super) const WIZARD_MENU: &str = "wizard";
+pub(super) const NUFW_MENU: &str = "ufw";
+pub(super) const PRIVACY_MENU: &str = "privacy";
+pub(super) const BLUETOOTH_MENU: &str = "bluetooth";
+pub(super) const CPU_DASHBOARD_MENU: &str = "cpu_dashboard";
+pub(super) const AUDIO_DASHBOARD_MENU: &str = "audio_dashboard";
+pub(super) const SYSTEM_UPDATE_MENU: &str = "system_update";
+pub(super) const VALENT_MENU: &str = "valent";
+pub(super) const WEATHER_MENU: &str = "weather";
+pub(super) const KEEP_AWAKE_MENU: &str = "keep_awake";
+pub(super) const TWILIGHT_MENU: &str = "twilight";
+pub(super) const KEYBINDS_MENU: &str = "keybinds";
+pub(super) const ALARMCLOCK_MENU: &str = "alarmclock";
+pub(super) const DOCK_MENU: &str = "dock";
+pub(super) const CONTROL_CENTER_MENU: &str = "control_center";
+pub(super) const SSH_MENU: &str = "ssh_sessions";
+pub(super) const USB_MENU: &str = "usb";
+pub(super) const DISCORD_MENU: &str = "discord_voice";
+pub(super) const CRASHES_MENU: &str = "crashes";
+pub(super) const NDNS_MENU: &str = "dns";
+pub(super) const NVPN_MENU: &str = "vpn";
+pub(super) const NAI_MENU: &str = "ai";
+pub(super) const NPODMAN_MENU: &str = "podman";
+pub(super) const NNOTES_MENU: &str = "notes";
+pub(super) const NPLUGIN_PANEL_MENU: &str = "plugin-panel";
+pub(super) const NIP_MENU: &str = "ip";
+pub(super) const NVPN_INDICATOR_MENU: &str = "vpn_indicator";
+pub(super) const NNETWORK_MENU: &str = "network";
+pub(super) const NPOWER_MENU: &str = "power";
+pub(super) const MEDIA_PLAYER_MENU: &str = "media_player";
+pub(super) const MTUNE_MENU: &str = "mtune";
+pub(super) const LYRICS_MENU: &str = "lyrics";
+pub(super) const SESSION_MENU: &str = "session";
+pub(super) const SETTINGS_MENU: &str = "settings";
+pub(super) const MDASH_MENU: &str = "mdash";
+pub(super) const MARGO_LAYOUT_MENU: &str = "margo_layout";
+pub(super) const TRANSLATE_MENU: &str = "translate";
 pub(super) const NAGENTS_MENU: &str = "agents";
 pub(super) const NGITHUB_MENU: &str = "github";
 
