@@ -300,6 +300,22 @@ fn attempt(voice: &str, text: &str, skew_seconds: f64) -> Result<Vec<u8>, Attemp
         .send(Message::text(ssml_msg))
         .map_err(|e| AttemptErr::Msg(format!("send ssml: {e}")))?;
 
+    let audio = read_audio(&mut socket)?;
+    let _ = socket.close(None);
+
+    if audio.len() < MIN_AUDIO_BYTES {
+        return Err(AttemptErr::Msg("no audio received".into()));
+    }
+    Ok(audio)
+}
+
+/// Collect the mp3 payload of every `Path:audio` binary frame until the
+/// service signals `Path:turn.end`, closes the socket, or [`TIMEOUT`] passes.
+/// Each binary frame is a big-endian u16 header length, the header text, then
+/// the audio bytes.
+fn read_audio<S: std::io::Read + std::io::Write>(
+    socket: &mut tungstenite::WebSocket<S>,
+) -> Result<Vec<u8>, AttemptErr> {
     let mut audio = Vec::new();
     let deadline = Instant::now() + TIMEOUT;
     loop {
@@ -330,11 +346,6 @@ fn attempt(voice: &str, text: &str, skew_seconds: f64) -> Result<Vec<u8>, Attemp
             Message::Close(_) => break,
             _ => {}
         }
-    }
-    let _ = socket.close(None);
-
-    if audio.len() < MIN_AUDIO_BYTES {
-        return Err(AttemptErr::Msg("no audio received".into()));
     }
     Ok(audio)
 }
@@ -382,5 +393,44 @@ mod tests {
         assert!(synthesize("en-US-GuyNeural", "   ").is_err());
         let long = "a".repeat(MAX_TEXT_CHARS + 1);
         assert!(synthesize("en-US-GuyNeural", &long).is_err());
+    }
+
+    /// The frame loop over a real WebSocket (loopback, no TLS): audio is
+    /// taken only from `Path:audio` binary frames, after the header, in
+    /// order; malformed frames are skipped; `turn.end` stops it.
+    #[test]
+    fn read_audio_collects_audio_frames_until_turn_end() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (tcp, _) = listener.accept().unwrap();
+            let mut ws = tungstenite::accept(tcp).unwrap();
+            let frame = |header: &str, body: &[u8]| {
+                let mut v = (header.len() as u16).to_be_bytes().to_vec();
+                v.extend_from_slice(header.as_bytes());
+                v.extend_from_slice(body);
+                Message::binary(v)
+            };
+            ws.send(Message::text("Path:turn.start\r\n\r\n{}")).unwrap();
+            ws.send(frame("Path:audio\r\n", b"ID3abc")).unwrap();
+            ws.send(Message::binary(vec![0u8])).unwrap(); // too short
+            ws.send(Message::binary(vec![0u8, 200, 1])).unwrap(); // header past the end
+            ws.send(frame("Path:metadata\r\n", b"skip")).unwrap();
+            ws.send(frame("Path:audio\r\n", b"def")).unwrap();
+            ws.send(Message::text("Path:turn.end\r\n\r\n{}")).unwrap();
+            ws.send(frame("Path:audio\r\n", b"late")).unwrap();
+            let _ = ws.close(None);
+            while ws.read().is_ok() {}
+        });
+        let tcp = TcpStream::connect(addr).unwrap();
+        let (mut socket, _) = tungstenite::client(format!("ws://{addr}/"), tcp).unwrap();
+        let audio = match read_audio(&mut socket) {
+            Ok(a) => a,
+            Err(_) => panic!("read_audio failed"),
+        };
+        assert_eq!(audio, b"ID3abcdef");
+        let _ = socket.close(None);
+        drop(socket);
+        server.join().unwrap();
     }
 }
