@@ -18,7 +18,7 @@ use reactive_graph::prelude::{Get, GetUntracked};
 use reactive_graph::traits::ReadUntracked;
 use relm4::gtk::{CssProvider, STYLE_PROVIDER_PRIORITY_USER, gdk};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tracing::{error, warn};
 
 /// Wallpaper average-luminance cutoff for auto light/dark polarity
@@ -45,6 +45,9 @@ fn cached_theme_path() -> PathBuf {
 /// change) and the CssProvider reload is a no-op visually.
 fn read_cached_theme() -> Option<String> {
     let path = cached_theme_path();
+    // A cache written by an older mshell is 0644; tighten it now rather than
+    // waiting for the next successful matugen run to replace it.
+    restrict_to_owner(&path);
     std::fs::read_to_string(&path).ok()
 }
 
@@ -54,19 +57,70 @@ fn read_cached_theme() -> Option<String> {
 /// independent of this.
 fn write_cached_theme(css: &str) {
     let path = cached_theme_path();
-    if let Some(parent) = path.parent()
-        && let Err(err) = std::fs::create_dir_all(parent)
+    if let Err(err) = write_private_atomic(&path, css) {
+        warn!(path = %path.display(), error = %err, "cached theme: write failed");
+    }
+}
+
+/// Write `contents` to `path` owner-only (0600) through a sibling tmp file
+/// and a rename, so a reader never sees half a file. The palette follows the
+/// wallpaper, so other local users have no business reading it; `mlock`,
+/// `mtune`, `mgreet` and mlogind's theme sync read it as the same user.
+fn write_private_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
+    use std::io::Write as _;
+    use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    // Exclusive creation never follows a pre-existing tmp symlink or
+    // truncates a stale/hard-linked file. A serial also separates concurrent
+    // theme writes within one process.
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SERIAL: AtomicU64 = AtomicU64::new(0);
+    let (tmp, mut f) = loop {
+        let tmp = path.with_extension(format!(
+            "css.{}-{}.tmp",
+            std::process::id(),
+            SERIAL.fetch_add(1, Ordering::Relaxed),
+        ));
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&tmp)
+        {
+            Ok(file) => break (tmp, file),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(err) => return Err(err),
+        }
+    };
+    let result = (|| {
+        f.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+        f.write_all(contents.as_bytes())?;
+        f.sync_all()?;
+        drop(f);
+        std::fs::rename(&tmp, path)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
+}
+
+/// Drop group/other access from an existing file. Best-effort: a missing
+/// file or a failed chmod changes nothing for the reader.
+fn restrict_to_owner(path: &Path) {
+    use std::os::unix::fs::PermissionsExt as _;
+    let Ok(meta) = std::fs::symlink_metadata(path) else {
+        return;
+    };
+    let mode = meta.permissions().mode();
+    if meta.is_file()
+        && mode & 0o077 != 0
+        && let Err(err) =
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode & 0o700))
     {
-        warn!(path = %parent.display(), error = %err, "cached theme: mkdir failed");
-        return;
-    }
-    let tmp = path.with_extension("css.tmp");
-    if let Err(err) = std::fs::write(&tmp, css) {
-        warn!(path = %tmp.display(), error = %err, "cached theme: tmp write failed");
-        return;
-    }
-    if let Err(err) = std::fs::rename(&tmp, &path) {
-        warn!(from = %tmp.display(), to = %path.display(), error = %err, "cached theme: rename failed");
+        warn!(path = %path.display(), error = %err, "cached theme: chmod failed");
     }
 }
 
@@ -566,5 +620,60 @@ fn build_mshell_matugen() -> MShell {
             .window_opacity()
             .get_untracked()
             .get(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{restrict_to_owner, write_private_atomic};
+    use std::os::unix::fs::PermissionsExt as _;
+    use std::path::PathBuf;
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("mshell-style-test-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn mode(path: &std::path::Path) -> u32 {
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    #[test]
+    fn cache_is_written_owner_only_over_an_old_world_readable_one() {
+        let dir = scratch("write");
+        let path = dir.join("mshell").join("last_theme.css");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "old").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        // A stale tmp left by an older build, also 0644.
+        let tmp = path.with_extension("css.tmp");
+        std::fs::write(&tmp, "stale").unwrap();
+        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        write_private_atomic(&path, "@define-color x #fff;").unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "@define-color x #fff;"
+        );
+        assert_eq!(mode(&path), 0o600);
+        assert_eq!(std::fs::read_to_string(&tmp).unwrap(), "stale");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn existing_cache_is_tightened() {
+        let dir = scratch("tighten");
+        let path = dir.join("last_theme.css");
+        std::fs::write(&path, "x").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        restrict_to_owner(&path);
+        assert_eq!(mode(&path), 0o600);
+        // Missing file: nothing to do, no panic.
+        restrict_to_owner(&dir.join("absent.css"));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
