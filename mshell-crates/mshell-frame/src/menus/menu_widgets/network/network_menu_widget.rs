@@ -866,7 +866,7 @@ fn draw_graph(area: &gtk::DrawingArea, cr: &gtk::cairo::Context, w: i32, h: i32,
 /// Emit a Catmull-Rom spline through `pts` as cairo `curve_to`s
 /// (move_to first point, then one cubic per segment). Endpoints are
 /// clamped so the curve starts/ends exactly on the data.
-fn smooth_path(cr: &gtk::cairo::Context, pts: &[(f64, f64)]) {
+pub(crate) fn smooth_path(cr: &gtk::cairo::Context, pts: &[(f64, f64)]) {
     let n = pts.len();
     cr.move_to(pts[0].0, pts[0].1);
     for i in 0..n - 1 {

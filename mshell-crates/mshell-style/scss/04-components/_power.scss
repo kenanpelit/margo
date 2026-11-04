@@ -44,6 +44,19 @@
   background-color: var(--surface-container-high);
 }
 
+// ── Battery history graph (UPower) ───────────────────────
+// Same tonal card + corner as the hero above (siblings share one
+// corner). The curve takes its colour from the DrawingArea's CSS
+// `color`, like the network sparklines, so it follows matugen.
+.power-history {
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-container-high);
+}
+.power-history-graph {
+  color: var(--primary);
+}
+
 // ── Profile switcher buttons ─────────────────────────────
 // list-item shape; selection backdrop fades in, and the unset
 // (non-selected) state carries a calm tonal hover (DESIGN.md

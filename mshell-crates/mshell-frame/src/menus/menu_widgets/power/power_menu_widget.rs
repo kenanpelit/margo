@@ -34,14 +34,23 @@
 //! highlight tracks reality with no re-probe.
 
 use crate::bars::bar_widgets::power::{PowerState, Profile, read_power_state, set_charge_limit};
+use crate::menus::menu_widgets::network::network_menu_widget::smooth_path;
+use crate::menus::menu_widgets::power::battery_history::{self, Point};
+use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{ConfigStoreFields, PowerConfigStoreFields};
 use mshell_idle::inhibitor::IdleInhibitor;
 use mshell_services::power_profile_service;
 use mshell_utils::battery::{spawn_battery_online_watcher, spawn_battery_watcher};
 use mshell_utils::idle::spawn_idle_inhibitor_watcher;
 use mshell_utils::power_profile::spawn_active_profile_watcher;
-use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
+use reactive_graph::prelude::GetUntracked;
+use relm4::gtk::prelude::{
+    BoxExt, ButtonExt, DrawingAreaExt, DrawingAreaExtManual, OrientableExt, WidgetExt,
+};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::cell::RefCell;
 use std::path::PathBuf;
+use std::rc::Rc;
 use tracing::warn;
 
 pub(crate) struct PowerMenuWidgetModel {
@@ -74,6 +83,18 @@ pub(crate) struct PowerMenuWidgetModel {
     charge_section: gtk::Box,
     charge_buttons: Vec<(u8, gtk::Button)>,
     charge_spin: gtk::SpinButton,
+    /// Battery-level history (UPower) — section hidden without a battery.
+    history_section: gtk::Box,
+    history_area: gtk::DrawingArea,
+    history_points: Rc<RefCell<Vec<Point>>>,
+    history_caption: gtk::Label,
+    /// Timeframe chips keyed by hours (`.selected` on the active one).
+    history_buttons: Vec<(u32, gtk::Button)>,
+    /// Timeframe in hours (`power.history_hours`).
+    history_hours: u32,
+    /// Battery percent the history was last fetched at — refetch when it
+    /// moves (UPower appends a sample per percent change).
+    history_fetched_at: Option<u8>,
 }
 
 impl std::fmt::Debug for PowerMenuWidgetModel {
@@ -97,6 +118,8 @@ pub(crate) enum PowerMenuWidgetInput {
     ToggleIdleInhibit,
     /// Set the battery charge limit (end threshold %).
     SetChargeLimit(u8),
+    /// Pick the battery-history timeframe (hours).
+    SetHistoryHours(u32),
 }
 
 #[derive(Debug)]
@@ -114,6 +137,8 @@ pub(crate) enum PowerMenuWidgetCommandOutput {
     /// The shared idle inhibitor flipped (watcher or our own
     /// toggle) — re-read `IdleInhibitor::global()`.
     IdleStateChanged,
+    /// Battery history fetched from UPower.
+    History(Vec<Point>),
 }
 
 #[relm4::component(pub(crate))]
@@ -211,6 +236,41 @@ impl Component for PowerMenuWidgetModel {
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 6,
                 set_homogeneous: true,
+            },
+
+            // ── Battery history (UPower; hidden without a battery) ──
+            #[local_ref]
+            history_section -> gtk::Box {
+                set_orientation: gtk::Orientation::Vertical,
+                set_spacing: 6,
+
+                gtk::Label {
+                    add_css_class: "power-section-label",
+                    set_label: "BATTERY HISTORY",
+                    set_halign: gtk::Align::Start,
+                },
+                gtk::Box {
+                    add_css_class: "power-history",
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 4,
+                    #[local_ref]
+                    history_area -> gtk::DrawingArea {
+                        add_css_class: "power-history-graph",
+                        set_hexpand: true,
+                        set_content_height: 64,
+                    },
+                    #[local_ref]
+                    history_caption -> gtk::Label {
+                        add_css_class: "label-small",
+                        set_xalign: 0.0,
+                    },
+                },
+                #[local_ref]
+                history_row -> gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 6,
+                    set_homogeneous: true,
+                },
             },
 
             // ── Charge limit (kernel sysfs; hidden when unsupported) ──
@@ -314,6 +374,37 @@ impl Component for PowerMenuWidgetModel {
         custom_row.append(&apply_button);
         charge_section.append(&custom_row);
 
+        // ── Battery history (UPower GetHistory) ─────────────────
+        let history_section = gtk::Box::new(gtk::Orientation::Vertical, 6);
+        let history_area = gtk::DrawingArea::new();
+        let history_caption = gtk::Label::new(None);
+        let history_points: Rc<RefCell<Vec<Point>>> = Rc::new(RefCell::new(Vec::new()));
+        {
+            let pts = history_points.clone();
+            history_area.set_draw_func(move |a, cr, w, h| draw_history(a, cr, w, h, &pts.borrow()));
+        }
+        let history_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        let mut history_buttons: Vec<(u32, gtk::Button)> = Vec::new();
+        for hours in battery_history::PRESET_HOURS {
+            let btn = gtk::Button::with_label(&battery_history::hours_label(hours));
+            btn.set_css_classes(&["ok-button-surface", "power-charge-preset"]);
+            btn.set_tooltip_text(Some(&format!(
+                "Show the last {}",
+                battery_history::hours_label(hours)
+            )));
+            let s = sender.clone();
+            btn.connect_clicked(move |_| s.input(PowerMenuWidgetInput::SetHistoryHours(hours)));
+            history_row.append(&btn);
+            history_buttons.push((hours, btn));
+        }
+        let history_hours = battery_history::clamp_hours(
+            config_manager()
+                .config()
+                .power()
+                .history_hours()
+                .get_untracked(),
+        );
+
         // Reactive — profile from power-profiles-daemon, battery
         // from UPower, both over D-Bus. No polling.
         spawn_active_profile_watcher(&sender, None, || PowerMenuWidgetCommandOutput::StateChanged);
@@ -348,10 +439,19 @@ impl Component for PowerMenuWidgetModel {
             charge_section: charge_section.clone(),
             charge_buttons,
             charge_spin: charge_spin.clone(),
+            history_section: history_section.clone(),
+            history_area: history_area.clone(),
+            history_points,
+            history_caption: history_caption.clone(),
+            history_buttons,
+            history_hours,
+            history_fetched_at: None,
         };
 
         let widgets = view_output!();
         sync_view(&model);
+        let mut model = model;
+        model.maybe_fetch_history(&sender, true);
 
         ComponentParts { model, widgets }
     }
@@ -402,6 +502,13 @@ impl Component for PowerMenuWidgetModel {
                 self.state.charge_limit = Some(limit);
                 sync_view(self);
             }
+            PowerMenuWidgetInput::SetHistoryHours(hours) => {
+                self.history_hours = battery_history::clamp_hours(hours);
+                let stored = self.history_hours;
+                config_manager().update_config(|c| c.power.history_hours = stored);
+                sync_view(self);
+                self.maybe_fetch_history(&sender, true);
+            }
         }
     }
 
@@ -409,7 +516,7 @@ impl Component for PowerMenuWidgetModel {
         &mut self,
         _widgets: &mut Self::Widgets,
         message: Self::CommandOutput,
-        _sender: ComponentSender<Self>,
+        sender: ComponentSender<Self>,
         _root: &Self::Root,
     ) {
         match message {
@@ -419,6 +526,12 @@ impl Component for PowerMenuWidgetModel {
                     self.state = state;
                     sync_view(self);
                 }
+                self.maybe_fetch_history(&sender, false);
+            }
+            PowerMenuWidgetCommandOutput::History(points) => {
+                self.history_caption.set_label(&history_caption(&points));
+                *self.history_points.borrow_mut() = points;
+                self.history_area.queue_draw();
             }
             PowerMenuWidgetCommandOutput::MpowerPausedChanged(paused) => {
                 if self.mpower_paused != paused {
@@ -435,6 +548,89 @@ impl Component for PowerMenuWidgetModel {
             }
         }
     }
+}
+
+impl PowerMenuWidgetModel {
+    /// Refetch the UPower history when forced (open / timeframe change)
+    /// or when the battery percent moved since the last fetch — UPower
+    /// only appends a sample on a change, so this is event-driven, no
+    /// polling. Skipped entirely without a battery.
+    fn maybe_fetch_history(&mut self, sender: &ComponentSender<Self>, force: bool) {
+        if !self.state.battery_available {
+            return;
+        }
+        let pct = self.state.battery_percent;
+        if !force && pct == self.history_fetched_at {
+            return;
+        }
+        self.history_fetched_at = pct;
+        let hours = self.history_hours;
+        sender.oneshot_command(async move {
+            match battery_history::fetch(hours).await {
+                Ok(points) => PowerMenuWidgetCommandOutput::History(points),
+                Err(e) => {
+                    warn!(error = %e, "power: UPower GetHistory failed");
+                    PowerMenuWidgetCommandOutput::History(Vec::new())
+                }
+            }
+        });
+    }
+}
+
+/// Caption under the battery graph.
+fn history_caption(points: &[Point]) -> String {
+    if points.len() < 2 {
+        "No battery history recorded for this timeframe yet".to_string()
+    } else {
+        battery_history::summary(points)
+    }
+}
+
+/// Draw the battery-level curve: fixed 0–100 % scale, faint 25/50/75 %
+/// gridlines, gradient fill + rounded stroke in the area's CSS `color`
+/// (`.power-history-graph` → `--primary`), so it tracks the matugen theme
+/// like the network sparklines.
+fn draw_history(area: &gtk::DrawingArea, cr: &gtk::cairo::Context, w: i32, h: i32, pts: &[Point]) {
+    use gtk::cairo::{LineCap, LineJoin, LinearGradient};
+
+    let (w, h) = (f64::from(w), f64::from(h));
+    let c = area.color();
+    let (r, g, b) = (
+        f64::from(c.red()),
+        f64::from(c.green()),
+        f64::from(c.blue()),
+    );
+
+    cr.set_line_width(1.0);
+    cr.set_source_rgba(r, g, b, 0.08);
+    for frac in [0.25_f64, 0.5, 0.75] {
+        let y = h * (1.0 - frac);
+        cr.move_to(0.0, y);
+        cr.line_to(w, y);
+        let _ = cr.stroke();
+    }
+    if pts.len() < 2 {
+        return;
+    }
+    let px = battery_history::to_pixels(pts, w, h);
+    let (first_x, last_x) = (px[0].0, px[px.len() - 1].0);
+
+    smooth_path(cr, &px);
+    cr.line_to(last_x, h);
+    cr.line_to(first_x, h);
+    cr.close_path();
+    let grad = LinearGradient::new(0.0, 0.0, 0.0, h);
+    grad.add_color_stop_rgba(0.0, r, g, b, 0.32);
+    grad.add_color_stop_rgba(1.0, r, g, b, 0.0);
+    let _ = cr.set_source(&grad);
+    let _ = cr.fill();
+
+    cr.set_line_width(2.0);
+    cr.set_line_cap(LineCap::Round);
+    cr.set_line_join(LineJoin::Round);
+    cr.set_source_rgba(r, g, b, 0.95);
+    smooth_path(cr, &px);
+    let _ = cr.stroke();
 }
 
 fn make_profile_button(profile: Profile) -> gtk::Button {
@@ -548,6 +744,16 @@ fn sync_view(model: &PowerMenuWidgetModel) {
                 .stats_box
                 .append(&stat_row("Charge cycles", &c.to_string()));
         }
+    }
+
+    // Battery history — laptop only; highlight the active timeframe chip.
+    model.history_section.set_visible(s.battery_available);
+    for (hours, btn) in &model.history_buttons {
+        let mut classes = vec!["ok-button-surface", "power-charge-preset"];
+        if *hours == model.history_hours {
+            classes.push("selected");
+        }
+        btn.set_css_classes(&classes);
     }
 
     // Charge limit — show only where the kernel exposes it; highlight the

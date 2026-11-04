@@ -216,6 +216,15 @@ pub struct PowerConfig {
     pub low_battery_warning: bool,
     /// Percent threshold for the low-battery toast (1–100, default 15).
     pub low_battery_threshold: u32,
+    /// Timeframe of the power menu's battery-level graph, in hours
+    /// (UPower history; clamped to 1–168, default 6). The menu's
+    /// 6h / 24h / 7d chips write it.
+    #[serde(default = "default_history_hours")]
+    pub history_hours: u32,
+}
+
+fn default_history_hours() -> u32 {
+    6
 }
 
 impl Default for PowerConfig {
@@ -223,6 +232,7 @@ impl Default for PowerConfig {
         Self {
             low_battery_warning: true,
             low_battery_threshold: 15,
+            history_hours: default_history_hours(),
         }
     }
 }
