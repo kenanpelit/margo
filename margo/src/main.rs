@@ -1033,7 +1033,7 @@ fn start_xwayland(
         info!("--no-xwayland set; X11 client support disabled");
     } else if let Some(satellite_bin) = args.xwayland_satellite.clone() {
         info!("xwayland-satellite mode: spawning `{satellite_bin}` as separate process");
-        match std::process::Command::new(&satellite_bin)
+        match utils::reset_child_signals(&mut std::process::Command::new(&satellite_bin))
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -1065,18 +1065,24 @@ fn start_xwayland(
     if want_intree_xwayland {
         use smithay::xwayland::{XWayland, XWaylandEvent};
         use std::process::Stdio;
-        match XWayland::spawn(
-            &margo.display_handle,
-            None,
-            std::iter::empty::<(&str, &str)>(),
-            // `extra_args`: added upstream (smithay HEAD) between `envs`
-            // and `open_abstract_socket` — we pass no extra X server args.
-            std::iter::empty::<&str>(),
-            true,
-            Stdio::null(),
-            Stdio::null(),
-            |_| {},
-        ) {
+        // XWayland::spawn forks on this thread and gives us no pre_exec
+        // hook, so open the signal mask around it: otherwise Xwayland starts
+        // with the loop signals blocked and ignores SIGTERM/SIGHUP.
+        let spawned = utils::with_loop_signals_unblocked(|| {
+            XWayland::spawn(
+                &margo.display_handle,
+                None,
+                std::iter::empty::<(&str, &str)>(),
+                // `extra_args`: added upstream (smithay HEAD) between `envs`
+                // and `open_abstract_socket` — we pass no extra X server args.
+                std::iter::empty::<&str>(),
+                true,
+                Stdio::null(),
+                Stdio::null(),
+                |_| {},
+            )
+        });
+        match spawned {
             Ok((xwayland, client)) => {
                 let loop_handle = event_loop.handle();
                 loop_handle
@@ -1379,6 +1385,13 @@ fn main() -> Result<()> {
     // without a handler its default action killed margo on the spot, so the clean-shutdown step after the event loop (dropping
     // the crash autosave) never ran and every next login reported "unclean shutdown" and replayed the old session as a crash
     // restore.
+    //
+    // calloop blocks these signals in the thread mask (they reach it through
+    // a signalfd), and a blocked mask survives fork + exec. Every spawn path
+    // therefore resets it for the child: `utils::apply_child_env` /
+    // `utils::reset_child_signals` for Commands, and
+    // `utils::with_loop_signals_unblocked` around XWayland::spawn. Keep this
+    // list in sync with `utils::LOOP_SIGNALS`.
     use smithay::reexports::calloop::signals::Signal;
     match smithay::reexports::calloop::signals::Signals::new(&[
         Signal::SIGUSR1,

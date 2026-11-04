@@ -37,12 +37,100 @@ pub fn child_env_var(key: &str) -> Option<String> {
     std::env::var(key).ok()
 }
 
-/// Apply the child-env overlay to `cmd`.
+/// Apply the child-env overlay to `cmd`, and give the child a clean signal
+/// state (see [`reset_child_signals`]). Every `Command` margo spawns goes
+/// through here.
 pub fn apply_child_env(cmd: &mut Command) -> &mut Command {
     for (k, v) in child_env().iter() {
         cmd.env(k, v);
     }
-    cmd
+    reset_child_signals(cmd)
+}
+
+/// The signals margo routes through its calloop `Signals` source (a
+/// signalfd). calloop blocks them in every margo thread so they reach the
+/// signalfd instead of their default action.
+pub const LOOP_SIGNALS: [libc::c_int; 4] =
+    [libc::SIGUSR1, libc::SIGTERM, libc::SIGINT, libc::SIGHUP];
+
+/// Make `cmd`'s child start with an empty signal mask and the default action
+/// for [`LOOP_SIGNALS`] and SIGPIPE.
+///
+/// A blocked mask survives fork + exec, and Rust's std no longer resets it in
+/// the child. Without this every app margo launches (binds, exec-once, Rhai
+/// `spawn`, helpers) started with SIGHUP/SIGINT/SIGTERM/SIGUSR1 blocked, so
+/// a logout's SIGTERM, `pkill` and `timeout` silently did nothing to it.
+pub fn reset_child_signals(cmd: &mut Command) -> &mut Command {
+    use std::os::unix::process::CommandExt;
+    // SAFETY: the hook only calls async-signal-safe functions (sigemptyset,
+    // sigprocmask, signal) on stack values between fork and exec.
+    unsafe {
+        cmd.pre_exec(|| {
+            for sig in LOOP_SIGNALS.into_iter().chain([libc::SIGPIPE]) {
+                libc::signal(sig, libc::SIG_DFL);
+            }
+            let mut empty: libc::sigset_t = std::mem::zeroed();
+            libc::sigemptyset(&mut empty);
+            if libc::sigprocmask(libc::SIG_SETMASK, &empty, std::ptr::null_mut()) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        })
+    }
+}
+
+/// Signals that arrived while [`with_loop_signals_unblocked`] had them open.
+static CAUGHT_LOOP_SIGNALS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+extern "C" fn record_loop_signal(sig: libc::c_int) {
+    if (0..32).contains(&sig) {
+        CAUGHT_LOOP_SIGNALS.fetch_or(1 << sig, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// Run `f` with this thread's signal mask emptied, for spawn paths margo
+/// can't give a `pre_exec` hook (smithay's `XWayland::spawn`): the child
+/// forked inside `f` then starts unblocked.
+///
+/// While the mask is open, [`LOOP_SIGNALS`] go to a handler that only
+/// records them instead of their default action (which would kill margo
+/// uncleanly); afterwards the mask and the old actions are restored and each
+/// recorded signal is raised again on this thread, where it waits blocked
+/// for the calloop signalfd as usual. Handlers reset to default on exec, so
+/// the child never sees the recorder.
+pub fn with_loop_signals_unblocked<R>(f: impl FnOnce() -> R) -> R {
+    use std::sync::atomic::Ordering;
+    // SAFETY: sigaction / pthread_sigmask on stack values; the installed
+    // handler only does an atomic fetch_or, which is async-signal-safe.
+    unsafe {
+        let mut action: libc::sigaction = std::mem::zeroed();
+        action.sa_sigaction = record_loop_signal as extern "C" fn(libc::c_int) as usize;
+        libc::sigemptyset(&mut action.sa_mask);
+        action.sa_flags = libc::SA_RESTART;
+        let mut old_actions: [libc::sigaction; LOOP_SIGNALS.len()] = std::mem::zeroed();
+        for (sig, old) in LOOP_SIGNALS.iter().zip(old_actions.iter_mut()) {
+            libc::sigaction(*sig, &action, old);
+        }
+        CAUGHT_LOOP_SIGNALS.store(0, Ordering::SeqCst);
+        let mut empty: libc::sigset_t = std::mem::zeroed();
+        libc::sigemptyset(&mut empty);
+        let mut old_mask: libc::sigset_t = std::mem::zeroed();
+        libc::pthread_sigmask(libc::SIG_SETMASK, &empty, &mut old_mask);
+
+        let out = f();
+
+        libc::pthread_sigmask(libc::SIG_SETMASK, &old_mask, std::ptr::null_mut());
+        for (sig, old) in LOOP_SIGNALS.iter().zip(old_actions.iter()) {
+            libc::sigaction(*sig, old, std::ptr::null_mut());
+        }
+        let caught = CAUGHT_LOOP_SIGNALS.swap(0, Ordering::SeqCst);
+        for sig in LOOP_SIGNALS {
+            if caught & (1 << sig) != 0 {
+                libc::raise(sig);
+            }
+        }
+        out
+    }
 }
 
 /// Spawn a program asynchronously (mirrors C `spawn`).
@@ -453,5 +541,130 @@ mod handoff_fd_tests {
         // SAFETY: test-only env mutation.
         unsafe { std::env::set_var("MARGO_TEST_HANDOFF_STDOUT", "1") };
         assert!(take_handoff_fd("MARGO_TEST_HANDOFF_STDOUT").is_none());
+    }
+}
+
+#[cfg(test)]
+mod child_signal_tests {
+    use super::*;
+
+    /// Block margo's stop signals on this thread the way calloop's
+    /// `Signals` source does, run `f`, then restore the old mask.
+    fn with_stop_signals_blocked<R>(f: impl FnOnce() -> R) -> R {
+        // SAFETY: plain sigset manipulation on stack values, and
+        // pthread_sigmask only changes this test thread's mask.
+        unsafe {
+            let mut set: libc::sigset_t = std::mem::zeroed();
+            libc::sigemptyset(&mut set);
+            for sig in LOOP_SIGNALS {
+                libc::sigaddset(&mut set, sig);
+            }
+            let mut old: libc::sigset_t = std::mem::zeroed();
+            libc::pthread_sigmask(libc::SIG_BLOCK, &set, &mut old);
+            let out = f();
+            libc::pthread_sigmask(libc::SIG_SETMASK, &old, std::ptr::null_mut());
+            out
+        }
+    }
+
+    fn sigblk_line(path: &std::path::Path) -> String {
+        for _ in 0..300 {
+            if let Ok(text) = std::fs::read_to_string(path)
+                && text.ends_with('\n')
+            {
+                return text.trim().to_owned();
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        panic!("the spawned shell never wrote {}", path.display());
+    }
+
+    fn assert_clean(line: &str) {
+        let mask = line
+            .strip_prefix("SigBlk:")
+            .map(str::trim)
+            .unwrap_or_else(|| panic!("unexpected status line {line:?}"));
+        assert!(
+            mask.chars().all(|c| c == '0'),
+            "child started with blocked signals: {line}"
+        );
+    }
+
+    #[test]
+    fn spawned_shell_starts_with_an_empty_signal_mask() {
+        let out = std::env::temp_dir().join(format!("margo-sigblk-{}", std::process::id()));
+        let _ = std::fs::remove_file(&out);
+        with_stop_signals_blocked(|| {
+            spawn_shell(&format!(
+                "grep SigBlk /proc/self/status > {o}.tmp && mv {o}.tmp {o}",
+                o = out.display()
+            ))
+            .unwrap();
+        });
+        assert_clean(&sigblk_line(&out));
+        let _ = std::fs::remove_file(&out);
+    }
+
+    #[test]
+    fn helper_commands_start_with_an_empty_signal_mask() {
+        // grim, notify-send, systemctl and xwayland-satellite all go
+        // through apply_child_env.
+        let output = with_stop_signals_blocked(|| {
+            let mut cmd = Command::new("sh");
+            apply_child_env(&mut cmd);
+            cmd.arg("-c")
+                .arg("grep SigBlk /proc/self/status")
+                .stdin(Stdio::null())
+                .output()
+                .unwrap()
+        });
+        assert_clean(String::from_utf8_lossy(&output.stdout).trim());
+    }
+
+    #[test]
+    fn unblocked_window_lets_a_plain_spawn_start_clean_and_keeps_signals() {
+        // smithay's XWayland::spawn has no pre_exec hook; margo opens the
+        // mask around it instead.
+        let (output, pending_usr1, mask_restored) = with_stop_signals_blocked(|| {
+            let output = with_loop_signals_unblocked(|| {
+                // SAFETY: thread-directed; the recorder handler is installed.
+                unsafe { libc::raise(libc::SIGUSR1) };
+                Command::new("sh")
+                    .arg("-c")
+                    .arg("grep SigBlk /proc/self/status")
+                    .stdin(Stdio::null())
+                    .output()
+                    .unwrap()
+            });
+            // SAFETY: reads this thread's pending set / mask, then consumes
+            // the re-raised SIGUSR1 so it can't leak into other tests.
+            unsafe {
+                let mut pending: libc::sigset_t = std::mem::zeroed();
+                libc::sigpending(&mut pending);
+                let pending_usr1 = libc::sigismember(&pending, libc::SIGUSR1) == 1;
+                let mut mask: libc::sigset_t = std::mem::zeroed();
+                libc::pthread_sigmask(libc::SIG_BLOCK, std::ptr::null(), &mut mask);
+                let mask_restored = LOOP_SIGNALS
+                    .iter()
+                    .all(|&s| libc::sigismember(&mask, s) == 1);
+                if pending_usr1 {
+                    let mut set: libc::sigset_t = std::mem::zeroed();
+                    libc::sigemptyset(&mut set);
+                    libc::sigaddset(&mut set, libc::SIGUSR1);
+                    let zero = libc::timespec {
+                        tv_sec: 0,
+                        tv_nsec: 0,
+                    };
+                    libc::sigtimedwait(&set, std::ptr::null_mut(), &zero);
+                }
+                (output, pending_usr1, mask_restored)
+            }
+        });
+        assert_clean(String::from_utf8_lossy(&output.stdout).trim());
+        assert!(
+            pending_usr1,
+            "a signal caught in the window must wait for the signalfd"
+        );
+        assert!(mask_restored, "the loop signals must be blocked again");
     }
 }
