@@ -408,16 +408,26 @@ impl XdgShellHandler for MargoState {
 
         // Optional output target: migrate the client to that monitor
         // before going fullscreen so Helium / browsers that pass the
-        // meeting-screen output land on the right panel.
-        if let Some(target_output) = wl_output {
-            if let Some(target_mon) = self
+        // meeting-screen output land on the right panel. Moved like
+        // `tagmon` does: onto a tag the target shows (else it would be
+        // fullscreen but invisible) and with the source re-arranged.
+        if let Some(target_output) = wl_output
+            && let Some(target_mon) = self
                 .monitors
                 .iter()
-                .position(|m| m.output.owns(&target_output))
-            {
-                if self.clients[idx].monitor != target_mon {
-                    self.clients[idx].monitor = target_mon;
-                }
+                .position(|m| m.enabled && m.output.owns(&target_output))
+            && self.clients[idx].monitor != target_mon
+        {
+            let was_selected = self.monitors[self.clients[idx].monitor].selected == Some(idx);
+            let target_tagset = self.monitors[target_mon].current_tagset();
+            let tags = if self.clients[idx].tags & target_tagset != 0 {
+                self.clients[idx].tags
+            } else {
+                target_tagset
+            };
+            self.move_client_to_monitor(idx, target_mon, tags);
+            if was_selected {
+                self.monitors[target_mon].selected = Some(idx);
             }
         }
 

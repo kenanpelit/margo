@@ -162,3 +162,57 @@ fn move_client_at_the_edge_swaps_across_monitors_when_enabled() {
     assert_eq!(mon_of(&fx, a_id), 1);
     assert_eq!(mon_of(&fx, b_id), 0);
 }
+
+/// A client asking for fullscreen on another output (a browser's
+/// "present on the other screen", `mpv --fs-screen`) used to get only its
+/// `monitor` changed: with tags outside the target's active tagset it
+/// went fullscreen invisibly, and the source monitor kept the hole and
+/// its `selected` until something re-arranged it.
+#[test]
+fn fullscreen_on_another_output_moves_the_window_like_tagmon() {
+    let mut fx = Fixture::with_config(margo_config::Config {
+        animations: false,
+        ..Default::default()
+    });
+    fx.add_keyboard();
+    fx.add_output("DP-1", (1920, 1080));
+    fx.add_output("DP-2", (1920, 1080));
+    fx.server.state.monitors[1].tagset[0] = 0b0000_0100;
+
+    let stay = fx.add_client();
+    let (_stay_top, stay_surface) = fx.client(stay).create_toplevel();
+    stay_surface.commit();
+    fx.client(stay).flush();
+    fx.roundtrip(stay);
+    let mover = fx.add_client();
+    let (mover_top, mover_surface) = fx.client(mover).create_toplevel();
+    mover_surface.commit();
+    fx.client(mover).flush();
+    fx.roundtrip(mover);
+    assert_eq!(fx.server.state.clients.len(), 2);
+    let tiled_width = fx.server.state.clients[0].geom.width;
+    assert_eq!(fx.server.state.monitors[0].selected, Some(1));
+
+    let dp2 = fx.client(mover).bind_output_nth(1);
+    fx.roundtrip(mover);
+    mover_top.set_fullscreen(Some(&dp2));
+    fx.client(mover).flush();
+    fx.roundtrip(mover);
+
+    let state = &fx.server.state;
+    let c = &state.clients[1];
+    assert!(c.is_fullscreen);
+    assert_eq!(c.monitor, 1);
+    assert_ne!(
+        c.tags & state.monitors[1].current_tagset(),
+        0,
+        "the window must be on a tag DP-2 shows"
+    );
+    assert_ne!(state.monitors[0].selected, Some(1));
+    assert!(
+        state.clients[0].geom.width > tiled_width,
+        "DP-1 must be re-arranged to fill the hole ({} -> {})",
+        tiled_width,
+        state.clients[0].geom.width
+    );
+}

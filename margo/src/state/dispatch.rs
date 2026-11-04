@@ -1401,6 +1401,38 @@ impl MargoState {
         self.request_repaint();
     }
 
+    /// Re-home client `idx` onto `target_mon` with `tags`: animate it off
+    /// the source, drop it from the source's `selected` / `prev_selected`,
+    /// and arrange both monitors. Shared by `tagmon` and an
+    /// `xdg_toplevel.set_fullscreen(output)` aimed at another monitor.
+    pub(crate) fn move_client_to_monitor(&mut self, idx: usize, target_mon: usize, tags: u32) {
+        if idx >= self.clients.len() || target_mon >= self.monitors.len() {
+            return;
+        }
+        let source_mon = self.clients[idx].monitor;
+        if source_mon == target_mon {
+            self.clients[idx].tags = tags;
+            self.arrange_monitor(target_mon);
+            return;
+        }
+        // Source side never gets a normal arrange pass for this client
+        // again (its `.monitor` is about to point elsewhere), so without
+        // this it just vanishes off the source screen mid-frame.
+        self.animate_tag_departure(idx);
+        self.clients[idx].monitor = target_mon;
+        self.clients[idx].tags = tags;
+        if let Some(source) = self.monitors.get_mut(source_mon) {
+            if source.selected == Some(idx) {
+                source.selected = None;
+            }
+            if source.prev_selected == Some(idx) {
+                source.prev_selected = None;
+            }
+        }
+        self.arrange_monitor(source_mon);
+        self.arrange_monitor(target_mon);
+    }
+
     /// The next enabled monitor after `from` in `direction` (wrapping),
     /// skipping soft-disabled outputs; `None` when there is no other one.
     pub(crate) fn step_enabled_monitor(&self, from: usize, direction: i32) -> Option<usize> {
@@ -1431,14 +1463,7 @@ impl MargoState {
             return;
         };
         let tagset = self.monitors[target_mon].current_tagset();
-        // Source side never gets a normal arrange pass for this client
-        // again (its `.monitor` is about to point elsewhere), so without
-        // this it just vanishes off the source screen mid-frame.
-        self.animate_tag_departure(idx);
-        self.clients[idx].monitor = target_mon;
-        self.clients[idx].tags = tagset;
-        self.arrange_monitor(current_mon);
-        self.arrange_monitor(target_mon);
+        self.move_client_to_monitor(idx, target_mon, tagset);
 
         // Follow the window across monitors. Without this the
         // cursor (and therefore sloppy-focus + the visible
