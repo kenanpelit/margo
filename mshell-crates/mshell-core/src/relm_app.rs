@@ -491,6 +491,14 @@ impl Component for Shell {
                 }
             }
             ShellInput::AddWindowGroup(name, monitor) => {
+                // Two queued syncs can both ask for the same output; a second
+                // insert would orphan the first group's surfaces.
+                if let Some(existing) = self.window_groups.get(&name) {
+                    if existing.monitor == monitor {
+                        return;
+                    }
+                    self.close_window_group(&name);
+                }
                 info!("Creating new window group");
                 let wallpaper = Some(
                     WallpaperModel::builder()
@@ -603,45 +611,7 @@ impl Component for Shell {
                 self.window_groups.insert(name, window_group);
             }
             ShellInput::RemoveWindowGroup(name) => {
-                if let Some(group) = self.window_groups.remove(&name) {
-                    if let Some(frame) = &group.frame {
-                        frame.widget().close();
-                    }
-                    if let Some(wallpaper) = &group._wallpaper {
-                        wallpaper.widget().close();
-                    }
-                    if let Some(popup) = &group._popup_notifications {
-                        popup.widget().close();
-                    }
-                    if let Some(vol) = &group._volume_osd {
-                        vol.widget().close();
-                    }
-                    if let Some(mic) = &group._mic_osd {
-                        mic.widget().close();
-                    }
-                    if let Some(bright) = &group._brightness_osd {
-                        bright.widget().close();
-                    }
-                    if let Some(toast) = &group._toast {
-                        toast.widget().close();
-                    }
-                    // These three were dropped without an explicit close,
-                    // unlike every sibling above — a relm4 Controller / a
-                    // mapped gtk::Window is not destroyed just by dropping
-                    // the handle, so on monitor hot-unplug the standalone
-                    // dock, network OSD, and corner overlays leaked as
-                    // orphaned surfaces (and could reappear on the wrong
-                    // output). `RebuildDocks` already closes mdock this way.
-                    if let Some(mdock) = &group.mdock {
-                        mdock.widget().close();
-                    }
-                    if let Some(network_osd) = &group._network_osd {
-                        network_osd.widget().close();
-                    }
-                    for corner in &group._screen_corners {
-                        corner.close();
-                    }
-                }
+                self.close_window_group(&name);
             }
             ShellInput::Quit => {
                 main_application().quit();
@@ -1270,5 +1240,50 @@ mod dim_overlay_tests {
         assert_eq!(dim_overlay_step(IdleStage::Dim, true), DimStep::Keep);
         assert_eq!(dim_overlay_step(IdleStage::Lock, true), DimStep::Keep);
         assert_eq!(dim_overlay_step(IdleStage::Suspend, false), DimStep::Keep);
+    }
+}
+
+impl Shell {
+    /// Close every surface of `name`'s window group and drop it.
+    fn close_window_group(&mut self, name: &str) {
+        if let Some(group) = self.window_groups.remove(name) {
+            if let Some(frame) = &group.frame {
+                frame.widget().close();
+            }
+            if let Some(wallpaper) = &group._wallpaper {
+                wallpaper.widget().close();
+            }
+            if let Some(popup) = &group._popup_notifications {
+                popup.widget().close();
+            }
+            if let Some(vol) = &group._volume_osd {
+                vol.widget().close();
+            }
+            if let Some(mic) = &group._mic_osd {
+                mic.widget().close();
+            }
+            if let Some(bright) = &group._brightness_osd {
+                bright.widget().close();
+            }
+            if let Some(toast) = &group._toast {
+                toast.widget().close();
+            }
+            // These three were dropped without an explicit close,
+            // unlike every sibling above — a relm4 Controller / a
+            // mapped gtk::Window is not destroyed just by dropping
+            // the handle, so on monitor hot-unplug the standalone
+            // dock, network OSD, and corner overlays leaked as
+            // orphaned surfaces (and could reappear on the wrong
+            // output). `RebuildDocks` already closes mdock this way.
+            if let Some(mdock) = &group.mdock {
+                mdock.widget().close();
+            }
+            if let Some(network_osd) = &group._network_osd {
+                network_osd.widget().close();
+            }
+            for corner in &group._screen_corners {
+                corner.close();
+            }
+        }
     }
 }
