@@ -199,10 +199,7 @@ async fn run_cava(out: relm4::Sender<AudioVisualizerCommandOutput>) {
 /// Write a throwaway cava config tuned for raw ascii output and return
 /// its path. Lives under the runtime dir so it's cleaned on logout.
 fn write_cava_config() -> Option<std::path::PathBuf> {
-    let dir = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir)
-        .join("mshell");
+    let dir = margo_fs::xdg::runtime_dir_or_tmp().join("mshell");
     if std::fs::create_dir_all(&dir).is_err() {
         return None;
     }

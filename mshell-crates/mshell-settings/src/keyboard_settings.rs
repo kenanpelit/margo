@@ -51,14 +51,7 @@ fn toml_escape(s: &str) -> String {
 }
 
 fn config_path() -> PathBuf {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            let mut home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
-            home.push(".config");
-            home
-        });
-    base.join("margo").join("mkeys.toml")
+    margo_fs::xdg::margo_config_dir().join("mkeys.toml")
 }
 
 impl KbConfig {

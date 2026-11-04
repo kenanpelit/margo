@@ -433,12 +433,7 @@ fn write_mlogind_variables(theme: &MatugenTheme) {
 /// nothing wrote this file, so panels rendered whatever stale palette was
 /// last hand-placed there. Best-effort + idempotent, like the siblings.
 fn write_mshell_colors(theme: &MatugenTheme) {
-    let cache = std::env::var_os("XDG_CACHE_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")));
-    let Some(cache) = cache else {
-        return;
-    };
+    let cache = margo_fs::xdg::cache_home();
     let dir = cache.join("margo");
     let _ = std::fs::create_dir_all(&dir);
     let path = dir.join("mshell-colors.toml");

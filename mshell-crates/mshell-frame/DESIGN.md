@@ -1132,6 +1132,7 @@ NOT appear" with the grep that finds it.
 | L8 | warn | No sync shell-out / blocking read on the GTK main thread (§13.4) | grep-assisted **manual** review (`block_on` / `.recv()` / `Stdio::inherit` / sync socket read reachable from a widget callback). Not a hard gate — grep can't prove the thread; keep it advisory. |
 | L9 | hard | fmt/clippy clean (§11) | `cargo fmt --all -- --check` (exit 0, **not** piped) + `cargo clippy --workspace --all-targets -- -D warnings`. |
 | L10 | hard | No hardcoded colour in mshell **Rust** (§1) | `RGBA::new(<literal>`, a `"#rrggbb[aa]"` literal or cairo `set_source_rgb[a](<literals>)` outside `mshell-matugen` / `mshell-style`. Exceptions: unit tests, comments, and a same-line `// design-lint: allow-colour <why>` marker for colours that must not theme (a neutral scrim over arbitrary screen content, a value written to another tool's config). Read theme colours from CSS instead. |
+| L11 | hard | No hand-rolled XDG base-dir lookup in mshell Rust | `env::var[_os]("XDG_{CONFIG,DATA,STATE,CACHE}_HOME" / "XDG_RUNTIME_DIR")` outside `margo-fs`. Use `margo_fs::xdg` (one rule for margo and mshell; see docs/config-conventions.md §1). Exceptions: unit tests, comments, a `// design-lint: allow-xdg <why>` marker on the line above (testable `_from(var, home)` seams). |
 
 "hard" = fails CI; "warn" = reported, doesn't block. Every hard rule's
 grep is written so a clean tree returns **zero** matches — if it

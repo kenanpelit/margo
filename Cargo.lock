@@ -4537,6 +4537,7 @@ dependencies = [
  "bitflags 2.11.1",
  "chrono",
  "criterion",
+ "margo-fs",
  "proptest",
  "regex",
  "serde",
@@ -5041,6 +5042,7 @@ version = "4.6.1"
 dependencies = [
  "image",
  "libc",
+ "margo-fs",
  "serde",
  "serde_json",
  "time",
@@ -5078,7 +5080,6 @@ dependencies = [
 name = "mshell-config"
 version = "4.6.1"
 dependencies = [
- "dirs",
  "figment",
  "margo-fs",
  "mshell-plugins",
@@ -5103,6 +5104,7 @@ dependencies = [
  "dirs",
  "futures",
  "gtk4-layer-shell",
+ "margo-fs",
  "mshell-cache",
  "mshell-clipboard",
  "mshell-common",
@@ -5149,6 +5151,7 @@ dependencies = [
  "gtk4-layer-shell",
  "libc",
  "margo-config",
+ "margo-fs",
  "mcal",
  "mshell-ai",
  "mshell-cache",
@@ -5215,6 +5218,7 @@ version = "4.6.1"
 dependencies = [
  "anyhow",
  "libc",
+ "margo-fs",
  "tokio",
  "tokio-stream",
  "tracing",
@@ -5229,6 +5233,7 @@ version = "4.6.1"
 dependencies = [
  "image",
  "lutgen",
+ "margo-fs",
  "mshell-config",
  "mshell-matugen",
  "relm4",
@@ -5249,6 +5254,7 @@ dependencies = [
  "dirs",
  "emojis",
  "evalexpr",
+ "margo-fs",
  "mshell-margo-client",
  "mshell-process",
  "notify-rust",
@@ -5308,6 +5314,7 @@ name = "mshell-matugen"
 version = "4.6.1"
 dependencies = [
  "anyhow",
+ "margo-fs",
  "mshell-config",
  "mshell-margo-client",
  "relm4",
@@ -5439,6 +5446,7 @@ version = "4.6.1"
 dependencies = [
  "anyhow",
  "futures",
+ "margo-fs",
  "mpd_client",
  "mshell-config",
  "mshell-margo-client",
@@ -5534,6 +5542,7 @@ version = "4.6.1"
 dependencies = [
  "anyhow",
  "grass",
+ "margo-fs",
  "mshell-cache",
  "mshell-config",
  "mshell-image",
@@ -5573,6 +5582,7 @@ dependencies = [
  "futures",
  "gio-unix",
  "gtk4-layer-shell",
+ "margo-fs",
  "mshell-common",
  "mshell-config",
  "mshell-idle",
@@ -5620,6 +5630,7 @@ dependencies = [
  "clap_complete",
  "khronos-egl",
  "libc",
+ "margo-fs",
  "margo-logging",
  "mctl",
  "mshell-cli-style",

@@ -671,11 +671,7 @@ fn cycle_next(current: Profile) -> Profile {
 /// honours (falls back to the temp dir, matching mpower's own path
 /// resolution).
 fn mpower_paused_path() -> PathBuf {
-    std::env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or_else(std::env::temp_dir)
-        .join("mpower.paused")
+    margo_fs::xdg::runtime_dir_or_tmp().join("mpower.paused")
 }
 
 async fn probe_mpower_paused() -> bool {

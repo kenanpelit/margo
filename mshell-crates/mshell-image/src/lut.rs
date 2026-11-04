@@ -155,6 +155,7 @@ pub fn generate_clut(theme: &Themes) -> Option<Vec<u8>> {
 /// CLUT cache directory: `$XDG_CACHE_HOME/mshell/cluts`, falling back to
 /// `$HOME/.cache/mshell/cluts`. `None` when neither is set.
 fn clut_cache_dir() -> Option<PathBuf> {
+    // design-lint: allow-xdg (testable seam; resolves via margo_fs::xdg::resolve)
     clut_cache_dir_from(std::env::var_os("XDG_CACHE_HOME"), std::env::var_os("HOME"))
 }
 
@@ -163,20 +164,7 @@ fn clut_cache_dir_from(
     xdg_cache_home: Option<std::ffi::OsString>,
     home: Option<std::ffi::OsString>,
 ) -> Option<PathBuf> {
-    if let Some(dir) = xdg_cache_home {
-        let dir = PathBuf::from(dir);
-        // A relative XDG_CACHE_HOME is invalid per spec; ignore it.
-        if dir.is_absolute() {
-            return Some(dir.join("mshell").join("cluts"));
-        }
-    }
-    let home = home?;
-    Some(
-        PathBuf::from(home)
-            .join(".cache")
-            .join("mshell")
-            .join("cluts"),
-    )
+    margo_fs::xdg::resolve(xdg_cache_home, home, ".cache").map(|d| d.join("mshell").join("cluts"))
 }
 
 // Unique suffix source for cache temp files so concurrent writers never share

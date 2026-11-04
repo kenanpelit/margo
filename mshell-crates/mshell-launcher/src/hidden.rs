@@ -107,10 +107,7 @@ impl HiddenStore {
 }
 
 fn default_path() -> PathBuf {
-    let base = std::env::var_os("XDG_CACHE_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
-        .unwrap_or_else(|| PathBuf::from("/tmp"));
+    let base = margo_fs::xdg::cache_home();
     base.join("margo").join("launcher_hidden.json")
 }
 

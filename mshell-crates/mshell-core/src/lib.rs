@@ -556,7 +556,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 /// resolve a runtime dir or touch the file, we conservatively report
 /// "first start" so a misconfigured environment still autostarts.
 fn autostart_marker_seen_then_touch() -> bool {
-    let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from) else {
+    let Some(dir) = margo_fs::xdg::runtime_dir() else {
         tracing::warn!("autostart: XDG_RUNTIME_DIR unset; treating as first login start");
         return false;
     };

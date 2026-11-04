@@ -173,11 +173,7 @@ pub fn spawn_weather_watcher<C>(
 /// the provider is unreachable or rate-limited — including across restarts,
 /// where the in-memory `weather_service().weather` starts empty.
 fn weather_cache_path() -> std::path::PathBuf {
-    let base = std::env::var_os("XDG_CACHE_HOME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| {
-            std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".cache")
-        });
+    let base = margo_fs::xdg::cache_home();
     base.join("margo").join("weather.json")
 }
 

@@ -50,12 +50,7 @@ impl Default for AiSettings {
 }
 
 fn config_dir() -> PathBuf {
-    std::env::var("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into())).join(".config")
-        })
-        .join("margo")
+    margo_fs::xdg::margo_config_dir()
 }
 
 /// Where the settings file lives.

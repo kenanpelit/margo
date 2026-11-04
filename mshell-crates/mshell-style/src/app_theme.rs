@@ -283,9 +283,7 @@ fn object_child<'a>(parent: &'a mut Map<String, Value>, key: &str) -> &'a mut Ma
 }
 
 fn read_matugen_primary() -> Option<String> {
-    let base = std::env::var_os("XDG_CACHE_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))?;
+    let base = margo_fs::xdg::cache_home();
     let body = std::fs::read_to_string(base.join("margo").join("mshell-colors.toml")).ok()?;
     field_base(&body, "primary_color")
 }

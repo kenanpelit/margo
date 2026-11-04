@@ -8,7 +8,7 @@
 # the exception THERE first, then mirror it here. Don't loosen a rule to
 # make CI green.
 #
-# Covered: L1–L7 + L10 (all hard gates — the tree was audited clean when this
+# Covered: L1–L7 + L10 + L11 (all hard gates — the tree was audited clean when this
 # gate shipped). L8 (main-thread blocking) is advisory-only per DESIGN.md
 # (grep can't prove the thread) and L9 (fmt/clippy) already has its own
 # CI steps.
@@ -118,7 +118,28 @@ hits=$(find mshell-crates -path '*/target' -prune -o -name '*.rs' -print 2>/dev/
         }' || true)
 report "L10" "hardcoded colour in mshell Rust (use a theme colour)" "$hits"
 
+# L11 — no hand-rolled XDG base-dir lookups; use margo_fs::xdg (one rule:
+# absolute + non-empty, else the $HOME default — the one margo uses too).
+# Exceptions: margo-fs itself, unit tests (after a file's first
+# #[cfg(test)]), comments, a `design-lint: allow-xdg <why>` marker on the
+# line above (testable `_from(var, home)` seams), and the allowlist below.
+#   mshell-margo-client/src/state_json.rs: review3/shellperf has it open;
+#   switch it to margo_fs::xdg::runtime_dir() after that merge.
+hits=$(find mshell-crates mshell mshellctl mshellshare -path '*/target' -prune -o -name '*.rs' -print 2>/dev/null \
+    | grep -vE '^mshell-crates/mshell-margo-client/src/state_json\.rs$' \
+    | xargs awk '
+        FNR == 1 { in_test = 0; allow = 0 }
+        /#\[cfg\(test\)\]/ { in_test = 1 }
+        in_test { next }
+        /design-lint: allow-xdg/ { allow = 1; next }
+        { line = $0; sub(/\/\/.*/, "", line) }
+        line ~ /env::var(_os)?\("XDG_(CONFIG_HOME|DATA_HOME|STATE_HOME|CACHE_HOME|RUNTIME_DIR)"/ {
+            if (!allow) print FILENAME ":" FNR ":" $0
+        }
+        { allow = 0 }' || true)
+report "L11" "hand-rolled XDG lookup (use margo_fs::xdg)" "$hits"
+
 if [ "$fail" -ne 0 ]; then
     exit 1
 fi
-echo "design-lint OK: L1–L7, L10 clean."
+echo "design-lint OK: L1–L7, L10, L11 clean."

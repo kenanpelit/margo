@@ -18,6 +18,7 @@ trait LogindManager {
 static INSTANCE: OnceLock<IdleInhibitor> = OnceLock::new();
 
 fn cache_path() -> Option<PathBuf> {
+    // design-lint: allow-xdg (testable seam; resolves via margo_fs::xdg::resolve)
     cache_path_from(std::env::var_os("XDG_CACHE_HOME"), std::env::var_os("HOME"))
 }
 
@@ -26,9 +27,7 @@ fn cache_path_from(
     xdg_cache: Option<std::ffi::OsString>,
     home: Option<std::ffi::OsString>,
 ) -> Option<PathBuf> {
-    let base = xdg_cache
-        .map(PathBuf::from)
-        .or_else(|| home.map(|h| PathBuf::from(h).join(".cache")))?;
+    let base = margo_fs::xdg::resolve(xdg_cache, home, ".cache")?;
     Some(base.join("mshell").join("idle_inhibitor"))
 }
 

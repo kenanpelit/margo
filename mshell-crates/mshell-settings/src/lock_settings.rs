@@ -462,11 +462,7 @@ fn toggle_row(
 /// (mlock can't read the shell's YAML, so this is a small key=value file
 /// it hand-parses; see `mlock/src/background.rs`).
 fn mlock_conf_path() -> PathBuf {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute())
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
-        .unwrap_or_else(|| PathBuf::from("/tmp"));
+    let base = margo_fs::xdg::config_home();
     base.join("margo").join("mlock.conf")
 }
 

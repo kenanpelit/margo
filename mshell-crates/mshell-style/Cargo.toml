@@ -12,6 +12,7 @@ build = "build.rs"
 grass.workspace = true
 
 [dependencies]
+margo-fs.workspace = true
 anyhow.workspace = true
 mshell-cache.workspace = true
 mshell-config.workspace = true

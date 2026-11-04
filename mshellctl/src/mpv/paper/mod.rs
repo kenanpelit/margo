@@ -45,8 +45,7 @@ extern "C" fn on_term(_sig: i32) {
 }
 
 fn pidfile_dir() -> PathBuf {
-    let base = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
+    let base = margo_fs::xdg::runtime_dir()
         .unwrap_or_else(|| PathBuf::from(format!("/run/user/{}", unsafe { libc::getuid() })));
     base.join("mplay")
 }

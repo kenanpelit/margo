@@ -397,9 +397,7 @@ pub(crate) fn index_for_time(lines: &[LyricLine], position_ms: u64) -> Option<us
 // ── Disk cache ───────────────────────────────────────────────────────────
 
 fn cache_dir() -> Option<PathBuf> {
-    let base = std::env::var_os("XDG_CACHE_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))?;
+    let base = margo_fs::xdg::cache_home();
     Some(base.join("mshell").join("lyrics"))
 }
 

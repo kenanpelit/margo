@@ -323,14 +323,7 @@ impl Bind {
 
 // ── Paths ─────────────────────────────────────────────────────────────────
 fn config_dir() -> PathBuf {
-    let base = if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
-        PathBuf::from(xdg)
-    } else if let Some(home) = std::env::var_os("HOME") {
-        PathBuf::from(home).join(".config")
-    } else {
-        PathBuf::from(".config")
-    };
-    base.join("margo")
+    margo_fs::xdg::margo_config_dir()
 }
 fn config_path() -> PathBuf {
     config_dir().join("config.conf")

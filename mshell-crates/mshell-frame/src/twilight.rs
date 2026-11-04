@@ -90,16 +90,7 @@ pub(crate) struct Preset {
 /// compositor config here; the override is rare and the menu only
 /// needs the common case.
 fn schedule_dir() -> std::path::PathBuf {
-    if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
-        return std::path::PathBuf::from(xdg).join("margo").join("twilight");
-    }
-    if let Some(home) = std::env::var_os("HOME") {
-        return std::path::PathBuf::from(home)
-            .join(".config")
-            .join("margo")
-            .join("twilight");
-    }
-    std::path::PathBuf::from(".config/margo/twilight")
+    margo_fs::xdg::margo_config_dir().join("twilight")
 }
 
 /// Parse one preset TOML's `static_temp` / `static_gamma`.

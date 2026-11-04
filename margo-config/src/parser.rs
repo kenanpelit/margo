@@ -104,8 +104,9 @@ pub fn resolve_config_path(explicit: Option<&Path>) -> Result<PathBuf> {
     if let Some(p) = explicit {
         return Ok(p.to_path_buf());
     }
-    let home = std::env::var("HOME").context("HOME not set")?;
-    Ok(PathBuf::from(home).join(".config/margo/config.conf"))
+    // The shared XDG rule (margo_fs::xdg), so margo reads the config.conf
+    // mshell's Settings pages write.
+    Ok(margo_fs::xdg::margo_config_dir().join("config.conf"))
 }
 
 pub(crate) fn resolve_include_path(include: &str, relative_to: &Path) -> PathBuf {

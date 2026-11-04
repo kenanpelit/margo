@@ -546,12 +546,7 @@ fn from_history(history: &History) -> Vec<Message> {
 }
 
 fn history_path() -> PathBuf {
-    std::env::var("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into())).join(".local/state")
-        })
-        .join("mshell/ai-session.json")
+    margo_fs::xdg::state_home().join("mshell/ai-session.json")
 }
 
 /// "Provider · model" for the header subtitle, from the live config.

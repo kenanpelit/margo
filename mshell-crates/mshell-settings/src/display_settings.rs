@@ -1787,13 +1787,7 @@ fn twilight_schedule_dir() -> PathBuf {
         }
         return PathBuf::from(raw);
     }
-    if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
-        return PathBuf::from(xdg).join("margo").join("twilight");
-    }
-    if let Some(home) = dirs::home_dir() {
-        return home.join(".config").join("margo").join("twilight");
-    }
-    PathBuf::from(".config/margo/twilight")
+    margo_fs::xdg::margo_config_dir().join("twilight")
 }
 
 fn load_schedule_rows(dir: &std::path::Path) -> Vec<ScheduleRow> {

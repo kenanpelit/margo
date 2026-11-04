@@ -32,15 +32,7 @@ use crate::entry::{ClipboardEntry, EntryPreview, PersistedEntry};
 use crate::settings::PersistMode;
 
 fn data_dir() -> PathBuf {
-    let base = std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or_else(|| {
-            let home = std::env::var_os("HOME")
-                .map(PathBuf::from)
-                .unwrap_or_default();
-            home.join(".local/share")
-        });
+    let base = margo_fs::xdg::data_home();
     base.join("mshell/clipboard")
 }
 

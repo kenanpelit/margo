@@ -9,6 +9,7 @@ description = "Parser + validator for margo's compositor .conf (key=value, windo
 anyhow.workspace = true
 bitflags.workspace = true
 chrono.workspace = true
+margo-fs.workspace = true
 serde.workspace = true
 tracing.workspace = true
 # Rule selector patterns are checked with the same engine margo matches

@@ -19,9 +19,7 @@ use std::sync::OnceLock;
 use std::time::{Duration, SystemTime};
 
 fn runtime_dir() -> PathBuf {
-    std::env::var("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("/tmp"))
+    margo_fs::xdg::runtime_dir_or_tmp()
 }
 
 fn clipboard_path() -> PathBuf {

@@ -70,6 +70,16 @@ dir, so they stay at the root, not in `conf.d/`.
 merging machine-written fragments into `config.conf` **breaks the writer**
 (matugen, mshell, the plugin manager hardcode their output paths). Don't.
 
+### Where `~/.config/margo` really is
+
+Every binary resolves the dir through **`margo_fs::xdg`**:
+`$XDG_CONFIG_HOME/margo` when that variable is set, non-empty and absolute,
+else `$HOME/.config/margo` (the same rule for `XDG_DATA_HOME`,
+`XDG_STATE_HOME`, `XDG_CACHE_HOME`; `XDG_RUNTIME_DIR` has no home fallback).
+margo's `resolve_config_path`, the mshell profiles and every Settings page
+use it, so Settings never edits a `config.conf` margo doesn't read. Don't
+hand-roll `env::var("XDG_…")` — `scripts/design-lint.sh` L11 fails on it.
+
 ## 2. Hand-edited vs machine-written fragments
 
 `config.conf` pulls fragments in with `source = <relative-path>`:

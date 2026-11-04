@@ -144,19 +144,10 @@ pub(crate) fn now_unix() -> u64 {
 }
 
 fn default_path() -> PathBuf {
-    // Per-user XDG cache is the right home for usage stats. The
-    // fallback chain dodges `/tmp/` (predictable, world-writable,
-    // race-prone on shared machines) and prefers any per-user
-    // runtime dir before giving up.
-    if let Some(d) = dirs::cache_dir() {
-        return d.join("margo").join("launcher_usage.json");
-    }
-    if let Ok(d) = std::env::var("XDG_RUNTIME_DIR")
-        && !d.is_empty()
-    {
-        return PathBuf::from(d).join("margo_launcher_usage.json");
-    }
-    PathBuf::from("/tmp/margo_launcher_usage.json")
+    // Per-user XDG cache is the right home for usage stats.
+    margo_fs::xdg::cache_home()
+        .join("margo")
+        .join("launcher_usage.json")
 }
 
 /// Public accessor for the conventional frecency-store path —

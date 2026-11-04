@@ -34,10 +34,7 @@ const AUTO_POLARITY_THRESHOLD: f64 = 0.5;
 /// unset). The file is overwritten atomically (write to .tmp, then
 /// rename) so a half-written cache can never load.
 fn cached_theme_path() -> PathBuf {
-    let base = std::env::var_os("XDG_CACHE_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
-        .unwrap_or_else(|| PathBuf::from("/tmp"));
+    let base = margo_fs::xdg::cache_home();
     base.join("mshell").join("last_theme.css")
 }
 

@@ -12,6 +12,7 @@ name = "mshellctl"
 path = "src/main.rs"
 
 [dependencies]
+margo-fs.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 clap_complete = "4"

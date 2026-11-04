@@ -92,8 +92,7 @@ fn home() -> String {
 }
 
 fn runtime_dir() -> std::path::PathBuf {
-    std::env::var_os("XDG_RUNTIME_DIR")
-        .map(std::path::PathBuf::from)
+    margo_fs::xdg::runtime_dir()
         .unwrap_or_else(|| {
             std::path::PathBuf::from(format!("/run/user/{}", unsafe { libc::getuid() }))
         })

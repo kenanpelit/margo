@@ -89,11 +89,7 @@ struct UpdateCache {
 
 /// `~/.cache/mshell/system_update.json` (honours `$XDG_CACHE_HOME`).
 fn cache_path() -> std::path::PathBuf {
-    let base = std::env::var_os("XDG_CACHE_HOME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| {
-            std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".cache")
-        });
+    let base = margo_fs::xdg::cache_home();
     base.join("mshell").join("system_update.json")
 }
 

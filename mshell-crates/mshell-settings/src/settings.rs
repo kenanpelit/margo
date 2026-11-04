@@ -2689,11 +2689,7 @@ fn settings_sidebar_title_label(label: &str) -> gtk::Label {
 /// Cache file holding the set of *collapsed* sidebar section names
 /// (comma-separated), so the accordion state survives reopening Settings.
 fn sidebar_state_path() -> std::path::PathBuf {
-    let base = std::env::var_os("XDG_CACHE_HOME")
-        .map(std::path::PathBuf::from)
-        .filter(|p| p.is_absolute())
-        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".cache")))
-        .unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
+    let base = margo_fs::xdg::cache_home();
     base.join("mshell").join("settings_sidebar")
 }
 

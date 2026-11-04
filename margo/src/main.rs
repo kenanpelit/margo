@@ -356,10 +356,10 @@ fn ensure_default_config(config_override: Option<&std::path::Path>) {
     let config = match config_override {
         Some(p) => p.to_path_buf(),
         None => {
-            let Some(home) = std::env::var_os("HOME") else {
+            let Ok(path) = margo_config::resolve_config_path(None) else {
                 return;
             };
-            std::path::PathBuf::from(home).join(".config/margo/config.conf")
+            path
         }
     };
     if config.exists() {
@@ -1269,11 +1269,7 @@ fn main() -> Result<()> {
             .config
             .as_deref()
             .map(std::path::PathBuf::from)
-            .or_else(|| {
-                std::env::var("HOME")
-                    .ok()
-                    .map(|h| std::path::PathBuf::from(h).join(".config/margo/config.conf"))
-            })
+            .or_else(|| margo_config::resolve_config_path(None).ok())
         && let Ok(raw) = std::fs::read_to_string(&path)
     {
         let _ = margo_config::generations::save(&raw, 20);
@@ -1332,11 +1328,7 @@ fn main() -> Result<()> {
             .config
             .as_deref()
             .map(std::path::PathBuf::from)
-            .or_else(|| {
-                std::env::var("HOME")
-                    .ok()
-                    .map(|h| std::path::PathBuf::from(h).join(".config/margo/config.conf"))
-            })
+            .or_else(|| margo_config::resolve_config_path(None).ok())
             .unwrap_or_else(|| std::path::PathBuf::from(".config/margo/config.conf"));
         let message = match &restored_generation {
             Some(gen_id) => format!("{e} — restored last-good generation {gen_id}"),

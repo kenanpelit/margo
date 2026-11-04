@@ -13,8 +13,7 @@ use std::process::{Command, Stdio};
 const YTDLP: &str = "yt-dlp";
 
 fn config_home() -> String {
-    std::env::var("XDG_CONFIG_HOME")
-        .unwrap_or_else(|_| format!("{}/.config", std::env::var("HOME").unwrap_or_default()))
+    margo_fs::xdg::config_home().display().to_string()
 }
 
 fn cookie_file() -> String {

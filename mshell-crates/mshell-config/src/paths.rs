@@ -1,25 +1,22 @@
-use dirs::home_dir;
+//! mshell's own paths. All resolve through `margo_fs::xdg` (the one XDG
+//! rule margo and mshell share): profiles live in
+//! `<config_home>/margo/mshell/profiles`, next to margo's `config.conf`.
+
+use margo_fs::xdg;
 use std::path::PathBuf;
 
 pub const DEFAULT_PROFILE_NAME: &str = "default";
 
 pub fn default_config_path() -> PathBuf {
-    home_dir().expect("HOME not set").join(format!(
-        ".config/margo/mshell/profiles/{}.yaml",
-        DEFAULT_PROFILE_NAME
-    ))
+    profile_path(DEFAULT_PROFILE_NAME)
 }
 
 pub fn profiles_dir() -> PathBuf {
-    home_dir()
-        .expect("HOME not set")
-        .join(".config/margo/mshell/profiles")
+    xdg::margo_config_dir().join("mshell").join("profiles")
 }
 
 pub fn active_profile_cache_path() -> PathBuf {
-    home_dir()
-        .expect("HOME not set")
-        .join(".cache/mshell/active_profile")
+    xdg::cache_home().join("mshell").join("active_profile")
 }
 
 pub fn profile_path(name: &str) -> PathBuf {
@@ -49,9 +46,7 @@ pub fn is_safe_profile_name(name: &str) -> bool {
 /// auto-open stops nagging. Re-opening from Settings / `mshellctl
 /// wizard` always works regardless of this file.
 pub fn wizard_sentinel_path() -> PathBuf {
-    home_dir()
-        .expect("HOME not set")
-        .join(".config/margo/.wizard-done")
+    xdg::margo_config_dir().join(".wizard-done")
 }
 
 #[cfg(test)]

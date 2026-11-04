@@ -54,10 +54,7 @@ pub(crate) struct Todo {
 /// Canonical on-disk path: `$XDG_DATA_HOME/mshell/notes.json`,
 /// falling back to `$HOME/.local/share/mshell/notes.json`.
 pub(crate) fn notes_path() -> PathBuf {
-    let base = std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
-        .unwrap_or_else(|| PathBuf::from("/tmp"));
+    let base = margo_fs::xdg::data_home();
     base.join("mshell").join("notes.json")
 }
 

@@ -47,14 +47,7 @@ const CATEGORIES: &[&str] = &[
 
 /// `~/.config/margo/config.conf` (or `$XDG_CONFIG_HOME/margo/...`).
 fn config_path() -> PathBuf {
-    let base = if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
-        PathBuf::from(xdg)
-    } else if let Some(home) = std::env::var_os("HOME") {
-        PathBuf::from(home).join(".config")
-    } else {
-        PathBuf::from(".config")
-    };
-    base.join("margo").join("config.conf")
+    margo_fs::xdg::margo_config_dir().join("config.conf")
 }
 
 /// The path of a `source = …` / `include = …` line (margo treats the two
