@@ -222,16 +222,14 @@ pub(super) fn read_bt_state() -> (String, bool) {
 }
 
 pub(super) fn read_audio_out_subtitle() -> String {
-    let audio = audio_service();
-    if let Some(dev) = audio.default_output.get() {
+    if let Some(dev) = audio_service().and_then(|a| a.default_output.get()) {
         return dev.description.get();
     }
     "No device".to_string()
 }
 
 pub(super) fn read_mic_subtitle() -> String {
-    let audio = audio_service();
-    if let Some(dev) = audio.default_input.get() {
+    if let Some(dev) = audio_service().and_then(|a| a.default_input.get()) {
         return dev.description.get();
     }
     "No device".to_string()

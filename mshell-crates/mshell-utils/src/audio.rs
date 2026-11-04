@@ -113,7 +113,11 @@ pub fn spawn_default_output_watcher<C>(
     C: Component,
     C::CommandOutput: Send + 'static,
 {
-    let default_output = audio_service().default_output.clone();
+    // No audio service: nothing to watch; the widget keeps its empty state.
+    let Some(audio) = audio_service() else {
+        return;
+    };
+    let default_output = audio.default_output.clone();
 
     if let Some(cancellation_token) = cancellation_token {
         watch_cancellable!(
@@ -139,7 +143,11 @@ pub fn spawn_output_devices_watcher<C>(
     C: Component,
     C::CommandOutput: Send + 'static,
 {
-    let out_devices = audio_service().output_devices.clone();
+    // No audio service: nothing to watch; the widget keeps its empty state.
+    let Some(audio) = audio_service() else {
+        return;
+    };
+    let out_devices = audio.output_devices.clone();
 
     watch_cancellable!(sender, cancellation_token, [out_devices.watch()], |out| {
         let _ = out.send(map_state());
@@ -175,7 +183,11 @@ pub fn spawn_default_input_watcher<C>(
     C: Component,
     C::CommandOutput: Send + 'static,
 {
-    let default = audio_service().default_input.clone();
+    // No audio service: nothing to watch; the widget keeps its empty state.
+    let Some(audio) = audio_service() else {
+        return;
+    };
+    let default = audio.default_input.clone();
 
     if let Some(cancellation_token) = cancellation_token {
         watch_cancellable!(sender, cancellation_token, [default.watch()], |out| {
@@ -196,7 +208,11 @@ pub fn spawn_input_devices_watcher<C>(
     C: Component,
     C::CommandOutput: Send + 'static,
 {
-    let devices = audio_service().input_devices.clone();
+    // No audio service: nothing to watch; the widget keeps its empty state.
+    let Some(audio) = audio_service() else {
+        return;
+    };
+    let devices = audio.input_devices.clone();
 
     watch_cancellable!(sender, cancellation_token, [devices.watch()], |out| {
         let _ = out.send(map_state());
@@ -281,7 +297,11 @@ pub fn spawn_playback_streams_watcher<C>(
     C: Component,
     C::CommandOutput: Send + 'static,
 {
-    let streams = audio_service().playback_streams.clone();
+    // No audio service: nothing to watch; the widget keeps its empty state.
+    let Some(audio) = audio_service() else {
+        return;
+    };
+    let streams = audio.playback_streams.clone();
     watch!(sender, [streams.watch()], |out| {
         let _ = out.send(map_state());
     });
@@ -295,7 +315,11 @@ pub fn spawn_recording_streams_watcher<C>(
     C: Component,
     C::CommandOutput: Send + 'static,
 {
-    let streams = audio_service().recording_streams.clone();
+    // No audio service: nothing to watch; the widget keeps its empty state.
+    let Some(audio) = audio_service() else {
+        return;
+    };
+    let streams = audio.recording_streams.clone();
     watch!(sender, [streams.watch()], |out| {
         let _ = out.send(map_state());
     });
@@ -448,8 +472,8 @@ pub fn in_is_headset(d: &InputDevice) -> bool {
 /// identical between the bar pill and the CLI.
 pub fn routable_outputs() -> Vec<Arc<OutputDevice>> {
     let mut outs: Vec<_> = audio_service()
-        .output_devices
-        .get()
+        .map(|a| a.output_devices.get())
+        .unwrap_or_default()
         .into_iter()
         .filter(|d| !is_hdmi_output(d))
         .filter(|d| !crate::audio_prefs::is_hidden(&d.name.get()))
@@ -476,7 +500,7 @@ pub fn next_index(names: &[String], current: Option<&str>) -> usize {
 /// suitable input exists. Callers await/spawn `set_as_default()` on the result
 /// in their own context (GTK thread spawns, the IPC command loop awaits).
 pub fn mic_follow_target(to_headset: bool) -> Option<Arc<InputDevice>> {
-    let audio = audio_service();
+    let audio = audio_service()?;
     let already = audio
         .default_input
         .get()
@@ -502,7 +526,10 @@ pub fn mic_follow_target(to_headset: bool) -> Option<Arc<InputDevice>> {
 /// user switching outputs almost always wants. Best-effort per stream — one
 /// failing (e.g. it closed mid-migration) doesn't stop the rest.
 pub async fn migrate_playback_streams_to(device: &OutputDevice) {
-    for stream in audio_service().playback_streams.get() {
+    for stream in audio_service()
+        .map(|a| a.playback_streams.get())
+        .unwrap_or_default()
+    {
         let _ = stream.move_to_device(device.key).await;
     }
 }

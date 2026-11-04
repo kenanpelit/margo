@@ -19,7 +19,9 @@ pub(super) struct PlayerSnapshot {
 /// act on next — the same one `mshellctl media toggle`/`next`/`prev` (no
 /// explicit target) drives.
 pub(super) fn media_snapshot() -> Vec<PlayerSnapshot> {
-    let svc = media_service();
+    let Some(svc) = media_service() else {
+        return Vec::new();
+    };
     let active_id = media_picker::pick_active("").map(|p| p.id());
 
     let mut snaps: Vec<PlayerSnapshot> = svc

@@ -451,20 +451,22 @@ impl Component for PrivacySettingsModel {
 
         // ── Mic watcher ─────────────────────────────────────────────
         // Copy the bar widget's `watch!` pattern exactly.
-        let recording_streams = audio_service().recording_streams.clone();
-        watch!(sender, [recording_streams.watch()], |out| {
-            let snapshot: Vec<String> = recording_streams
-                .get()
-                .iter()
-                .map(|s| s.application_name.get().unwrap_or_else(|| s.name.get()))
-                .collect();
-            let _ = out.send(PrivacySettingsCommandOutput::MicChanged(snapshot));
-        });
+        if let Some(audio) = audio_service() {
+            let recording_streams = audio.recording_streams.clone();
+            watch!(sender, [recording_streams.watch()], |out| {
+                let snapshot: Vec<String> = recording_streams
+                    .get()
+                    .iter()
+                    .map(|s| s.application_name.get().unwrap_or_else(|| s.name.get()))
+                    .collect();
+                let _ = out.send(PrivacySettingsCommandOutput::MicChanged(snapshot));
+            });
+        }
 
         // Prime mic state synchronously (same as bar widget).
         let initial_mic: Vec<String> = audio_service()
-            .recording_streams
-            .get()
+            .map(|a| a.recording_streams.get())
+            .unwrap_or_default()
             .iter()
             .map(|s| s.application_name.get().unwrap_or_else(|| s.name.get()))
             .collect();

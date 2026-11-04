@@ -25,7 +25,10 @@ pub fn spawn_media_players_watcher<C>(
     C: Component,
     C::CommandOutput: Send + 'static,
 {
-    let service = media_service();
+    // No MPRIS: no players, so the media widgets stay hidden.
+    let Some(service) = media_service() else {
+        return;
+    };
 
     let players = service.player_list.clone();
     watch!(sender, [players.watch()], |out| {

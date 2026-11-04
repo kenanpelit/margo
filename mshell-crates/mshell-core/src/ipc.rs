@@ -325,7 +325,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 }
                 IPCCommand::CloseAllMenus => app_sender.emit(ShellInput::CloseAllMenus),
                 IPCCommand::VolumeUp => {
-                    if let Some(output) = audio_service().default_output.get() {
+                    if let Some(output) = audio_service().and_then(|a| a.default_output.get()) {
                         let current_volume = output.volume.get();
                         let max_volume: f64 = 1.0;
                         let new_volume = max_volume.min(current_volume.average() + 0.05);
@@ -336,7 +336,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     play_audio_volume_change();
                 }
                 IPCCommand::VolumeDown => {
-                    if let Some(output) = audio_service().default_output.get() {
+                    if let Some(output) = audio_service().and_then(|a| a.default_output.get()) {
                         let current_volume = output.volume.get();
                         let min_volume: f64 = 0.0;
                         let new_volume = min_volume.max(current_volume.average() - 0.05);
@@ -347,7 +347,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     play_audio_volume_change();
                 }
                 IPCCommand::Mute => {
-                    if let Some(output) = audio_service().default_output.get() {
+                    if let Some(output) = audio_service().and_then(|a| a.default_output.get()) {
                         let _ = output.set_mute(!output.muted.get()).await;
                     }
                     play_audio_volume_change();
@@ -357,48 +357,48 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     // OSD watches `default_input.muted` and pops the
                     // bottom-centre pill on the change — no explicit
                     // show needed here, same as the volume path.
-                    if let Some(input) = audio_service().default_input.get() {
+                    if let Some(input) = audio_service().and_then(|a| a.default_input.get()) {
                         let _ = input.set_mute(!input.muted.get()).await;
                     }
                     play_audio_volume_change();
                 }
                 IPCCommand::VolumeSet(frac) => {
-                    if let Some(output) = audio_service().default_output.get() {
+                    if let Some(output) = audio_service().and_then(|a| a.default_output.get()) {
                         let v = frac.clamp(0.0, 1.5);
                         let _ = output.set_volume(Volume::stereo(v, v)).await;
                     }
                     play_audio_volume_change();
                 }
                 IPCCommand::MuteSet(mode) => {
-                    if let Some(output) = audio_service().default_output.get() {
+                    if let Some(output) = audio_service().and_then(|a| a.default_output.get()) {
                         let target = mute_target(mode, output.muted.get());
                         let _ = output.set_mute(target).await;
                     }
                     play_audio_volume_change();
                 }
                 IPCCommand::MicUp => {
-                    if let Some(input) = audio_service().default_input.get() {
+                    if let Some(input) = audio_service().and_then(|a| a.default_input.get()) {
                         let nv = 1.0_f64.min(input.volume.get().average() + 0.05);
                         let _ = input.set_volume(Volume::stereo(nv, nv)).await;
                     }
                     play_audio_volume_change();
                 }
                 IPCCommand::MicDown => {
-                    if let Some(input) = audio_service().default_input.get() {
+                    if let Some(input) = audio_service().and_then(|a| a.default_input.get()) {
                         let nv = 0.0_f64.max(input.volume.get().average() - 0.05);
                         let _ = input.set_volume(Volume::stereo(nv, nv)).await;
                     }
                     play_audio_volume_change();
                 }
                 IPCCommand::MicVolumeSet(frac) => {
-                    if let Some(input) = audio_service().default_input.get() {
+                    if let Some(input) = audio_service().and_then(|a| a.default_input.get()) {
                         let v = frac.clamp(0.0, 1.5);
                         let _ = input.set_volume(Volume::stereo(v, v)).await;
                     }
                     play_audio_volume_change();
                 }
                 IPCCommand::MicMuteSet(mode) => {
-                    if let Some(input) = audio_service().default_input.get() {
+                    if let Some(input) = audio_service().and_then(|a| a.default_input.get()) {
                         let target = mute_target(mode, input.muted.get());
                         let _ = input.set_mute(target).await;
                     }
@@ -410,7 +410,9 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                         .iter()
                         .map(|d| (d.name.get(), d.description.get()))
                         .collect();
-                    let cur = audio_service().default_output.get().map(|d| d.name.get());
+                    let cur = audio_service()
+                        .and_then(|a| a.default_output.get())
+                        .map(|d| d.name.get());
                     if let Some(i) = pick_device(&names, cur.as_deref(), &target)
                         && devs[i].set_as_default().await.is_ok()
                     {
@@ -441,7 +443,9 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     let outs = mshell_utils::audio::routable_outputs();
                     if outs.len() >= 2 {
                         let names: Vec<String> = outs.iter().map(|d| d.name.get()).collect();
-                        let cur = audio_service().default_output.get().map(|d| d.name.get());
+                        let cur = audio_service()
+                            .and_then(|a| a.default_output.get())
+                            .map(|d| d.name.get());
                         let idx = mshell_utils::audio::next_index(&names, cur.as_deref());
                         let target = outs[idx].clone();
                         let to_headset = mshell_utils::audio::out_is_headset(&target);
@@ -470,7 +474,9 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                         .iter()
                         .map(|d| (d.name.get(), d.description.get()))
                         .collect();
-                    let cur = audio_service().default_input.get().map(|d| d.name.get());
+                    let cur = audio_service()
+                        .and_then(|a| a.default_input.get())
+                        .map(|d| d.name.get());
                     if let Some(i) = pick_device(&names, cur.as_deref(), &target)
                         && devs[i].set_as_default().await.is_ok()
                     {

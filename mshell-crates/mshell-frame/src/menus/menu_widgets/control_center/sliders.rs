@@ -277,7 +277,7 @@ impl Component for ControlCenterSlidersModel {
         });
 
         // Snapshot initial state.
-        let output_device = audio_service().default_output.get();
+        let output_device = audio_service().and_then(|a| a.default_output.get());
         let output_percent = output_device
             .as_ref()
             .map(|d| d.volume.get().average())
@@ -287,7 +287,7 @@ impl Component for ControlCenterSlidersModel {
             .map(|d| get_audio_out_icon(d).to_string())
             .unwrap_or_else(|| "audio-volume-muted-symbolic".to_string());
 
-        let input_device = audio_service().default_input.get();
+        let input_device = audio_service().and_then(|a| a.default_input.get());
         let input_percent = input_device
             .as_ref()
             .map(|d| d.volume.get().average())
@@ -388,7 +388,7 @@ impl Component for ControlCenterSlidersModel {
         match message {
             ControlCenterSlidersInput::Refresh => {
                 // Refresh output volume.
-                self.output_device = audio_service().default_output.get();
+                self.output_device = audio_service().and_then(|a| a.default_output.get());
                 if let Some(d) = &self.output_device {
                     self.output_percent = d.volume.get().average();
                     self.output_icon = get_audio_out_icon(d).to_string();
@@ -401,7 +401,7 @@ impl Component for ControlCenterSlidersModel {
                 }
 
                 // Refresh input (mic) volume.
-                self.input_device = audio_service().default_input.get();
+                self.input_device = audio_service().and_then(|a| a.default_input.get());
                 if let Some(d) = &self.input_device {
                     self.input_percent = d.volume.get().average();
                     self.input_icon = get_audio_in_icon(d).to_string();

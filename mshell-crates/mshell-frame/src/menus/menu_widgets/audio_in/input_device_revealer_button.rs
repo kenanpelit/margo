@@ -36,8 +36,7 @@ impl AudioDeviceKind for InputKind {
 
     fn is_default(device: &Arc<InputDevice>) -> bool {
         audio_service()
-            .default_input
-            .get()
+            .and_then(|a| a.default_input.get())
             .map(|d| d.eq(device))
             .unwrap_or(false)
     }

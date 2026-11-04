@@ -190,7 +190,9 @@ impl Component for MediaPlayersModel {
             || MediaPlayersCommandOutput::ActivePlayerChanged,
         );
 
-        let players = media_service().player_list.get();
+        let players = media_service()
+            .map(|m| m.player_list.get())
+            .unwrap_or_default();
         let mpd_playing = mpd_service().player.playback_state.get() != PlaybackState::Stopped;
 
         // Created once and never removed from the Stack — see the
@@ -258,8 +260,8 @@ impl Component for MediaPlayersModel {
                 if let Some(display) = &display {
                     self.active_player_name = match display {
                         DisplaySlot::Mpris(id) => media_service()
-                            .player_list
-                            .get()
+                            .map(|m| m.player_list.get())
+                            .unwrap_or_default()
                             .iter()
                             .find(|p| p.id == *id)
                             .map(|p| p.identity.get())
@@ -321,8 +323,9 @@ impl Component for MediaPlayersModel {
     ) {
         match message {
             MediaPlayersCommandOutput::PlayersChanged => {
-                let service = media_service();
-                let players = service.player_list.get();
+                let players = media_service()
+                    .map(|m| m.player_list.get())
+                    .unwrap_or_default();
 
                 // Re-arm the per-player playback watchers for the
                 // new player set.
@@ -383,8 +386,8 @@ impl Component for MediaPlayersModel {
 /// slot so an idle/disconnected MPD doesn't clutter the switcher either.
 fn visible_slots() -> Vec<DisplaySlot> {
     let mut slots: Vec<DisplaySlot> = media_service()
-        .player_list
-        .get()
+        .map(|m| m.player_list.get())
+        .unwrap_or_default()
         .into_iter()
         .filter(|p| p.playback_state.get() != PlaybackState::Stopped)
         .map(|p| DisplaySlot::Mpris(p.id.clone()))
@@ -402,8 +405,8 @@ fn visible_slots() -> Vec<DisplaySlot> {
 fn display_slot(model: &MediaPlayersModel) -> Option<DisplaySlot> {
     let visible = visible_slots();
     media_service()
-        .player_list
-        .get()
+        .map(|m| m.player_list.get())
+        .unwrap_or_default()
         .into_iter()
         .find(|p| p.playback_state.get() == PlaybackState::Playing)
         .map(|p| DisplaySlot::Mpris(p.id.clone()))
@@ -426,8 +429,9 @@ fn display_slot(model: &MediaPlayersModel) -> Option<DisplaySlot> {
 /// this a menu prev/next click would stop influencing what the pill
 /// shows once nothing is actively `Playing`.
 fn select_slot(model: &mut MediaPlayersModel, slot: DisplaySlot) {
-    if let DisplaySlot::Mpris(id) = &slot {
-        let service = media_service();
+    if let DisplaySlot::Mpris(id) = &slot
+        && let Some(service) = media_service()
+    {
         let id = id.clone();
         tokio::spawn(async move {
             let _ = service.set_active_player(Some(id)).await;
@@ -444,7 +448,10 @@ fn subscribe_playback(
     watcher_token: &mut WatcherToken,
 ) {
     let token = watcher_token.reset();
-    for player in media_service().player_list.get() {
+    for player in media_service()
+        .map(|m| m.player_list.get())
+        .unwrap_or_default()
+    {
         let playback_state = player.playback_state.clone();
         let t = token.clone();
         watch_cancellable!(sender, t, [playback_state.watch()], |out| {

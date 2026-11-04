@@ -567,14 +567,12 @@ impl ToastProducerModel {
     fn on_audio_device(&mut self, output: bool) {
         let name = if output {
             audio_service()
-                .default_output
-                .get()
+                .and_then(|a| a.default_output.get())
                 .map(|d| d.description.get())
                 .unwrap_or_default()
         } else {
             audio_service()
-                .default_input
-                .get()
+                .and_then(|a| a.default_input.get())
                 .map(|d| d.description.get())
                 .unwrap_or_default()
         };
@@ -654,7 +652,10 @@ impl ToastProducerModel {
         // Re-subscribe to every player's title/artist under a fresh token, so
         // a track change on any player fires `Track`.
         let token = self.media_token.reset();
-        for player in media_service().player_list.get() {
+        for player in media_service()
+            .map(|m| m.player_list.get())
+            .unwrap_or_default()
+        {
             let title = player.metadata.title.clone();
             let artist = player.metadata.artist.clone();
             let t = token.clone();
@@ -994,7 +995,9 @@ fn format_track(title: &str, artist: &str) -> String {
 /// `display_player`: prefer the active player, else the first). Empty when
 /// nothing is playing.
 fn current_track() -> String {
-    let svc = media_service();
+    let Some(svc) = media_service() else {
+        return String::new();
+    };
     let player = svc
         .active_player
         .get()

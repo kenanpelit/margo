@@ -183,7 +183,8 @@ fn candidate_score(handle: &PlayerHandle, last_id: &str) -> i32 {
 /// haystack), scored, best first.
 fn best_mpris(filter: impl Fn(&str) -> bool, last_id: &str) -> Option<PlayerHandle> {
     media_service()
-        .players()
+        .map(|m| m.players())
+        .unwrap_or_default()
         .into_iter()
         .map(PlayerHandle::Mpris)
         .filter(|h| filter(&h.haystack()))
@@ -231,7 +232,8 @@ pub(crate) fn pick_active(target: &str) -> Option<PlayerHandle> {
     let mpd_candidate = mpd.connected.get().then(|| PlayerHandle::Mpd(mpd));
 
     media_service()
-        .players()
+        .map(|m| m.players())
+        .unwrap_or_default()
         .into_iter()
         .map(PlayerHandle::Mpris)
         .chain(mpd_candidate)

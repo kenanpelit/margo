@@ -114,8 +114,12 @@ pub fn ensure_started() {
     }
 
     // Mic: the recording-stream list is a wayle property; wake on change.
+    // (No audio service: the mic indicator never lights.)
     glib::spawn_future_local(async move {
-        let mut streams = audio_service().recording_streams.watch();
+        let Some(audio) = audio_service() else {
+            return;
+        };
+        let mut streams = audio.recording_streams.watch();
         while streams.next().await.is_some() {
             WAKE.notify_one();
         }
@@ -321,8 +325,8 @@ fn toast(kind: &str, apps: &[String]) {
 
 fn probe_mic() -> Vec<String> {
     audio_service()
-        .recording_streams
-        .get()
+        .map(|a| a.recording_streams.get())
+        .unwrap_or_default()
         .iter()
         .map(|s| s.application_name.get().unwrap_or_else(|| s.name.get()))
         .filter(|n| !n.is_empty())

@@ -112,9 +112,13 @@ impl Component for AppMixerModel {
                 self.rows.clear();
 
                 let streams = if self.recording {
-                    audio_service().recording_streams.get()
+                    audio_service()
+                        .map(|a| a.recording_streams.get())
+                        .unwrap_or_default()
                 } else {
-                    audio_service().playback_streams.get()
+                    audio_service()
+                        .map(|a| a.playback_streams.get())
+                        .unwrap_or_default()
                 };
 
                 for stream in streams {

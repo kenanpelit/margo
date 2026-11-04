@@ -110,7 +110,9 @@ impl Component for AudioInRevealedContentModel {
     ) {
         match message {
             AudioInRevealedContentInput::UpdateDevices => {
-                let audio = audio_service();
+                let Some(audio) = audio_service() else {
+                    return;
+                };
                 // Drop PulseAudio monitor sources (the loopback "Monitor of
                 // <sink>" entries every output implicitly creates) — they
                 // aren't microphones, and `mshellctl audio list` already

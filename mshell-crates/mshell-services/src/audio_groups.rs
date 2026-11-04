@@ -115,20 +115,24 @@ pub async fn create_group(member_names: &[String]) -> Option<String> {
 /// just stop.
 pub async fn disband_group(group: &AudioGroup) {
     let is_default = audio_service()
-        .default_output
-        .get()
+        .and_then(|a| a.default_output.get())
         .map(|d| d.name.get() == group.sink_name)
         .unwrap_or(false);
 
     if is_default {
-        let outputs = audio_service().output_devices.get();
+        let outputs = audio_service()
+            .map(|a| a.output_devices.get())
+            .unwrap_or_default();
         if let Some(fallback) = group
             .member_names
             .iter()
             .find_map(|name| outputs.iter().find(|d| &d.name.get() == name))
             && fallback.set_as_default().await.is_ok()
         {
-            for stream in audio_service().playback_streams.get() {
+            for stream in audio_service()
+                .map(|a| a.playback_streams.get())
+                .unwrap_or_default()
+            {
                 let _ = stream.move_to_device(fallback.key).await;
             }
         }
@@ -143,13 +147,16 @@ async fn adopt_as_default(sink_name: &str, timeout: Duration) {
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
         if let Some(dev) = audio_service()
-            .output_devices
-            .get()
+            .map(|a| a.output_devices.get())
+            .unwrap_or_default()
             .into_iter()
             .find(|d| d.name.get() == sink_name)
         {
             if dev.set_as_default().await.is_ok() {
-                for stream in audio_service().playback_streams.get() {
+                for stream in audio_service()
+                    .map(|a| a.playback_streams.get())
+                    .unwrap_or_default()
+                {
                     let _ = stream.move_to_device(dev.key).await;
                 }
             }

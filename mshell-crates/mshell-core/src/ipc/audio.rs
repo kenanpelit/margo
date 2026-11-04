@@ -17,8 +17,8 @@ pub(super) fn usable_outputs() -> Vec<Arc<OutputDevice>> {
         .hide_hdmi_outputs()
         .get_untracked();
     let mut v: Vec<_> = audio_service()
-        .output_devices
-        .get()
+        .map(|a| a.output_devices.get())
+        .unwrap_or_default()
         .into_iter()
         .filter(|d| mshell_utils::audio::output_connected(d))
         .filter(|d| !(hide_hdmi && mshell_utils::audio::is_hdmi_output(d)))
@@ -32,8 +32,8 @@ pub(super) fn usable_outputs() -> Vec<Arc<OutputDevice>> {
 /// "Monitor of <sink>" entries), which aren't microphones. Same stable sort.
 pub(super) fn usable_inputs() -> Vec<Arc<InputDevice>> {
     let mut v: Vec<_> = audio_service()
-        .input_devices
-        .get()
+        .map(|a| a.input_devices.get())
+        .unwrap_or_default()
         .into_iter()
         .filter(|d| !d.is_monitor.get())
         .filter(|d| !mshell_utils::audio_prefs::is_hidden(&d.name.get()))
@@ -137,8 +137,14 @@ pub(super) struct AudioSnapshot {
 /// same direct-global pattern as `notification_count`).
 pub(super) fn audio_snapshot() -> AudioSnapshot {
     let svc = audio_service();
-    let def_out = svc.default_output.get().map(|d| d.name.get());
-    let def_in = svc.default_input.get().map(|d| d.name.get());
+    let def_out = svc
+        .as_ref()
+        .and_then(|s| s.default_output.get())
+        .map(|d| d.name.get());
+    let def_in = svc
+        .as_ref()
+        .and_then(|s| s.default_input.get())
+        .map(|d| d.name.get());
     let snap = |i: usize,
                 name: String,
                 description: String,

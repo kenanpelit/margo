@@ -172,8 +172,8 @@ impl AudioInhibitModel {
 /// Is any MPRIS player currently playing?
 fn any_playing() -> bool {
     media_service()
-        .player_list
-        .get()
+        .map(|m| m.player_list.get())
+        .unwrap_or_default()
         .iter()
         .any(|p| p.playback_state.get() == PlaybackState::Playing)
 }
@@ -185,7 +185,10 @@ fn subscribe_playback(
     watcher_token: &mut WatcherToken,
 ) {
     let token = watcher_token.reset();
-    for player in media_service().player_list.get() {
+    for player in media_service()
+        .map(|m| m.player_list.get())
+        .unwrap_or_default()
+    {
         let playback_state = player.playback_state.clone();
         let t = token.clone();
         watch_cancellable!(sender, t, [playback_state.watch()], |out| {

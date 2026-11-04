@@ -337,12 +337,15 @@ impl LyricsModel {
 /// `active_player`, else the first in the list. (Matches the media pill.)
 fn display_player() -> Option<Arc<Player>> {
     let svc = media_service();
-    let players = svc.player_list.get();
+    let players = svc
+        .as_ref()
+        .map(|s| s.player_list.get())
+        .unwrap_or_default();
     players
         .iter()
         .find(|p| p.playback_state.get() == PlaybackState::Playing)
         .cloned()
-        .or_else(|| svc.active_player.get())
+        .or_else(|| svc.as_ref().and_then(|s| s.active_player.get()))
         .or_else(|| players.first().cloned())
 }
 
@@ -350,7 +353,10 @@ fn display_player() -> Option<Arc<Player>> {
 /// display player + track key follow playback across players.
 fn subscribe_players(sender: &ComponentSender<LyricsModel>, token: &mut WatcherToken) {
     let token = token.reset();
-    for player in media_service().player_list.get() {
+    for player in media_service()
+        .map(|m| m.player_list.get())
+        .unwrap_or_default()
+    {
         let metadata = player.metadata.clone();
         let playback = player.playback_state.clone();
         let t = token.clone();

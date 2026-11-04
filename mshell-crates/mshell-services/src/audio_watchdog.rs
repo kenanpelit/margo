@@ -82,18 +82,21 @@ pub fn spawn_audio_health_watchdog() {
             // backend task actually exited). `CommandChannelDisconnected` =
             // send failed / responder dropped; `Ok` / `DeviceNotFound` = alive.
             let channel_dead = {
-                let svc = audio_service();
-                match svc
-                    .default_output
-                    .get()
-                    .map(|d| d.key)
-                    .or_else(|| svc.output_devices.get().first().map(|d| d.key))
-                {
-                    Some(key) => matches!(
-                        svc.output_device(key).await,
-                        Err(AudioError::CommandChannelDisconnected)
-                    ),
+                match audio_service() {
+                    // Never started: there is no channel to lose.
                     None => false,
+                    Some(svc) => match svc
+                        .default_output
+                        .get()
+                        .map(|d| d.key)
+                        .or_else(|| svc.output_devices.get().first().map(|d| d.key))
+                    {
+                        Some(key) => matches!(
+                            svc.output_device(key).await,
+                            Err(AudioError::CommandChannelDisconnected)
+                        ),
+                        None => false,
+                    },
                 }
             };
 

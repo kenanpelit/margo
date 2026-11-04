@@ -122,14 +122,14 @@ impl Component for PortSwitcherModel {
             PortSwitcherInput::DeviceChanged => {
                 let token = self.ports_token.reset();
                 if self.recording {
-                    self.in_dev = audio_service().default_input.get();
+                    self.in_dev = audio_service().and_then(|a| a.default_input.get());
                     if let Some(dev) = &self.in_dev {
                         spawn_input_device_ports_watcher(dev, token, &sender, || {
                             PortSwitcherCommandOutput::PortsChanged
                         });
                     }
                 } else {
-                    self.out_dev = audio_service().default_output.get();
+                    self.out_dev = audio_service().and_then(|a| a.default_output.get());
                     if let Some(dev) = &self.out_dev {
                         spawn_output_device_ports_watcher(dev, token, &sender, || {
                             PortSwitcherCommandOutput::PortsChanged

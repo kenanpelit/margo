@@ -208,7 +208,10 @@ impl Component for MediaPlayerModel {
 /// pill when nothing else is around).
 fn display_player() -> Option<PillSource> {
     let svc = media_service();
-    let players = svc.player_list.get();
+    let players = svc
+        .as_ref()
+        .map(|s| s.player_list.get())
+        .unwrap_or_default();
     players
         .iter()
         .find(|p| p.playback_state.get() == PlaybackState::Playing)
@@ -218,7 +221,11 @@ fn display_player() -> Option<PillSource> {
             let mpd = mpd_service().player.clone();
             (mpd.playback_state.get() == PlaybackState::Playing).then(|| PillSource::Mpd(mpd))
         })
-        .or_else(|| svc.active_player.get().map(PillSource::Mpris))
+        .or_else(|| {
+            svc.as_ref()
+                .and_then(|s| s.active_player.get())
+                .map(PillSource::Mpris)
+        })
         .or_else(|| players.first().cloned().map(PillSource::Mpris))
         .or_else(|| {
             let mpd = mpd_service().player.clone();
@@ -231,7 +238,10 @@ fn display_player() -> Option<PillSource> {
 /// reacts the instant any player starts, stops, or changes track.
 fn subscribe_players(sender: &ComponentSender<MediaPlayerModel>, watcher_token: &mut WatcherToken) {
     let token = watcher_token.reset();
-    for player in media_service().player_list.get() {
+    for player in media_service()
+        .map(|m| m.player_list.get())
+        .unwrap_or_default()
+    {
         let title = player.metadata.title.clone();
         let artist = player.metadata.artist.clone();
         let cover = player.metadata.cover_art.clone();

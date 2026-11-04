@@ -182,8 +182,8 @@ impl Component for AudioOutRevealedContentModel {
                 create_button.set_sensitive(false);
 
                 let candidates: Vec<Arc<OutputDevice>> = audio_service()
-                    .output_devices
-                    .get()
+                    .map(|a| a.output_devices.get())
+                    .unwrap_or_default()
                     .into_iter()
                     .filter(|d| mshell_utils::audio::output_connected(d))
                     .filter(|d| !is_group(&d.name.get()))
@@ -241,7 +241,9 @@ impl Component for AudioOutRevealedContentModel {
     ) {
         match message {
             AudioOutRevealedContentInput::UpdateDevices => {
-                let audio = audio_service();
+                let Some(audio) = audio_service() else {
+                    return;
+                };
                 let hide_hdmi = config_manager()
                     .config()
                     .audio()

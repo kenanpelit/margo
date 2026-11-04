@@ -162,8 +162,8 @@ impl Component for CompactAudioModel {
         spawn_default_output_watcher(&sender, None, || CompactAudioCommandOutput::OutputChanged);
         spawn_default_input_watcher(&sender, None, || CompactAudioCommandOutput::InputChanged);
 
-        let output_device = audio_service().default_output.get();
-        let input_device = audio_service().default_input.get();
+        let output_device = audio_service().and_then(|a| a.default_output.get());
+        let input_device = audio_service().and_then(|a| a.default_input.get());
 
         let output_percent = output_device
             .as_ref()
@@ -229,8 +229,8 @@ impl Component for CompactAudioModel {
     ) {
         match message {
             CompactAudioInput::Refresh => {
-                self.output_device = audio_service().default_output.get();
-                self.input_device = audio_service().default_input.get();
+                self.output_device = audio_service().and_then(|a| a.default_output.get());
+                self.input_device = audio_service().and_then(|a| a.default_input.get());
 
                 if let Some(d) = &self.output_device {
                     self.output_percent = d.volume.get().average();

@@ -137,15 +137,15 @@ async fn route_audio(cfg: &BluetoothConfig, mac: &str) {
     if cfg.route_audio_output {
         wait_until(AUDIO_NODE_WAIT, || {
             audio_service()
-                .output_devices
-                .get()
+                .map(|a| a.output_devices.get())
+                .unwrap_or_default()
                 .iter()
                 .any(|d| device_matches(&d.name.get(), &d.properties.get(), &needle, &colon))
         })
         .await;
         if let Some(dev) = audio_service()
-            .output_devices
-            .get()
+            .map(|a| a.output_devices.get())
+            .unwrap_or_default()
             .into_iter()
             .find(|d| device_matches(&d.name.get(), &d.properties.get(), &needle, &colon))
         {
@@ -154,7 +154,10 @@ async fn route_audio(cfg: &BluetoothConfig, mac: &str) {
             if dev.set_as_default().await.is_ok() {
                 // Move already-playing streams over too — PipeWire's own
                 // default-sink change doesn't migrate them.
-                for stream in audio_service().playback_streams.get() {
+                for stream in audio_service()
+                    .map(|a| a.playback_streams.get())
+                    .unwrap_or_default()
+                {
                     let _ = stream.move_to_device(dev.key).await;
                 }
             }
@@ -163,8 +166,8 @@ async fn route_audio(cfg: &BluetoothConfig, mac: &str) {
 
     if cfg.route_audio_input
         && let Some(dev) = audio_service()
-            .input_devices
-            .get()
+            .map(|a| a.input_devices.get())
+            .unwrap_or_default()
             .into_iter()
             .find(|d| device_matches(&d.name.get(), &d.properties.get(), &needle, &colon))
     {

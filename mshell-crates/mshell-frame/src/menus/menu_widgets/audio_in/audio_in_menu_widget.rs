@@ -137,7 +137,7 @@ impl Component for AudioInMenuWidgetModel {
     ) {
         match message {
             AudioInMenuWidgetInput::ActionButtonClicked => {
-                if let Some(default) = audio_service().default_input.get() {
+                if let Some(default) = audio_service().and_then(|a| a.default_input.get()) {
                     tokio::spawn(async move {
                         let mute = !default.muted.get();
                         let _ = default.set_mute(mute).await;
@@ -182,7 +182,7 @@ impl Component for AudioInMenuWidgetModel {
                     ))
             }
             AudioInMenuWidgetInput::SetVolume(volume) => {
-                if let Some(default) = audio_service().default_input.get() {
+                if let Some(default) = audio_service().and_then(|a| a.default_input.get()) {
                     tokio::spawn(async move {
                         let _ = default.set_volume(Volume::stereo(volume, volume)).await;
                     });
@@ -200,7 +200,7 @@ impl Component for AudioInMenuWidgetModel {
     ) {
         match message {
             AudioInMenuWidgetCommandOutput::DeviceChanged => {
-                let default = audio_service().default_input.get();
+                let default = audio_service().and_then(|a| a.default_input.get());
                 if let Some(audio_device) = default {
                     sender.input(AudioInMenuWidgetInput::UpdateDevice(audio_device.clone()));
 
@@ -212,7 +212,7 @@ impl Component for AudioInMenuWidgetModel {
                 }
             }
             AudioInMenuWidgetCommandOutput::VolumeChanged => {
-                if let Some(default) = audio_service().default_input.get() {
+                if let Some(default) = audio_service().and_then(|a| a.default_input.get()) {
                     sender.input(AudioInMenuWidgetInput::UpdateDevice(default));
                 }
             }

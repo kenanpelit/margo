@@ -99,7 +99,9 @@ fn build() -> String {
     }
 
     // Now-playing — prefer a Playing player, else any non-stopped one.
-    let players = media_service().player_list.get();
+    let players = media_service()
+        .map(|m| m.player_list.get())
+        .unwrap_or_default();
     let active = players
         .iter()
         .find(|p| p.playback_state.get() == PlaybackState::Playing)

@@ -388,10 +388,16 @@ impl Component for SoundSettingsModel {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let svc = audio_service();
-        let out_devices = svc.output_devices.get();
-        let in_devices = svc.input_devices.get();
-        let default_out = svc.default_output.get();
-        let default_in = svc.default_input.get();
+        let out_devices = svc
+            .as_ref()
+            .map(|s| s.output_devices.get())
+            .unwrap_or_default();
+        let in_devices = svc
+            .as_ref()
+            .map(|s| s.input_devices.get())
+            .unwrap_or_default();
+        let default_out = svc.as_ref().and_then(|s| s.default_output.get());
+        let default_in = svc.as_ref().and_then(|s| s.default_input.get());
 
         // ── Output controls ──
         let out_model = string_list(
@@ -674,14 +680,14 @@ impl Component for SoundSettingsModel {
                 }
             }
             SoundSettingsInput::SetOutputVolume(v) => {
-                if let Some(d) = audio_service().default_output.get() {
+                if let Some(d) = audio_service().and_then(|a| a.default_output.get()) {
                     tokio::spawn(async move {
                         let _ = d.set_volume(Volume::stereo(v, v)).await;
                     });
                 }
             }
             SoundSettingsInput::SetOutputMute(m) => {
-                if let Some(d) = audio_service().default_output.get() {
+                if let Some(d) = audio_service().and_then(|a| a.default_output.get()) {
                     tokio::spawn(async move {
                         let _ = d.set_mute(m).await;
                     });
@@ -695,14 +701,14 @@ impl Component for SoundSettingsModel {
                 }
             }
             SoundSettingsInput::SetInputVolume(v) => {
-                if let Some(d) = audio_service().default_input.get() {
+                if let Some(d) = audio_service().and_then(|a| a.default_input.get()) {
                     tokio::spawn(async move {
                         let _ = d.set_volume(Volume::stereo(v, v)).await;
                     });
                 }
             }
             SoundSettingsInput::SetInputMute(m) => {
-                if let Some(d) = audio_service().default_input.get() {
+                if let Some(d) = audio_service().and_then(|a| a.default_input.get()) {
                     tokio::spawn(async move {
                         let _ = d.set_mute(m).await;
                     });
@@ -731,7 +737,7 @@ impl Component for SoundSettingsModel {
             }
             SoundSettingsInput::SetOutputPort(idx) => {
                 if let Some(p) = self.out_ports.get(idx as usize).cloned()
-                    && let Some(d) = audio_service().default_output.get()
+                    && let Some(d) = audio_service().and_then(|a| a.default_output.get())
                 {
                     tokio::spawn(async move {
                         let _ = d.set_port(p.name).await;
@@ -740,7 +746,7 @@ impl Component for SoundSettingsModel {
             }
             SoundSettingsInput::SetInputPort(idx) => {
                 if let Some(p) = self.in_ports.get(idx as usize).cloned()
-                    && let Some(d) = audio_service().default_input.get()
+                    && let Some(d) = audio_service().and_then(|a| a.default_input.get())
                 {
                     tokio::spawn(async move {
                         let _ = d.set_port(p.name).await;
@@ -758,7 +764,7 @@ impl Component for SoundSettingsModel {
     ) {
         match message {
             SoundSettingsCommandOutput::OutDefaultChanged => {
-                if let Some(d) = audio_service().default_output.get() {
+                if let Some(d) = audio_service().and_then(|a| a.default_output.get()) {
                     let token = self.out_vol_token.reset();
                     spawn_output_device_volume_mute_watcher(&d, token, &sender, || {
                         SoundSettingsCommandOutput::OutVolMuteChanged
@@ -774,7 +780,9 @@ impl Component for SoundSettingsModel {
             SoundSettingsCommandOutput::OutVolMuteChanged => self.sync_output(),
             SoundSettingsCommandOutput::OutPortsChanged => self.sync_out_ports(),
             SoundSettingsCommandOutput::OutDevicesChanged => {
-                self.out_devices = audio_service().output_devices.get();
+                self.out_devices = audio_service()
+                    .map(|a| a.output_devices.get())
+                    .unwrap_or_default();
                 splice(
                     &self.out_model,
                     self.out_devices
@@ -784,7 +792,7 @@ impl Component for SoundSettingsModel {
                 self.sync_output();
             }
             SoundSettingsCommandOutput::InDefaultChanged => {
-                if let Some(d) = audio_service().default_input.get() {
+                if let Some(d) = audio_service().and_then(|a| a.default_input.get()) {
                     let token = self.in_vol_token.reset();
                     spawn_input_device_volume_mute_watcher(&d, token, &sender, || {
                         SoundSettingsCommandOutput::InVolMuteChanged
@@ -800,7 +808,9 @@ impl Component for SoundSettingsModel {
             SoundSettingsCommandOutput::InVolMuteChanged => self.sync_input(),
             SoundSettingsCommandOutput::InPortsChanged => self.sync_in_ports(),
             SoundSettingsCommandOutput::InDevicesChanged => {
-                self.in_devices = audio_service().input_devices.get();
+                self.in_devices = audio_service()
+                    .map(|a| a.input_devices.get())
+                    .unwrap_or_default();
                 splice(
                     &self.in_model,
                     self.in_devices
@@ -817,7 +827,7 @@ impl SoundSettingsModel {
     /// Re-sync the output widgets from the service, blocking their handlers so
     /// the programmatic set never re-fires a write.
     fn sync_output(&self) {
-        let default = audio_service().default_output.get();
+        let default = audio_service().and_then(|a| a.default_output.get());
         let idx = default
             .as_ref()
             .and_then(|d| device_index(&self.out_devices, &d.name.get()));
@@ -840,7 +850,7 @@ impl SoundSettingsModel {
     }
 
     fn sync_input(&self) {
-        let default = audio_service().default_input.get();
+        let default = audio_service().and_then(|a| a.default_input.get());
         let idx = default
             .as_ref()
             .and_then(|d| device_index_in(&self.in_devices, &d.name.get()));
@@ -865,7 +875,7 @@ impl SoundSettingsModel {
     /// Re-sync the output port dropdown from the active device's ports,
     /// hiding the row unless there's more than one route to pick.
     fn sync_out_ports(&mut self) {
-        let dev = audio_service().default_output.get();
+        let dev = audio_service().and_then(|a| a.default_output.get());
         self.out_ports = dev.as_ref().map(|d| d.ports.get()).unwrap_or_default();
         self.out_ports_visible = self.out_ports.len() >= 2;
         splice(&self.out_port_model, self.out_ports.iter().map(port_label));
@@ -881,7 +891,7 @@ impl SoundSettingsModel {
     }
 
     fn sync_in_ports(&mut self) {
-        let dev = audio_service().default_input.get();
+        let dev = audio_service().and_then(|a| a.default_input.get());
         self.in_ports = dev.as_ref().map(|d| d.ports.get()).unwrap_or_default();
         self.in_ports_visible = self.in_ports.len() >= 2;
         splice(&self.in_port_model, self.in_ports.iter().map(port_label));

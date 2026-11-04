@@ -404,7 +404,10 @@ impl Component for ScreenRecordMenuWidgetModel {
 
 impl ScreenRecordMenuWidgetModel {
     fn spawn_default_output_watcher(sender: &ComponentSender<Self>) {
-        let audio = audio_service();
+        // No audio service: no input devices to offer.
+        let Some(audio) = audio_service() else {
+            return;
+        };
         let input_devices = audio.input_devices.clone();
 
         watch!(sender, [input_devices.watch()], |out| {

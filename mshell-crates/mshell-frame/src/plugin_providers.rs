@@ -19,7 +19,9 @@ pub struct WayleMediaProvider;
 
 impl MediaInfoSource for WayleMediaProvider {
     fn snapshot(&self) -> MediaInfo {
-        let svc = media_service();
+        let Some(svc) = media_service() else {
+            return MediaInfo::default();
+        };
         // Prefer a player that's actually *playing* (so "what's playing" wins
         // even when wayle's active player is a different, paused one — e.g.
         // Spotify playing while a paused browser tab is active); then the

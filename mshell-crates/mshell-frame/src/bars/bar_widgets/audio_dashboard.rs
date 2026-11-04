@@ -115,6 +115,8 @@ impl Component for AudioDashboardModel {
         #[root]
         gtk::Box {
             set_css_classes: &["ok-button-surface", "ok-bar-widget", "audio-dashboard-bar-widget"],
+            // Started without an audio service: nothing to show or control.
+            set_visible: audio_service().is_some(),
             set_hexpand: false,
             set_vexpand: false,
             set_has_tooltip: true,
@@ -218,8 +220,8 @@ impl Component for AudioDashboardModel {
             AudioDashboardCommandOutput::InputDevicesChanged
         });
 
-        let output_device = audio_service().default_output.get();
-        let input_device = audio_service().default_input.get();
+        let output_device = audio_service().and_then(|a| a.default_output.get());
+        let input_device = audio_service().and_then(|a| a.default_input.get());
 
         let mut output_watcher_token = WatcherToken::new();
         let mut input_watcher_token = WatcherToken::new();
@@ -341,7 +343,7 @@ impl Component for AudioDashboardModel {
                 }
             }
             AudioDashboardInput::DefaultOutputChanged => {
-                self.output_device = audio_service().default_output.get();
+                self.output_device = audio_service().and_then(|a| a.default_output.get());
                 if let Some(d) = &self.output_device {
                     spawn_output_device_volume_mute_watcher(
                         d,
@@ -356,7 +358,7 @@ impl Component for AudioDashboardModel {
                 self.output_icon = i;
             }
             AudioDashboardInput::DefaultInputChanged => {
-                self.input_device = audio_service().default_input.get();
+                self.input_device = audio_service().and_then(|a| a.default_input.get());
                 if let Some(d) = &self.input_device {
                     spawn_input_device_volume_mute_watcher(
                         d,

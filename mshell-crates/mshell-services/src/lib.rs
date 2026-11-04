@@ -114,13 +114,63 @@ async fn start<T, E: std::fmt::Display>(
     out
 }
 
-/// Names of the required services that did not start.
-fn missing_required<'a>(services: &[(&'a str, bool)]) -> Vec<&'a str> {
-    services
-        .iter()
-        .filter(|(_, up)| !up)
-        .map(|(name, _)| *name)
-        .collect()
+/// margo is the one hard dependency: workspaces, clients and outputs come
+/// from its IPC, and mshell only makes sense inside a margo session. Its
+/// failure gets an error that says so instead of a bare join error.
+fn require_margo<T>(margo: Started<T>) -> anyhow::Result<T> {
+    match margo {
+        Started::Ready(v) => Ok(v),
+        Started::Failed(e) => Err(anyhow::anyhow!(
+            "margo IPC failed to start: {e}. mshell needs a running margo session \
+             (check $MARGO_SOCKET / $XDG_RUNTIME_DIR/margo/margo-ipc.sock)"
+        )),
+        Started::TimedOut => Err(anyhow::anyhow!(
+            "margo IPC did not answer within {}s. mshell needs a running, responsive margo session \
+             (check $MARGO_SOCKET / $XDG_RUNTIME_DIR/margo/margo-ipc.sock)",
+            SERVICE_TIMEOUT.as_secs()
+        )),
+    }
+}
+
+/// The one toast (title, body) shown when the shell started without audio
+/// and/or media, or `None` when both are up.
+fn degraded_notice(audio: bool, media: bool) -> Option<(String, String)> {
+    let mut missing = Vec::new();
+    let mut effects = Vec::new();
+    if !audio {
+        missing.push("audio");
+        effects.push("volume, mic and mixer controls are hidden (PipeWire/PulseAudio unavailable)");
+    }
+    if !media {
+        missing.push("media");
+        effects.push("media controls are hidden (MPRIS unavailable)");
+    }
+    if missing.is_empty() {
+        return None;
+    }
+    let mut body = effects.join("; ");
+    body.push_str(". Restart mshell once it is back.");
+    Some((format!("Started without {}", missing.join(" and ")), body))
+}
+
+/// Deliver the degraded-start toast once a toast surface exists (they are
+/// created after `init_services` returns), giving up after a minute.
+fn spawn_degraded_toast(title: String, body: String) {
+    tokio::spawn(async move {
+        for _ in 0..60 {
+            let delivered =
+                mshell_config::toast::try_push_toast(mshell_config::toast::ToastEvent {
+                    icon: "dialog-warning-symbolic".to_string(),
+                    title: title.clone(),
+                    body: Some(body.clone()),
+                    severity: mshell_config::toast::ToastSeverity::Warn,
+                });
+            if delivered {
+                return;
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    });
 }
 
 pub async fn init_services(
@@ -185,21 +235,15 @@ pub async fn init_services(
         "all services ready"
     );
 
-    // Hard dependencies: their getters are used unconditionally across the
-    // shell, so the shell can't run without them. Name every one that
-    // failed instead of an opaque join error.
-    let (audio, margo, media) = (audio.ok(), margo.ok(), media.ok());
-    let missing = missing_required(&[
-        ("audio", audio.is_some()),
-        ("margo", margo.is_some()),
-        ("media", media.is_some()),
-    ]);
-    let (Some(audio), Some(margo), Some(media)) = (audio, margo, media) else {
-        anyhow::bail!(
-            "required service(s) failed to start: {} (see the warnings above)",
-            missing.join(", ")
-        );
-    };
+    // margo is the only hard dependency. Audio (PipeWire/PulseAudio) and
+    // media (MPRIS) are optional like the rest: their widgets hide, and
+    // one toast says what is missing.
+    let margo = require_margo(margo)?;
+    let (audio, media) = (audio.ok(), media.ok());
+    if let Some((title, body)) = degraded_notice(audio.is_some(), media.is_some()) {
+        warn!(%title, %body, "starting in degraded mode");
+        spawn_degraded_toast(title, body);
+    }
 
     let sysinfo = SysinfoService::builder().build();
     let weather = WeatherServiceBuilder::new()
@@ -272,9 +316,11 @@ pub async fn find_line_power_path() -> Result<Option<OwnedObjectPath>, Error> {
         .find(|p| p.as_str().contains("line_power")))
 }
 
-static AUDIO_SERVICE: OnceLock<Arc<AudioService>> = OnceLock::new();
+static AUDIO_SERVICE: OnceLock<Option<Arc<AudioService>>> = OnceLock::new();
 
-pub fn audio_service() -> Arc<AudioService> {
+/// `None` when PipeWire/PulseAudio was unavailable at startup: audio
+/// widgets hide and the volume/mic IPC commands do nothing.
+pub fn audio_service() -> Option<Arc<AudioService>> {
     AUDIO_SERVICE
         .get()
         .expect("AudioService not initialized")
@@ -355,9 +401,11 @@ pub fn line_power_service() -> Option<Arc<BatteryService>> {
         .clone()
 }
 
-static MEDIA_SERVICE: OnceLock<Arc<MediaService>> = OnceLock::new();
+static MEDIA_SERVICE: OnceLock<Option<Arc<MediaService>>> = OnceLock::new();
 
-pub fn media_service() -> Arc<MediaService> {
+/// `None` when MPRIS was unavailable at startup: media widgets see no
+/// players and stay hidden.
+pub fn media_service() -> Option<Arc<MediaService>> {
     MEDIA_SERVICE
         .get()
         .expect("MediaService not initialized")
@@ -455,11 +503,32 @@ mod start_tests {
     }
 
     #[test]
-    fn missing_required_names_every_failed_service() {
-        assert_eq!(
-            missing_required(&[("audio", false), ("margo", true), ("media", false)]),
-            vec!["audio", "media"]
-        );
-        assert!(missing_required(&[("audio", true)]).is_empty());
+    fn margo_is_required_with_a_clear_error() {
+        assert_eq!(require_margo(Started::Ready(3u8)).unwrap(), 3);
+        let failed = require_margo::<u8>(Started::Failed("connection refused".into()))
+            .unwrap_err()
+            .to_string();
+        assert!(failed.contains("margo"), "{failed}");
+        assert!(failed.contains("connection refused"), "{failed}");
+        assert!(failed.contains("margo session"), "{failed}");
+        let timed_out = require_margo::<u8>(Started::TimedOut)
+            .unwrap_err()
+            .to_string();
+        assert!(timed_out.contains("did not answer"), "{timed_out}");
+    }
+
+    #[test]
+    fn degraded_notice_names_every_missing_optional_service() {
+        assert_eq!(degraded_notice(true, true), None);
+        let (title, body) = degraded_notice(false, true).expect("audio missing");
+        assert_eq!(title, "Started without audio");
+        assert!(body.contains("volume"), "{body}");
+        assert!(!body.contains("media"), "{body}");
+        let (title, body) = degraded_notice(true, false).expect("media missing");
+        assert_eq!(title, "Started without media");
+        assert!(body.contains("MPRIS"), "{body}");
+        let (title, body) = degraded_notice(false, false).expect("both missing");
+        assert_eq!(title, "Started without audio and media");
+        assert!(body.contains("volume") && body.contains("MPRIS"), "{body}");
     }
 }

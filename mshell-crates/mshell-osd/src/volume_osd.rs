@@ -36,7 +36,7 @@ impl LevelSource for VolumeSource {
         token: &mut WatcherToken,
         sender: &ComponentSender<LevelOsdModel<Self>>,
     ) -> Option<OsdLevel> {
-        let device = audio_service().default_output.get()?;
+        let device = audio_service().and_then(|a| a.default_output.get())?;
         spawn_output_device_volume_mute_watcher(&device, token.reset(), sender, || {
             LevelOsdCommand::Changed
         });
@@ -45,8 +45,7 @@ impl LevelSource for VolumeSource {
 
     fn read() -> Option<OsdLevel> {
         audio_service()
-            .default_output
-            .get()
+            .and_then(|a| a.default_output.get())
             .map(|device| level(&device))
     }
 }
