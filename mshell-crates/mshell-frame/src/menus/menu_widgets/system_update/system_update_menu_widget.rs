@@ -4,6 +4,7 @@
 //! Flatpak), each row showing `name  old → new`, plus Refresh and
 //! Update buttons. Probing lives in [`crate::system_update`].
 
+use crate::system_update::history::{self, HistorySource, Transaction};
 use crate::system_update::news::{self, NewsItem};
 use crate::system_update::run::{self, RunStatus};
 use crate::system_update::{self, ProbeConfig, Source, UpdateReport};
@@ -36,6 +37,12 @@ pub(crate) struct SystemUpdateMenuWidgetModel {
     run: RunStatus,
     /// Why the last background start failed (no pkexec, …).
     run_error: Option<String>,
+    /// Update history (newest first) + where it was read from.
+    history: Option<(HistorySource, Vec<Transaction>)>,
+    /// Cache file names, to tell which old versions can be restored.
+    cache_files: Vec<String>,
+    /// Row armed for rollback (first click arms, second confirms).
+    armed_rollback: Option<String>,
 }
 
 #[derive(Debug)]
@@ -58,6 +65,11 @@ pub(crate) enum SystemUpdateMenuWidgetInput {
     OpenUrl(String),
     /// Hide a finished background run's card.
     DismissRun,
+    /// (Re)load the History page.
+    LoadHistory,
+    /// Rollback button on a history row: first press arms it, the
+    /// second (on the same package) runs `pkexec pacman -U <file>`.
+    Rollback { name: String, file: String },
 }
 
 #[derive(Debug)]
@@ -77,6 +89,7 @@ pub(crate) enum SystemUpdateMenuWidgetCommandOutput {
     Run(RunStatus),
     /// A background start failed.
     LaunchFailed(String),
+    History(HistorySource, Vec<Transaction>, Vec<String>),
 }
 
 #[relm4::component(pub(crate))]
@@ -231,17 +244,49 @@ impl Component for SystemUpdateMenuWidgetModel {
                 },
             },
 
-            gtk::ScrolledWindow {
-                set_vscrollbar_policy: gtk::PolicyType::Automatic,
-                set_hscrollbar_policy: gtk::PolicyType::Never,
-                set_propagate_natural_height: true,
-                set_min_content_height: 80,
+            // ── Tabs (the podman panel's StackSwitcher pattern) ──
+            #[name = "stack_switcher"]
+            gtk::StackSwitcher {
+                set_stack: Some(&stack),
+                set_halign: gtk::Align::Start,
+            },
 
-                #[name = "list"]
-                gtk::Box {
-                    add_css_class: "system-update-list",
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_spacing: 2,
+            #[name = "stack"]
+            gtk::Stack {
+                set_transition_type: gtk::StackTransitionType::SlideLeftRight,
+                set_vhomogeneous: false,
+                connect_visible_child_name_notify[sender] => move |st| {
+                    if st.visible_child_name().as_deref() == Some("history") {
+                        sender.input(SystemUpdateMenuWidgetInput::LoadHistory);
+                    }
+                },
+
+                add_titled[Some("updates"), "Updates"] = &gtk::ScrolledWindow {
+                    set_vscrollbar_policy: gtk::PolicyType::Automatic,
+                    set_hscrollbar_policy: gtk::PolicyType::Never,
+                    set_propagate_natural_height: true,
+                    set_min_content_height: 80,
+
+                    #[name = "list"]
+                    gtk::Box {
+                        add_css_class: "system-update-list",
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_spacing: 2,
+                    },
+                },
+
+                add_titled[Some("history"), "History"] = &gtk::ScrolledWindow {
+                    set_vscrollbar_policy: gtk::PolicyType::Automatic,
+                    set_hscrollbar_policy: gtk::PolicyType::Never,
+                    set_propagate_natural_height: true,
+                    set_min_content_height: 80,
+
+                    #[name = "history_list"]
+                    gtk::Box {
+                        add_css_class: "system-update-list",
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_spacing: 2,
+                    },
                 },
             },
 
@@ -351,6 +396,9 @@ impl Component for SystemUpdateMenuWidgetModel {
             news_confirm: false,
             run: run::status(),
             run_error: None,
+            history: None,
+            cache_files: Vec::new(),
+            armed_rollback: None,
         };
         let widgets = view_output!();
 
@@ -429,6 +477,54 @@ impl Component for SystemUpdateMenuWidgetModel {
                     .arg(url)
                     .spawn_reaped();
             }
+            SystemUpdateMenuWidgetInput::LoadHistory => {
+                sender.oneshot_command(async {
+                    let (source, runs, files) = tokio::task::spawn_blocking(|| {
+                        let (source, runs) = history::load_blocking();
+                        let files = history::cache_listing()
+                            .into_iter()
+                            .map(|(f, _)| f)
+                            .collect();
+                        (source, runs, files)
+                    })
+                    .await
+                    .unwrap_or((
+                        HistorySource::LocalDb,
+                        Vec::new(),
+                        Vec::new(),
+                    ));
+                    SystemUpdateMenuWidgetCommandOutput::History(source, runs, files)
+                });
+            }
+            SystemUpdateMenuWidgetInput::Rollback { name, file } => {
+                if self.armed_rollback.as_deref() != Some(name.as_str()) {
+                    self.armed_rollback = Some(name);
+                } else {
+                    self.armed_rollback = None;
+                    self.run_error = None;
+                    match history::rollback_step(&file) {
+                        Some(step) => {
+                            if let Err(e) = run::start(vec![step], 1) {
+                                self.run_error = Some(e);
+                            }
+                        }
+                        None => {
+                            self.run_error = Some(format!("unexpected cache file name: {file}"))
+                        }
+                    }
+                    self.run = run::status();
+                }
+                if let Some((source, runs)) = &self.history {
+                    rebuild_history(
+                        &widgets.history_list,
+                        *source,
+                        runs,
+                        &self.cache_files,
+                        self.armed_rollback.as_deref(),
+                        &sender,
+                    );
+                }
+            }
             SystemUpdateMenuWidgetInput::DismissRun => {
                 self.run_error = None;
                 run::dismiss();
@@ -493,6 +589,12 @@ impl Component for SystemUpdateMenuWidgetModel {
             }
             SystemUpdateMenuWidgetCommandOutput::Run(status) => self.run = status,
             SystemUpdateMenuWidgetCommandOutput::LaunchFailed(e) => self.run_error = Some(e),
+            SystemUpdateMenuWidgetCommandOutput::History(source, runs, files) => {
+                self.armed_rollback = None;
+                rebuild_history(&widgets.history_list, source, &runs, &files, None, &sender);
+                self.history = Some((source, runs));
+                self.cache_files = files;
+            }
             SystemUpdateMenuWidgetCommandOutput::News(items) => {
                 rebuild_news(&widgets.news_list, &items, &sender);
                 self.news = items;
@@ -717,6 +819,117 @@ fn rebuild_list(list: &gtk::Box, report: &UpdateReport) {
 
             list.append(&row);
         }
+    }
+}
+
+/// The History page: one titled boxed-list per transaction, rows
+/// `name  old → new` with a rollback button when the old file is still
+/// in the pacman cache.
+fn rebuild_history(
+    list: &gtk::Box,
+    source: HistorySource,
+    runs: &[Transaction],
+    cache_files: &[String],
+    armed: Option<&str>,
+    sender: &ComponentSender<SystemUpdateMenuWidgetModel>,
+) {
+    while let Some(child) = list.first_child() {
+        list.remove(&child);
+    }
+    if source == HistorySource::LocalDb {
+        list.append(&info_label(
+            "pacman.log isn't readable, so this is rebuilt from the package database: \
+             packages grouped by install time, previous versions from the cache.",
+        ));
+    }
+    if runs.is_empty() {
+        list.append(&info_label("No update history found."));
+        return;
+    }
+    for t in runs {
+        let when = chrono::DateTime::from_timestamp(t.time, 0)
+            .map(|d| {
+                d.with_timezone(&chrono::Local)
+                    .format("%b %-d, %H:%M")
+                    .to_string()
+            })
+            .unwrap_or_default();
+        let n = t.changes.len();
+        let header = gtk::Label::builder()
+            .label(format!(
+                "{when}  ·  {n} package{}",
+                if n == 1 { "" } else { "s" }
+            ))
+            .halign(gtk::Align::Start)
+            .xalign(0.0)
+            .build();
+        header.add_css_class("system-update-section-label");
+        list.append(&header);
+
+        let group = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .build();
+        group.add_css_class("ok-boxed-list");
+        group.add_css_class("compact");
+        for c in &t.changes {
+            let row = gtk::Box::builder()
+                .orientation(gtk::Orientation::Horizontal)
+                .spacing(8)
+                .build();
+            let name = gtk::Label::builder()
+                .label(&c.name)
+                .halign(gtk::Align::Start)
+                .hexpand(true)
+                .xalign(0.0)
+                .ellipsize(gtk::pango::EllipsizeMode::End)
+                .build();
+            name.add_css_class("system-update-name");
+            row.append(&name);
+            let ver = match (&c.old, &c.new) {
+                (Some(o), Some(n)) => format!("{o} → {n}"),
+                (None, Some(n)) => format!("new {n}"),
+                (Some(o), None) => format!("removed {o}"),
+                (None, None) => String::new(),
+            };
+            let ver_label = gtk::Label::builder()
+                .label(&ver)
+                .halign(gtk::Align::End)
+                .ellipsize(gtk::pango::EllipsizeMode::Middle)
+                .build();
+            ver_label.add_css_class("system-update-version");
+            row.append(&ver_label);
+
+            let restorable = c
+                .old
+                .as_deref()
+                .and_then(|o| history::find_cached(&c.name, o, cache_files));
+            if let (Some(file), Some(old)) = (restorable, c.old.as_deref()) {
+                let btn = if armed == Some(c.name.as_str()) {
+                    let b = gtk::Button::with_label("Roll back?");
+                    b.add_css_class("ok-button-error");
+                    b
+                } else {
+                    let b = gtk::Button::from_icon_name("edit-undo-symbolic");
+                    b.add_css_class("ok-button-flat");
+                    b
+                };
+                btn.set_valign(gtk::Align::Center);
+                let tip = format!("Roll back {} to {old} from the pacman cache", c.name);
+                btn.set_tooltip_text(Some(&tip));
+                mshell_common::a11y::name(&btn, &tip);
+                let s = sender.clone();
+                let (name, file) = (c.name.clone(), file.to_string());
+                btn.connect_clicked(move |_| {
+                    s.input(SystemUpdateMenuWidgetInput::Rollback {
+                        name: name.clone(),
+                        file: file.clone(),
+                    })
+                });
+                row.append(&btn);
+            }
+            group.append(&row);
+        }
+        list.append(&group);
     }
 }
 

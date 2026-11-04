@@ -7,6 +7,7 @@
 //! flatpak). On non-Arch systems the repo source degrades to a
 //! count-only probe via dnf / apt (no per-package versions).
 
+pub(crate) mod history;
 pub(crate) mod news;
 pub(crate) mod run;
 pub(crate) mod size;
