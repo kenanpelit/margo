@@ -10,8 +10,15 @@
 //!
 //! The inhibitor is a `delay` lock (not `block`), so logind still sleeps
 //! after at most `InhibitDelayMaxSec` even if `mlock` somehow stalls.
+//!
+//! "Locked" means the compositor confirmed the ext-session-lock (margo's
+//! `session_locked` in `watch state`, mirrored here into
+//! `mshell_session`), not merely that a process named `mlock` exists.
 
-use mshell_session::session_lock::{lock_session, session_locked};
+use mshell_services::margo_service;
+use mshell_session::session_lock::{
+    lock_session, session_locked, set_compositor_locked, wait_until_locked,
+};
 use std::time::Duration;
 use tracing::{info, warn};
 use zbus::zvariant::OwnedFd;
@@ -41,22 +48,33 @@ async fn take_inhibitor(mgr: &Login1ManagerProxy<'_>) -> Option<OwnedFd> {
     }
 }
 
-/// Wait — within the inhibitor's grace window — for `mlock` to come up,
-/// then a short settle so its lock surface is mapped before the system
-/// is allowed to sleep. Bounded so a failed locker never blocks suspend.
+/// How long to wait for the compositor to confirm the lock. Inside logind's
+/// default 5 s `InhibitDelayMaxSec`, leaving room for the settle below.
+const LOCK_CONFIRM_LIMIT: Duration = Duration::from_secs(3);
+
+/// Wait — within the inhibitor's grace window — for the compositor to
+/// confirm the lock, then a short settle so mlock's lock surface is painted
+/// before the system is allowed to sleep. Bounded so a failed locker never
+/// blocks suspend.
 async fn wait_for_lock() {
-    for _ in 0..30 {
-        if session_locked() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
+    if !wait_until_locked(LOCK_CONFIRM_LIMIT).await {
+        warn!("sleep-lock: lock not confirmed within {LOCK_CONFIRM_LIMIT:?}; sleeping anyway");
     }
     tokio::time::sleep(Duration::from_millis(250)).await;
 }
 
 /// Spawn the lock-before-sleep task. Idempotent enough to call once at
 /// shell start; reconnects with a short backoff if the system bus drops.
+/// Also mirrors margo's lock state into `mshell_session` for every
+/// `session_locked()` caller.
 pub fn spawn() {
+    tokio::spawn(async {
+        use futures::StreamExt;
+        let mut locked = margo_service().session_locked.watch();
+        while let Some(state) = locked.next().await {
+            set_compositor_locked(state);
+        }
+    });
     tokio::spawn(async {
         loop {
             if let Err(e) = run().await {

@@ -9,6 +9,13 @@ license.workspace = true
 
 [dependencies]
 gtk4-session-lock.workspace = true
+libc.workspace = true
+tokio.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { workspace = true, features = ["test-util"] }
+
 [lints]
 workspace = true

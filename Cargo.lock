@@ -5457,6 +5457,9 @@ name = "mshell-session"
 version = "4.6.1"
 dependencies = [
  "gtk4-session-lock",
+ "libc",
+ "tempfile",
+ "tokio",
  "tracing",
 ]
 

@@ -48,6 +48,7 @@ impl SessionLockHandler for MargoState {
         confirmation.lock();
         self.session_lock_owner = Some(lock);
         self.session_locked = true;
+        self.mark_state_dirty();
         // The protocol is now locked even before the client creates its first
         // lock surface. Clear any desktop focus immediately so keys arriving
         // in that gap can never be forwarded to the previously focused app.
@@ -70,6 +71,7 @@ impl SessionLockHandler for MargoState {
     fn unlock(&mut self) {
         tracing::info!("session_lock: unlock() called");
         self.session_locked = false;
+        self.mark_state_dirty();
         self.session_lock_owner = None;
         self.lock_surfaces.clear();
         // Toplevels may have completed their initial configure while locked.

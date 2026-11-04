@@ -1081,6 +1081,7 @@ impl MargoState {
             self.lock_surfaces.len()
         );
         self.session_locked = false;
+        self.mark_state_dirty();
         self.session_lock_owner = None;
         self.lock_surfaces.clear();
         self.finish_lock_deferred_maps();

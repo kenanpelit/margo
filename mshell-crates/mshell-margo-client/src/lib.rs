@@ -483,6 +483,11 @@ pub struct MargoService {
     /// compositor has observed a key event. The keyboard-layout bar
     /// pill reads this.
     pub keyboard_layout: Reactive<String>,
+    /// Whether the session is locked, mirrored from the state document's
+    /// `session_locked` field: `Some(true)` from the compositor's lock
+    /// confirmation to unlock. `None` until the first snapshot or when the
+    /// running margo predates the field.
+    pub session_locked: Reactive<Option<bool>>,
     /// The focused output's tiling layout. `None` until the first
     /// snapshot, or while the output's `layout_idx` is past the
     /// layouts list (transient during a config reload). The layout
@@ -530,6 +535,7 @@ impl MargoService {
             monitors: Reactive::new(Vec::new()),
             focused_client: Reactive::new(None),
             keyboard_layout: Reactive::new(String::new()),
+            session_locked: Reactive::new(None),
             active_layout: Reactive::new(None),
             config_errors: Reactive::new(Vec::new()),
             fullscreen_outputs: Reactive::new(Vec::new()),

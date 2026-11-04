@@ -292,6 +292,11 @@ impl MargoState {
             "active_output": active_output,
             "focused_idx": focused_idx,
             "keyboard_layout": self.current_kb_layout,
+            // True from the moment an ext-session-lock is confirmed (the
+            // compositor stops showing the desktop) until unlock. mshell
+            // gates lock-before-sleep and the lock sidecar on this instead
+            // of guessing from process names.
+            "session_locked": self.session_locked,
             "outputs": outputs,
             "clients": clients,
             "layouts": layout_names,

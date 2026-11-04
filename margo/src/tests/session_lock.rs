@@ -109,6 +109,44 @@ fn destroy_lock_object_unlocks() {
     );
 }
 
+#[test]
+fn lock_state_is_published_to_ipc_watchers() {
+    // mshell decides "is the screen locked?" (lock-before-sleep, the lock
+    // button, the lock-screen sidecar) from this field instead of scanning
+    // /proc for a process named mlock, so every edge must reach `watch state`.
+    let mut fx = Fixture::new();
+    let id = fx.add_client();
+    assert_eq!(
+        fx.server.state.build_state_snapshot()["session_locked"],
+        serde_json::json!(false)
+    );
+
+    let lock = fx.client(id).create_session_lock();
+    fx.server.state.state_dirty.set(false);
+    fx.roundtrip(id);
+    assert!(
+        fx.server.state.state_dirty.get(),
+        "lock() must push a watch frame"
+    );
+    assert_eq!(
+        fx.server.state.build_state_snapshot()["session_locked"],
+        serde_json::json!(true)
+    );
+
+    fx.server.state.state_dirty.set(false);
+    lock.unlock_and_destroy();
+    fx.client(id).flush();
+    fx.roundtrip(id);
+    assert!(
+        fx.server.state.state_dirty.get(),
+        "unlock() must push a watch frame"
+    );
+    assert_eq!(
+        fx.server.state.build_state_snapshot()["session_locked"],
+        serde_json::json!(false)
+    );
+}
+
 /// Lock the session with a live client holding one mapped lock surface on
 /// `DP-1`; returns the fixture, the locker's id, and the protocol objects the
 /// caller must keep alive.

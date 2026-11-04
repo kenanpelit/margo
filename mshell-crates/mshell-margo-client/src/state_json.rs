@@ -42,6 +42,11 @@ pub struct StateJson {
     /// with older margo builds that don't emit the field.
     #[serde(default)]
     pub keyboard_layout: String,
+    /// Whether an ext-session-lock is active (margo confirmed a locker).
+    /// `None` on margo builds that don't emit the field, so callers can
+    /// tell "unlocked" from "unknown" and fall back.
+    #[serde(default)]
+    pub session_locked: Option<bool>,
     /// Diagnostics from the most recent config parse/reload (`mctl
     /// config-errors`'s source). `#[serde(default)]` for forward-compat
     /// with older margo builds that don't emit the field.

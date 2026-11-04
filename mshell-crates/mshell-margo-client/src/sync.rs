@@ -134,6 +134,9 @@ fn apply(service: &MargoService, state: &StateJson) {
     if service.keyboard_layout.get() != state.keyboard_layout {
         service.keyboard_layout.set(state.keyboard_layout.clone());
     }
+    if service.session_locked.get() != state.session_locked {
+        service.session_locked.set(state.session_locked);
+    }
 
     let fullscreen_outputs: Vec<String> = state
         .outputs
@@ -815,6 +818,7 @@ mod tests {
             clients,
             tag_count: 9,
             keyboard_layout: String::new(),
+            session_locked: None,
             config_errors: Vec::new(),
         }
     }
@@ -938,6 +942,7 @@ mod apply_tests {
             monitors: Reactive::new(Vec::new()),
             focused_client: Reactive::new(None),
             keyboard_layout: Reactive::new(String::new()),
+            session_locked: Reactive::new(None),
             config_errors: Reactive::new(Vec::new()),
             active_layout: Reactive::new(None),
             fullscreen_outputs: Reactive::new(Vec::new()),
@@ -1012,6 +1017,7 @@ mod apply_tests {
             ],
             tag_count: 9,
             keyboard_layout: "English (US)".into(),
+            session_locked: None,
             config_errors: Vec::new(),
         }
     }
@@ -1363,6 +1369,26 @@ mod apply_tests {
         apply(&svc, &f);
         assert!(svc.config_errors.get().is_empty());
         assert_eq!(svc.keyboard_layout.get(), "Turkish");
+    }
+
+    #[test]
+    fn session_lock_state_is_mirrored_and_unknown_on_older_margo() {
+        let svc = service();
+        let mut f = frame();
+        apply(&svc, &f);
+        assert_eq!(svc.session_locked.get(), None, "field absent: unknown");
+        f.session_locked = Some(true);
+        apply(&svc, &f);
+        assert_eq!(svc.session_locked.get(), Some(true));
+        f.session_locked = Some(false);
+        apply(&svc, &f);
+        assert_eq!(svc.session_locked.get(), Some(false));
+        let parsed: StateJson = serde_json::from_str(
+            r#"{"active_output":"","layouts":[],"outputs":[],"clients":[],
+                "tag_count":9,"session_locked":true}"#,
+        )
+        .expect("frame parses");
+        assert_eq!(parsed.session_locked, Some(true));
     }
 
     /// A frame as margo serialises it (extra fields included), parsed and
