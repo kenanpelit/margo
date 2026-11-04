@@ -17,8 +17,8 @@ readme = "README.md"
 # The greeter ⇄ runner protocol, shared with mgreet.
 mlogind-proto = { path = "../mlogind-proto" }
 # UI and TUI interface
-ratatui = "0.21.0"
-crossterm = "0.26"
+ratatui = "0.28"
+crossterm = "0.28"
 unicode-width = "0.1"
 # Live clock on the greeter (matches mlock's centred clock).
 chrono = { version = "0.4", default-features = false, features = ["clock"] }

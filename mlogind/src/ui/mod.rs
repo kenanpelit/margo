@@ -20,7 +20,7 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::layout::Alignment;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
-use ratatui::{Frame, Terminal, backend::Backend};
+use ratatui::{Frame, Terminal};
 
 use chrono::{DateTime, Local, Timelike};
 
@@ -887,8 +887,8 @@ fn fit(s: &str, max: usize) -> String {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn login_form_render<B: Backend>(
-    frame: &mut Frame<B>,
+fn login_form_render(
+    frame: &mut Frame,
     now: DateTime<Local>,
     chunks: Chunks,
     theme: Theme,
@@ -1067,7 +1067,7 @@ mod render_tests {
         let mut s = String::new();
         for y in 0..h {
             for x in 0..w {
-                s.push_str(&buf.get(x, y).symbol);
+                s.push_str(buf[(x, y)].symbol());
             }
             s.push('\n');
         }
@@ -1160,8 +1160,8 @@ mod snapshot_tests {
         for y in 0..area.height {
             let mut run: Option<(u16, String)> = None;
             for x in 0..area.width {
-                let cell = buf.get(x, y);
-                text.push_str(&cell.symbol);
+                let cell = &buf[(x, y)];
+                text.push_str(cell.symbol());
                 let style = format!(
                     "fg={:?} bg={:?} mod={}",
                     cell.fg,
@@ -1233,8 +1233,8 @@ mod snapshot_tests {
             );
         })
         .unwrap();
-        let cursor = term.get_cursor().unwrap();
-        dump(term.backend().buffer(), cursor)
+        let cursor = term.get_cursor_position().unwrap();
+        dump(term.backend().buffer(), (cursor.x, cursor.y))
     }
 
     fn screens() -> Vec<Screen> {

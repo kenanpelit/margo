@@ -16,13 +16,13 @@ impl BackgroundWidget {
         Self { config }
     }
 
-    pub fn render(&self, frame: &mut Frame<impl ratatui::backend::Backend>) {
+    pub fn render(&self, frame: &mut Frame) {
         if !self.config.show_background {
             return;
         }
         let block = Block::default().style(self.background_style());
 
-        let bounding_box = frame.size();
+        let bounding_box = frame.area();
 
         let block = if self.config.style.show_border {
             block

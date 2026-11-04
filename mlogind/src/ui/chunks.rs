@@ -14,7 +14,7 @@
 //! Top → bottom: greeting · big clock · date · rounded credential card
 //! (session / user / password) · status · power-control chips.
 
-use ratatui::{Frame, backend::Backend, layout::Rect};
+use ratatui::{Frame, layout::Rect};
 
 /// Cells reserved on the left of each card row for its label ("Password").
 const LABEL_W: u16 = 12;
@@ -79,8 +79,8 @@ const ZERO: Rect = Rect {
 };
 
 impl Chunks {
-    pub fn new<B: Backend>(frame: &Frame<B>) -> Self {
-        let size = frame.size();
+    pub fn new(frame: &Frame) -> Self {
+        let size = frame.area();
         let (fw, fh) = (size.width, size.height);
 
         let card_w = fw.saturating_sub(6).clamp(CARD_W_MIN, CARD_W_MAX).min(fw);

@@ -61,12 +61,7 @@ impl KeyMenuWidget {
     /// bottom of the stack. The key is bracketed + accent-coloured so it's
     /// unmistakable (the user reported the bare keys reading as invisible on
     /// the VT); the hint stays in its configured (muted) colour.
-    pub fn render(
-        &self,
-        frame: &mut Frame<impl ratatui::backend::Backend>,
-        area: Rect,
-        accent: Color,
-    ) {
+    pub fn render(&self, frame: &mut Frame, area: Rect, accent: Color) {
         let bracket = Style::default().fg(accent);
         let key_style = Style::default()
             .fg(accent)
