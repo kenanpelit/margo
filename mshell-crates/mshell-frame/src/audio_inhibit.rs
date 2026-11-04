@@ -125,6 +125,7 @@ impl Component for AudioInhibitModel {
                     if !self.restore_to {
                         spawn_disable();
                     }
+                    self.publish_media_only();
                 }
             }
         }
@@ -166,6 +167,14 @@ impl AudioInhibitModel {
                 spawn_disable();
             }
         }
+        self.publish_media_only();
+    }
+
+    /// Tell the lid guard whether the inhibitor is on *only* for playback
+    /// (it must not keep a closed laptop running for a media hold).
+    fn publish_media_only(&self) {
+        mshell_idle::lid_guard::LidGuard::global()
+            .set_media_only(self.audio_holds && !self.restore_to);
     }
 }
 

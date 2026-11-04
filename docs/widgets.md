@@ -100,7 +100,7 @@ parameter and use YAML tag syntax:
 | --- | --- | --- |
 | `DarkMode` | Dark Mode Toggle | One-click flip between Light and Dark matugen modes; the icon previews the mode you'd switch *to*. |
 | `Twilight` | Twilight | margo's built-in blue-light filter. Click opens the panel (toggle + temperature + mode + schedule); right-click flips it on/off; the icon shows the live colour temperature while filtering. |
-| `KeepAwake` | Keep Awake | Timed idle inhibitor. Left-click opens the duration grid + countdown; right-click ends a running session. Shows a live countdown while active. |
+| `KeepAwake` | Keep Awake | Timed idle inhibitor. Left-click opens the duration grid + countdown; right-click ends a running session. Shows a live countdown while active. The menu's "Keep running with the lid closed" switch (`idle.inhibit_lid_switch`, off by default; also in Settings → Idle) holds a logind `handle-lid-switch` inhibitor while Keep Awake is on, so closing the lid on an external monitor doesn't suspend (the media hold never engages it). |
 | `Keyboard` | On-Screen Keyboard | Toggles `mkeys`, margo's GTK on-screen keyboard. |
 | `ColorPicker` | ColorPicker | Picks a colour from the screen and copies hex/rgb to the clipboard. |
 | `Screenshot` | Screenshot | Takes a screenshot (region / window / output → file + clipboard). |

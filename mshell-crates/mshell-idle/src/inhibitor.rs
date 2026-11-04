@@ -11,7 +11,7 @@ use zbus::{Connection, proxy, zvariant::OwnedFd};
     default_service = "org.freedesktop.login1",
     default_path = "/org/freedesktop/login1"
 )]
-trait LogindManager {
+pub(crate) trait LogindManager {
     fn inhibit(&self, what: &str, who: &str, why: &str, mode: &str) -> zbus::Result<OwnedFd>;
 }
 
@@ -117,6 +117,12 @@ impl IdleInhibitor {
 
     pub fn watch(&self) -> WatchStream<bool> {
         WatchStream::new(self.state_rx.clone())
+    }
+
+    /// A raw `watch::Receiver` of the enabled state (for reconcile loops
+    /// that `select!` over several channels).
+    pub fn subscribe(&self) -> watch::Receiver<bool> {
+        self.state_rx.clone()
     }
 
     pub async fn enable(&self) -> zbus::Result<()> {

@@ -15,6 +15,7 @@ pub(crate) struct IdleSettingsModel {
     suspend_enabled: bool,
     suspend_timeout: u32,
     inhibit_while_media: bool,
+    inhibit_lid_switch: bool,
     _effects: EffectScope,
 }
 
@@ -30,6 +31,7 @@ reactive_settings! {
         SuspendEnabled => suspend_enabled: bool => suspend_enabled,
         SuspendTimeout => suspend_timeout: u32 => suspend_timeout_minutes,
         InhibitWhileMedia => inhibit_while_media: bool => inhibit_while_media,
+        InhibitLidSwitch => inhibit_lid_switch: bool => inhibit_lid_switch,
     }
 }
 
@@ -341,7 +343,7 @@ impl Component for IdleSettingsModel {
 
                 gtk::Label {
                     add_css_class: "label-large-bold",
-                    set_label: "Media",
+                    set_label: "Keep Awake",
                     set_halign: gtk::Align::Start,
                 },
                 gtk::Box {
@@ -383,6 +385,44 @@ impl Component for IdleSettingsModel {
                                 sender.input(IdleSettingsInput::InhibitWhileMediaChanged(enabled));
                                 glib::Propagation::Proceed
                             } @inhibit_media_handler,
+                        },
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/idle/inhibit_lid_switch",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Keep running with the lid closed",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "While Keep Awake is on, closing the laptop lid doesn't suspend (e.g. working on an external monitor). Not engaged by the media hold above.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(inhibit_lid_handler)]
+                            set_active: model.inhibit_lid_switch,
+                            connect_state_set[sender] => move |_, enabled| {
+                                sender.input(IdleSettingsInput::InhibitLidSwitchChanged(enabled));
+                                glib::Propagation::Proceed
+                            } @inhibit_lid_handler,
                         },
                     },
                 },

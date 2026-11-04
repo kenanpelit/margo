@@ -15,6 +15,7 @@
 //! scope split like the QML plugin has.
 
 use mshell_idle::inhibitor::IdleInhibitor;
+use mshell_idle::lid_guard::LidStatus;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
@@ -108,6 +109,27 @@ impl KeepAwakeSession {
     }
 }
 
+/// Subtitle under the Keep Awake menu's "Keep running with the lid
+/// closed" switch: what the lid guard is doing right now.
+pub(crate) fn lid_row_subtitle(opt_in: bool, active: bool, status: &LidStatus) -> String {
+    if !opt_in {
+        return "Closing the lid suspends as usual".to_string();
+    }
+    if let Some(err) = &status.error
+        && !status.held
+    {
+        return format!("Unavailable: {err}");
+    }
+    if status.held {
+        "Lid closed won't suspend while Keep Awake is on".to_string()
+    } else if active {
+        // Opted in + active but not held yet: the reconcile is in flight.
+        "Engaging…".to_string()
+    } else {
+        "Applies while Keep Awake is on".to_string()
+    }
+}
+
 /// Pretty `1h 23m` / `45m` / `30s` from a remaining duration.
 pub(crate) fn format_remaining(d: Duration) -> String {
     let total = d.as_secs();
@@ -118,5 +140,38 @@ pub(crate) fn format_remaining(d: Duration) -> String {
         format!("{m}m {s:02}s")
     } else {
         format!("{s}s")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn st(held: bool, error: Option<&str>) -> LidStatus {
+        LidStatus {
+            held,
+            error: error.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn lid_subtitle_states() {
+        assert_eq!(
+            lid_row_subtitle(false, true, &st(false, None)),
+            "Closing the lid suspends as usual"
+        );
+        assert_eq!(
+            lid_row_subtitle(true, false, &st(false, None)),
+            "Applies while Keep Awake is on"
+        );
+        assert_eq!(
+            lid_row_subtitle(true, true, &st(true, None)),
+            "Lid closed won't suspend while Keep Awake is on"
+        );
+        assert_eq!(
+            lid_row_subtitle(true, true, &st(false, Some("Access denied"))),
+            "Unavailable: Access denied"
+        );
+        assert_eq!(lid_row_subtitle(true, true, &st(false, None)), "Engaging…");
     }
 }

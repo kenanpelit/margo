@@ -9,7 +9,7 @@ mod sleep_lock;
 use crate::relm_app::{Shell, ShellInit};
 use any_spawner::Executor;
 use mshell_config::schema::config::{
-    ConfigStoreFields, GeneralStoreFields, IconsStoreFields, LauncherStoreFields,
+    ConfigStoreFields, GeneralStoreFields, IconsStoreFields, IdleStoreFields, LauncherStoreFields,
     NotificationsStoreFields, ScriptAutostart, ThemeStoreFields,
 };
 use mshell_idle::inhibitor::IdleInhibitor;
@@ -203,6 +203,14 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
     tokio_rt().spawn(async move {
         let _ = IdleInhibitor::global().init().await;
+    });
+
+    // Lid guard: hold logind's `handle-lid-switch` inhibitor while Keep
+    // Awake is on and `idle.inhibit_lid_switch` is set (live).
+    tokio_rt().spawn(mshell_idle::lid_guard::LidGuard::global().run());
+    Effect::new(move |_| {
+        let opt_in = config_manager.config().idle().inhibit_lid_switch().get();
+        mshell_idle::lid_guard::LidGuard::global().set_opt_in(opt_in);
     });
 
     Effect::new(move |_| {

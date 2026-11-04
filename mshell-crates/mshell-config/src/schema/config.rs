@@ -412,6 +412,12 @@ pub struct Idle {
     /// (opt-in — it overrides the idle/lock/suspend timers above while media
     /// plays). Ported from the DMS audio-inhibit plugin.
     pub inhibit_while_media: bool,
+    /// While Keep Awake is on (toggle or timer), also hold a logind
+    /// `handle-lid-switch` inhibitor, so closing the laptop lid (e.g. on an
+    /// external monitor) doesn't suspend. Off by default. The media hold
+    /// above never engages it. Released the moment Keep Awake turns off or
+    /// mshell exits.
+    pub inhibit_lid_switch: bool,
 }
 
 impl Default for Idle {
@@ -424,6 +430,7 @@ impl Default for Idle {
             suspend_enabled: true,
             suspend_timeout_minutes: 30,
             inhibit_while_media: false,
+            inhibit_lid_switch: false,
         }
     }
 }

@@ -5,9 +5,16 @@
 //! quick-extend + turn-off once a session is running. The timed
 //! inhibit lives in [`crate::keep_awake::KeepAwakeSession`].
 
-use crate::keep_awake::{KeepAwakeSession, format_remaining};
+use crate::keep_awake::{KeepAwakeSession, format_remaining, lid_row_subtitle};
+use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{ConfigStoreFields, IdleStoreFields};
 use mshell_idle::inhibitor::IdleInhibitor;
-use relm4::gtk::prelude::{BoxExt, ButtonExt, FlowBoxChildExt, OrientableExt, WidgetExt};
+use mshell_idle::lid_guard::LidGuard;
+use reactive_graph::prelude::GetUntracked;
+use relm4::gtk::glib;
+use relm4::gtk::prelude::{
+    BoxExt, ButtonExt, FlowBoxChildExt, ObjectExt, OrientableExt, WidgetExt,
+};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -31,6 +38,10 @@ pub(crate) struct KeepAwakeMenuWidgetModel {
     status_label: gtk::Label,
     extend_button: gtk::Button,
     off_button: gtk::Button,
+    /// "Keep running with the lid closed" switch (`idle.inhibit_lid_switch`).
+    lid_switch: gtk::Switch,
+    lid_switch_signal: glib::SignalHandlerId,
+    lid_subtitle: gtk::Label,
     /// The 1 s countdown heartbeat is started lazily on the first reveal
     /// (this menu is built eagerly per-monitor and embedded as a Control
     /// Center detail page) and paused while hidden.
@@ -47,6 +58,8 @@ pub(crate) enum KeepAwakeMenuWidgetInput {
     Activate(Option<u64>),
     Extend,
     Off,
+    /// The lid-switch switch was flipped.
+    LidSwitch(bool),
 }
 
 #[derive(Debug)]
@@ -134,6 +147,34 @@ impl Component for KeepAwakeMenuWidgetModel {
                     },
                 },
             },
+
+            // Lid guard (logind handle-lid-switch inhibitor) opt-in.
+            gtk::Box {
+                add_css_class: "keep-awake-lid-row",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 12,
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_valign: gtk::Align::Center,
+                    set_hexpand: true,
+                    gtk::Label {
+                        add_css_class: "label-medium-bold",
+                        set_halign: gtk::Align::Start,
+                        set_label: "Keep running with the lid closed",
+                    },
+                    #[local_ref]
+                    lid_subtitle_widget -> gtk::Label {
+                        add_css_class: "label-small",
+                        set_halign: gtk::Align::Start,
+                        set_xalign: 0.0,
+                        set_wrap: true,
+                    },
+                },
+                #[local_ref]
+                lid_switch_widget -> gtk::Switch {
+                    set_valign: gtk::Align::Center,
+                },
+            },
         }
     }
 
@@ -145,11 +186,31 @@ impl Component for KeepAwakeMenuWidgetModel {
         let status_label_widget = gtk::Label::new(None);
         let extend_button_widget = gtk::Button::new();
         let off_button_widget = gtk::Button::new();
+        let lid_subtitle_widget = gtk::Label::new(None);
+        let lid_switch_widget = gtk::Switch::new();
+        mshell_common::a11y::name(&lid_switch_widget, "Keep running with the lid closed");
+        lid_switch_widget.set_active(
+            config_manager()
+                .config()
+                .idle()
+                .inhibit_lid_switch()
+                .get_untracked(),
+        );
+        let lid_switch_signal = {
+            let sender = sender.clone();
+            lid_switch_widget.connect_state_set(move |_, on| {
+                sender.input(KeepAwakeMenuWidgetInput::LidSwitch(on));
+                glib::Propagation::Proceed
+            })
+        };
 
         let model = KeepAwakeMenuWidgetModel {
             status_label: status_label_widget.clone(),
             extend_button: extend_button_widget.clone(),
             off_button: off_button_widget.clone(),
+            lid_switch: lid_switch_widget.clone(),
+            lid_switch_signal,
+            lid_subtitle: lid_subtitle_widget.clone(),
             tick_started: false,
             revealed: Arc::new(AtomicBool::new(false)),
         };
@@ -192,6 +253,12 @@ impl Component for KeepAwakeMenuWidgetModel {
             KeepAwakeMenuWidgetInput::Off => {
                 KeepAwakeSession::global().deactivate();
                 let _ = sender.output(KeepAwakeMenuWidgetOutput::CloseMenu);
+            }
+            KeepAwakeMenuWidgetInput::LidSwitch(on) => {
+                config_manager().update_config(|config| {
+                    config.idle.inhibit_lid_switch = on;
+                });
+                sync(self);
             }
         }
     }
@@ -255,6 +322,24 @@ fn sync(model: &KeepAwakeMenuWidgetModel) {
         .extend_button
         .set_visible(active && remaining.is_some());
     model.off_button.set_visible(active);
+
+    // Lid guard row: mirror the setting (it can change from Settings)
+    // without re-firing our own handler, and explain its live state.
+    let opt_in = config_manager()
+        .config()
+        .idle()
+        .inhibit_lid_switch()
+        .get_untracked();
+    if model.lid_switch.is_active() != opt_in {
+        model.lid_switch.block_signal(&model.lid_switch_signal);
+        model.lid_switch.set_active(opt_in);
+        model.lid_switch.unblock_signal(&model.lid_switch_signal);
+    }
+    model.lid_subtitle.set_label(&lid_row_subtitle(
+        opt_in,
+        active,
+        &LidGuard::global().status(),
+    ));
 }
 
 /// One duration tile button wired to `Activate`.
