@@ -295,7 +295,7 @@ mdots nix status         # show Nix and Home Manager status
 | `mdots completion <SHELL>` | Print a shell completion script (bash, zsh, fish, …). |
 | `mdots man` | Print the man page to stdout (roff format). |
 
-All commands accept `-j` / `--json` for machine-readable output. This guide covers the common commands — run `mdots --help` for the full command surface (which also includes `save-config`, `restore-config`, `hooks`, `repo`, `backup`, `restore`, `self-update`, and `source`).
+All commands accept `-j` / `--json` for machine-readable output. This guide covers the common commands — run `mdots --help` for the full command surface (which also includes `save-config`, `restore-config`, `hooks`, `repo`, `backup`, `restore` and `source`; `self-update` only says to update the margo package, which ships mdots).
 
 ## Quick-start example
 

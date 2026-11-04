@@ -1,276 +1,67 @@
-use anyhow::{Context, Result};
-use colored::*;
-use std::env;
-use std::io::{self, Write};
-use std::path::{Path, PathBuf};
-use std::process::Command;
+//! `mdots self-update`: says how mdots is updated. It does not update anything.
+//!
+//! This used to rebuild mdots from a git checkout (`~/mdots`, … and a
+//! hardcoded upstream `/home/don/mdots`) and `sudo install` the result to
+//! /usr/local/bin. That is left over from the upstream project. mdots now
+//! lives in the margo workspace and the margo package installs it as
+//! /usr/bin/mdots. A self-built copy in /usr/local/bin comes first on PATH,
+//! so it would hide every later packaged update. The subcommand is kept so
+//! old muscle memory gets an answer instead of a clap error.
 
-/// Find the mdots git repository
-fn find_mdots_repo() -> Option<PathBuf> {
-    // Check MDOTS_REPO_PATH environment variable first
-    if let Ok(path) = env::var("MDOTS_REPO_PATH") {
-        let repo_path = PathBuf::from(path);
-        if repo_path.join(".git").exists() {
-            return Some(repo_path);
-        }
+use anyhow::{Result, bail};
+use std::path::Path;
+
+/// Where the old self-update installed its copy.
+const OLD_SELF_UPDATE_COPY: &str = "/usr/local/bin/mdots";
+
+/// The advice `mdots self-update` prints. `exe` is the running binary and
+/// `old_copy_exists` says whether [`OLD_SELF_UPDATE_COPY`] is on disk.
+fn update_advice(exe: Option<&Path>, old_copy_exists: bool) -> String {
+    let mut advice = String::from(
+        "mdots ships with margo and is updated with it, not on its own:\n  \
+         Arch / CachyOS: update the margo-git package (e.g. `paru -Syu margo-git`, or \
+         `./install.sh` from a margo checkout)\n  \
+         Debian / Ubuntu: re-run `./install.sh` from an updated margo checkout",
+    );
+    let running_old_copy = exe.is_some_and(|p| p == Path::new(OLD_SELF_UPDATE_COPY));
+    if old_copy_exists || running_old_copy {
+        advice.push_str(&format!(
+            "\n\n{OLD_SELF_UPDATE_COPY} is a copy left by the old `mdots self-update`. It comes \
+             before the packaged /usr/bin/mdots on PATH, so updates never reach you. Remove \
+             it: `sudo rm {OLD_SELF_UPDATE_COPY}`"
+        ));
     }
-
-    // Search common locations
-    let home = env::var("HOME").ok()?;
-    let search_paths = vec![
-        format!("{}/mdots", home),
-        format!("{}/projects/mdots", home),
-        format!("{}/git/mdots", home),
-        "/home/don/mdots".to_string(), // Hardcoded fallback
-    ];
-
-    for path in search_paths {
-        let repo_path = PathBuf::from(&path);
-        if repo_path.join(".git").exists() {
-            return Some(repo_path);
-        }
-    }
-
-    None
+    advice
 }
 
-/// Get current git commit hash
-fn get_current_commit(repo_path: &Path) -> Result<String> {
-    let output = Command::new("git")
-        .current_dir(repo_path)
-        .args(["rev-parse", "--short", "HEAD"])
-        .output()
-        .context("Failed to get current commit")?;
-
-    if output.status.success() {
-        Ok(String::from_utf8(output.stdout)?.trim().to_string())
-    } else {
-        Ok("unknown".to_string())
-    }
-}
-
-/// Check if there are uncommitted changes
-fn has_uncommitted_changes(repo_path: &Path) -> Result<bool> {
-    let status = Command::new("git")
-        .current_dir(repo_path)
-        .args(["diff-index", "--quiet", "HEAD", "--"])
-        .status()
-        .context("Failed to check git status")?;
-
-    Ok(!status.success())
-}
-
-/// Self-update mdots from git repository
 pub fn run() -> Result<()> {
-    println!("{}", "=== mdots Self-Update ===".blue());
-    println!();
+    let exe = std::env::current_exe().ok();
+    let advice = update_advice(exe.as_deref(), Path::new(OLD_SELF_UPDATE_COPY).exists());
+    bail!("{advice}")
+}
 
-    // Find mdots repository
-    let mdots_repo = match find_mdots_repo() {
-        Some(repo) => repo,
-        None => {
-            println!(
-                "{}",
-                "Could not auto-detect mdots repository location".yellow()
-            );
-            println!();
-            println!("Please enter the path to your mdots git repository:");
-            print!("Path: ");
-            io::stdout().flush()?;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-            let mut input = String::new();
-            io::stdin().read_line(&mut input)?;
-            let repo_path = PathBuf::from(input.trim());
-
-            if !repo_path.join(".git").exists() {
-                anyhow::bail!("Not a git repository: {}", repo_path.display());
-            }
-
-            repo_path
-        }
-    };
-
-    println!(
-        "{} Found mdots repository at: {}",
-        "→".blue(),
-        mdots_repo.display().to_string().green()
-    );
-    println!();
-
-    // Check for uncommitted changes
-    if has_uncommitted_changes(&mdots_repo)? {
-        println!(
-            "{}",
-            "Warning: You have uncommitted changes in the mdots repository".yellow()
-        );
-
-        Command::new("git")
-            .current_dir(&mdots_repo)
-            .args(["status", "--short"])
-            .status()?;
-
-        println!();
-        print!("Continue anyway? [y/N] ");
-        io::stdout().flush()?;
-
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-
-        if !input.trim().eq_ignore_ascii_case("y") {
-            println!("{}", "Update cancelled".yellow());
-            return Ok(());
-        }
+    #[test]
+    fn points_at_the_package_and_never_at_a_git_build() {
+        let advice = update_advice(Some(Path::new("/usr/bin/mdots")), false);
+        assert!(advice.contains("margo-git"));
+        assert!(advice.contains("./install.sh"));
+        assert!(!advice.contains("/usr/local/bin"));
+        assert!(!advice.contains("cargo"));
     }
 
-    // Show current version
-    let current_commit = get_current_commit(&mdots_repo)?;
-    println!("{} {}", "Current version:".blue(), current_commit);
-
-    // Pull latest changes
-    println!();
-    let spinner = crate::progress::create_spinner("Pulling latest changes from git...");
-
-    let status = Command::new("git")
-        .current_dir(&mdots_repo)
-        .arg("pull")
-        .status()
-        .context("Failed to run git pull")?;
-
-    if !status.success() {
-        spinner.finish_with_message("✗ Failed to pull updates");
-        anyhow::bail!("Failed to pull updates");
-    }
-    spinner.finish_with_message("✓ Git pull complete");
-
-    // Check new version
-    let new_commit = get_current_commit(&mdots_repo)?;
-
-    if current_commit == new_commit {
-        println!();
-        println!("{}", "✓ Already up to date!".green());
-        return Ok(());
+    #[test]
+    fn flags_a_leftover_local_copy() {
+        let advice = update_advice(Some(Path::new("/usr/bin/mdots")), true);
+        assert!(advice.contains("sudo rm /usr/local/bin/mdots"));
     }
 
-    println!("{} {}", "New version:".blue(), new_commit);
-    println!();
-
-    // Check if cargo is installed
-    let cargo_cmd = if let Ok(cargo_path) = which::which("cargo") {
-        cargo_path.to_string_lossy().to_string()
-    } else {
-        println!("{}", "Error: cargo (Rust toolchain) not found".red());
-        println!();
-        println!("mdots self-update requires Rust to build from source.");
-        println!();
-        println!("Would you like to install Rust now with rustup? [Y/n]");
-        print!("> ");
-        io::stdout().flush()?;
-
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-
-        if input.trim().is_empty() || input.trim().eq_ignore_ascii_case("y") {
-            println!();
-            println!("{}", "Installing Rust with rustup...".blue());
-
-            let rustup_status = Command::new("sh")
-                .args([
-                    "-c",
-                    "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y",
-                ])
-                .status()
-                .context("Failed to run rustup installer")?;
-
-            if !rustup_status.success() {
-                anyhow::bail!(
-                    "Failed to install Rust. Please install manually: https://rustup.rs/"
-                );
-            }
-
-            println!("{}", "✓ Rust installed successfully".green());
-            println!();
-            println!(
-                "{}",
-                "Please restart your terminal and run 'mdots self-update' again.".yellow()
-            );
-            println!("Or run: source $HOME/.cargo/env && mdots self-update");
-            return Ok(());
-        } else {
-            println!(
-                "{}",
-                "Installation cancelled. Please install Rust manually: https://rustup.rs/".yellow()
-            );
-            return Ok(());
-        }
-    };
-
-    // Build the Rust binary
-    let build_spinner = crate::progress::create_spinner(
-        "Building Rust binary with cargo (this may take a minute)...",
-    );
-
-    let build_status = Command::new(&cargo_cmd)
-        .current_dir(&mdots_repo)
-        .args(["build", "--release"])
-        .status()
-        .context("Failed to run cargo build")?;
-
-    if !build_status.success() {
-        build_spinner.finish_with_message("✗ Build failed");
-        anyhow::bail!("Failed to build mdots binary");
+    #[test]
+    fn flags_running_from_the_local_copy() {
+        let advice = update_advice(Some(Path::new(OLD_SELF_UPDATE_COPY)), false);
+        assert!(advice.contains("sudo rm /usr/local/bin/mdots"));
     }
-
-    build_spinner.finish_with_message("✓ Build completed successfully");
-
-    // Install updated version
-    println!();
-    println!(
-        "{} Installing updated mdots to /usr/local/bin...",
-        "→".blue()
-    );
-
-    let binary_path = mdots_repo.join("target/release/mdots");
-
-    if !binary_path.exists() {
-        anyhow::bail!("Built binary not found at: {}", binary_path.display());
-    }
-
-    // Use install command which handles replacing running binaries better than cp
-    let install_status = Command::new("sudo")
-        .args([
-            "install",
-            "-m",
-            "755",
-            &binary_path.to_string_lossy(),
-            "/usr/local/bin/mdots",
-        ])
-        .status()
-        .context("Failed to install binary")?;
-
-    if !install_status.success() {
-        anyhow::bail!("Failed to install updated mdots");
-    }
-
-    println!("{} Installed to /usr/local/bin/mdots", "✓".green());
-
-    // Success message
-    println!();
-    println!("{}", "=== Update Complete! ===".green());
-    println!();
-    println!("Changes: {} → {}", current_commit, new_commit);
-    println!();
-    println!("To see what changed, run:");
-    println!(
-        "  cd {} && git log --oneline {}..{}",
-        mdots_repo.display(),
-        current_commit,
-        new_commit
-    );
-    println!();
-    println!(
-        "{}",
-        "Note: Restart your terminal if the command doesn't work immediately.".yellow()
-    );
-
-    Ok(())
 }

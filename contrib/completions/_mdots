@@ -1557,7 +1557,7 @@ _mdots_commands() {
 'repo:Git repository management' \
 'backup:Backup/snapshot management' \
 'restore:Restore from backup snapshot' \
-'self-update:Update mdots from git repository' \
+'self-update:Explain how mdots is updated (with the margo package; no self-build)' \
 'nix:Nix package manager and Home Manager integration' \
 'search:Search for packages with interactive TUI' \
 'edit:Edit configuration files with interactive TUI selector' \
@@ -1747,7 +1747,7 @@ _mdots__subcmd__help_commands() {
 'repo:Git repository management' \
 'backup:Backup/snapshot management' \
 'restore:Restore from backup snapshot' \
-'self-update:Update mdots from git repository' \
+'self-update:Explain how mdots is updated (with the margo package; no self-build)' \
 'nix:Nix package manager and Home Manager integration' \
 'search:Search for packages with interactive TUI' \
 'edit:Edit configuration files with interactive TUI selector' \

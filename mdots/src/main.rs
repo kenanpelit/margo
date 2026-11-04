@@ -227,7 +227,7 @@ enum Commands {
         snapshot: Option<String>,
     },
 
-    /// Update mdots from git repository
+    /// Explain how mdots is updated (with the margo package; no self-build)
     SelfUpdate,
 
     /// Nix package manager and Home Manager integration
