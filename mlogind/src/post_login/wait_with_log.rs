@@ -271,3 +271,57 @@ impl LimitedOutputChild {
         self.process.id()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let p = std::env::temp_dir().join(format!("mlogind-waitlog-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_file(&p);
+        p
+    }
+
+    /// Everything the session wrote before it exited, on both streams, ends
+    /// up in the log, including the last lines (usually the crash reason).
+    /// `wait()` wakes the forwarder right after the exit, so the forwarder
+    /// must drain what is still in the pipes before it stops.
+    #[test]
+    fn the_log_keeps_both_streams_up_to_the_last_line() {
+        let path = scratch("tail");
+        for round in 0..50 {
+            let mut command = Command::new("sh");
+            command.arg("-c").arg(
+                "i=0; while [ $i -lt 300 ]; do echo out$i; i=$((i+1)); done; echo last-err >&2",
+            );
+            let mut child = SessionChild::spawn(command, Some(&path)).unwrap();
+            assert!(child.wait().unwrap().success());
+            let log = std::fs::read_to_string(&path).unwrap();
+            assert!(log.contains("out0\n"), "round {round}: head missing");
+            assert!(
+                log.contains("out299\n"),
+                "round {round}: stdout tail missing"
+            );
+            assert!(
+                log.contains("last-err\n"),
+                "round {round}: stderr tail missing"
+            );
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The writer stops at the size limit and still reports the whole write.
+    #[test]
+    fn the_size_limit_truncates_silently() {
+        let mut out = Vec::new();
+        {
+            let mut w = LimitSizeWriter::new(&mut out, 5);
+            use io::Write;
+            assert_eq!(w.write(b"abc").unwrap(), 3);
+            assert_eq!(w.write(b"defgh").unwrap(), 5);
+            assert_eq!(w.write(b"ij").unwrap(), 2);
+            w.flush().unwrap();
+        }
+        assert_eq!(out, b"abcde");
+    }
+}
