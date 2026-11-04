@@ -356,7 +356,13 @@ impl ConfigManager {
                 return;
             }
 
-            let _ = watcher.watch(&prof_dir, RecursiveMode::NonRecursive);
+            // e.g. the inotify watch limit is reached: say so, the same as a
+            // watcher that can't be created, instead of silently losing
+            // live reload.
+            if let Err(e) = watcher.watch(&prof_dir, RecursiveMode::NonRecursive) {
+                error!(error = %e, dir = %prof_dir.display(), "config: cannot watch the profiles dir, live-reload disabled");
+                return;
+            }
 
             watch_config_loop(
                 rx,
