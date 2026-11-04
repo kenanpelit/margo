@@ -158,9 +158,12 @@ jobs:
         # install.sh's Debian path is kept by hand next to the PKGBUILD; this
         # fails when a build group, binary, unit or installed path exists in
         # one and not the other (then the self-test of the check itself).
+        # test-install-arch.sh: the Arch path's makepkg call still runs
+        # prepare() (no `-e`).
         run: |
           ./scripts/install-parity.sh
           ./scripts/test-install-parity.sh
+          ./scripts/test-install-arch.sh
 
       - name: mlogind old theme-sync retirement (test)
         # The packaging helper that replaces an /etc/mlogind/variables.toml

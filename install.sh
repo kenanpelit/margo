@@ -7,8 +7,8 @@
 #
 #   * Arch / CachyOS (and arch-family) → builds + installs via the repo
 #     PKGBUILD with makepkg (a `-git` VCS package; installs what is
-#     PUSHED to the GitHub remote). Mirrors ~/.kod/margo_build/rebuild.sh
-#     and is incremental on repeat runs. Uninstall = `pacman -R`.
+#     PUSHED to the GitHub remote). Incremental on repeat runs (makepkg
+#     reuses the src/ checkout and its target/). Uninstall = `pacman -R`.
 #
 #   * Debian / Ubuntu → installs build deps via apt, bootstraps a
 #     recent Rust via rustup if needed (the workspace `rust-version`), builds
@@ -95,19 +95,19 @@ arch_install() {
   cp "${REPO_ROOT}/PKGBUILD" "${MARGO_BUILD_DIR}/PKGBUILD"
 
   cd "$MARGO_BUILD_DIR"
-  if [[ ! -d "$cache_repo" || ! -d "$src_repo" ]]; then
+  # Always a plain `makepkg -fsi`, never `-e`: `-e` skips prepare(), which
+  # is where the PKGBUILD runs `cargo fetch --locked` and installs the
+  # rust-toolchain.toml pin. build() is `--frozen` (offline), so after a
+  # dependency bump an `-e` build fails on any crate the local registry
+  # doesn't hold yet. Repeat runs stay incremental anyway: makepkg updates
+  # the VCS cache and the existing src/ checkout in place (git fetch +
+  # checkout, no clean), so cargo's target/ survives.
+  if [[ -d "$cache_repo" && -d "$src_repo" ]]; then
+    log "existing checkout — incremental build (makepkg -fsi)"
+  else
     log "no existing checkout — full build (makepkg -fsi)"
-    exec makepkg -fsi --noconfirm
   fi
-
-  step "refreshing VCS cache from origin"
-  git -C "$cache_repo" fetch origin
-  step "fast-forwarding build checkout to origin/main"
-  git -C "$src_repo" fetch origin
-  git -C "$src_repo" merge --ff-only origin/main
-
-  log "makepkg -efsi (incremental)"
-  exec makepkg -efsi --noconfirm
+  exec makepkg -fsi --noconfirm
 }
 
 arch_uninstall() {

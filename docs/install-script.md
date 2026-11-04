@@ -43,9 +43,12 @@ self-contained:
   `MARGO_BUILD_DIR`).
 - Copy the repo's canonical `PKGBUILD` into the build dir (source-tree
   PKGBUILD is authoritative).
-- First run (no checkout): `makepkg -fsi`. Subsequent runs: `git fetch`
-  + `--ff-only` merge of the VCS cache + build checkout, then
-  `makepkg -efsi` (keeps cargo's `target/` cache → incremental).
+- Every run: `makepkg -fsi`. makepkg refreshes the VCS cache and updates
+  the existing `src/margo` checkout in place (no clean), so cargo's
+  `target/` survives and repeat runs are incremental. Never `-e`: it skips
+  prepare(), where `cargo fetch --locked` runs, and build() is `--frozen`
+  (offline), so a dependency bump would fail
+  (`scripts/test-install-arch.sh` guards this).
 - The `-git` PKGBUILD clones from the GitHub **remote**, so it installs
   what is **pushed** (matches the existing workflow; commit + push
   first).
