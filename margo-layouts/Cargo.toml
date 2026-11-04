@@ -15,7 +15,9 @@ criterion = { version = "0.5", optional = true }
 
 [dev-dependencies]
 # Property-based fuzzing of the arrange algebra (tests/proptest_arrange.rs).
-proptest = "1"
+# No `fork`/`timeout` (rusty-fork, quick-error 1): the properties never set
+# ProptestConfig::fork or ::timeout.
+proptest = { version = "1", default-features = false, features = ["std", "bit-set"] }
 
 [features]
 bench = ["dep:criterion"]
