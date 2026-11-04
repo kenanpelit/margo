@@ -998,7 +998,7 @@ fn make_network_row(
 // ── Traffic-graph helpers (network-indicator port) ──────────────
 
 /// Append a sample to a rolling history, capped at [`HISTORY_LEN`].
-fn push_capped(hist: &Rc<RefCell<Vec<f64>>>, value: f64) {
+pub(crate) fn push_capped(hist: &Rc<RefCell<Vec<f64>>>, value: f64) {
     let mut h = hist.borrow_mut();
     h.push(value);
     let len = h.len();
@@ -1009,7 +1009,7 @@ fn push_capped(hist: &Rc<RefCell<Vec<f64>>>, value: f64) {
 
 /// "peak X/s" label text from a history window (empty while warming
 /// up so the row stays clean).
-fn peak_text(hist: &Rc<RefCell<Vec<f64>>>) -> String {
+pub(crate) fn peak_text(hist: &Rc<RefCell<Vec<f64>>>) -> String {
     let peak = hist.borrow().iter().copied().fold(0.0_f64, f64::max);
     if peak < 1.0 {
         String::new()
@@ -1019,7 +1019,7 @@ fn peak_text(hist: &Rc<RefCell<Vec<f64>>>) -> String {
 }
 
 /// Dim a speed label when its direction is idle (below threshold).
-fn set_idle(label: &gtk::Label, bps: u64) {
+pub(crate) fn set_idle(label: &gtk::Label, bps: u64) {
     if bps >= IDLE_THRESHOLD {
         label.remove_css_class("idle");
     } else {
@@ -1032,7 +1032,13 @@ fn set_idle(label: &gtk::Label, bps: u64) {
 /// in SCSS), so it tracks the matugen theme automatically. The line is
 /// a Catmull-Rom spline, the fill an accent→transparent gradient.
 /// Auto-scales to the window's peak.
-fn draw_graph(area: &gtk::DrawingArea, cr: &gtk::cairo::Context, w: i32, h: i32, hist: &[f64]) {
+pub(crate) fn draw_graph(
+    area: &gtk::DrawingArea,
+    cr: &gtk::cairo::Context,
+    w: i32,
+    h: i32,
+    hist: &[f64],
+) {
     use gtk::cairo::{LineCap, LineJoin, LinearGradient};
 
     let (w, h) = (w as f64, h as f64);

@@ -14,6 +14,7 @@ use super::super::dns::dns_menu_widget::{
     DnsMenuWidgetInit, DnsMenuWidgetInput, DnsMenuWidgetModel,
 };
 use super::super::dns::state::{Mode, probe_dns_state};
+use super::throughput::{VpnThroughputInput, VpnThroughputModel};
 use relm4::gtk::prelude::{BoxExt, ButtonExt, EditableExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::sync::Arc;
@@ -76,6 +77,8 @@ pub(crate) struct VpnMenuWidgetModel {
     dns: Controller<DnsMenuWidgetModel>,
     dns_expanded: bool,
     menu_visible: bool,
+    /// Live rx/tx graph for the tunnel interface (own lazy 2 s sampler).
+    throughput: Controller<VpnThroughputModel>,
 }
 
 impl std::fmt::Debug for VpnMenuWidgetModel {
@@ -226,6 +229,10 @@ impl Component for VpnMenuWidgetModel {
                     connect_clicked[sender] => move |_| sender.input(VpnMenuWidgetInput::Toggle),
                 },
             },
+
+            // ── Tunnel traffic (live rx/tx graph) ───────────────
+            #[local_ref]
+            throughput_widget -> gtk::Box {},
 
             // ── Network mode (Mullvad / Blocky / Default) ───────
             gtk::Label {
@@ -546,6 +553,8 @@ impl Component for VpnMenuWidgetModel {
         countries_box_widget.set_margin_top(6);
 
         // Embedded DNS section: Blocky / Default / presets, no VPN chrome.
+        let throughput = VpnThroughputModel::builder().launch(()).detach();
+        let throughput_widget = throughput.widget().clone();
         let dns = DnsMenuWidgetModel::builder()
             .launch(DnsMenuWidgetInit { embedded: true })
             .detach();
@@ -583,6 +592,7 @@ impl Component for VpnMenuWidgetModel {
             dns,
             dns_expanded: false,
             menu_visible: false,
+            throughput,
         };
 
         let widgets = view_output!();
@@ -706,6 +716,8 @@ impl Component for VpnMenuWidgetModel {
                     reload(&sender);
                 }
                 self.menu_visible = visible;
+                self.throughput
+                    .emit(VpnThroughputInput::ParentRevealChanged(visible));
                 self.forward_dns_reveal();
             }
             VpnMenuWidgetInput::DnsExpanded(expanded) => {
