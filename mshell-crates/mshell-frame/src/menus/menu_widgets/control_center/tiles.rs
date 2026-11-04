@@ -46,6 +46,7 @@ use mshell_utils::battery::{
     get_battery_icon, get_charging_battery_icon, spawn_battery_online_watcher,
     spawn_battery_watcher,
 };
+use mshell_utils::hotspot::{self, HotspotStatus};
 use mshell_utils::idle::spawn_idle_inhibitor_watcher;
 use mshell_utils::notifications::spawn_dnd_watcher;
 use mshell_utils::picker::spawn_color_picker;
@@ -116,6 +117,10 @@ pub(crate) struct ControlCenterTilesModel {
     // Output mirroring subtitle (`eDP-1 → DP-3` / Off) + active state
     mirror_subtitle: String,
     mirror_active: bool,
+    // Wi-Fi hotspot (NetworkManager AP) — status + clients, and a busy
+    // flag so a second click while nmcli is starting the AP is ignored.
+    hotspot: HotspotStatus,
+    hotspot_busy: bool,
     // Lazy-start guard — watchers only start on first reveal
     watchers_started: bool,
     // Shared with the subprocess pollers (twilight / ufw / podman): they
@@ -209,6 +214,8 @@ pub(crate) enum ControlCenterTilesInput {
     ToggleUfw,
     /// Right-click on the Podman tile → stop the running machine(s).
     StopPodman,
+    /// Hotspot tile click → start or stop the access point.
+    ToggleHotspot,
 
     /// Reactive dark-mode update from EffectScope.
     DarkModeChanged(MatugenMode),
@@ -248,6 +255,7 @@ pub(crate) enum TileId {
     Ufw,
     Podman,
     Mirror,
+    Hotspot,
 }
 
 impl TileId {
@@ -271,6 +279,7 @@ impl TileId {
             TileId::Ufw => "ufw",
             TileId::Podman => "podman",
             TileId::Mirror => "mirror",
+            TileId::Hotspot => "hotspot",
         }
     }
 
@@ -294,6 +303,7 @@ impl TileId {
             "ufw" => Some(TileId::Ufw),
             "podman" => Some(TileId::Podman),
             "mirror" => Some(TileId::Mirror),
+            "hotspot" => Some(TileId::Hotspot),
             _ => None,
         }
     }
@@ -318,6 +328,7 @@ impl TileId {
             TileId::Ufw,
             TileId::Podman,
             TileId::Mirror,
+            TileId::Hotspot,
         ]
     }
 }
@@ -372,6 +383,8 @@ pub(crate) enum ControlCenterTilesCommandOutput {
     PodmanRefreshed(String, bool),
     /// Mirror probe finished — (subtitle, is_active).
     MirrorRefreshed(String, bool),
+    /// Hotspot probe finished (after a poll or a start/stop).
+    HotspotRefreshed(HotspotStatus),
 }
 
 // ── Widgets struct (manual — we hold the tile handles) ────────────────────────
@@ -386,6 +399,7 @@ pub(crate) struct ControlCenterTilesWidgets {
     tile_valent: TileWidget,
     tile_ufw: TileWidget,
     tile_podman: TileWidget,
+    tile_hotspot: TileWidget,
     // Toggle / info tiles
     tile_keep_awake: TileWidget,
     // Held alive so the click handler isn't dropped; not updated by apply_visuals
@@ -418,6 +432,7 @@ pub(crate) struct ControlCenterTilesWidgets {
     overlay_ufw: gtk::Overlay,
     overlay_podman: gtk::Overlay,
     overlay_mirror: gtk::Overlay,
+    overlay_hotspot: gtk::Overlay,
     // The CheckButton references — needed to update their state in apply_visuals.
     check_wifi: gtk::CheckButton,
     check_bluetooth: gtk::CheckButton,
@@ -436,6 +451,7 @@ pub(crate) struct ControlCenterTilesWidgets {
     check_ufw: gtk::CheckButton,
     check_podman: gtk::CheckButton,
     check_mirror: gtk::CheckButton,
+    check_hotspot: gtk::CheckButton,
 }
 
 impl ControlCenterTilesWidgets {
@@ -459,6 +475,7 @@ impl ControlCenterTilesWidgets {
             TileId::Ufw => &self.overlay_ufw,
             TileId::Podman => &self.overlay_podman,
             TileId::Mirror => &self.overlay_mirror,
+            TileId::Hotspot => &self.overlay_hotspot,
         }
     }
 
@@ -570,6 +587,7 @@ impl Component for ControlCenterTilesModel {
         let tile_battery = build_expand_tile("battery-level-50-symbolic", "Battery", "");
         let tile_airplane_mode = build_tile("airplane-mode-symbolic", "Airplane Mode", "Off");
         let tile_mirror = build_tile("video-display-symbolic", "Mirror", "Off");
+        let tile_hotspot = build_tile("network-wireless-hotspot-symbolic", "Hotspot", "Off");
 
         // Wire expandable tile clicks → outputs
         {
@@ -699,6 +717,12 @@ impl Component for ControlCenterTilesModel {
                 .button
                 .connect_clicked(move |_| s.input(ControlCenterTilesInput::ClickMirror));
         }
+        {
+            let s = sender.clone();
+            tile_hotspot
+                .button
+                .connect_clicked(move |_| s.input(ControlCenterTilesInput::ToggleHotspot));
+        }
         // Disk tile is info-only; no click handler needed.
 
         // ── Edit-mode overlays ───────────────────────────────────────────────
@@ -732,6 +756,8 @@ impl Component for ControlCenterTilesModel {
             build_edit_overlay(&tile_podman.button, &sender, TileId::Podman);
         let (overlay_mirror, check_mirror) =
             build_edit_overlay(&tile_mirror.button, &sender, TileId::Mirror);
+        let (overlay_hotspot, check_hotspot) =
+            build_edit_overlay(&tile_hotspot.button, &sender, TileId::Hotspot);
 
         // Wide tile CSS class is applied dynamically by rebuild_grid based on
         // the `wide_tiles` config — no hardcoded wide classes here.
@@ -775,6 +801,7 @@ impl Component for ControlCenterTilesModel {
                 let _ = cm.config().control_center().ufw().get();
                 let _ = cm.config().control_center().podman().get();
                 let _ = cm.config().control_center().mirror().get();
+                let _ = cm.config().control_center().hotspot().get();
                 let order = cm.config().control_center().tile_order().get();
                 let wide = cm.config().control_center().wide_tiles().get();
                 s.input(ControlCenterTilesInput::RebuildGrid(order, wide));
@@ -843,6 +870,8 @@ impl Component for ControlCenterTilesModel {
             podman_active: false,
             mirror_subtitle: String::from("…"),
             mirror_active: false,
+            hotspot: HotspotStatus::default(),
+            hotspot_busy: false,
             revealed: Arc::new(AtomicBool::new(false)),
             watchers_started: false,
             edit_mode: false,
@@ -860,6 +889,7 @@ impl Component for ControlCenterTilesModel {
             tile_valent,
             tile_ufw,
             tile_podman,
+            tile_hotspot,
             tile_keep_awake,
             tile_color_picker,
             tile_dnd,
@@ -886,6 +916,7 @@ impl Component for ControlCenterTilesModel {
             overlay_ufw,
             overlay_podman,
             overlay_mirror,
+            overlay_hotspot,
             check_wifi,
             check_bluetooth,
             check_audio_out,
@@ -903,6 +934,7 @@ impl Component for ControlCenterTilesModel {
             check_ufw,
             check_podman,
             check_mirror,
+            check_hotspot,
         };
 
         // Attach all overlays to the grid in config order with correct spans.
@@ -1007,6 +1039,9 @@ impl Component for ControlCenterTilesModel {
                             let (pod_sub, pod_active) = read_podman_tile_state().await;
                             let _ = out.send(ControlCenterTilesCommandOutput::PodmanRefreshed(
                                 pod_sub, pod_active,
+                            ));
+                            let _ = out.send(ControlCenterTilesCommandOutput::HotspotRefreshed(
+                                hotspot::probe(&hotspot::configured_interface()).await,
                             ));
                         }
                     });
@@ -1235,6 +1270,21 @@ impl Component for ControlCenterTilesModel {
                 });
             }
 
+            ControlCenterTilesInput::ToggleHotspot => {
+                if self.hotspot_busy || !self.hotspot.available {
+                    return;
+                }
+                self.hotspot_busy = true;
+                let active = self.hotspot.active.clone();
+                let wifi_iface = self.hotspot.wifi_interface.clone();
+                sender.command(move |out, _shutdown| async move {
+                    let _ = hotspot::toggle(active, wifi_iface).await;
+                    let _ = out.send(ControlCenterTilesCommandOutput::HotspotRefreshed(
+                        hotspot::probe(&hotspot::configured_interface()).await,
+                    ));
+                });
+            }
+
             ControlCenterTilesInput::DarkModeChanged(mode) => {
                 self.dark = mode;
             }
@@ -1262,6 +1312,7 @@ impl Component for ControlCenterTilesModel {
                     TileId::Ufw => c.control_center.ufw = visible,
                     TileId::Podman => c.control_center.podman = visible,
                     TileId::Mirror => c.control_center.mirror = visible,
+                    TileId::Hotspot => c.control_center.hotspot = visible,
                 });
                 // The RebuildGrid effect will fire automatically from the config
                 // store change. No explicit rebuild needed here.
@@ -1323,6 +1374,10 @@ impl Component for ControlCenterTilesModel {
             ControlCenterTilesCommandOutput::MirrorRefreshed(subtitle, active) => {
                 self.mirror_subtitle = subtitle;
                 self.mirror_active = active;
+            }
+            ControlCenterTilesCommandOutput::HotspotRefreshed(status) => {
+                self.hotspot = status;
+                self.hotspot_busy = false;
             }
         }
 
@@ -1524,6 +1579,17 @@ fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets)
         &w.check_mirror,
         cfg_mirror,
     );
+    let cfg_hotspot = config_manager()
+        .config()
+        .control_center()
+        .hotspot()
+        .get_untracked();
+    update_tile_visibility(
+        &w.overlay_hotspot,
+        &w.tile_hotspot.button,
+        &w.check_hotspot,
+        cfg_hotspot,
+    );
 
     // Battery tile: additionally hidden when no battery present (normal mode)
     let bat = &model.battery;
@@ -1631,6 +1697,17 @@ fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets)
     w.tile_airplane_mode.set_active(model.airplane_mode);
     w.tile_airplane_mode
         .set_subtitle(if model.airplane_mode { "On" } else { "Off" });
+
+    // Hotspot
+    w.tile_hotspot.set_active(model.hotspot.is_active());
+    w.tile_hotspot.set_subtitle(&if model.hotspot_busy {
+        "…".to_string()
+    } else {
+        model.hotspot.subtitle()
+    });
+    w.tile_hotspot
+        .button
+        .set_sensitive(model.hotspot.available && !model.hotspot_busy);
 
     // Disk
     w.tile_disk.set_subtitle(&model.disk.format());

@@ -183,7 +183,13 @@
 }
 .network-list row.connected .network-ap-text label,
 .network-list row.connected > box > image,
-.network-list row.connected .network-lock {
+.network-list row.connected // Hotspot clients reuse the AP-row card but are informational, not
+// clickable — keep the rest surface on hover (no interactive wash).
+.network-list.network-hotspot-clients row:hover {
+  background-color: var(--surface-container-high);
+}
+
+.network-lock {
   color: var(--on-primary-container);
 }
 
@@ -194,6 +200,12 @@
   min-width: 100px;
   min-height: var(--button-min-height);
   border-radius: var(--button-radius);
+}
+
+// Hotspot clients reuse the AP-row card but are informational, not
+// clickable — keep the rest surface on hover (no interactive wash).
+.network-list.network-hotspot-clients row:hover {
+  background-color: var(--surface-container-high);
 }
 
 .network-lock {

@@ -21,12 +21,20 @@
 //!   * `nmcli connection down <name>` to disconnect.
 //! After an action the D-Bus watchers refresh the panel — no
 //! re-probe.
+//!
+//! **Hotspot** section: a switch row that starts/stops a NetworkManager
+//! access point (`mshell_utils::hotspot`, SSID/password from
+//! `network.hotspot_*`) and, while it runs, the connected clients
+//! (`iw station dump` + `ip neigh`). Probed on reveal and every
+//! [`HOTSPOT_INTERVAL`] while the panel is visible — nmcli has no cheap
+//! client-change signal, so this is the one polled part of the panel.
 
 use crate::bars::bar_widgets::network::{
     LinkKind, NetworkState, SpeedSample, WifiNetwork, format_speed, read_net_totals,
     read_network_state, wifi_signal_icon,
 };
 use mshell_common::WatcherToken;
+use mshell_utils::hotspot::{self, HotspotClient, HotspotStatus};
 use mshell_utils::network::{
     spawn_available_wifi_networks_watcher, spawn_network_watcher, spawn_wifi_watcher,
     spawn_wired_watcher,
@@ -51,6 +59,8 @@ const HISTORY_LEN: usize = 60;
 const SPEED_INTERVAL: Duration = Duration::from_secs(2);
 /// Bytes/s below which a direction reads as idle (dims its label).
 const IDLE_THRESHOLD: u64 = 3000;
+/// Hotspot status / client-list poll cadence while the panel is visible.
+const HOTSPOT_INTERVAL: Duration = Duration::from_secs(5);
 
 pub(crate) struct NetworkMenuWidgetModel {
     state: NetworkState,
@@ -77,6 +87,14 @@ pub(crate) struct NetworkMenuWidgetModel {
     /// Shared with the sampler; gates the `/proc/net/dev` read so it
     /// only samples while the panel is visible.
     visible: Arc<AtomicBool>,
+    // ── Hotspot ──
+    hotspot: HotspotStatus,
+    /// A start/stop is in flight (nmcli can take seconds to bring up an AP).
+    hotspot_busy: bool,
+    hotspot_switch: gtk::Switch,
+    hotspot_switch_signal: glib::SignalHandlerId,
+    hotspot_subtitle: gtk::Label,
+    hotspot_clients: gtk::ListBox,
 }
 
 impl std::fmt::Debug for NetworkMenuWidgetModel {
@@ -101,6 +119,8 @@ pub(crate) enum NetworkMenuWidgetInput {
     /// per-second traffic sampling. (The D-Bus state watchers stay
     /// live — they are event-driven, not polled.)
     ParentRevealChanged(bool),
+    /// Hotspot switch flipped by the user.
+    SetHotspot(bool),
 }
 
 #[derive(Debug)]
@@ -118,6 +138,9 @@ pub(crate) enum NetworkMenuWidgetCommandOutput {
     WiredChanged,
     /// A fresh `/proc/net/dev` throughput sample (down/up bytes/s).
     SpeedTick(SpeedSample),
+    /// Fresh hotspot status. `true` = the probe that follows the user's
+    /// start/stop (clears the busy state, success or not); `false` = a poll.
+    Hotspot(HotspotStatus, bool),
 }
 
 #[relm4::component(pub(crate))]
@@ -300,6 +323,47 @@ impl Component for NetworkMenuWidgetModel {
                 },
             },
 
+            // ── Hotspot (switch row + connected clients) ────────
+            gtk::Label {
+                add_css_class: "network-section-label",
+                set_label: "Hotspot",
+                set_xalign: 0.0,
+            },
+            gtk::Box {
+                add_css_class: "network-wifi-row",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 12,
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_hexpand: true,
+                    set_valign: gtk::Align::Center,
+                    gtk::Label {
+                        add_css_class: "network-row-title",
+                        set_label: "Wi-Fi hotspot",
+                        set_xalign: 0.0,
+                    },
+                    #[local_ref]
+                    hotspot_subtitle_widget -> gtk::Label {
+                        add_css_class: "label-small",
+                        set_xalign: 0.0,
+                        set_ellipsize: gtk::pango::EllipsizeMode::End,
+                    },
+                },
+
+                #[local_ref]
+                hotspot_switch_widget -> gtk::Switch {
+                    set_valign: gtk::Align::Center,
+                    set_tooltip_text: Some("Share this machine's connection over Wi-Fi (Settings → Network)"),
+                },
+            },
+            #[local_ref]
+            hotspot_clients_widget -> gtk::ListBox {
+                set_css_classes: &["network-list", "network-hotspot-clients"],
+                set_selection_mode: gtk::SelectionMode::None,
+                set_visible: false,
+            },
+
             // ── Secondary actions (equal width, §1) ─────────────
             gtk::Box {
                 add_css_class: "network-action-row",
@@ -358,6 +422,14 @@ impl Component for NetworkMenuWidgetModel {
         let connectivity_badge_widget = gtk::Label::new(Some("unknown"));
         let wifi_switch_widget = gtk::Switch::new();
         let network_list_widget = gtk::ListBox::new();
+        let hotspot_switch_widget = gtk::Switch::new();
+        let hotspot_subtitle_widget = gtk::Label::new(Some("…"));
+        let hotspot_clients_widget = gtk::ListBox::new();
+        let hotspot_sender = sender.clone();
+        let hotspot_switch_signal = hotspot_switch_widget.connect_state_set(move |_, want_on| {
+            hotspot_sender.input(NetworkMenuWidgetInput::SetHotspot(want_on));
+            glib::Propagation::Stop
+        });
 
         // Traffic graphs + live-speed labels.
         let rx_speed_label_widget = gtk::Label::new(Some("0B/s"));
@@ -416,12 +488,19 @@ impl Component for NetworkMenuWidgetModel {
             tx_hist,
             poll_started: false,
             visible: Arc::new(AtomicBool::new(false)),
+            hotspot: HotspotStatus::default(),
+            hotspot_busy: false,
+            hotspot_switch: hotspot_switch_widget.clone(),
+            hotspot_switch_signal,
+            hotspot_subtitle: hotspot_subtitle_widget.clone(),
+            hotspot_clients: hotspot_clients_widget.clone(),
         };
         arm_wifi_watchers(&sender, &mut model.wifi_watcher_token);
         arm_wired_watcher(&sender, &mut model.wired_watcher_token);
 
         let widgets = view_output!();
         sync_view(&model, &sender);
+        sync_hotspot(&model);
 
         ComponentParts { model, widgets }
     }
@@ -464,7 +543,25 @@ impl Component for NetworkMenuWidgetModel {
                 if visible && !self.poll_started {
                     self.poll_started = true;
                     start_speed_sampler(&sender, self.visible.clone());
+                    start_hotspot_poller(&sender, self.visible.clone());
                 }
+            }
+            NetworkMenuWidgetInput::SetHotspot(on) => {
+                if self.hotspot_busy || on == self.hotspot.is_active() {
+                    sync_hotspot(self);
+                    return;
+                }
+                self.hotspot_busy = true;
+                sync_hotspot(self);
+                let active = self.hotspot.active.clone();
+                let iface = self.hotspot.wifi_interface.clone();
+                sender.oneshot_command(async move {
+                    let _ = hotspot::toggle(active, iface).await;
+                    NetworkMenuWidgetCommandOutput::Hotspot(
+                        hotspot::probe(&hotspot::configured_interface()).await,
+                        true,
+                    )
+                });
             }
         }
     }
@@ -500,6 +597,18 @@ impl Component for NetworkMenuWidgetModel {
                 self.tx_peak_label.set_label(&peak_text(&self.tx_hist));
                 self.rx_area.queue_draw();
                 self.tx_area.queue_draw();
+                return;
+            }
+            NetworkMenuWidgetCommandOutput::Hotspot(status, from_action) => {
+                // A poll landing mid start/stop would flip the switch back
+                // before nmcli finished: ignore polls while busy; only the
+                // action's own probe clears the busy state.
+                if self.hotspot_busy && !from_action {
+                    return;
+                }
+                self.hotspot_busy = false;
+                self.hotspot = status;
+                sync_hotspot(self);
                 return;
             }
         }
@@ -555,6 +664,109 @@ fn start_speed_sampler(sender: &ComponentSender<NetworkMenuWidgetModel>, visible
             prev = Some(cur);
         }
     });
+}
+
+/// Poll the hotspot state while the panel is visible: immediately on the
+/// first reveal, then every [`HOTSPOT_INTERVAL`].
+fn start_hotspot_poller(
+    sender: &ComponentSender<NetworkMenuWidgetModel>,
+    visible: Arc<AtomicBool>,
+) {
+    sender.command(move |out, shutdown| async move {
+        let shutdown_fut = shutdown.wait();
+        tokio::pin!(shutdown_fut);
+        let mut first = true;
+        loop {
+            if !first {
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    _ = tokio::time::sleep(HOTSPOT_INTERVAL) => {}
+                }
+            }
+            first = false;
+            if !visible.load(Ordering::Relaxed) {
+                continue;
+            }
+            let status = hotspot::probe(&hotspot::configured_interface()).await;
+            let _ = out.send(NetworkMenuWidgetCommandOutput::Hotspot(status, false));
+        }
+    });
+}
+
+/// Render the hotspot section from `model.hotspot`.
+fn sync_hotspot(model: &NetworkMenuWidgetModel) {
+    let st = &model.hotspot;
+    let subtitle = if model.hotspot_busy {
+        "Working…".to_string()
+    } else if !st.available {
+        "NetworkManager (nmcli) not available".to_string()
+    } else if let Some(a) = &st.active {
+        let mut line = format!("{} · {}", a.ssid, st.subtitle());
+        if !a.address.is_empty() {
+            line.push_str(" · ");
+            line.push_str(a.address.split('/').next().unwrap_or_default());
+        }
+        line
+    } else {
+        st.subtitle()
+    };
+    model.hotspot_subtitle.set_label(&subtitle);
+
+    let on = st.is_active();
+    let sw = &model.hotspot_switch;
+    sw.block_signal(&model.hotspot_switch_signal);
+    sw.set_state(on);
+    sw.set_active(on);
+    sw.unblock_signal(&model.hotspot_switch_signal);
+    sw.set_sensitive(st.available && !model.hotspot_busy && (on || st.wifi_interface.is_some()));
+
+    let list = &model.hotspot_clients;
+    while let Some(child) = list.first_child() {
+        list.remove(&child);
+    }
+    list.set_visible(on);
+    if on {
+        if st.clients.is_empty() {
+            list.append(&placeholder_row("No devices connected yet"));
+        }
+        for c in &st.clients {
+            list.append(&make_client_row(c));
+        }
+    }
+}
+
+fn make_client_row(c: &HotspotClient) -> gtk::ListBoxRow {
+    let row = gtk::ListBoxRow::new();
+    row.set_activatable(false);
+    row.set_selectable(false);
+    let outer = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(8)
+        .margin_top(5)
+        .margin_bottom(5)
+        .margin_start(8)
+        .margin_end(8)
+        .build();
+    outer.append(&gtk::Image::from_icon_name("network-wireless-symbolic"));
+    let texts = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .hexpand(true)
+        .build();
+    let title = gtk::Label::new(Some(&hotspot::client_title(c)));
+    title.add_css_class("label-medium-bold");
+    title.set_xalign(0.0);
+    texts.append(&title);
+    let detail = hotspot::client_detail(c);
+    if !detail.is_empty() {
+        let d = gtk::Label::new(Some(&detail));
+        d.add_css_class("label-small");
+        d.set_xalign(0.0);
+        d.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        texts.append(&d);
+    }
+    outer.append(&texts);
+    row.set_child(Some(&outer));
+    row
 }
 
 fn arm_wifi_watchers(sender: &ComponentSender<NetworkMenuWidgetModel>, token: &mut WatcherToken) {

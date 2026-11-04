@@ -47,6 +47,9 @@ pub(crate) struct NetworkSettingsModel {
     proxy_socks: String,
     proxy_ignore: String,
     proxy_pac_url: String,
+    hotspot_ssid: String,
+    hotspot_password: String,
+    hotspot_interface: String,
     // ── Home-network login automation ──
     login_enabled: bool,
     login_wifi: String,
@@ -101,6 +104,10 @@ pub(crate) enum NetworkSettingsInput {
     ProxySocksChanged(String),
     ProxyIgnoreChanged(String),
     ProxyPacUrlChanged(String),
+    // ── Hotspot ──
+    HotspotSsidChanged(String),
+    HotspotPasswordChanged(String),
+    HotspotInterfaceChanged(String),
     // ── Home-network login automation ──
     SetLoginEnabled(bool),
     SetLoginWifi(String),
@@ -601,6 +608,87 @@ impl Component for NetworkSettingsModel {
                     set_natural_wrap_mode: gtk::NaturalWrapMode::None,
                 },
 
+                // ════════ Wi-Fi hotspot ════════
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Wi-Fi hotspot",
+                    set_halign: gtk::Align::Start,
+                    set_margin_top: 16,
+                },
+                gtk::Label {
+                    add_css_class: "label-small",
+                    set_label: "Started from the Network menu or the Control Center Hotspot tile (NetworkManager). Starting it may drop the current Wi-Fi connection while the access point runs.",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                },
+                gtk::Box {
+                    set_widget_name: "setting:/network/hotspot_ssid",
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    gtk::Label {
+                        add_css_class: "label-medium-bold",
+                        set_halign: gtk::Align::Start,
+                        set_label: "Network name",
+                        set_hexpand: true,
+                    },
+                    gtk::Entry {
+                        set_valign: gtk::Align::Center,
+                        add_css_class: "ok-entry-with-border",
+                        set_placeholder_text: Some("<hostname>-hotspot"),
+                        #[watch]
+                        set_text: &model.hotspot_ssid,
+                        connect_changed[sender] => move |e| {
+                            sender.input(NetworkSettingsInput::HotspotSsidChanged(e.text().to_string()));
+                        },
+                    },
+                },
+                gtk::Box {
+                    set_widget_name: "setting:/network/hotspot_password",
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    gtk::Label {
+                        add_css_class: "label-medium-bold",
+                        set_halign: gtk::Align::Start,
+                        set_label: "Password",
+                        set_hexpand: true,
+                    },
+                    gtk::Entry {
+                        set_valign: gtk::Align::Center,
+                        add_css_class: "ok-entry-with-border",
+                        set_placeholder_text: Some("Keep / generate (NetworkManager)"),
+                        set_visibility: false,
+                        set_input_purpose: gtk::InputPurpose::Password,
+                        #[watch]
+                        set_text: &model.hotspot_password,
+                        connect_changed[sender] => move |e| {
+                            sender.input(NetworkSettingsInput::HotspotPasswordChanged(e.text().to_string()));
+                        },
+                    },
+                },
+                gtk::Box {
+                    set_widget_name: "setting:/network/hotspot_interface",
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    gtk::Label {
+                        add_css_class: "label-medium-bold",
+                        set_halign: gtk::Align::Start,
+                        set_label: "Interface",
+                        set_hexpand: true,
+                    },
+                    gtk::Entry {
+                        set_valign: gtk::Align::Center,
+                        add_css_class: "ok-entry-with-border",
+                        set_placeholder_text: Some("Auto (first Wi-Fi device)"),
+                        #[watch]
+                        set_text: &model.hotspot_interface,
+                        connect_changed[sender] => move |e| {
+                            sender.input(NetworkSettingsInput::HotspotInterfaceChanged(e.text().to_string()));
+                        },
+                    },
+                },
+
                 // ════════ Home network at login ════════
                 gtk::Label {
                     add_css_class: "label-large-bold",
@@ -849,6 +937,8 @@ impl Component for NetworkSettingsModel {
             .proxy_pac_url()
             .get_untracked();
 
+        let network_cfg = config_manager().config().network().get_untracked();
+
         let login = config_manager().config().login_network().get_untracked();
 
         let model = NetworkSettingsModel {
@@ -875,6 +965,9 @@ impl Component for NetworkSettingsModel {
             proxy_socks,
             proxy_ignore,
             proxy_pac_url,
+            hotspot_ssid: network_cfg.hotspot_ssid,
+            hotspot_password: network_cfg.hotspot_password,
+            hotspot_interface: network_cfg.hotspot_interface,
             login_enabled: login.enabled,
             login_wifi: login.wifi_connection,
             login_connect_vpn: login.connect_vpn,
@@ -1287,6 +1380,24 @@ impl Component for NetworkSettingsModel {
             NetworkSettingsInput::ProxyPacUrlChanged(v) => {
                 self.proxy_pac_url = v.clone();
                 config_manager().update_config(|c| c.network.proxy_pac_url = v);
+            }
+            NetworkSettingsInput::HotspotSsidChanged(v) => {
+                if self.hotspot_ssid != v {
+                    self.hotspot_ssid = v.clone();
+                    config_manager().update_config(|c| c.network.hotspot_ssid = v);
+                }
+            }
+            NetworkSettingsInput::HotspotPasswordChanged(v) => {
+                if self.hotspot_password != v {
+                    self.hotspot_password = v.clone();
+                    config_manager().update_config(|c| c.network.hotspot_password = v);
+                }
+            }
+            NetworkSettingsInput::HotspotInterfaceChanged(v) => {
+                if self.hotspot_interface != v {
+                    self.hotspot_interface = v.clone();
+                    config_manager().update_config(|c| c.network.hotspot_interface = v);
+                }
             }
             NetworkSettingsInput::SetLoginEnabled(v) => {
                 self.login_enabled = v;

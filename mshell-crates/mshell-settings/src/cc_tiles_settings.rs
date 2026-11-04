@@ -37,6 +37,7 @@ const ALL_TILE_IDS: &[&str] = &[
     "ufw",
     "podman",
     "mirror",
+    "hotspot",
 ];
 
 fn tile_display_name(id: &str) -> &'static str {
@@ -58,6 +59,7 @@ fn tile_display_name(id: &str) -> &'static str {
         "ufw" => "Firewall (UFW)",
         "podman" => "Podman",
         "mirror" => "Mirror Display",
+        "hotspot" => "Hotspot",
         _ => "Unknown",
     }
 }
@@ -83,6 +85,7 @@ fn tile_visible(id: &str) -> bool {
         "ufw" => cc.ufw().get_untracked(),
         "podman" => cc.podman().get_untracked(),
         "mirror" => cc.mirror().get_untracked(),
+        "hotspot" => cc.hotspot().get_untracked(),
         _ => true,
     }
 }
@@ -133,6 +136,7 @@ fn set_tile_visible(id: &str, visible: bool) {
         "ufw" => c.control_center.ufw = visible,
         "podman" => c.control_center.podman = visible,
         "mirror" => c.control_center.mirror = visible,
+        "hotspot" => c.control_center.hotspot = visible,
         _ => {}
     });
 }
@@ -442,6 +446,7 @@ impl Component for CcTilesSettingsModel {
                 let _ = cm.config().control_center().valent().get();
                 let _ = cm.config().control_center().ufw().get();
                 let _ = cm.config().control_center().podman().get();
+                let _ = cm.config().control_center().hotspot().get();
                 let _ = cm.config().control_center().wide_tiles().get();
                 let order = effective_order(&cm.config().control_center().tile_order().get());
                 s.input(CcTilesSettingsInput::OrderChanged(order));

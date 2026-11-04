@@ -36,7 +36,7 @@ parameter and use YAML tag syntax:
 | --- | --- | --- |
 | `Clock` | Clock | Date/time pill. Cycles through a list of strftime formats (`[tempo]`) on right-click; left-click opens the clock/calendar menu. |
 | `Mdash` | Mdash | The dashboard opener — same clock label as `Clock`, but a click opens **mdash**: greeting hero + calendar + weather + media player + a quick-settings tile stack + a menu-shortcut grid. |
-| `ControlCenter` | Control Center | System-preferences glyph that opens the Control Center menu (header + sliders + a grid of quick toggles). The optional **Mirror** tile (off by default — tick it in the grid's edit mode) toggles margo's output mirroring, laptop panel onto the external display, and shows the running `source → target`. |
+| `ControlCenter` | Control Center | System-preferences glyph that opens the Control Center menu (header + sliders + a grid of quick toggles; opt-in tiles such as Hotspot are enabled from the grid's edit mode). The optional **Mirror** tile (off by default — tick it in the grid's edit mode) toggles margo's output mirroring, laptop panel onto the external display, and shows the running `source → target`. |
 
 ## System monitors
 
@@ -57,7 +57,7 @@ parameter and use YAML tag syntax:
 
 | Token | Widget | What it does |
 | --- | --- | --- |
-| `Network` | Network Console | Wi-Fi / wired link state + live throughput, from NetworkManager (no `nmcli` polling). Click opens the network menu (Wi-Fi list, connect/disconnect, rescan, radio toggle); right-click flips between speed and icon display. |
+| `Network` | Network Console | Wi-Fi / wired link state + live throughput, from NetworkManager (no `nmcli` polling). Click opens the network menu (Wi-Fi list, connect/disconnect, rescan, radio toggle, Wi-Fi hotspot with its connected clients — `network.hotspot_*`, needs `nmcli` + `iw`); right-click flips between speed and icon display. |
 | `Vpn` | VPN (Mullvad) | Native Mullvad pill driving the `mvpn` binary. Shield tints when the tunnel is up (relay + location in the tooltip). Click opens the VPN menu — connect / random / fastest, lockdown, auto-connect, quantum, plus a collapsible DNS section. |
 | `VpnIndicator` | VPN Indicator | Lights up while a *generic* VPN tunnel is up — OpenVPN (`tun*`) or WireGuard (`wg*`: wg-quick, NetworkManager). Reads `/sys/class/net` (polled); the whole pill hides while disconnected, and the active interface name shows in the tooltip. Mullvad (`wg0-mullvad`) is excluded — the dedicated `Vpn` pill covers it. No menu. |
 | `Dns` | DNS | Standalone DNS / Blocky panel (separate from the combined VPN pill). Polls DNS/VPN/Blocky state; click opens the DNS menu. |

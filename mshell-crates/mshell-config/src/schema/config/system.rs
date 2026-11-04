@@ -90,6 +90,16 @@ pub struct NetworkConfig {
     pub proxy_ignore: String,
     /// PAC URL used when `proxy_mode == Automatic`.
     pub proxy_pac_url: String,
+    /// Wi-Fi hotspot network name (Network menu · Hotspot, Control Center
+    /// Hotspot tile). Empty = `<hostname>-hotspot`.
+    pub hotspot_ssid: String,
+    /// Hotspot WPA2 password (8–63 characters). Empty = let
+    /// NetworkManager keep the saved `margo-hotspot` profile's secret (or
+    /// generate one on first start), so no secret has to live here.
+    pub hotspot_password: String,
+    /// Wi-Fi interface for the hotspot (e.g. `wlan0`). Empty = the first
+    /// NetworkManager Wi-Fi device.
+    pub hotspot_interface: String,
 }
 
 /// Home-network login automation (Settings → Network · Network Console menu).
@@ -303,7 +313,8 @@ impl Default for AudioConfig {
 
 /// Control Center tile visibility and order.
 ///
-/// All tiles are shown by default (`true`). Set a tile to `false` via the
+/// All tiles are shown by default (`true`) except the opt-in ones
+/// (`mirror`, `hotspot`), which default to `false`. Set a tile to `false` via the
 /// Control Center's edit mode (the pencil icon in the header) to hide it
 /// from the normal grid view. `tile_order` controls the order tiles appear in
 /// the grid (first entry = top-left, reading left-to-right). Tiles not present
@@ -331,6 +342,8 @@ pub struct ControlCenterConfig {
     /// Output-mirroring toggle (margo `toggle_mirror`). Off by default so
     /// an existing grid is unchanged; enable it in edit mode / Settings.
     pub mirror: bool,
+    /// Wi-Fi hotspot toggle tile. Off by default (opt in via edit mode).
+    pub hotspot: bool,
     /// Display order of tiles in the grid. Each entry is a tile-id string
     /// (e.g. `"wifi"`, `"bluetooth"`, …). Unknown ids are skipped; ids
     /// not listed here are appended at the end in canonical order.
@@ -397,6 +410,7 @@ impl Default for ControlCenterConfig {
             ufw: true,
             podman: true,
             mirror: false,
+            hotspot: false,
             tile_order: default_cc_tile_order(),
             wide_tiles: Vec::new(),
             show_battery_chip: true,
