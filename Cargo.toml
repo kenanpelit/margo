@@ -206,7 +206,10 @@ image = { version = "0.25", default-features = false, features = [
     "gif",
     "bmp",
 ] }
-grass = "0.13"
+# No default features: `commandline` is the grass binary and `random` only adds
+# the Sass random()/unique-id() functions (unused), which pulled rand 0.8 with
+# its ChaCha RNG.
+grass = { version = "0.13", default-features = false }
 lutgen = { version = "0.14", default-features = false, features = ["rayon"] }
 rayon = "1"
 
