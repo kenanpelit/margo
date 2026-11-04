@@ -5,6 +5,44 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.8.0] – 2026-11-04
+
+**Five clearer animation presets, a lighter shell frame, interactive
+screenshots that capture only what you pick, and a shell that keeps
+running without audio or media services.**
+
+### Added
+
+- Animation presets reduced to five distinct styles: Silk (calm default),
+  Swift (fast), Aqua (macOS-like), Wobbly (Compiz-like elastic motion) and
+  Cinematic (slow cross-fades). Every preset writes the same settings, so
+  switching never leaves values from the previous one behind.
+- Interactive Screenshot portal requests let you choose an output, a window
+  or an area after the permission dialog, and capture only that choice.
+- `mvpn status --follow` streams VPN state changes for the shell.
+
+### Changed
+
+- The screen-edge frame is drawn from thin edge strips; the full-screen
+  overlay surface exists only while a menu is open, freeing its buffers at
+  idle.
+- The podman indicator follows `podman events`, Valent actions use D-Bus
+  directly, and the VPN indicator follows `mvpn status --follow` instead of
+  polling, each with a fallback for older tools.
+- mlogind's TTY greeter moved to ratatui 0.30 / crossterm 0.29 with its
+  screens pinned by snapshot tests; duplicated dependency versions dropped
+  from 27 to 19.
+
+### Fixed
+
+- mshell starts when the audio or media service is unavailable: the
+  affected widgets are hidden and one notice explains why. A failed margo
+  connection now reports a clear error.
+- Two simultaneous screenshot requests could receive each other's image.
+- Cancelling a monitor pick in the share chooser left the portal request
+  waiting until the chooser was opened again.
+- The Bouncy preset never bounced; it is replaced by Wobbly.
+
 ## [4.7.1] – 2026-11-04
 
 **Restore shell compilation after 4.7.0 and let libclang discovery follow
