@@ -17,6 +17,10 @@ pub struct Menus {
     pub vpn_menu: Menu,
     pub ai_menu: Menu,
     pub podman_menu: Menu,
+    /// `github` bar pill's panel. Default-on-missing so profiles
+    /// predating it still parse.
+    #[serde(default = "default_github_menu")]
+    pub github_menu: Menu,
     /// `agents` bar pill's panel. Default-on-missing so profiles
     /// predating it still parse.
     #[serde(default = "default_agents_menu")]
@@ -244,6 +248,15 @@ pub(super) fn default_agents_menu() -> Menu {
     Menu {
         position: Position::TopRight,
         widgets: vec![MenuWidget::Agents],
+        minimum_width: 460,
+        maximum_height: 0,
+    }
+}
+
+pub(super) fn default_github_menu() -> Menu {
+    Menu {
+        position: Position::TopRight,
+        widgets: vec![MenuWidget::Github],
         minimum_width: 460,
         maximum_height: 0,
     }
@@ -513,6 +526,7 @@ impl Default for Menus {
                 maximum_height: 560,
             },
             agents_menu: default_agents_menu(),
+            github_menu: default_github_menu(),
             podman_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Podman],

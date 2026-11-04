@@ -112,6 +112,8 @@ pub enum MenuCommands {
     Ai,
     /// Toggle the Podman menu
     Podman,
+    /// Toggle the GitHub menu
+    Github,
     /// Toggle the AI Agents menu
     Agents,
     /// Toggle the Notes Hub menu
@@ -268,6 +270,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Podman => {
             shell().await?.podman().await?;
+        }
+        MenuCommands::Github => {
+            shell().await?.github().await?;
         }
         MenuCommands::Agents => {
             shell().await?.agents().await?;

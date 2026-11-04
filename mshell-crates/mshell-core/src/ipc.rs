@@ -289,6 +289,12 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                         active_monitor().await,
                     ));
                 }
+                IPCCommand::Github => {
+                    app_sender.emit(ShellInput::ToggleMenu(
+                        mshell_frame::frame::MenuId::Github,
+                        active_monitor().await,
+                    ));
+                }
                 IPCCommand::Podman => {
                     app_sender.emit(ShellInput::TogglePodmanMenu(active_monitor().await));
                 }
@@ -737,6 +743,7 @@ enum IPCCommand {
     Translate,
     Podman,
     Agents,
+    Github,
     Notes,
     Ip,
     VpnIndicator,

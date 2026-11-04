@@ -325,6 +325,7 @@ pub(super) fn menu_position(name: &str) -> Position {
         NVPN_MENU => pos!(vpn_menu),
         NAI_MENU => pos!(ai_menu),
         NPODMAN_MENU => pos!(podman_menu),
+        NGITHUB_MENU => pos!(github_menu),
         NAGENTS_MENU => pos!(agents_menu),
         NNOTES_MENU => pos!(notes_menu),
         NIP_MENU => pos!(ip_menu),

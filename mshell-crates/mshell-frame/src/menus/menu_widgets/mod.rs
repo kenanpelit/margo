@@ -21,6 +21,7 @@ pub(crate) mod crashes;
 pub(crate) mod discord_voice;
 pub(crate) mod divider;
 pub(crate) mod dns;
+pub(crate) mod github;
 pub(crate) mod ip;
 pub(crate) mod keep_awake;
 pub(crate) mod keybinds;

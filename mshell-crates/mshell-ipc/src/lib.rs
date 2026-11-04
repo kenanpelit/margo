@@ -100,6 +100,7 @@ pub trait Shell {
     fn dns(&self) -> zbus::Result<()>;
     fn translate_menu(&self) -> zbus::Result<()>;
     fn podman(&self) -> zbus::Result<()>;
+    fn github(&self) -> zbus::Result<()>;
     fn agents(&self) -> zbus::Result<()>;
     fn notes(&self) -> zbus::Result<()>;
     fn ip(&self) -> zbus::Result<()>;

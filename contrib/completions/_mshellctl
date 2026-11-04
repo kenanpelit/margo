@@ -286,6 +286,12 @@ _arguments "${_arguments_options[@]}" : \
 '--help[Print help]' \
 && ret=0
 ;;
+(github)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
 (agents)
 _arguments "${_arguments_options[@]}" : \
 '-h[Print help]' \
@@ -590,6 +596,10 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (podman)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(github)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -3534,6 +3544,10 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(github)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (agents)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -5896,6 +5910,7 @@ _mshellctl__subcmd__help__subcmd__menu_commands() {
 'dns:Toggle the DNS / VPN menu (alias for \`vpn\`)' \
 'ai:Toggle the AI assistant chat menu' \
 'podman:Toggle the Podman menu' \
+'github:Toggle the GitHub menu' \
 'agents:Toggle the AI Agents menu' \
 'notes:Toggle the Notes Hub menu' \
 'ip:Toggle the Public IP menu' \
@@ -5972,6 +5987,11 @@ _mshellctl__subcmd__help__subcmd__menu__subcmd__cpu-dashboard_commands() {
 _mshellctl__subcmd__help__subcmd__menu__subcmd__dns_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help menu dns commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__menu__subcmd__github_commands] )) ||
+_mshellctl__subcmd__help__subcmd__menu__subcmd__github_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help menu github commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__help__subcmd__menu__subcmd__ip_commands] )) ||
 _mshellctl__subcmd__help__subcmd__menu__subcmd__ip_commands() {
@@ -7139,6 +7159,7 @@ _mshellctl__subcmd__menu_commands() {
 'dns:Toggle the DNS / VPN menu (alias for \`vpn\`)' \
 'ai:Toggle the AI assistant chat menu' \
 'podman:Toggle the Podman menu' \
+'github:Toggle the GitHub menu' \
 'agents:Toggle the AI Agents menu' \
 'notes:Toggle the Notes Hub menu' \
 'ip:Toggle the Public IP menu' \
@@ -7217,6 +7238,11 @@ _mshellctl__subcmd__menu__subcmd__dns_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl menu dns commands' commands "$@"
 }
+(( $+functions[_mshellctl__subcmd__menu__subcmd__github_commands] )) ||
+_mshellctl__subcmd__menu__subcmd__github_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl menu github commands' commands "$@"
+}
 (( $+functions[_mshellctl__subcmd__menu__subcmd__help_commands] )) ||
 _mshellctl__subcmd__menu__subcmd__help_commands() {
     local commands; commands=(
@@ -7245,6 +7271,7 @@ _mshellctl__subcmd__menu__subcmd__help_commands() {
 'dns:Toggle the DNS / VPN menu (alias for \`vpn\`)' \
 'ai:Toggle the AI assistant chat menu' \
 'podman:Toggle the Podman menu' \
+'github:Toggle the GitHub menu' \
 'agents:Toggle the AI Agents menu' \
 'notes:Toggle the Notes Hub menu' \
 'ip:Toggle the Public IP menu' \
@@ -7322,6 +7349,11 @@ _mshellctl__subcmd__menu__subcmd__help__subcmd__cpu-dashboard_commands() {
 _mshellctl__subcmd__menu__subcmd__help__subcmd__dns_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl menu help dns commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__menu__subcmd__help__subcmd__github_commands] )) ||
+_mshellctl__subcmd__menu__subcmd__help__subcmd__github_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl menu help github commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__menu__subcmd__help__subcmd__help_commands] )) ||
 _mshellctl__subcmd__menu__subcmd__help__subcmd__help_commands() {

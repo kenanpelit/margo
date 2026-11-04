@@ -356,6 +356,7 @@ impl Frame {
             NAI_MENU,
             NUFW_MENU,
             NPODMAN_MENU,
+            NGITHUB_MENU,
             NAGENTS_MENU,
             NNETWORK_MENU,
         ] {

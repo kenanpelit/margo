@@ -84,6 +84,8 @@ pub enum MenuWidget {
     Podman,
     /// AI agents pill — Claude Code / Codex plan limits with burn-rate forecast, today's local stats and the live Claude Code sessions.
     Agents,
+    /// GitHub pill — unread notification count (gh CLI); the menu is an inbox plus the user's open PRs with CI / review state.
+    Github,
     Power,
     /// `privacy` bar pill's panel — live "in use now" rows (mic /
     /// camera / screen-share + which apps) plus a clearable access
@@ -199,6 +201,7 @@ impl MenuWidget {
             MenuWidget::Notes => "Notes Hub",
             MenuWidget::Notifications => "Notifications",
             MenuWidget::Podman => "Podman",
+            MenuWidget::Github => "GitHub",
             MenuWidget::Agents => "AI Agents",
             MenuWidget::Power => "Power Profile",
             MenuWidget::Privacy => "Privacy",
@@ -272,6 +275,7 @@ impl MenuWidget {
             MenuWidget::Notes,
             MenuWidget::Notifications,
             MenuWidget::Podman,
+            MenuWidget::Github,
             MenuWidget::Agents,
             MenuWidget::Power,
             MenuWidget::Privacy,

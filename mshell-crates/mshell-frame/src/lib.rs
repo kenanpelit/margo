@@ -8,6 +8,7 @@ mod discord;
 pub mod frame;
 mod frame_draw_widget;
 mod frame_spacer;
+mod github;
 mod keep_awake;
 mod keybinds;
 mod lyrics;

@@ -2,6 +2,11 @@
 
 use super::*;
 
+// Stack names of the newer menus (kept here, beside their ids, rather
+// than in frame.rs).
+pub(super) const NAGENTS_MENU: &str = "agents";
+pub(super) const NGITHUB_MENU: &str = "github";
+
 /// The menus that share the uniform open path: toggle the menu's reveal,
 /// then re-sync the layer surface's keyboard mode. Each maps to its
 /// menu-name key via [`MenuId::menu_name`]. Folding these into the single
@@ -42,6 +47,7 @@ pub enum MenuId {
     Vpn,
     Ai,
     Podman,
+    Github,
     Agents,
     Notes,
     Ip,
@@ -91,6 +97,7 @@ impl MenuId {
             MenuId::Vpn => NVPN_MENU,
             MenuId::Ai => NAI_MENU,
             MenuId::Podman => NPODMAN_MENU,
+            MenuId::Github => NGITHUB_MENU,
             MenuId::Agents => NAGENTS_MENU,
             MenuId::Notes => NNOTES_MENU,
             MenuId::Ip => NIP_MENU,
@@ -141,6 +148,7 @@ impl MenuId {
             MenuId::Vpn => MenuType::Vpn,
             MenuId::Ai => MenuType::Ai,
             MenuId::Podman => MenuType::Podman,
+            MenuId::Github => MenuType::Github,
             MenuId::Agents => MenuType::Agents,
             MenuId::Notes => MenuType::Notes,
             MenuId::Ip => MenuType::Ip,

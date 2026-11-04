@@ -46,6 +46,9 @@ use crate::menus::menu_widgets::crashes::crashes_menu_widget::{
 };
 use crate::menus::menu_widgets::divider::{DividerMenuWidgetInit, DividerMenuWidgetModel};
 use crate::menus::menu_widgets::dns::dns_menu_widget::{DnsMenuWidgetInit, DnsMenuWidgetModel};
+use crate::menus::menu_widgets::github::github_menu_widget::{
+    GithubMenuWidgetInit, GithubMenuWidgetModel,
+};
 use crate::menus::menu_widgets::ip::ip_menu_widget::{IpMenuWidgetInit, IpMenuWidgetModel};
 use crate::menus::menu_widgets::keep_awake::keep_awake_menu_widget::{
     KeepAwakeMenuWidgetInit, KeepAwakeMenuWidgetModel, KeepAwakeMenuWidgetOutput,
@@ -371,6 +374,11 @@ pub fn build_widget(
         MenuWidget::Agents => Box::new(
             AgentsMenuWidgetModel::builder()
                 .launch(AgentsMenuWidgetInit {})
+                .detach(),
+        ),
+        MenuWidget::Github => Box::new(
+            GithubMenuWidgetModel::builder()
+                .launch(GithubMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::Podman => Box::new(

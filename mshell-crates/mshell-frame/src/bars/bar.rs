@@ -11,6 +11,7 @@ use crate::bars::bar_widgets::cpu_dashboard::{CpuDashboardInit, CpuDashboardMode
 use crate::bars::bar_widgets::custom::{CustomWidgetInit, CustomWidgetModel, CustomWidgetOutput};
 use crate::bars::bar_widgets::dark_mode::{DarkModeInit, DarkModeModel};
 use crate::bars::bar_widgets::discord_voice::{DiscordVoiceInit, DiscordVoiceModel};
+use crate::bars::bar_widgets::github::{GithubInit, GithubModel};
 use crate::bars::bar_widgets::ip::{IpInit, IpModel};
 use crate::bars::bar_widgets::keep_awake::{KeepAwakeInit, KeepAwakeModel};
 use crate::bars::bar_widgets::keybinds::{KeybindsInit, KeybindsModel};
@@ -237,6 +238,7 @@ pub(crate) enum BarOutput {
     AiClicked,
     DnsClicked,
     PodmanClicked,
+    GithubClicked,
     AgentsClicked,
     NotesClicked,
     IpClicked,
@@ -1297,6 +1299,14 @@ impl BarModel {
                 |msg| match msg {
                     crate::bars::bar_widgets::agents::AgentsOutput::Clicked => {
                         BarOutput::AgentsClicked
+                    }
+                },
+            )),
+            BarWidget::Github => Box::new(GithubModel::builder().launch(GithubInit {}).forward(
+                sender.output_sender(),
+                |msg| match msg {
+                    crate::bars::bar_widgets::github::GithubOutput::Clicked => {
+                        BarOutput::GithubClicked
                     }
                 },
             )),

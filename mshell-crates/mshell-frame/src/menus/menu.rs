@@ -30,6 +30,9 @@ use crate::menus::menu_widgets::crashes::crashes_menu_widget::{
     CrashesMenuWidgetInput, CrashesMenuWidgetModel,
 };
 use crate::menus::menu_widgets::dns::dns_menu_widget::{DnsMenuWidgetInput, DnsMenuWidgetModel};
+use crate::menus::menu_widgets::github::github_menu_widget::{
+    GithubMenuWidgetInput, GithubMenuWidgetModel,
+};
 use crate::menus::menu_widgets::ip::ip_menu_widget::{IpMenuWidgetInput, IpMenuWidgetModel};
 use crate::menus::menu_widgets::keep_awake::keep_awake_menu_widget::{
     KeepAwakeMenuWidgetInput, KeepAwakeMenuWidgetModel,
@@ -116,6 +119,7 @@ pub(crate) enum MenuType {
     Vpn,
     Ai,
     Podman,
+    Github,
     Agents,
     Notes,
     Ip,
@@ -501,6 +505,12 @@ impl Component for MenuModel {
                 effect_widgets!(effects, base_config, sender, agents_menu);
                 effect_min_width!(effects, base_config, sender, agents_menu);
                 effect_max_height!(effects, base_config, sender, agents_menu);
+            }
+            MenuType::Github => {
+                css_class = "github-menu".to_string();
+                effect_widgets!(effects, base_config, sender, github_menu);
+                effect_min_width!(effects, base_config, sender, github_menu);
+                effect_max_height!(effects, base_config, sender, github_menu);
             }
             MenuType::Podman => {
                 css_class = "podman-menu".to_string();
@@ -1022,6 +1032,14 @@ impl Component for MenuModel {
                         controller
                             .sender()
                             .send(AgentsMenuWidgetInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<GithubMenuWidgetModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(GithubMenuWidgetInput::ParentRevealChanged(visible))
                             .ok();
                     }
                     if let Some(controller) =
