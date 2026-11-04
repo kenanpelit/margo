@@ -15,9 +15,14 @@
 //!     `watch()` stream wakes the task.
 //!   * **Camera** — an inotify watch on the real (non-metadata)
 //!     `/dev/video*` capture nodes (`IN_OPEN` / `IN_CLOSE_*`, plus `/dev`
-//!     create/delete for hotplug) marks the camera dirty; only then is
-//!     `/proc/<pid>/fd` scanned (off the UI thread) to map holders to process
-//!     names. Without inotify it falls back to a scan every [`FALLBACK_TICK`].
+//!     create/delete for hotplug) keeps an open-minus-close count per node
+//!     ([`OpenCounter`]). After a [`CAM_DEBOUNCE`] quiet window it decides:
+//!     a balanced open+close (a browser or PipeWire enumerating devices)
+//!     costs nothing, every node back at zero clears the camera without a
+//!     scan, and only a node left open (or an overflow / hotplug) scans
+//!     `/proc/<pid>/fd` (off the UI thread, our own processes only) to map
+//!     holders to process names. Without inotify it falls back to a scan
+//!     every [`FALLBACK_TICK`].
 //!   * **Screen-share** — one long-lived `pw-dump --monitor` (only while
 //!     `detect_screen_share` is on) streams PipeWire registry changes; the
 //!     node table it maintains is matched against the usual screencast
@@ -29,9 +34,9 @@
 //! ([`mshell_cache::privacy_history`]), and — gated on config — raises a toast
 //! on the shell's own toast bus when a sensor first goes active.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
@@ -85,8 +90,16 @@ const FALLBACK_TICK: Duration = Duration::from_secs(2);
 /// Woken by every source when its state may have changed. `Notify` keeps one
 /// permit, so a burst of events collapses into one re-evaluation.
 static WAKE: LazyLock<Notify> = LazyLock::new(Notify::new);
-/// Set by the camera watch on any open/close/hotplug of a capture node.
-static CAM_DIRTY: AtomicBool = AtomicBool::new(true);
+/// The camera watch's latest pending decision ([`CamAction`] as `u8`), taken
+/// by the driver loop.
+static CAM_ACTION: AtomicU8 = AtomicU8::new(CamAction::None as u8);
+/// Open-minus-close counts of the watched capture nodes. Shared between the
+/// inotify task (events) and the driver loop (scan baselines).
+static CAM_COUNTER: LazyLock<Mutex<OpenCounter>> =
+    LazyLock::new(|| Mutex::new(OpenCounter::default()));
+/// Quiet time after the last camera event before deciding: an
+/// enumeration burst (open+close on every node) settles well inside it.
+const CAM_DEBOUNCE: Duration = Duration::from_millis(400);
 
 /// Start the detection driver once. Idempotent — safe to call from every
 /// pill's `init`.
@@ -118,9 +131,15 @@ pub fn ensure_started() {
                 Vec::new()
             };
             let cam_apps = if cfg.track_camera {
-                let dirty = CAM_DIRTY.swap(false, Ordering::SeqCst);
-                if cam_cache.is_none() || dirty || !camera_watched {
-                    cam_cache = Some(camera_apps().await);
+                let action = take_cam_action();
+                if cam_cache.is_none() || !camera_watched || action == CamAction::Scan {
+                    let scan = camera_apps().await;
+                    if let Ok(mut c) = CAM_COUNTER.lock() {
+                        c.set_baseline(&scan.open);
+                    }
+                    cam_cache = Some(scan.apps);
+                } else if action == CamAction::Clear {
+                    cam_cache = Some(Vec::new());
                 }
                 filter_apps(cam_cache.clone().unwrap_or_default(), &cfg.cam_filter)
             } else {
@@ -309,7 +328,7 @@ fn probe_mic() -> Vec<String> {
 
 /// Run the blocking `/proc` scan on relm4's runtime, return via oneshot so
 /// the UI thread never blocks.
-async fn camera_apps() -> Vec<String> {
+async fn camera_apps() -> CameraScan {
     let (tx, rx) = tokio::sync::oneshot::channel();
     relm4::spawn_blocking(move || {
         let _ = tx.send(probe_camera_blocking());
@@ -317,26 +336,43 @@ async fn camera_apps() -> Vec<String> {
     rx.await.unwrap_or_default()
 }
 
-fn probe_camera_blocking() -> Vec<String> {
+fn probe_camera_blocking() -> CameraScan {
     let cam_devices = real_camera_devices();
     if cam_devices.is_empty() {
-        return Vec::new();
+        return CameraScan::default();
     }
-    camera_holders(Path::new("/proc"), &cam_devices)
+    // SAFETY: getuid has no preconditions.
+    let uid = unsafe { libc::getuid() };
+    camera_holders(Path::new("/proc"), &cam_devices, uid)
 }
 
-/// `comm` names of the processes under `proc_root` holding an fd on one of
-/// `cam_devices`, sorted and deduplicated.
-fn camera_holders(proc_root: &Path, cam_devices: &[PathBuf]) -> Vec<String> {
+/// What one `/proc` scan saw of the capture nodes.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct CameraScan {
+    /// `comm` names of the holders, sorted and deduplicated.
+    apps: Vec<String>,
+    /// Open fds per capture node (only nodes with at least one).
+    open: HashMap<PathBuf, i64>,
+}
+
+/// The processes under `proc_root` owned by `uid` holding an fd on one of
+/// `cam_devices`. Other users' fd dirs are unreadable anyway, so their
+/// entries are skipped on the cheap `stat` instead of an `EACCES` per pid.
+fn camera_holders(proc_root: &Path, cam_devices: &[PathBuf], uid: u32) -> CameraScan {
+    use std::os::unix::fs::MetadataExt;
     let mut pids: HashSet<u32> = HashSet::new();
+    let mut open: HashMap<PathBuf, i64> = HashMap::new();
     let Ok(proc_dir) = std::fs::read_dir(proc_root) else {
-        return Vec::new();
+        return CameraScan::default();
     };
     for entry in proc_dir.flatten() {
         let name = entry.file_name();
         let Ok(pid) = name.to_string_lossy().parse::<u32>() else {
             continue;
         };
+        if entry.metadata().map(|m| m.uid()).ok() != Some(uid) {
+            continue;
+        }
         let fd_dir = entry.path().join("fd");
         let Ok(fds) = std::fs::read_dir(&fd_dir) else {
             continue;
@@ -346,7 +382,7 @@ fn camera_holders(proc_root: &Path, cam_devices: &[PathBuf]) -> Vec<String> {
                 && cam_devices.contains(&target)
             {
                 pids.insert(pid);
-                break;
+                *open.entry(target).or_default() += 1;
             }
         }
     }
@@ -360,7 +396,7 @@ fn camera_holders(proc_root: &Path, cam_devices: &[PathBuf]) -> Vec<String> {
         .collect();
     names.sort();
     names.dedup();
-    names
+    CameraScan { apps: names, open }
 }
 
 /// Real `/dev/video*` capture nodes, excluding metadata-only devices (the
@@ -394,12 +430,12 @@ fn real_camera_devices_in(sysfs: &Path) -> Vec<PathBuf> {
 
 mod camera_watch {
     use super::{
-        CAM_DEVICE_MASK as DEVICE_MASK, CAM_DIR_MASK as DIR_MASK, CAM_DIRTY, CameraWake, WAKE,
-        classify_camera_events, real_camera_devices,
+        CAM_COUNTER, CAM_DEBOUNCE, CAM_DEVICE_MASK as DEVICE_MASK, CAM_DIR_MASK as DIR_MASK,
+        CameraWake, WAKE, classify_camera_events, post_cam_action, real_camera_devices,
     };
     use std::ffi::CString;
     use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
-    use std::sync::atomic::Ordering;
+    use std::path::PathBuf;
 
     use tokio::io::Interest;
     use tokio::io::unix::AsyncFd;
@@ -416,7 +452,7 @@ mod camera_watch {
         }
         // SAFETY: `raw` is a fresh, valid fd nobody else owns.
         let fd = unsafe { OwnedFd::from_raw_fd(raw) };
-        if !add_watch(&fd, "/dev", DIR_MASK) {
+        if add_watch(&fd, "/dev", DIR_MASK).is_none() {
             return false;
         }
         watch_devices(&fd);
@@ -432,33 +468,28 @@ mod camera_watch {
             };
             let mut buf = [0u8; 4096];
             loop {
-                let Ok(mut guard) = afd.readable().await else {
+                let Ok(guard) = afd.readable().await else {
                     return;
                 };
-                let mut wake = CameraWake::default();
+                let mut wake = drain(&afd, guard, &mut buf);
+                // Debounce: keep folding events in until the nodes have been
+                // quiet for a window, so an enumeration burst is one decision.
                 loop {
-                    // SAFETY: reading into a local buffer of the given length.
-                    let n = unsafe {
-                        libc::read(
-                            afd.get_ref().as_raw_fd(),
-                            buf.as_mut_ptr().cast(),
-                            buf.len(),
-                        )
-                    };
-                    if n <= 0 {
-                        break;
+                    match tokio::time::timeout(CAM_DEBOUNCE, afd.readable()).await {
+                        Err(_) => break,
+                        Ok(Err(_)) => return,
+                        Ok(Ok(guard)) => wake.merge(drain(&afd, guard, &mut buf)),
                     }
-                    wake.merge(classify_camera_events(&super::parse_inotify_events(
-                        &buf[..n as usize],
-                    )));
                 }
-                guard.clear_ready();
                 if wake.hotplug {
                     // A new node gets its own watch; removed ones drop theirs.
                     watch_devices(afd.get_ref());
                 }
-                if wake.changed {
-                    CAM_DIRTY.store(true, Ordering::SeqCst);
+                let action = CAM_COUNTER
+                    .lock()
+                    .map(|mut c| c.decide())
+                    .unwrap_or(super::CamAction::Scan);
+                if post_cam_action(action) {
                     WAKE.notify_one();
                 }
             }
@@ -466,20 +497,182 @@ mod camera_watch {
         true
     }
 
+    /// Read every queued event, fold the opens/closes into the counter and
+    /// return the batch's hotplug flag.
+    fn drain(
+        afd: &AsyncFd<OwnedFd>,
+        mut guard: tokio::io::unix::AsyncFdReadyGuard<'_, OwnedFd>,
+        buf: &mut [u8],
+    ) -> CameraWake {
+        let mut wake = CameraWake::default();
+        loop {
+            // SAFETY: reading into a local buffer of the given length.
+            let n = unsafe {
+                libc::read(
+                    afd.get_ref().as_raw_fd(),
+                    buf.as_mut_ptr().cast(),
+                    buf.len(),
+                )
+            };
+            if n <= 0 {
+                break;
+            }
+            let events = super::parse_inotify_events(&buf[..n as usize]);
+            wake.merge(classify_camera_events(&events));
+            if let Ok(mut c) = CAM_COUNTER.lock() {
+                c.apply(&events);
+            }
+        }
+        guard.clear_ready();
+        wake
+    }
+
+    /// (Re-)watch every capture node and tell the counter which watch
+    /// descriptor is which node. `inotify_add_watch` on an already watched
+    /// path returns its existing descriptor.
     fn watch_devices(fd: &OwnedFd) {
-        for dev in real_camera_devices() {
-            if let Some(path) = dev.to_str() {
-                add_watch(fd, path, DEVICE_MASK);
+        let nodes: Vec<(i32, PathBuf)> = real_camera_devices()
+            .into_iter()
+            .filter_map(|dev| {
+                let wd = add_watch(fd, dev.to_str()?, DEVICE_MASK)?;
+                Some((wd, dev))
+            })
+            .collect();
+        if let Ok(mut c) = CAM_COUNTER.lock() {
+            c.set_nodes(nodes);
+        }
+    }
+
+    fn add_watch(fd: &OwnedFd, path: &str, mask: u32) -> Option<i32> {
+        let c_path = CString::new(path).ok()?;
+        // SAFETY: valid fd and NUL-terminated path.
+        let wd = unsafe { libc::inotify_add_watch(fd.as_raw_fd(), c_path.as_ptr(), mask) };
+        (wd >= 0).then_some(wd)
+    }
+}
+
+/// What the camera watch asks the driver loop to do after a quiet window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+enum CamAction {
+    /// Holders unchanged (balanced opens/closes): keep the cached names.
+    None = 0,
+    /// Every node is closed again: no holders, no scan needed.
+    Clear = 1,
+    /// A node is (still) open or the counts are unknown: scan `/proc`.
+    Scan = 2,
+}
+
+impl CamAction {
+    fn from_u8(v: u8) -> Self {
+        match v {
+            1 => Self::Clear,
+            2 => Self::Scan,
+            _ => Self::None,
+        }
+    }
+
+    /// Combine a pending (not yet taken) action with a newer decision. A
+    /// newer real decision describes the current state and wins; `None`
+    /// only says nothing changed since, so the pending one still applies.
+    fn merge(self, newer: CamAction) -> CamAction {
+        if newer == CamAction::None {
+            self
+        } else {
+            newer
+        }
+    }
+}
+
+/// Record a decision for the driver loop; `true` when there is something
+/// to do (wake it).
+fn post_cam_action(action: CamAction) -> bool {
+    if action == CamAction::None {
+        return false;
+    }
+    let _ = CAM_ACTION.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |cur| {
+        Some(CamAction::from_u8(cur).merge(action) as u8)
+    });
+    true
+}
+
+fn take_cam_action() -> CamAction {
+    CamAction::from_u8(CAM_ACTION.swap(CamAction::None as u8, Ordering::SeqCst))
+}
+
+/// Open-minus-close count per watched capture node.
+///
+/// inotify reports `IN_OPEN` for every `open(2)` and one `IN_CLOSE_*` when
+/// an open file description is finally released, so the difference is the
+/// number of open descriptions. The baseline comes from a `/proc` scan,
+/// which only sees our own processes and counts fds (a `dup` counts twice):
+/// counts can be off either way, so they are clamped at zero and any doubt
+/// resolves to another scan rather than a wrong answer.
+#[derive(Debug, Default)]
+struct OpenCounter {
+    /// Watch descriptor → node.
+    nodes: HashMap<i32, PathBuf>,
+    /// Best-known open count per node.
+    held: HashMap<PathBuf, i64>,
+    /// Net opens per node since the last decision.
+    net: HashMap<PathBuf, i64>,
+    /// Counts unknown (no scan yet, overflow, hotplug): scan next.
+    rescan: bool,
+    /// A baseline scan has been applied.
+    baselined: bool,
+}
+
+impl OpenCounter {
+    fn set_nodes(&mut self, nodes: impl IntoIterator<Item = (i32, PathBuf)>) {
+        self.nodes = nodes.into_iter().collect();
+    }
+
+    /// Fold one read's events in.
+    fn apply(&mut self, events: &[InotifyEvent]) {
+        for ev in events {
+            if ev.mask & libc::IN_Q_OVERFLOW != 0 {
+                self.rescan = true;
+            } else if ev.mask & CAM_DIR_MASK != 0 {
+                if ev.name.starts_with("video") {
+                    self.rescan = true;
+                }
+            } else if let Some(node) = self.nodes.get(&ev.wd) {
+                let d = if ev.mask & libc::IN_OPEN != 0 {
+                    1
+                } else if ev.mask & (libc::IN_CLOSE_WRITE | libc::IN_CLOSE_NOWRITE) != 0 {
+                    -1
+                } else {
+                    continue;
+                };
+                *self.held.entry(node.clone()).or_default() += d;
+                *self.net.entry(node.clone()).or_default() += d;
             }
         }
     }
 
-    fn add_watch(fd: &OwnedFd, path: &str, mask: u32) -> bool {
-        let Ok(c_path) = CString::new(path) else {
-            return false;
-        };
-        // SAFETY: valid fd and NUL-terminated path.
-        unsafe { libc::inotify_add_watch(fd.as_raw_fd(), c_path.as_ptr(), mask) >= 0 }
+    /// Decide what the quiet window's events mean, and start a new window.
+    fn decide(&mut self) -> CamAction {
+        let rescan = std::mem::take(&mut self.rescan) || !self.baselined;
+        let changed = std::mem::take(&mut self.net).values().any(|&n| n != 0);
+        for h in self.held.values_mut() {
+            *h = (*h).max(0);
+        }
+        if rescan {
+            CamAction::Scan
+        } else if !changed {
+            CamAction::None
+        } else if self.held.values().all(|&h| h == 0) {
+            CamAction::Clear
+        } else {
+            CamAction::Scan
+        }
+    }
+
+    /// Replace the counts with what a `/proc` scan saw (nodes missing from
+    /// `open` are closed).
+    fn set_baseline(&mut self, open: &HashMap<PathBuf, i64>) {
+        self.held = open.clone();
+        self.baselined = true;
     }
 }
 
@@ -529,6 +722,8 @@ fn classify_camera_events(events: &[InotifyEvent]) -> CameraWake {
 /// One decoded `struct inotify_event`.
 #[derive(Debug, PartialEq, Eq)]
 struct InotifyEvent {
+    /// Watch descriptor the event is for (`-1` for a queue overflow).
+    wd: i32,
     mask: u32,
     name: String,
 }
@@ -543,7 +738,8 @@ fn parse_inotify_events(buf: &[u8]) -> Vec<InotifyEvent> {
     let mut out = Vec::new();
     let mut off = 0;
     while off + HEADER <= buf.len() {
-        let (Some(mask), Some(len)) = (u32_at(off + 4), u32_at(off + 12)) else {
+        let (Some(wd), Some(mask), Some(len)) = (u32_at(off), u32_at(off + 4), u32_at(off + 12))
+        else {
             break;
         };
         let name_start = off + HEADER;
@@ -555,6 +751,7 @@ fn parse_inotify_events(buf: &[u8]) -> Vec<InotifyEvent> {
             .position(|&b| b == 0)
             .unwrap_or(name_bytes.len());
         out.push(InotifyEvent {
+            wd: wd as i32,
             mask,
             name: String::from_utf8_lossy(&name_bytes[..name_end]).into_owned(),
         });
@@ -868,14 +1065,17 @@ mod tests {
             parse_inotify_events(&buf),
             vec![
                 InotifyEvent {
+                    wd: 1,
                     mask: libc::IN_OPEN,
                     name: String::new()
                 },
                 InotifyEvent {
+                    wd: 1,
                     mask: libc::IN_CREATE,
                     name: "video2".into()
                 },
                 InotifyEvent {
+                    wd: 1,
                     mask: libc::IN_CLOSE_NOWRITE,
                     name: String::new()
                 },
@@ -894,6 +1094,7 @@ mod tests {
         assert_eq!(
             parse_inotify_events(&buf),
             vec![InotifyEvent {
+                wd: 1,
                 mask: libc::IN_DELETE,
                 name: "video10".into()
             }]
@@ -906,6 +1107,7 @@ mod tests {
 
     fn ev(mask: u32, name: &str) -> InotifyEvent {
         InotifyEvent {
+            wd: 1,
             mask,
             name: name.to_string(),
         }
@@ -1076,11 +1278,148 @@ mod tests {
         task("105", None, &["/dev/video0"]); // exited before comm was read
         task("self", Some("not-a-pid"), &["/dev/video0"]);
         let devices = [PathBuf::from("/dev/video0"), PathBuf::from("/dev/video2")];
+        // SAFETY: getuid has no preconditions.
+        let me = unsafe { libc::getuid() };
+        let scan = camera_holders(proc.path(), &devices, me);
+        assert_eq!(scan.apps, vec!["cheese", "firefox"]);
+        // Every visible open fd is counted, as the inotify counter's baseline.
         assert_eq!(
-            camera_holders(proc.path(), &devices),
-            vec!["cheese", "firefox"]
+            scan.open,
+            HashMap::from([
+                (PathBuf::from("/dev/video0"), 3),
+                (PathBuf::from("/dev/video2"), 1),
+            ])
         );
-        assert!(camera_holders(proc.path(), &[]).is_empty());
-        assert!(camera_holders(&proc.path().join("missing"), &devices).is_empty());
+        assert!(camera_holders(proc.path(), &[], me).apps.is_empty());
+        assert!(
+            camera_holders(&proc.path().join("missing"), &devices, me)
+                .apps
+                .is_empty()
+        );
+        // Processes owned by another uid are skipped without reading their
+        // fd dir (the kernel would refuse it anyway).
+        assert_eq!(
+            camera_holders(proc.path(), &devices, me.wrapping_add(1)),
+            CameraScan::default()
+        );
+    }
+
+    fn wd_ev(wd: i32, mask: u32) -> InotifyEvent {
+        InotifyEvent {
+            wd,
+            mask,
+            name: String::new(),
+        }
+    }
+
+    fn counter_on(devs: &[(i32, &str)]) -> OpenCounter {
+        let mut c = OpenCounter::default();
+        c.set_nodes(devs.iter().map(|(wd, p)| (*wd, PathBuf::from(p))));
+        c
+    }
+
+    #[test]
+    fn probe_open_close_pairs_need_no_scan() {
+        let mut c = counter_on(&[(1, "/dev/video0"), (2, "/dev/video2")]);
+        c.set_baseline(&HashMap::new());
+        // A browser enumerating devices: open+close on every node.
+        c.apply(&[
+            wd_ev(1, libc::IN_OPEN),
+            wd_ev(1, libc::IN_CLOSE_NOWRITE),
+            wd_ev(2, libc::IN_OPEN),
+            wd_ev(2, libc::IN_CLOSE_WRITE),
+        ]);
+        assert_eq!(c.decide(), CamAction::None);
+        // Split over two reads inside one debounce window: still nothing.
+        c.apply(&[wd_ev(1, libc::IN_OPEN)]);
+        c.apply(&[wd_ev(1, libc::IN_CLOSE_NOWRITE)]);
+        assert_eq!(c.decide(), CamAction::None);
+        // No events at all.
+        assert_eq!(c.decide(), CamAction::None);
+    }
+
+    #[test]
+    fn a_node_left_open_asks_for_names_and_closing_clears_without_scan() {
+        let mut c = counter_on(&[(1, "/dev/video0")]);
+        c.set_baseline(&HashMap::new());
+        c.apply(&[wd_ev(1, libc::IN_OPEN)]);
+        assert_eq!(c.decide(), CamAction::Scan);
+        // The scan found the holder.
+        c.set_baseline(&HashMap::from([(PathBuf::from("/dev/video0"), 1)]));
+        // A probe while the camera is in use changes nothing.
+        c.apply(&[wd_ev(1, libc::IN_OPEN), wd_ev(1, libc::IN_CLOSE_NOWRITE)]);
+        assert_eq!(c.decide(), CamAction::None);
+        // The holder closes: count back to zero, no scan needed.
+        c.apply(&[wd_ev(1, libc::IN_CLOSE_WRITE)]);
+        assert_eq!(c.decide(), CamAction::Clear);
+    }
+
+    #[test]
+    fn one_of_two_holders_closing_rescans_for_the_remaining_names() {
+        let mut c = counter_on(&[(1, "/dev/video0"), (2, "/dev/video2")]);
+        c.set_baseline(&HashMap::from([
+            (PathBuf::from("/dev/video0"), 1),
+            (PathBuf::from("/dev/video2"), 1),
+        ]));
+        c.apply(&[wd_ev(1, libc::IN_CLOSE_WRITE)]);
+        assert_eq!(c.decide(), CamAction::Scan);
+    }
+
+    #[test]
+    fn undercounted_nodes_clamp_instead_of_hiding_another_open_node() {
+        // A holder we couldn't see (other uid) closes node 1 while node 2 is
+        // newly opened: node 1 must not cancel node 2 out.
+        let mut c = counter_on(&[(1, "/dev/video0"), (2, "/dev/video2")]);
+        c.set_baseline(&HashMap::new());
+        c.apply(&[wd_ev(1, libc::IN_CLOSE_WRITE), wd_ev(2, libc::IN_OPEN)]);
+        assert_eq!(c.decide(), CamAction::Scan);
+        // The stray close alone, from zero, is just a clear.
+        let mut c = counter_on(&[(1, "/dev/video0")]);
+        c.set_baseline(&HashMap::new());
+        c.apply(&[wd_ev(1, libc::IN_CLOSE_WRITE)]);
+        assert_eq!(c.decide(), CamAction::Clear);
+        // ...and it doesn't leave the node at -1 to swallow the next open.
+        c.apply(&[wd_ev(1, libc::IN_OPEN)]);
+        assert_eq!(c.decide(), CamAction::Scan);
+    }
+
+    #[test]
+    fn overflow_hotplug_and_unknown_state_force_a_rescan() {
+        let mut c = counter_on(&[(1, "/dev/video0")]);
+        // Before the first scan nothing is known.
+        assert_eq!(c.decide(), CamAction::Scan);
+        c.set_baseline(&HashMap::new());
+        c.apply(&[InotifyEvent {
+            wd: -1,
+            mask: libc::IN_Q_OVERFLOW,
+            name: String::new(),
+        }]);
+        assert_eq!(c.decide(), CamAction::Scan);
+        c.set_baseline(&HashMap::new());
+        c.apply(&[InotifyEvent {
+            wd: 9,
+            mask: libc::IN_CREATE,
+            name: "video4".into(),
+        }]);
+        assert_eq!(c.decide(), CamAction::Scan);
+        c.set_baseline(&HashMap::new());
+        // Unrelated /dev churn and events on unknown watches are ignored.
+        c.apply(&[
+            InotifyEvent {
+                wd: 9,
+                mask: libc::IN_CREATE,
+                name: "ttyUSB0".into(),
+            },
+            wd_ev(42, libc::IN_OPEN),
+        ]);
+        assert_eq!(c.decide(), CamAction::None);
+    }
+
+    #[test]
+    fn pending_actions_keep_the_latest_real_decision() {
+        assert_eq!(CamAction::Scan.merge(CamAction::None), CamAction::Scan);
+        assert_eq!(CamAction::Scan.merge(CamAction::Clear), CamAction::Clear);
+        assert_eq!(CamAction::Clear.merge(CamAction::Scan), CamAction::Scan);
+        assert_eq!(CamAction::None.merge(CamAction::None), CamAction::None);
     }
 }
