@@ -19,13 +19,15 @@
 //! components that poll only while the menu is open and their tab is
 //! visible (`sync_tabs`): **Processes** (`processes_tab.rs`), **Ports**
 //! (`ports_tab.rs`), **Drives** (`drives_tab.rs`). The Overview hosts
-//! the iGPU section (`gpu_section.rs`).
+//! the iGPU section (`gpu_section.rs`) and the ThinkPad fan row
+//! (`fan_section.rs`).
 //!
 //! Severity classes (calm / warn / danger) come from the same
 //! thresholds the bar pill uses so the menu's tint reads the same
 //! signal at the same time.
 
 use super::drives_tab::{DrivesTabInput, DrivesTabModel};
+use super::fan_section::{FanSectionInput, FanSectionModel};
 use super::gpu_section::{GpuSectionInput, GpuSectionModel};
 use super::ports_tab::{PortsTabInput, PortsTabModel};
 use super::processes_tab::{ProcessesTabInput, ProcessesTabModel};
@@ -182,6 +184,7 @@ pub(crate) struct CpuDashboardMenuWidgetModel {
     ports: Controller<PortsTabModel>,
     drives: Controller<DrivesTabModel>,
     gpu: Controller<GpuSectionModel>,
+    fan: Controller<FanSectionModel>,
 }
 
 impl std::fmt::Debug for CpuDashboardMenuWidgetModel {
@@ -677,6 +680,7 @@ impl Component for CpuDashboardMenuWidgetModel {
             ports: PortsTabModel::builder().launch(()).detach(),
             drives: DrivesTabModel::builder().launch(()).detach(),
             gpu: GpuSectionModel::builder().launch(()).detach(),
+            fan: FanSectionModel::builder().launch(()).detach(),
         };
 
         let widgets = view_output!();
@@ -691,6 +695,7 @@ impl Component for CpuDashboardMenuWidgetModel {
             .add_titled(model.drives.widget(), Some("drives"), "Drives");
 
         widgets.extras_box.append(model.gpu.widget());
+        widgets.extras_box.append(model.fan.widget());
 
         // Sparkline: a filled area + line of the CPU history. The
         // DrawingArea's CSS `color` (var(--primary)) is read at paint
@@ -952,6 +957,9 @@ impl CpuDashboardMenuWidgetModel {
             self.revealed && self.tab == "drives",
         ));
         self.gpu.emit(GpuSectionInput::SetActive(
+            self.revealed && self.tab == "overview",
+        ));
+        self.fan.emit(FanSectionInput::SetActive(
             self.revealed && self.tab == "overview",
         ));
     }

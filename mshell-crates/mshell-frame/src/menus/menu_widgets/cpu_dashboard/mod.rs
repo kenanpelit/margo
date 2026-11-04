@@ -1,6 +1,8 @@
 pub(crate) mod cpu_dashboard_menu_widget;
 pub(crate) mod drives;
 pub(crate) mod drives_tab;
+pub(crate) mod fan;
+pub(crate) mod fan_section;
 pub(crate) mod gpu;
 pub(crate) mod gpu_section;
 pub(crate) mod ports;
