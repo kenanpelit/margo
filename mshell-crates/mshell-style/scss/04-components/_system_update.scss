@@ -159,3 +159,15 @@
 .system-update-menu-widget label.danger {
   color: var(--error);
 }
+
+// arch-audit badge on the pill + the Security tab's severity headers:
+// the §2 ladder (calm inherits, warn amber, danger error).
+.system-update-audit.warn,
+.system-update-section-label.warn {
+  color: var(--warning);
+}
+
+.system-update-audit.danger,
+.system-update-section-label.danger {
+  color: var(--error);
+}

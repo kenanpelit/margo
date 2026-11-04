@@ -440,6 +440,10 @@ pub struct SystemUpdateBarWidget {
     /// still upgrade (holding a package back is pacman.conf's
     /// `IgnorePkg`, which the panel shows but never edits).
     pub hidden_packages: Vec<String>,
+    /// Run `arch-audit --json` with each check: a CVE badge on the pill
+    /// and a Security tab in the panel. Skipped quietly (with an install
+    /// hint in the panel) when the `arch-audit` package is missing.
+    pub check_audit: bool,
 }
 
 /// How [`SystemUpdateBarWidget`] runs an upgrade.
@@ -480,6 +484,7 @@ impl Default for SystemUpdateBarWidget {
             check_news: true,
             update_mode: SystemUpdateMode::default(),
             hidden_packages: Vec::new(),
+            check_audit: true,
         }
     }
 }

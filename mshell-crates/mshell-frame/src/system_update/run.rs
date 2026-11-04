@@ -329,7 +329,7 @@ pub(crate) fn ensure_watcher() {
             }
             if finished_now {
                 // One re-check for every pill/panel on every monitor.
-                let report = super::probe(super::ProbeConfig::from_config()).await;
+                let report = super::probe_with_audit(super::ProbeConfig::from_config()).await;
                 super::publish_report(report);
             }
             let delay = if matches!(next, RunStatus::Running { .. }) {

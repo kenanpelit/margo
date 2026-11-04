@@ -35,6 +35,7 @@ pub(crate) enum SystemUpdateSettingsInput {
     SetCheckFlatpak(bool),
     SetCheckNews(bool),
     SetUpdateMode(u32),
+    SetCheckAudit(bool),
 }
 
 #[derive(Debug)]
@@ -248,6 +249,22 @@ impl Component for SystemUpdateSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/bars/widgets/system_update/check_audit",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Label { set_label: "Security advisories (arch-audit)", set_hexpand: true, set_halign: gtk::Align::Start },
+                        #[name = "su_audit"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            connect_state_set[sender] => move |_, state| {
+                                sender.input(SystemUpdateSettingsInput::SetCheckAudit(state));
+                                glib::Propagation::Proceed
+                            },
+                        },
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
                         set_widget_name: "setting:/bars/widgets/system_update/update_mode",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
@@ -309,6 +326,7 @@ impl Component for SystemUpdateSettingsModel {
         widgets.su_aur.set_active(su.check_aur);
         widgets.su_flatpak.set_active(su.check_flatpak);
         widgets.su_news.set_active(su.check_news);
+        widgets.su_audit.set_active(su.check_audit);
         widgets.mode_dd.set_selected(match su.update_mode {
             SystemUpdateMode::Terminal => 0,
             SystemUpdateMode::Background => 1,
@@ -356,6 +374,9 @@ impl Component for SystemUpdateSettingsModel {
                 };
                 config_manager()
                     .update_config(move |c| c.bars.widgets.system_update.update_mode = mode);
+            }
+            SystemUpdateSettingsInput::SetCheckAudit(on) => {
+                config_manager().update_config(|c| c.bars.widgets.system_update.check_audit = on);
             }
             SystemUpdateSettingsInput::SetCheckNews(on) => {
                 config_manager().update_config(|c| c.bars.widgets.system_update.check_news = on);

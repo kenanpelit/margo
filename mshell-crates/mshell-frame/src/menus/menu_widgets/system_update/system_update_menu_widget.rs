@@ -4,6 +4,7 @@
 //! Flatpak), each row showing `name  old → new`, plus Refresh and
 //! Update buttons. Probing lives in [`crate::system_update`].
 
+use crate::system_update::audit::{Advisory, AuditState, Severity};
 use crate::system_update::history::{self, HistorySource, Transaction};
 use crate::system_update::news::{self, NewsItem};
 use crate::system_update::pacnew::{self, ConfigFile, DiffLine, Kind, Op, Prefer, Review};
@@ -441,6 +442,20 @@ impl Component for SystemUpdateMenuWidgetModel {
                     },
                 },
 
+                add_titled[Some("security"), "Security"] = &gtk::ScrolledWindow {
+                    set_vscrollbar_policy: gtk::PolicyType::Automatic,
+                    set_hscrollbar_policy: gtk::PolicyType::Never,
+                    set_propagate_natural_height: true,
+                    set_min_content_height: 80,
+
+                    #[name = "audit_list"]
+                    gtk::Box {
+                        add_css_class: "system-update-list",
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_spacing: 2,
+                    },
+                },
+
                 add_titled[Some("history"), "History"] = &gtk::ScrolledWindow {
                     set_vscrollbar_policy: gtk::PolicyType::Automatic,
                     set_hscrollbar_policy: gtk::PolicyType::Never,
@@ -612,7 +627,7 @@ impl Component for SystemUpdateMenuWidgetModel {
             SystemUpdateMenuWidgetInput::Refresh => {
                 self.refreshing = true;
                 sender.oneshot_command(async {
-                    let report = system_update::probe(ProbeConfig::from_config()).await;
+                    let report = system_update::probe_with_audit(ProbeConfig::from_config()).await;
                     SystemUpdateMenuWidgetCommandOutput::Loaded(report)
                 });
             }
@@ -848,6 +863,16 @@ impl Component for SystemUpdateMenuWidgetModel {
             SystemUpdateMenuWidgetCommandOutput::Loaded(report) => {
                 self.refreshing = false;
                 rebuild_list(&widgets.list, &report, &self.pacman_ignored, &sender);
+                rebuild_audit(&widgets.audit_list, &report.audit, &sender);
+                let n = report.audit.advisories().len();
+                if let Some(page) = widgets.stack.child_by_name("security") {
+                    let title = if n == 0 {
+                        "Security".to_string()
+                    } else {
+                        format!("Security ({n})")
+                    };
+                    widgets.stack.page(&page).set_title(&title);
+                }
                 self.report = Some(report);
             }
             SystemUpdateMenuWidgetCommandOutput::Run(status) => self.run = status,
@@ -1451,6 +1476,132 @@ fn append_hidden_section(
     }
     list.append(&header);
     list.append(&group);
+}
+
+/// The Security page: advisories grouped by severity, worst first.
+fn rebuild_audit(
+    list: &gtk::Box,
+    state: &AuditState,
+    sender: &ComponentSender<SystemUpdateMenuWidgetModel>,
+) {
+    while let Some(child) = list.first_child() {
+        list.remove(&child);
+    }
+    let advisories = match state {
+        AuditState::Off => {
+            list.append(&info_label(
+                "Security advisories are off (Settings → System Updates).",
+            ));
+            return;
+        }
+        AuditState::Missing => {
+            list.append(&info_label(
+                "arch-audit isn't installed. Install the arch-audit package to see \
+                 Arch Security Team advisories for installed packages.",
+            ));
+            return;
+        }
+        AuditState::Failed(e) => {
+            let l = info_label(&format!("Couldn't run arch-audit: {e}"));
+            l.add_css_class("danger");
+            list.append(&l);
+            return;
+        }
+        AuditState::Ok(v) if v.is_empty() => {
+            list.append(&info_label(
+                "No known advisories affect installed packages.",
+            ));
+            return;
+        }
+        AuditState::Ok(v) => v,
+    };
+    list.append(&info_label(
+        "Fixes arrive with a full system upgrade — Arch doesn't support partial updates.",
+    ));
+    for sev in [
+        Severity::Critical,
+        Severity::High,
+        Severity::Medium,
+        Severity::Low,
+        Severity::Unknown,
+    ] {
+        let group: Vec<&Advisory> = advisories.iter().filter(|a| a.severity == sev).collect();
+        if group.is_empty() {
+            continue;
+        }
+        let header = gtk::Label::builder()
+            .label(format!("{} ({})", sev.label(), group.len()))
+            .halign(gtk::Align::Start)
+            .xalign(0.0)
+            .build();
+        header.add_css_class("system-update-section-label");
+        header.add_css_class(sev.css_class());
+        list.append(&header);
+        let rows = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .build();
+        rows.add_css_class("ok-boxed-list");
+        rows.add_css_class("compact");
+        for a in group {
+            let inner = gtk::Box::builder()
+                .orientation(gtk::Orientation::Vertical)
+                .spacing(2)
+                .build();
+            let top = gtk::Box::builder()
+                .orientation(gtk::Orientation::Horizontal)
+                .spacing(8)
+                .build();
+            let name = gtk::Label::builder()
+                .label(a.packages.join(", "))
+                .xalign(0.0)
+                .hexpand(true)
+                .ellipsize(gtk::pango::EllipsizeMode::End)
+                .build();
+            name.add_css_class("system-update-name");
+            top.append(&name);
+            let fix = gtk::Label::new(Some(&match &a.fixed {
+                Some(v) => format!("fixed in {v}"),
+                None => "no fix yet".to_string(),
+            }));
+            fix.add_css_class("system-update-version");
+            top.append(&fix);
+            inner.append(&top);
+            let detail = gtk::Label::builder()
+                .label(format!(
+                    "{} · {} · {}",
+                    a.id,
+                    a.kind,
+                    cve_summary(&a.issues)
+                ))
+                .xalign(0.0)
+                .ellipsize(gtk::pango::EllipsizeMode::End)
+                .build();
+            detail.add_css_class("system-update-version");
+            inner.append(&detail);
+            match a.url() {
+                Some(url) => {
+                    let row = gtk::Button::builder().child(&inner).build();
+                    row.add_css_class("ok-button-flat");
+                    row.set_tooltip_text(Some("Open the advisory on security.archlinux.org"));
+                    let s = sender.clone();
+                    row.connect_clicked(move |_| {
+                        s.input(SystemUpdateMenuWidgetInput::OpenUrl(url.clone()))
+                    });
+                    rows.append(&row);
+                }
+                None => rows.append(&inner),
+            }
+        }
+        list.append(&rows);
+    }
+}
+
+fn cve_summary(issues: &[String]) -> String {
+    match issues {
+        [] => "no CVE".to_string(),
+        [one] => one.clone(),
+        [first, rest @ ..] => format!("{first} +{}", rest.len()),
+    }
 }
 
 fn info_label(text: &str) -> gtk::Label {

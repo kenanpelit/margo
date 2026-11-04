@@ -7,6 +7,7 @@
 //! flatpak). On non-Arch systems the repo source degrades to a
 //! count-only probe via dnf / apt (no per-package versions).
 
+pub(crate) mod audit;
 pub(crate) mod history;
 pub(crate) mod ignore;
 pub(crate) mod news;
@@ -76,6 +77,9 @@ pub(crate) struct UpdateReport {
     /// Pending updates the user hid from the count (still upgraded).
     #[serde(default)]
     pub(crate) hidden: Vec<UpdateEntry>,
+    /// arch-audit result (`Off` when disabled or not probed).
+    #[serde(default)]
+    pub(crate) audit: audit::AuditState,
 }
 
 impl UpdateReport {
@@ -215,6 +219,24 @@ pub(crate) async fn probe(cfg: ProbeConfig) -> UpdateReport {
         .hidden_packages()
         .get_untracked();
     ignore::apply_hidden(&mut report, &hidden);
+    report
+}
+
+/// [`probe`] plus the arch-audit advisories when enabled — what the
+/// pill and the panel show. (The overview's repo-only count probe
+/// stays on plain [`probe`]: no tracker download for a number.)
+pub(crate) async fn probe_with_audit(cfg: ProbeConfig) -> UpdateReport {
+    let mut report = probe(cfg).await;
+    let enabled = config_manager()
+        .config()
+        .bars()
+        .widgets()
+        .system_update()
+        .check_audit()
+        .get_untracked();
+    if enabled {
+        report.audit = audit::probe().await;
+    }
     report
 }
 
@@ -711,6 +733,7 @@ mod tests {
                 error: Some("boom".into()),
                 download_bytes: Some(7),
                 hidden: vec![entry(Source::Repo, "h", None, None)],
+                audit: audit::AuditState::Missing,
             },
         };
         let back: UpdateCache =

@@ -121,6 +121,22 @@ impl Component for SystemUpdateModel {
                         #[watch]
                         set_visible: count_of(model.report.as_ref()) > 0,
                     },
+
+                    // arch-audit badge: advisories affecting installed
+                    // packages, tinted by the worst severity (§2).
+                    gtk::Box {
+                        set_spacing: 2,
+                        #[watch]
+                        set_css_classes: &audit_classes(model.report.as_ref()),
+                        #[watch]
+                        set_visible: audit_count(model.report.as_ref()) > 0,
+                        gtk::Image { set_icon_name: Some("security-low-symbolic") },
+                        gtk::Label {
+                            add_css_class: "system-update-bar-label",
+                            #[watch]
+                            set_label: &audit_count(model.report.as_ref()).to_string(),
+                        },
+                    },
                 },
             },
         }
@@ -213,7 +229,7 @@ impl Component for SystemUpdateModel {
                         LAST_PROBE_SECS.store(now, Ordering::Relaxed);
                     }
 
-                    let report = system_update::probe(ProbeConfig::from_config()).await;
+                    let report = system_update::probe_with_audit(ProbeConfig::from_config()).await;
                     system_update::save_cache(&report);
                     let _ = out.send(SystemUpdateCommandOutput::Refreshed(report));
                     next_delay = configured_interval();
@@ -339,6 +355,18 @@ fn label_for(report: Option<&UpdateReport>) -> String {
     }
 }
 
+fn audit_count(report: Option<&UpdateReport>) -> usize {
+    report.map_or(0, |r| r.audit.advisories().len())
+}
+
+fn audit_classes(report: Option<&UpdateReport>) -> Vec<&'static str> {
+    let sev = report.and_then(|r| system_update::audit::worst(r.audit.advisories()));
+    match sev {
+        Some(s) => vec!["system-update-audit", s.css_class()],
+        None => vec!["system-update-audit"],
+    }
+}
+
 fn tooltip(report: Option<&UpdateReport>) -> String {
     let footer = "\n\nClick: open panel  ·  Right-click: re-check";
     let Some(r) = report else {
@@ -347,8 +375,18 @@ fn tooltip(report: Option<&UpdateReport>) -> String {
     if let Some(err) = &r.error {
         return format!("Updates: {err}{footer}");
     }
+    let advisories = r.audit.advisories();
+    let audit_line = system_update::audit::worst(advisories).map(|w| {
+        format!(
+            "\n{} security advisor{} (worst: {})",
+            advisories.len(),
+            if advisories.len() == 1 { "y" } else { "ies" },
+            w.label()
+        )
+    });
+    let audit_line = audit_line.unwrap_or_default();
     if r.is_empty() {
-        return format!("System is up to date{footer}");
+        return format!("System is up to date{audit_line}{footer}");
     }
     let mut lines = vec![format!("{} update(s) pending", r.total())];
     for src in [Source::Repo, Source::Aur, Source::Flatpak] {
@@ -366,5 +404,5 @@ fn tooltip(report: Option<&UpdateReport>) -> String {
             system_update::size::human(bytes)
         ));
     }
-    format!("{}{footer}", lines.join("\n"))
+    format!("{}{audit_line}{footer}", lines.join("\n"))
 }
