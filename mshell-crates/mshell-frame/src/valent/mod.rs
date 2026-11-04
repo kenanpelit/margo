@@ -1,19 +1,26 @@
 //! Shared Valent (KDE Connect for GNOME) integration core, used by
 //! the Valent bar pill and its panel menu. Ports the noctalia
 //! `valent-connect` plugin: it talks to the `ca.andyholmes.Valent`
-//! session-bus service through `gdbus` and exposes device discovery,
-//! battery / connectivity stats, and the find / ping / browse /
-//! share (file / text) / clipboard push-pull / pair / unpair actions.
+//! session-bus service and exposes device discovery, battery /
+//! connectivity stats, and the find / ping / browse / share (file /
+//! text) / clipboard push-pull / pair / unpair actions.
 //!
-//! We shell out to `gdbus` (rather than wiring a zbus proxy) for the
-//! same reason the plugin does: Valent's per-device API is a
-//! `org.gtk.Actions` GActionGroup whose Describe/Activate payloads are
-//! deeply-nested `av` variants that are far easier to drive via the
-//! CLI's GVariant text form than to model in Rust.
+//! The periodic [`probe`] (NameHasOwner, GetManagedObjects and the
+//! `org.gtk.Actions.Describe` state reads) goes over mshell's shared
+//! zbus session connection: it runs every few seconds, and the old
+//! `gdbus` spawns cost a process plus a fresh bus connection each. The
+//! user-triggered actions still shell out to `gdbus`, whose GVariant
+//! text form is the easy way to build their nested `av` parameters.
 
-use regex::Regex;
+use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{ConfigStoreFields, ValentStoreFields};
+use mshell_utils::shared_poll::SharedPoll;
+use reactive_graph::prelude::GetUntracked;
+use std::collections::HashMap;
 use std::sync::LazyLock;
+use std::time::Duration;
 use tracing::warn;
+use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
 
 const DEST: &str = "ca.andyholmes.Valent";
 const ROOT_PATH: &str = "/ca/andyholmes/Valent";
@@ -56,7 +63,7 @@ impl Device {
 }
 
 /// A full snapshot of the Valent daemon + its devices.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct ValentReport {
     /// `ca.andyholmes.Valent` is on the session bus.
     pub(crate) daemon_available: bool,
@@ -120,280 +127,233 @@ fn device_path(id: &str) -> String {
 
 // ── Probe ───────────────────────────────────────────────────────
 
+/// One D-Bus property / state dictionary.
+type Props = HashMap<String, OwnedValue>;
+/// `org.freedesktop.DBus.ObjectManager.GetManagedObjects` reply.
+type ManagedObjects = HashMap<OwnedObjectPath, HashMap<String, Props>>;
+
+const DEVICE_IFACE: &str = "ca.andyholmes.Valent.Device";
+
+/// The bar pills' shared Valent poll: one loop for every bar, every
+/// `valent.poll_interval_secs`, only while a pill is mapped.
+pub(crate) static VALENT_POLL: LazyLock<SharedPoll<ValentReport>> =
+    LazyLock::new(|| SharedPoll::new(poll_interval, || Box::pin(probe())));
+
+fn poll_interval() -> Duration {
+    let secs = config_manager()
+        .config()
+        .valent()
+        .poll_interval_secs()
+        .get_untracked();
+    Duration::from_secs(secs.max(1) as u64)
+}
+
 /// Full probe: daemon presence → managed devices → per-device battery
 /// + connectivity for the paired/reachable ones.
 pub(crate) async fn probe() -> ValentReport {
-    if !daemon_available().await {
-        return ValentReport::default();
-    }
-
-    let managed = match run(&[
-        "call",
-        "--session",
-        "--dest",
-        DEST,
-        "--object-path",
-        ROOT_PATH,
-        "--method",
-        "org.freedesktop.DBus.ObjectManager.GetManagedObjects",
-    ])
-    .await
-    {
-        Ok(out) => out,
+    let conn = match mshell_services::systemd::session_bus().await {
+        Ok(conn) => conn,
         Err(e) => {
-            warn!(error = %e, "valent: GetManagedObjects failed");
+            warn!(error = %e, "valent: no session bus");
             return ValentReport::default();
         }
     };
-
-    let mut devices = parse_devices(&managed);
-
-    for dev in devices.iter_mut() {
-        if dev.paired && dev.reachable {
-            fetch_battery(dev).await;
-            fetch_connectivity(dev).await;
+    match probe_on(&conn).await {
+        Ok(report) => report,
+        Err(e) => {
+            warn!(error = %e, "valent: probe failed");
+            ValentReport::default()
         }
     }
+}
 
+async fn probe_on(conn: &zbus::Connection) -> zbus::Result<ValentReport> {
+    let has_owner: bool = conn
+        .call_method(
+            Some("org.freedesktop.DBus"),
+            "/org/freedesktop/DBus",
+            Some("org.freedesktop.DBus"),
+            "NameHasOwner",
+            &(DEST,),
+        )
+        .await?
+        .body()
+        .deserialize()?;
+    if !has_owner {
+        return Ok(ValentReport::default());
+    }
+
+    let managed: ManagedObjects = conn
+        .call_method(
+            Some(DEST),
+            ROOT_PATH,
+            Some("org.freedesktop.DBus.ObjectManager"),
+            "GetManagedObjects",
+            &(),
+        )
+        .await?
+        .body()
+        .deserialize()?;
+
+    let mut devices = devices_from_managed(&managed);
+    for dev in devices.iter_mut() {
+        if dev.paired && dev.reachable {
+            if let Some(state) = describe_state(conn, &dev.id, "battery.state").await {
+                apply_battery(dev, &state);
+            }
+            if let Some(state) = describe_state(conn, &dev.id, "connectivity_report.state").await {
+                apply_connectivity(dev, &state);
+            }
+        }
+    }
     devices.sort_by_key(|a| a.name.to_lowercase());
 
-    ValentReport {
+    Ok(ValentReport {
         daemon_available: true,
         devices,
-    }
+    })
 }
 
-async fn daemon_available() -> bool {
-    match run(&[
-        "call",
-        "--session",
-        "--dest",
-        "org.freedesktop.DBus",
-        "--object-path",
-        "/org/freedesktop/DBus",
-        "--method",
-        "org.freedesktop.DBus.ListNames",
-    ])
-    .await
-    {
-        Ok(out) => out.contains(DEST),
-        Err(_) => false,
-    }
-}
-
-fn parse_devices(raw: &str) -> Vec<Device> {
-    static DEV_RE: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"objectpath\s+'([^']+/Device/[^']+)'").expect("valent device regex")
-    });
-    static ID_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"'Id':\s*<").unwrap());
-    static NAME_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"'Name':\s*<").unwrap());
-    static STATE_RE: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"'State':\s*<uint32\s+(\d+)>").unwrap());
-    const DEVICE_IFACE: &str = "'ca.andyholmes.Valent.Device'";
-
-    // Each device object runs from its `objectpath '…'` to the next one.
-    let objects: Vec<(usize, usize, &str)> = DEV_RE
-        .captures_iter(raw)
-        .filter_map(|cap| {
-            let whole = cap.get(0)?;
-            Some((whole.start(), whole.end(), cap.get(1)?.as_str()))
+/// The devices among the managed objects (objects under `…/Device/`
+/// carrying the Device interface).
+fn devices_from_managed(managed: &ManagedObjects) -> Vec<Device> {
+    let mut devices: Vec<Device> = managed
+        .iter()
+        .filter_map(|(path, ifaces)| {
+            let tail = path.as_str().split_once("/Device/")?.1;
+            Some(device_from_props(tail, ifaces.get(DEVICE_IFACE)?))
         })
         .collect();
-
-    let mut devices = Vec::new();
-    for (i, &(_, body_start, path)) in objects.iter().enumerate() {
-        let body_end = objects.get(i + 1).map_or(raw.len(), |o| o.0);
-        let body = &raw[body_start..body_end];
-        // The Device interface's property dict, wherever it sits among the
-        // object's interfaces.
-        let Some(props) = body.find(DEVICE_IFACE).and_then(|at| {
-            let after = &body[at + DEVICE_IFACE.len()..];
-            gvariant_dict_body(&after[after.find('{')?..])
-        }) else {
-            continue;
-        };
-
-        let id = gvariant_string_after(props, &ID_RE)
-            .unwrap_or_else(|| path.split("/Device/").nth(1).unwrap_or(path).to_string());
-        let name = gvariant_string_after(props, &NAME_RE).unwrap_or_else(|| id.clone());
-        let state: u32 = STATE_RE
-            .captures(props)
-            .and_then(|c| c[1].parse().ok())
-            .unwrap_or(0);
-
-        devices.push(Device {
-            id,
-            name,
-            reachable: state & STATE_CONNECTED != 0,
-            paired: state & STATE_PAIRED != 0,
-            pair_requested: state & STATE_PAIR_OUTGOING != 0,
-            pair_incoming: state & STATE_PAIR_INCOMING != 0,
-            battery_charge: None,
-            battery_charging: false,
-            network_type: String::new(),
-            network_strength: -1,
-        });
-    }
+    // HashMap order is arbitrary; keep the result deterministic.
+    devices.sort_by(|a, b| a.id.cmp(&b.id));
     devices
 }
 
-/// The GVariant string literal right after the first match of `key_re`
-/// (which ends just before the literal), unescaped.
-fn gvariant_string_after(text: &str, key_re: &Regex) -> Option<String> {
-    let m = key_re.find(text)?;
-    gvariant_string_literal(&text[m.end()..])
+/// A device from its Device-interface properties. `path_tail` (the escaped
+/// id in the object path) stands in for a missing `Id`.
+fn device_from_props(path_tail: &str, props: &Props) -> Device {
+    let id = prop(props, "Id")
+        .and_then(as_str)
+        .unwrap_or_else(|| path_tail.to_string());
+    let name = prop(props, "Name")
+        .and_then(as_str)
+        .unwrap_or_else(|| id.clone());
+    let state = prop(props, "State").and_then(as_u32).unwrap_or(0);
+    Device {
+        id,
+        name,
+        reachable: state & STATE_CONNECTED != 0,
+        paired: state & STATE_PAIRED != 0,
+        pair_requested: state & STATE_PAIR_OUTGOING != 0,
+        pair_incoming: state & STATE_PAIR_INCOMING != 0,
+        battery_charge: None,
+        battery_charging: false,
+        network_type: String::new(),
+        network_strength: -1,
+    }
 }
 
-/// Parse a GVariant text-format string literal at the start of `s`:
-/// `'…'`, or `"…"` (what `g_variant_print` uses when the string contains
-/// a `'`), with backslash escapes. `None` if it isn't one or never ends.
-fn gvariant_string_literal(s: &str) -> Option<String> {
-    let quote = s.chars().next().filter(|c| *c == '\'' || *c == '"')?;
-    let mut out = String::new();
-    let mut chars = s.chars().skip(1);
-    while let Some(c) = chars.next() {
-        if c == quote {
-            return Some(out);
-        }
-        if c != '\\' {
-            out.push(c);
-            continue;
-        }
-        let esc = chars.next()?;
-        let hex_digits = match esc {
-            'u' => 4,
-            'U' => 8,
-            _ => 0,
-        };
-        if hex_digits == 0 {
-            out.push(match esc {
-                'n' => '\n',
-                't' => '\t',
-                'r' => '\r',
-                'a' => '\u{7}',
-                'b' => '\u{8}',
-                'f' => '\u{c}',
-                'v' => '\u{b}',
-                other => other,
-            });
-            continue;
-        }
-        let mut code = 0u32;
-        for _ in 0..hex_digits {
-            code = code * 16 + chars.next()?.to_digit(16)?;
-        }
-        out.push(char::from_u32(code)?);
-    }
-    None
+/// `org.gtk.Actions.Describe(action)` → `(enabled, param type, [state])`;
+/// the state of the battery / connectivity actions is an `a{sv}`.
+async fn describe_state(conn: &zbus::Connection, id: &str, action: &str) -> Option<Props> {
+    let path = device_path(id);
+    let reply = conn
+        .call_method(
+            Some(DEST),
+            path.as_str(),
+            Some("org.gtk.Actions"),
+            "Describe",
+            &(action,),
+        )
+        .await
+        .ok()?;
+    let (_enabled, _param, state): (bool, zbus::zvariant::Signature, Vec<OwnedValue>) =
+        reply.body().deserialize().ok()?;
+    state_props(state.first()?)
 }
 
-/// Contents of the `{…}` block at the start of `s`, skipping braces that
-/// sit inside quoted strings. `None` when `s` doesn't start with `{` or
-/// the block never closes.
-fn gvariant_dict_body(s: &str) -> Option<&str> {
-    if !s.starts_with('{') {
-        return None;
+/// The `a{sv}` inside an action state (unwrapping variants).
+fn state_props(v: &Value<'_>) -> Option<Props> {
+    match v {
+        Value::Value(inner) => state_props(inner),
+        Value::Dict(_) => Props::try_from(v.try_clone().ok()?).ok(),
+        _ => None,
     }
-    let mut depth = 0usize;
-    let mut quote: Option<char> = None;
-    let mut escaped = false;
-    for (i, c) in s.char_indices() {
-        if let Some(q) = quote {
-            if escaped {
-                escaped = false;
-            } else if c == '\\' {
-                escaped = true;
-            } else if c == q {
-                quote = None;
-            }
-            continue;
-        }
-        match c {
-            '\'' | '"' => quote = Some(c),
-            '{' => depth += 1,
-            '}' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(&s[1..i]);
-                }
-            }
-            _ => {}
-        }
-    }
-    None
 }
 
-/// `org.gtk.Actions.Describe battery.state` →
-/// `(… [<{'charging': <false>, 'percentage': <64.0>, …}>] …)`.
-async fn fetch_battery(dev: &mut Device) {
-    let path = device_path(&dev.id);
-    let Ok(out) = describe(&path, "battery.state").await else {
-        return;
-    };
-    let (charge, charging) = parse_battery(&out);
-    if charge.is_some() {
-        dev.battery_charge = charge;
+/// `battery.state` → `{'charging': <b>, 'percentage': <d>, …}`.
+fn apply_battery(dev: &mut Device, state: &Props) {
+    if let Some(pct) = prop(state, "percentage").and_then(as_f64) {
+        dev.battery_charge = Some(pct.round() as i32);
     }
-    if let Some(charging) = charging {
+    if let Some(charging) = prop(state, "charging").and_then(as_bool) {
         dev.battery_charging = charging;
     }
 }
 
-/// `(percentage, charging)` from a `battery.state` Describe reply.
-fn parse_battery(out: &str) -> (Option<i32>, Option<bool>) {
-    static PCT_RE: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"'percentage':\s*<([0-9.]+)>").unwrap());
-    static CHG_RE: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"'charging':\s*<(true|false)>").unwrap());
-    let charge = PCT_RE
-        .captures(out)
-        .and_then(|c| c[1].parse::<f64>().ok())
-        .map(|pct| pct.round() as i32);
-    let charging = CHG_RE.captures(out).map(|c| &c[1] == "true");
-    (charge, charging)
-}
-
-/// `org.gtk.Actions.Describe connectivity_report.state` →
-/// `… {'network-type': <'LTE'>, 'signal-strength': <int64 3>} …`.
-async fn fetch_connectivity(dev: &mut Device) {
-    let path = device_path(&dev.id);
-    let Ok(out) = describe(&path, "connectivity_report.state").await else {
-        return;
-    };
-    let (network_type, strength) = parse_connectivity(&out);
-    if let Some(t) = network_type {
+/// `connectivity_report.state` →
+/// `{'network-type': <s>, 'signal-strength': <x>}` (an unusable strength
+/// reads as `-1`, unknown).
+fn apply_connectivity(dev: &mut Device, state: &Props) {
+    if let Some(t) = prop(state, "network-type").and_then(as_str) {
         dev.network_type = t;
     }
-    if let Some(s) = strength {
-        dev.network_strength = s;
+    if let Some(v) = prop(state, "signal-strength") {
+        dev.network_strength = as_i64(v)
+            .and_then(|n| i32::try_from(n).ok())
+            .filter(|n| *n >= 0)
+            .unwrap_or(-1);
     }
 }
 
-/// `(network type, signal strength)` from a `connectivity_report.state`
-/// Describe reply. An unparsable strength reads as `-1` (unknown).
-fn parse_connectivity(out: &str) -> (Option<String>, Option<i32>) {
-    static TYPE_RE: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"'network-type':\s*<'([^']+)'>").unwrap());
-    static SIG_RE: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"'signal-strength':\s*<(?:int64\s+)?(\d+)>").unwrap());
-    let network_type = TYPE_RE.captures(out).map(|c| c[1].to_string());
-    let strength = SIG_RE.captures(out).map(|c| c[1].parse().unwrap_or(-1));
-    (network_type, strength)
+fn prop<'p>(props: &'p Props, key: &str) -> Option<&'p Value<'static>> {
+    props.get(key).map(|v| &**v)
 }
 
-async fn describe(path: &str, action: &str) -> Result<String, String> {
-    run(&[
-        "call",
-        "--session",
-        "--dest",
-        DEST,
-        "--object-path",
-        path,
-        "--method",
-        "org.gtk.Actions.Describe",
-        action,
-    ])
-    .await
+/// `v` without any variant wrapping.
+fn unwrap_variant<'v>(v: &'v Value<'v>) -> &'v Value<'v> {
+    match v {
+        Value::Value(inner) => unwrap_variant(inner),
+        other => other,
+    }
+}
+
+fn as_str(v: &Value<'_>) -> Option<String> {
+    match unwrap_variant(v) {
+        Value::Str(s) => Some(s.to_string()),
+        _ => None,
+    }
+}
+
+fn as_bool(v: &Value<'_>) -> Option<bool> {
+    match unwrap_variant(v) {
+        Value::Bool(b) => Some(*b),
+        _ => None,
+    }
+}
+
+fn as_i64(v: &Value<'_>) -> Option<i64> {
+    match unwrap_variant(v) {
+        Value::U8(n) => Some(i64::from(*n)),
+        Value::I16(n) => Some(i64::from(*n)),
+        Value::U16(n) => Some(i64::from(*n)),
+        Value::I32(n) => Some(i64::from(*n)),
+        Value::U32(n) => Some(i64::from(*n)),
+        Value::I64(n) => Some(*n),
+        Value::U64(n) => i64::try_from(*n).ok(),
+        _ => None,
+    }
+}
+
+fn as_u32(v: &Value<'_>) -> Option<u32> {
+    as_i64(v).and_then(|n| u32::try_from(n).ok())
+}
+
+fn as_f64(v: &Value<'_>) -> Option<f64> {
+    match unwrap_variant(v) {
+        Value::F64(f) => Some(*f),
+        other => as_i64(other).map(|n| n as f64),
+    }
 }
 
 // ── Actions ─────────────────────────────────────────────────────
@@ -510,18 +470,55 @@ async fn run(args: &[&str]) -> Result<String, String> {
 mod tests {
     use super::*;
 
-    /// `gdbus call … GetManagedObjects` output for a paired, connected
-    /// phone and a discovered, unpaired laptop.
-    const MANAGED: &str = "({objectpath '/ca/andyholmes/Valent/Device/3f2a91c0': \
-        {'ca.andyholmes.Valent.Device': {'IconName': <'phone-symbolic'>, \
-        'Id': <'3f2a91c0'>, 'Name': <'Pixel 7'>, 'State': <uint32 3>, 'Type': <'phone'>}}, \
-        objectpath '/ca/andyholmes/Valent/Device/laptop_2d01': \
-        {'ca.andyholmes.Valent.Device': {'IconName': <'computer-symbolic'>, \
-        'Id': <'laptop-01'>, 'Name': <'ThinkPad'>, 'State': <uint32 1>, 'Type': <'laptop'>}}},)";
+    fn ov<'a>(v: impl Into<Value<'a>>) -> OwnedValue {
+        v.into().try_to_owned().unwrap()
+    }
+
+    fn props(entries: &[(&str, OwnedValue)]) -> Props {
+        entries
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.try_clone().unwrap()))
+            .collect()
+    }
+
+    fn object(path: &str, ifaces: Vec<(&str, Props)>) -> (OwnedObjectPath, HashMap<String, Props>) {
+        (
+            OwnedObjectPath::try_from(path).unwrap(),
+            ifaces
+                .into_iter()
+                .map(|(i, p)| (i.to_string(), p))
+                .collect(),
+        )
+    }
+
+    fn device_props(id: &str, name: &str, state: u32) -> Props {
+        props(&[
+            ("IconName", ov("phone-symbolic")),
+            ("Id", ov(id)),
+            ("Name", ov(name)),
+            ("State", ov(state)),
+        ])
+    }
+
+    /// A paired, connected phone and a discovered, unpaired laptop.
+    fn managed() -> ManagedObjects {
+        [
+            object(
+                "/ca/andyholmes/Valent/Device/3f2a91c0",
+                vec![(DEVICE_IFACE, device_props("3f2a91c0", "Pixel 7", 3))],
+            ),
+            object(
+                "/ca/andyholmes/Valent/Device/laptop_2d01",
+                vec![(DEVICE_IFACE, device_props("laptop-01", "ThinkPad", 1))],
+            ),
+        ]
+        .into_iter()
+        .collect()
+    }
 
     #[test]
     fn parses_managed_objects() {
-        let devices = parse_devices(MANAGED);
+        let devices = devices_from_managed(&managed());
         assert_eq!(devices.len(), 2);
         let phone = &devices[0];
         assert_eq!(
@@ -543,11 +540,7 @@ mod tests {
     #[test]
     fn state_bits_map_to_flags() {
         let with_state = |state: u32| {
-            let raw = format!(
-                "({{objectpath '/ca/andyholmes/Valent/Device/x': \
-                 {{'ca.andyholmes.Valent.Device': {{'Id': <'x'>, 'State': <uint32 {state}>}}}}}},)"
-            );
-            let d = parse_devices(&raw).pop().unwrap();
+            let d = device_from_props("x", &props(&[("Id", ov("x")), ("State", ov(state))]));
             (d.reachable, d.paired, d.pair_incoming, d.pair_requested)
         };
         assert_eq!(with_state(0), (false, false, false, false));
@@ -565,107 +558,114 @@ mod tests {
 
     #[test]
     fn missing_properties_fall_back() {
-        let raw = "({objectpath '/ca/andyholmes/Valent/Device/abc_2d1': \
-                   {'ca.andyholmes.Valent.Device': {'IconName': <'phone-symbolic'>}}},)";
-        let d = parse_devices(raw).pop().unwrap();
+        let d = device_from_props("abc_2d1", &props(&[("IconName", ov("phone-symbolic"))]));
         assert_eq!(d.id, "abc_2d1", "id falls back to the object-path tail");
         assert_eq!(d.name, d.id, "name falls back to the id");
         assert!(!d.reachable && !d.paired, "no State means not connected");
+        // A wrongly typed property is ignored rather than misread.
+        let d = device_from_props("p", &props(&[("Name", ov(7u32)), ("State", ov("3"))]));
+        assert_eq!((d.name.as_str(), d.paired), ("p", false));
     }
 
     #[test]
-    fn no_devices_or_garbage_yields_nothing() {
-        assert!(parse_devices("(@a{oa{sa{sv}}} {},)").is_empty());
-        assert!(parse_devices("").is_empty());
-        assert!(
-            parse_devices("Error: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown")
-                .is_empty()
+    fn non_device_objects_are_skipped() {
+        let managed: ManagedObjects = [
+            // The manager's own path is not a device.
+            object(
+                "/ca/andyholmes/Valent",
+                vec![("org.gtk.Actions", Props::new())],
+            ),
+            // A device path without the Device interface.
+            object(
+                "/ca/andyholmes/Valent/Device/x",
+                vec![("org.freedesktop.DBus.Properties", Props::new())],
+            ),
+            // The Device interface among others; names with quotes and
+            // non-ASCII need no escaping any more.
+            object(
+                "/ca/andyholmes/Valent/Device/y",
+                vec![
+                    ("org.example.Other", props(&[("Name", ov("not it"))])),
+                    (DEVICE_IFACE, device_props("y", "Kenan's Çağrı {tab}", 2)),
+                ],
+            ),
+        ]
+        .into_iter()
+        .collect();
+        let devices = devices_from_managed(&managed);
+        assert_eq!(devices.len(), 1);
+        assert_eq!(devices[0].name, "Kenan's Çağrı {tab}");
+        assert!(devices[0].paired && !devices[0].reachable);
+        assert!(devices_from_managed(&ManagedObjects::new()).is_empty());
+    }
+
+    #[test]
+    fn battery_state() {
+        let mut d = Device::default();
+        apply_battery(
+            &mut d,
+            &props(&[
+                ("charging", ov(true)),
+                ("percentage", ov(63.6f64)),
+                ("icon-name", ov("battery-good")),
+            ]),
         );
-        // The manager's own path is not a device.
-        assert!(
-            parse_devices("({objectpath '/ca/andyholmes/Valent': {'org.gtk.Actions': {}}},)")
-                .is_empty()
+        assert_eq!((d.battery_charge, d.battery_charging), (Some(64), true));
+        apply_battery(
+            &mut d,
+            &props(&[("charging", ov(false)), ("percentage", ov(100.0f64))]),
         );
+        assert_eq!((d.battery_charge, d.battery_charging), (Some(100), false));
+        // Nothing reported: unchanged.
+        apply_battery(&mut d, &Props::new());
+        assert_eq!(d.battery_charge, Some(100));
     }
 
     #[test]
-    fn names_with_apostrophes_are_parsed() {
-        // g_variant_print switches to double quotes when the string
-        // contains a `'`; the old `'([^']+)'` regex fell back to the id.
-        let raw = "({objectpath '/ca/andyholmes/Valent/Device/p1': \
-                   {'ca.andyholmes.Valent.Device': {'Id': <'p1'>, \
-                   'Name': <\"Kenan's Pixel\">, 'State': <uint32 3>}}},)";
-        assert_eq!(parse_devices(raw)[0].name, "Kenan's Pixel");
-        // Both quote kinds: single-quoted with `\'`.
-        let raw = "({objectpath '/ca/andyholmes/Valent/Device/p2': \
-                   {'ca.andyholmes.Valent.Device': {'Id': <'p2'>, \
-                   'Name': <'Bob\\'s \"work\" phone'>, 'State': <uint32 1>}}},)";
-        assert_eq!(parse_devices(raw)[0].name, "Bob's \"work\" phone");
-    }
-
-    #[test]
-    fn names_with_braces_and_non_ascii_are_parsed() {
-        let raw = "({objectpath '/ca/andyholmes/Valent/Device/p3': \
-                   {'ca.andyholmes.Valent.Device': {'Id': <'p3'>, \
-                   'Name': <'Çağrı {tab}'>, 'State': <uint32 3>}}},)";
-        let d = parse_devices(raw).pop().unwrap();
-        assert_eq!(d.name, "Çağrı {tab}");
-        assert!(d.reachable && d.paired, "props after the brace still read");
-        assert_eq!(
-            gvariant_string_literal(r"'tab\there \u00e7'").as_deref(),
-            Some("tab\there ç")
+    fn connectivity_state() {
+        let mut d = Device {
+            network_strength: -1,
+            ..Default::default()
+        };
+        apply_connectivity(
+            &mut d,
+            &props(&[("network-type", ov("LTE")), ("signal-strength", ov(3i64))]),
         );
+        assert_eq!((d.network_type.as_str(), d.network_strength), ("LTE", 3));
+        apply_connectivity(
+            &mut d,
+            &props(&[("network-type", ov("5G")), ("signal-strength", ov(4i32))]),
+        );
+        assert_eq!((d.network_type.as_str(), d.network_strength), ("5G", 4));
+        apply_connectivity(&mut d, &props(&[("signal-strength", ov("strong"))]));
+        assert_eq!(d.network_strength, -1, "unusable strength is unknown");
     }
 
     #[test]
-    fn device_interface_need_not_come_first() {
-        let raw = "({objectpath '/ca/andyholmes/Valent/Device/p4': \
-                   {'org.freedesktop.DBus.Properties': {}, \
-                   'ca.andyholmes.Valent.Device': {'Id': <'p4'>, 'Name': <'Tab'>, \
-                   'State': <uint32 2>}, \
-                   'org.example.Other': {'Name': <'not the device name'>}}},)";
-        let d = parse_devices(raw).pop().unwrap();
-        assert_eq!((d.id.as_str(), d.name.as_str()), ("p4", "Tab"));
-        assert!(d.paired && !d.reachable);
+    fn action_state_dict_is_found_inside_variants() {
+        let dict = props(&[("percentage", ov(50.0f64))]);
+        let as_value = Value::from(
+            dict.iter()
+                .map(|(k, v)| (k.clone(), v.try_clone().unwrap()))
+                .collect::<HashMap<_, _>>(),
+        );
+        let wrapped = Value::Value(Box::new(as_value.try_clone().unwrap()));
+        for v in [&as_value, &wrapped] {
+            let got = state_props(v).expect("dict");
+            assert_eq!(prop(&got, "percentage").and_then(as_f64), Some(50.0));
+        }
+        assert!(state_props(&Value::from(3u32)).is_none());
     }
 
-    #[test]
-    fn objects_without_the_device_interface_are_skipped() {
-        let raw = "({objectpath '/ca/andyholmes/Valent/Device/x': \
-                   {'org.freedesktop.DBus.Properties': {}}, \
-                   objectpath '/ca/andyholmes/Valent/Device/y': \
-                   {'ca.andyholmes.Valent.Device': {'Id': <'y'>}}},)";
-        let ids: Vec<_> = parse_devices(raw).into_iter().map(|d| d.id).collect();
-        assert_eq!(ids, ["y"]);
-    }
-
-    #[test]
-    fn unterminated_literals_and_blocks_are_rejected() {
-        assert_eq!(gvariant_string_literal("'open"), None);
-        assert_eq!(gvariant_string_literal("bare"), None);
-        assert_eq!(gvariant_string_literal(r"'\u12'"), None);
-        assert_eq!(gvariant_dict_body("{'a': <'}'>"), None);
-        assert_eq!(gvariant_dict_body("x{}"), None);
-        assert_eq!(gvariant_dict_body("{'a': <'}'>} tail"), Some("'a': <'}'>"));
-    }
-
-    #[test]
-    fn battery_reply() {
-        let out =
-            "([<{'charging': <true>, 'percentage': <63.6>, 'icon-name': <'battery-good'>}>],)";
-        assert_eq!(parse_battery(out), (Some(64), Some(true)));
-        let out = "([<{'charging': <false>, 'percentage': <100.0>}>],)";
-        assert_eq!(parse_battery(out), (Some(100), Some(false)));
-        assert_eq!(parse_battery("([],)"), (None, None));
-    }
-
-    #[test]
-    fn connectivity_reply() {
-        let out = "([<{'network-type': <'LTE'>, 'signal-strength': <int64 3>}>],)";
-        assert_eq!(parse_connectivity(out), (Some("LTE".into()), Some(3)));
-        let out = "([<{'network-type': <'5G'>, 'signal-strength': <4>}>],)";
-        assert_eq!(parse_connectivity(out), (Some("5G".into()), Some(4)));
-        assert_eq!(parse_connectivity("([],)"), (None, None));
+    /// Read-only probe against the live session bus (`cargo test -- --ignored
+    /// live_probe`): checks the zbus calls and reply types against a running
+    /// Valent. Not part of the normal run.
+    #[tokio::test]
+    #[ignore]
+    async fn live_probe() {
+        let conn = zbus::Connection::session().await.expect("session bus");
+        let report = probe_on(&conn).await.expect("probe");
+        eprintln!("{report:?}");
     }
 
     #[test]

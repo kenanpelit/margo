@@ -3,7 +3,10 @@
 //! copy of a string-search JSON "parser" that broke on `"key": "v"` spacing
 //! or an escaped quote.)
 
+use crate::shared_poll::SharedPoll;
 use serde::Deserialize;
+use std::sync::LazyLock;
+use std::time::Duration;
 
 /// `mvpn status --json`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
@@ -35,6 +38,42 @@ impl VpnStatus {
         }
         s
     }
+}
+
+/// What the shared VPN poll reports: the tunnel plus the blocky DNS guard.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct VpnProbe {
+    pub status: VpnStatus,
+    /// `blocky.service` (the DNS guard) is active.
+    pub blocky: bool,
+}
+
+/// `mvpn` has no push API, so this polls every 5 s. One loop for the whole
+/// shell, shared by every VPN pill and the VPN toast, running only while one
+/// of them is active (a pill mapped, or the toast switched on). Each pill
+/// used to run its own `mvpn status` + `systemctl is-active` per bar, and the
+/// toast producer a third `mvpn status`.
+pub static VPN_POLL: LazyLock<SharedPoll<VpnProbe>> =
+    LazyLock::new(|| SharedPoll::new(|| Duration::from_secs(5), || Box::pin(probe_vpn())));
+
+async fn probe_vpn() -> VpnProbe {
+    let status = match tokio::process::Command::new("mvpn")
+        .args(["status", "--json"])
+        .output()
+        .await
+    {
+        Ok(out) => VpnStatus::parse(&String::from_utf8_lossy(&out.stdout)),
+        Err(_) => VpnStatus::default(),
+    };
+    // The blocky DNS guard: a D-Bus property read on the shared system-bus
+    // connection, not a `systemctl` spawn.
+    let blocky = match mshell_services::systemd::system_bus().await {
+        Ok(conn) => mshell_services::systemd::unit_active(&conn, "blocky.service")
+            .await
+            .unwrap_or(false),
+        Err(_) => false,
+    };
+    VpnProbe { status, blocky }
 }
 
 /// One `mvpn fav list` row: `<ping label>  <relay>`.

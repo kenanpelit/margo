@@ -973,8 +973,10 @@ impl Component for ControlCenterTilesModel {
                         }
                     });
 
-                    // Disk refresh (once on reveal, then every 30s)
-                    sender.command(|out, shutdown| async move {
+                    // Disk refresh (once on reveal, then every 30s while
+                    // the panel is visible)
+                    let revealed = self.revealed.clone();
+                    sender.command(move |out, shutdown| async move {
                         let shutdown_fut = shutdown.wait();
                         tokio::pin!(shutdown_fut);
                         let mut first = true;
@@ -989,13 +991,18 @@ impl Component for ControlCenterTilesModel {
                                 () = &mut shutdown_fut => break,
                                 _ = tokio::time::sleep(delay) => {}
                             }
+                            if !revealed.load(Ordering::Relaxed) {
+                                continue;
+                            }
                             let usage = read_disk_usage();
                             let _ = out.send(ControlCenterTilesCommandOutput::DiskRefreshed(usage));
                         }
                     });
 
-                    // Subtitle poller for Wi-Fi / BT / VPN / audio tiles (every 5s)
-                    sender.command(|out, shutdown| async move {
+                    // Subtitle poller for Wi-Fi / BT / VPN / audio tiles
+                    // (every 5s while the panel is visible)
+                    let revealed = self.revealed.clone();
+                    sender.command(move |out, shutdown| async move {
                         let shutdown_fut = shutdown.wait();
                         tokio::pin!(shutdown_fut);
                         let mut first = true;
@@ -1006,12 +1013,17 @@ impl Component for ControlCenterTilesModel {
                                 () = &mut shutdown_fut => break,
                                 _ = tokio::time::sleep(delay) => {}
                             }
+                            if !revealed.load(Ordering::Relaxed) {
+                                continue;
+                            }
                             let _ = out.send(ControlCenterTilesCommandOutput::SubtitlesRefreshed);
                         }
                     });
 
-                    // Valent state poller (every 15s — heavier async probe)
-                    sender.command(|out, shutdown| async move {
+                    // Valent state poller (every 15s while the panel is
+                    // visible — heavier async probe)
+                    let revealed = self.revealed.clone();
+                    sender.command(move |out, shutdown| async move {
                         use crate::valent;
                         let shutdown_fut = shutdown.wait();
                         tokio::pin!(shutdown_fut);
@@ -1026,6 +1038,9 @@ impl Component for ControlCenterTilesModel {
                             tokio::select! {
                                 () = &mut shutdown_fut => break,
                                 _ = tokio::time::sleep(delay) => {}
+                            }
+                            if !revealed.load(Ordering::Relaxed) {
+                                continue;
                             }
                             let report = valent::probe().await;
                             let (subtitle, connected) = valent_state_from_report(&report);

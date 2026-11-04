@@ -1,6 +1,8 @@
 //! Mullvad VPN bar pill — native, selectable widget driving the `mvpn` binary.
 //!
-//! Polls `mvpn status --json` every few seconds; shows a shield icon tinted
+//! Reads the shared VPN poll ([`VPN_POLL`]: `mvpn status --json` every few
+//! seconds, one loop for every pill and only while one is mapped); shows a
+//! shield icon tinted
 //! with the accent (`secure` class) when the tunnel is up, with the relay +
 //! location in the tooltip. Left-click opens the shell's own native,
 //! layer-shell VPN menu (`MenuType::Vpn` — toggled via `VpnOutput::Clicked`,
@@ -9,12 +11,11 @@
 //! anti-censorship, and favourites. Right-click toggles the tunnel
 //! (`mvpn toggle`).
 
+use mshell_utils::mvpn::{VPN_POLL, VpnProbe};
+use mshell_utils::shared_poll::PollSubscription;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::time::Duration;
-
-const REFRESH_INTERVAL: Duration = Duration::from_secs(5);
-const STARTUP_DELAY: Duration = Duration::from_millis(500);
+use std::rc::Rc;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct VpnState {
@@ -28,9 +29,10 @@ pub(crate) struct VpnState {
     pub(crate) dns_label: String,
 }
 
-#[derive(Debug)]
 pub(crate) struct VpnModel {
     state: VpnState,
+    /// Active while the pill is mapped; keeps the shared poll running.
+    _poll: Rc<PollSubscription<VpnProbe>>,
 }
 
 #[derive(Debug)]
@@ -112,27 +114,34 @@ impl Component for VpnModel {
         }
         root.add_controller(right);
 
+        // Poll only while the pill is on screen (not while the bar's hidden
+        // drawer is collapsed).
+        let poll = Rc::new(VPN_POLL.subscribe());
+        {
+            let p = poll.clone();
+            root.connect_map(move |_| p.set_active(true));
+            let p = poll.clone();
+            root.connect_unmap(move |_| p.set_active(false));
+        }
+        let mut rx = poll.receiver();
         sender.command(|out, shutdown| async move {
             let shutdown_fut = shutdown.wait();
             tokio::pin!(shutdown_fut);
-            let mut first = true;
             loop {
-                let delay = if first {
-                    STARTUP_DELAY
-                } else {
-                    REFRESH_INTERVAL
-                };
-                first = false;
+                let probe = rx.borrow_and_update().clone();
+                if let Some(probe) = probe {
+                    let _ = out.send(VpnCommandOutput::Refreshed(vpn_state(probe)));
+                }
                 tokio::select! {
                     () = &mut shutdown_fut => break,
-                    _ = tokio::time::sleep(delay) => {}
+                    changed = rx.changed() => if changed.is_err() { break },
                 }
-                let _ = out.send(VpnCommandOutput::Refreshed(probe().await));
             }
         });
 
         let model = VpnModel {
             state: VpnState::default(),
+            _poll: poll,
         };
         let widgets = view_output!();
         apply_visual(&widgets.image, &widgets.label, &root, &model.state);
@@ -148,12 +157,12 @@ impl Component for VpnModel {
             }
             VpnInput::Toggle => {
                 // Toggle off-thread, then refresh sooner than the poll cycle.
-                sender.command(|out, _| async move {
+                relm4::spawn(async move {
                     let _ = tokio::process::Command::new("mvpn")
                         .arg("toggle")
                         .status()
                         .await;
-                    let _ = out.send(VpnCommandOutput::Refreshed(probe().await));
+                    VPN_POLL.refresh_now();
                 });
             }
         }
@@ -226,40 +235,20 @@ fn apply_visual(image: &gtk::Image, label: &gtk::Label, root: &gtk::Box, s: &Vpn
     }
 }
 
-/// `mvpn status --json` → VpnState. Field scan avoids a serde dependency for
-/// three values; missing `mvpn` leaves the state disconnected.
-async fn probe() -> VpnState {
-    let mut state = match tokio::process::Command::new("mvpn")
-        .args(["status", "--json"])
-        .output()
-        .await
-    {
-        Ok(out) => parse(&String::from_utf8_lossy(&out.stdout)),
-        Err(_) => VpnState::default(),
+/// The pill's view of one shared probe. The plain-DNS label is only
+/// surfaced when neither Mullvad nor blocky owns DNS.
+fn vpn_state(probe: VpnProbe) -> VpnState {
+    let mut state = VpnState {
+        connected: probe.status.connected,
+        relay: probe.status.relay,
+        location: probe.status.location,
+        blocky: probe.blocky,
+        dns_label: String::new(),
     };
-    // Blocky DNS guard state — cheap, unprivileged.
-    state.blocky = tokio::process::Command::new("systemctl")
-        .args(["is-active", "--quiet", "blocky.service"])
-        .status()
-        .await
-        .map(|s| s.success())
-        .unwrap_or(false);
-    // Only surface a plain-DNS label when neither Mullvad nor blocky owns DNS.
     if !state.connected && !state.blocky {
         state.dns_label = dns_short(&resolv_nameservers());
     }
     state
-}
-
-fn parse(json: &str) -> VpnState {
-    let s = mshell_utils::mvpn::VpnStatus::parse(json);
-    VpnState {
-        connected: s.connected,
-        relay: s.relay,
-        location: s.location,
-        blocky: false,
-        dns_label: String::new(),
-    }
 }
 
 /// Nameserver IPs from `/etc/resolv.conf`, space-joined. Empty on any error.
@@ -295,21 +284,36 @@ fn dns_short(ips: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mshell_utils::mvpn::VpnStatus;
 
-    #[test]
-    fn parses_connected() {
-        let s = parse(
-            r#"{"connected":true,"relay":"de-fra-wg-002","location":"Germany, Frankfurt. IPv4: 1.2.3.4"}"#,
-        );
-        assert!(s.connected);
-        assert_eq!(s.relay, "de-fra-wg-002");
-        assert!(s.location.starts_with("Germany"));
+    fn probe(json: &str, blocky: bool) -> VpnProbe {
+        VpnProbe {
+            status: VpnStatus::parse(json),
+            blocky,
+        }
     }
 
     #[test]
-    fn parses_disconnected() {
-        let s = parse(r#"{"connected":false,"relay":"","location":""}"#);
+    fn parses_connected() {
+        let s = vpn_state(probe(
+            r#"{"connected":true,"relay":"de-fra-wg-002","location":"Germany, Frankfurt. IPv4: 1.2.3.4"}"#,
+            false,
+        ));
+        assert!(s.connected);
+        assert_eq!(s.relay, "de-fra-wg-002");
+        assert!(s.location.starts_with("Germany"));
+        assert!(s.dns_label.is_empty(), "Mullvad owns DNS");
+    }
+
+    #[test]
+    fn parses_disconnected_with_blocky() {
+        let s = vpn_state(probe(
+            r#"{"connected":false,"relay":"","location":""}"#,
+            true,
+        ));
         assert!(!s.connected);
+        assert!(s.blocky);
         assert_eq!(s.relay, "");
+        assert!(s.dns_label.is_empty(), "blocky owns DNS");
     }
 }

@@ -2,29 +2,25 @@
 //! state + battery level. Left click opens the Valent Connect panel;
 //! right click kicks a device-discovery refresh. The probing +
 //! actions live in [`crate::valent`] so the pill and the panel share
-//! one implementation.
+//! one implementation; the pills share one poll ([`VALENT_POLL`]) that
+//! runs only while a pill is mapped.
 
-use crate::valent::{self, ValentReport};
+use crate::valent::{self, VALENT_POLL, ValentReport};
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, ValentStoreFields};
+use mshell_utils::shared_poll::PollSubscription;
 use reactive_graph::traits::{Get, GetUntracked};
 use relm4::gtk::Orientation;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::time::Duration;
-use tokio::sync::Notify;
-
-/// First probe lands shortly after launch, regardless of the
-/// configured poll interval — otherwise a large interval would leave
-/// the pill blank for a long time after login.
-const STARTUP_DELAY: Duration = Duration::from_secs(4);
+use std::rc::Rc;
 
 pub(crate) struct ValentModel {
     report: Option<ValentReport>,
     _orientation: Orientation,
-    /// Wakes the polling task for an immediate re-probe (right-click).
-    refresh_notify: std::sync::Arc<Notify>,
+    /// Active while the pill is mapped; keeps the shared poll running.
+    _poll: Rc<PollSubscription<ValentReport>>,
     _effects: EffectScope,
 }
 
@@ -106,36 +102,27 @@ impl Component for ValentModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let refresh_notify = std::sync::Arc::new(Notify::new());
-
-        let notify_for_task = refresh_notify.clone();
-        sender.command(move |out, shutdown| {
-            let notify = notify_for_task;
-            async move {
-                let shutdown_fut = shutdown.wait();
-                tokio::pin!(shutdown_fut);
-                let mut first = true;
-                loop {
-                    let delay = if first {
-                        STARTUP_DELAY
-                    } else {
-                        Duration::from_secs(
-                            config_manager()
-                                .config()
-                                .valent()
-                                .poll_interval_secs()
-                                .get_untracked()
-                                .max(1) as u64,
-                        )
-                    };
-                    first = false;
-                    tokio::select! {
-                        () = &mut shutdown_fut => break,
-                        _ = tokio::time::sleep(delay) => {}
-                        _ = notify.notified() => {}
-                    }
-                    let report = valent::probe().await;
+        // Probe only while the pill is on screen (not in a collapsed
+        // drawer); the first activation probes right away.
+        let poll = Rc::new(VALENT_POLL.subscribe());
+        {
+            let p = poll.clone();
+            root.connect_map(move |_| p.set_active(true));
+            let p = poll.clone();
+            root.connect_unmap(move |_| p.set_active(false));
+        }
+        let mut rx = poll.receiver();
+        sender.command(|out, shutdown| async move {
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            loop {
+                let report = rx.borrow_and_update().clone();
+                if let Some(report) = report {
                     let _ = out.send(ValentCommandOutput::Refreshed(report));
+                }
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    changed = rx.changed() => if changed.is_err() { break },
                 }
             }
         });
@@ -156,7 +143,7 @@ impl Component for ValentModel {
         let model = ValentModel {
             report: None,
             _orientation: params.orientation,
-            refresh_notify,
+            _poll: poll,
             _effects: effects,
         };
         let widgets = view_output!();
@@ -180,10 +167,9 @@ impl Component for ValentModel {
                 let _ = sender.output(ValentOutput::Clicked);
             }
             ValentInput::ManualRefresh => {
-                let notify = self.refresh_notify.clone();
                 relm4::spawn(async move {
                     valent::refresh_discovery().await;
-                    notify.notify_one();
+                    VALENT_POLL.refresh_now();
                 });
             }
         }

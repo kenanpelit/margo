@@ -3,16 +3,22 @@
 //!
 //! Render-only widget. Polls `podman ps` / `podman pod ps` /
 //! `podman images` every 60 s and draws an icon + tooltip
-//! summary. Click emits `PodmanOutput::Clicked`; frame toggles
+//! summary. One shared poll ([`PODMAN_POLL`]) for every bar, running only
+//! while a pill is mapped — not while it sits in a collapsed drawer. Click emits `PodmanOutput::Clicked`; frame toggles
 //! `MenuType::Podman`. Menu lives in
 //! `menu_widgets/podman/podman_menu_widget.rs`.
 
+use mshell_utils::shared_poll::{PollSubscription, SharedPoll};
 use relm4::gtk::prelude::{ButtonExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::rc::Rc;
+use std::sync::LazyLock;
 use std::time::Duration;
 
 const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
-const STARTUP_DELAY: Duration = Duration::from_secs(2);
+
+static PODMAN_POLL: LazyLock<SharedPoll<PodmanSummary>> =
+    LazyLock::new(|| SharedPoll::new(|| REFRESH_INTERVAL, || Box::pin(fetch_podman_summary())));
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct PodmanSummary {
@@ -24,9 +30,10 @@ pub(crate) struct PodmanSummary {
     pub(crate) error: Option<String>,
 }
 
-#[derive(Debug)]
 pub(crate) struct PodmanModel {
     summary: PodmanSummary,
+    /// Active while the pill is mapped; keeps the shared poll running.
+    _poll: Rc<PollSubscription<PodmanSummary>>,
 }
 
 #[derive(Debug)]
@@ -84,28 +91,32 @@ impl Component for PodmanModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        let poll = Rc::new(PODMAN_POLL.subscribe());
+        {
+            let p = poll.clone();
+            root.connect_map(move |_| p.set_active(true));
+            let p = poll.clone();
+            root.connect_unmap(move |_| p.set_active(false));
+        }
+        let mut rx = poll.receiver();
         sender.command(|out, shutdown| async move {
             let shutdown_fut = shutdown.wait();
             tokio::pin!(shutdown_fut);
-            let mut first = true;
             loop {
-                let delay = if first {
-                    STARTUP_DELAY
-                } else {
-                    REFRESH_INTERVAL
-                };
-                first = false;
+                let summary = rx.borrow_and_update().clone();
+                if let Some(s) = summary {
+                    let _ = out.send(PodmanCommandOutput::Refreshed(s));
+                }
                 tokio::select! {
                     () = &mut shutdown_fut => break,
-                    _ = tokio::time::sleep(delay) => {}
+                    changed = rx.changed() => if changed.is_err() { break },
                 }
-                let s = fetch_podman_summary().await;
-                let _ = out.send(PodmanCommandOutput::Refreshed(s));
             }
         });
 
         let model = PodmanModel {
             summary: PodmanSummary::default(),
+            _poll: poll,
         };
 
         let widgets = view_output!();

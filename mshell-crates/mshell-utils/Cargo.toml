@@ -36,6 +36,9 @@ wayle-network.workspace = true
 wayle-power-profiles.workspace = true
 wayle-weather.workspace = true
 
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+
 
 [lints]
 workspace = true

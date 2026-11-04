@@ -64,11 +64,7 @@ pub fn spawn_audio_health_watchdog() {
         // Snapshot the audio server's PIDs. wayle opened its libpulse
         // connection at startup; if any of these restarts later (a different
         // MainPID), that connection is dead with no way back.
-        // Run the blocking `systemctl` probe on the blocking pool, not on
-        // one of the (few) shared async workers this runtime has.
-        let baseline_pids = tokio::task::spawn_blocking(audio_service_pids)
-            .await
-            .unwrap_or_default();
+        let baseline_pids = audio_service_pids().await;
 
         let mut consecutive_failures: u32 = 0;
 
@@ -79,9 +75,7 @@ pub fn spawn_audio_health_watchdog() {
             // real failure mode — wayle keeps answering from its frozen device
             // store after the context dies, so the command probe below can't see
             // it. A PID change is definitive, so it needs no transient guard.
-            let current_pids = tokio::task::spawn_blocking(audio_service_pids)
-                .await
-                .unwrap_or_default();
+            let current_pids = audio_service_pids().await;
             let restarted = audio_server_restarted(&baseline_pids, &current_pids);
 
             // Secondary signal: the command channel itself went away (the
@@ -122,25 +116,23 @@ pub fn spawn_audio_health_watchdog() {
     });
 }
 
-/// `MainPID` of each [`AUDIO_SERVICES`] unit, as systemd reports it (one entry
-/// per service, in order; `"0"` = not running / absent). Empty on query
-/// failure, which callers treat as "no change" so a transient `systemctl`
-/// hiccup can't trip a false alarm.
-fn audio_service_pids() -> Vec<String> {
-    let mut args = vec!["--user", "show", "--value", "-p", "MainPID"];
-    args.extend_from_slice(AUDIO_SERVICES);
-    std::process::Command::new("systemctl")
-        .args(&args)
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| {
-            String::from_utf8_lossy(&o.stdout)
-                .lines()
-                .map(|l| l.trim().to_string())
-                .collect()
-        })
-        .unwrap_or_default()
+/// `MainPID` of each [`AUDIO_SERVICES`] unit, as the user systemd reports it
+/// over D-Bus (one entry per service, in order; `"0"` = not running /
+/// absent). Empty on query failure, which callers treat as "no change" so a
+/// transient bus hiccup can't trip a false alarm. (This used to spawn
+/// `systemctl --user show` every probe.)
+async fn audio_service_pids() -> Vec<String> {
+    let Ok(conn) = crate::systemd::session_bus().await else {
+        return Vec::new();
+    };
+    let mut pids = Vec::with_capacity(AUDIO_SERVICES.len());
+    for unit in AUDIO_SERVICES {
+        match crate::systemd::service_main_pid(&conn, unit).await {
+            Ok(pid) => pids.push(pid.to_string()),
+            Err(_) => return Vec::new(),
+        }
+    }
+    pids
 }
 
 /// True if any service that was running at `baseline` (a non-zero PID) now

@@ -5184,6 +5184,7 @@ dependencies = [
  "wayle-power-profiles",
  "wayle-systray",
  "wayle-weather",
+ "zbus",
 ]
 
 [[package]]

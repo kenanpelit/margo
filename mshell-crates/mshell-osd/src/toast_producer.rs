@@ -35,6 +35,7 @@ use mshell_utils::bluetooth::{
 };
 use mshell_utils::idle::{idle_inhibited, spawn_idle_inhibitor_watcher};
 use mshell_utils::media::spawn_media_players_watcher;
+use mshell_utils::mvpn::VPN_POLL;
 use mshell_utils::network::{
     active_network_label, spawn_network_watcher, spawn_wifi_watcher, spawn_wired_watcher,
 };
@@ -127,9 +128,6 @@ pub enum ToastProducerCmd {
     LockKeys(Option<(bool, bool)>),
 }
 
-/// Poll cadence for the `mvpn` subprocess (no push API; mirrors the VPN pill).
-const VPN_POLL: Duration = Duration::from_secs(5);
-const VPN_STARTUP_DELAY: Duration = Duration::from_millis(800);
 /// Fallback sysfs poll for a margo that doesn't publish `lock_keys`. Lock
 /// keys never toggle fast; a slow tick keeps CPU at zero.
 const LOCK_KEYS_TICK: Duration = Duration::from_millis(700);
@@ -258,24 +256,37 @@ impl Component for ToastProducerModel {
             }
         });
 
-        // VPN — poll `mvpn`, but only while VPN toasts are enabled (so the
-        // subprocess never runs when the user has the toggle off).
+        // VPN — the shared `mvpn` poll (one loop with the VPN pills),
+        // counted as a subscriber only while VPN toasts are enabled, so the
+        // subprocess never runs for the toast when the toggle is off.
+        let vpn_poll = std::rc::Rc::new(VPN_POLL.subscribe());
+        {
+            let poll = vpn_poll.clone();
+            Effect::new(move |_| {
+                let cfg = config_manager().config().toasts().get();
+                poll.set_active(cfg.enabled && cfg.vpn);
+            });
+        }
+        let mut vpn_rx = vpn_poll.receiver();
         sender.command(|out, shutdown| async move {
             let shutdown_fut = shutdown.wait();
             tokio::pin!(shutdown_fut);
-            let mut first = true;
             loop {
-                let delay = if first { VPN_STARTUP_DELAY } else { VPN_POLL };
-                first = false;
                 tokio::select! {
                     () = &mut shutdown_fut => break,
-                    _ = tokio::time::sleep(delay) => {}
+                    changed = vpn_rx.changed() => if changed.is_err() { break },
                 }
+                let connected = vpn_rx
+                    .borrow_and_update()
+                    .as_ref()
+                    .map(|p| p.status.connected);
                 let cfg = toasts_cfg();
-                if !cfg.enabled || !cfg.vpn {
-                    continue;
+                if let Some(connected) = connected
+                    && cfg.enabled
+                    && cfg.vpn
+                {
+                    let _ = out.send(ToastProducerCmd::Vpn(connected));
                 }
-                let _ = out.send(ToastProducerCmd::Vpn(vpn_connected().await));
             }
         });
 
@@ -992,20 +1003,6 @@ fn current_track() -> String {
             format_track(&title, &artist)
         }
         None => String::new(),
-    }
-}
-
-/// `mvpn status --json` → connected. Missing `mvpn` reads as disconnected.
-async fn vpn_connected() -> bool {
-    match tokio::process::Command::new("mvpn")
-        .args(["status", "--json"])
-        .output()
-        .await
-    {
-        Ok(out) => {
-            mshell_utils::mvpn::VpnStatus::parse(&String::from_utf8_lossy(&out.stdout)).connected
-        }
-        Err(_) => false,
     }
 }
 
