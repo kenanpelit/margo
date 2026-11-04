@@ -21,6 +21,15 @@ async fn main() -> anyhow::Result<()> {
                 .hidden_bar(&action, &name.unwrap_or_default())
                 .await?;
         }
+        Commands::CustomRefresh { name } => {
+            let n = shell()
+                .await?
+                .custom_refresh(&name.unwrap_or_default())
+                .await?;
+            if n == 0 {
+                eprintln!("no custom pill is listening");
+            }
+        }
         Commands::Audio { command } => mshellctl::subcommands::audio::execute(command).await?,
         Commands::Bluetooth { command } => {
             mshellctl::subcommands::bluetooth::execute(command).await?

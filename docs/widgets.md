@@ -146,16 +146,43 @@ that runs a command, or a tiny status readout from a script:
 bars:
   widgets:
     custom_widgets:
-      weather_alert:
+      - name: weather_alert
         icon: "weather-storm-symbolic"
         exec: "~/.config/margo/scripts/storm.sh"   # stdout → {output}
-        label: "{output}"
-        interval_secs: 300
+        template: "{output}"
+        interval: 300
         on_click: "notify-send 'Storm watch' \"$(cat /tmp/storm)\""
     top:
       end:
         - !Custom weather_alert
 ```
+
+Right-click an `exec` pill that has no `on_click_right` to re-run its command
+now; `mshellctl custom-refresh [name]` does the same from a script or keybind
+(no name = every custom pill).
+
+### JSON mode
+
+With `json: true` the `exec` prints one JSON object per poll and drives the
+whole pill:
+
+```json
+{"visible": true, "glyph": "input-mouse-symbolic", "text": "26%",
+ "text_color": "primary", "glyph_color": "error",
+ "tips": [["Name", "TX Track"], ["Paired", "yes"]]}
+```
+
+| Key | Meaning |
+| --- | --- |
+| `visible` | `false` hides the pill (default `true`). |
+| `text` | Label (goes through `template` / `max_chars`). |
+| `glyph` | Icon name (falls back to `icon`). |
+| `text_color`, `glyph_color` | A theme role: `primary`, `secondary`, `tertiary`, `error`, `muted`. Hex colours are ignored so the pill follows the theme. |
+| `class` | Extra CSS class on the pill (e.g. `active`). |
+| `tooltip`, `tips` | Tooltip line, then one bold-label row per `["label", "value"]`. |
+
+Output that is not a JSON object keeps the pill visible with its `icon` and a
+tooltip saying so.
 
 See [Configuration](configuration.md) for the full profile layout, and
 [Scripting](scripting.md) for driving the shell and compositor from scripts.

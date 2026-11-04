@@ -5,6 +5,12 @@
 //! fills the label via a `{output}` template. Defined under
 //! `bars.widgets.custom_widgets` and placed in a bar slot via
 //! `!Custom <name>`. (Inspired by VibePanel's custom widgets.)
+//!
+//! With `json: true` the exec prints one JSON object per poll that drives
+//! visibility, label, glyph, theme-role colours and a multi-row tooltip
+//! (port of the noctalia `stdout` plugin's JSON mode, see [`JsonOutput`]).
+//! Right-click (when `on_click_right` is empty) or `mshellctl
+//! custom-refresh [name]` re-runs the exec at once.
 
 use crate::plugin_cmd::{run_capture, run_detached};
 use mshell_config::schema::config::{CustomMenuRow, CustomWidgetConfig};
@@ -27,6 +33,12 @@ pub(crate) struct CustomWidgetModel {
     /// (e.g. a VPN pill emits `#active` to tint its icon with the accent).
     /// Tracked so the previous class is removed before the new one is added.
     state_class: Option<String>,
+    /// JSON mode: the theme-role / extra classes currently applied.
+    json_classes: Vec<String>,
+    /// JSON mode: the glyph currently shown (to skip needless rebuilds).
+    json_glyph: Option<String>,
+    /// The configured static tooltip (restored when JSON sends none).
+    tooltip: String,
 }
 
 #[derive(Debug)]
@@ -74,6 +86,8 @@ pub(crate) enum CustomWidgetCommandOutput {
         /// Optional state CSS class parsed from a `#<state>` first line.
         state_class: Option<String>,
     },
+    /// A JSON-mode poll result (`None` = the output wasn't a JSON object).
+    JsonResult(Option<JsonOutput>),
 }
 
 #[relm4::component(pub)]
@@ -132,6 +146,9 @@ impl Component for CustomWidgetModel {
             icon: config.icon.clone(),
             art: config.art,
             state_class: None,
+            json_classes: Vec::new(),
+            json_glyph: None,
+            tooltip: config.tooltip.clone(),
         };
 
         let widgets = view_output!();
@@ -179,7 +196,19 @@ impl Component for CustomWidgetModel {
                 .connect_clicked(move |_| run_detached(&cmd, &env));
         }
 
-        // Right click → on_click_right.
+        // Right click → on_click_right; without one, an `exec` pill re-runs
+        // its command right away (force refresh).
+        let refresh = std::sync::Arc::new(tokio::sync::Notify::new());
+        if config.on_click_right.trim().is_empty() && !config.exec.trim().is_empty() {
+            let gesture = gtk::GestureClick::new();
+            gesture.set_button(gtk::gdk::BUTTON_SECONDARY);
+            let refresh = refresh.clone();
+            gesture.connect_pressed(move |g, _, _, _| {
+                g.set_state(gtk::EventSequenceState::Claimed);
+                refresh.notify_one();
+            });
+            widgets.root.add_controller(gesture);
+        }
         if !config.on_click_right.trim().is_empty() {
             let gesture = gtk::GestureClick::new();
             gesture.set_button(gtk::gdk::BUTTON_SECONDARY);
@@ -200,11 +229,22 @@ impl Component for CustomWidgetModel {
             let max_chars = config.max_chars;
             let interval = config.interval;
             let art = config.art;
+            let json = config.json;
+            let name = config.name.clone();
+            let mut ipc_refresh = mshell_common::custom_refresh::subscribe();
             sender.command(move |out, shutdown| async move {
                 let shutdown_fut = shutdown.wait();
                 tokio::pin!(shutdown_fut);
                 loop {
-                    if let Some(stdout) = run_capture(&exec, &env).await {
+                    if json {
+                        if let Some(stdout) = run_capture(&exec, &env).await {
+                            let parsed = JsonOutput::parse(&stdout).map(|mut j| {
+                                j.text = truncate(&render(&j.text, &template), max_chars);
+                                j
+                            });
+                            let _ = out.send(CustomWidgetCommandOutput::JsonResult(parsed));
+                        }
+                    } else if let Some(stdout) = run_capture(&exec, &env).await {
                         let (art_path, body, paused, state_class) = if art {
                             let (cand, label, paused) = split_art_output(&stdout);
                             // Only show the image if the file actually exists.
@@ -222,12 +262,32 @@ impl Component for CustomWidgetModel {
                             state_class,
                         });
                     }
-                    if interval == 0 {
-                        break;
-                    }
-                    tokio::select! {
-                        () = &mut shutdown_fut => break,
-                        _ = tokio::time::sleep(Duration::from_secs(interval)) => {}
+                    // Wait for the next interval, a right-click, or an IPC
+                    // refresh aimed at this pill. `interval == 0` runs once
+                    // and then only on a forced refresh.
+                    let sleep = async {
+                        if interval == 0 {
+                            std::future::pending::<()>().await;
+                        } else {
+                            tokio::time::sleep(Duration::from_secs(interval)).await;
+                        }
+                    };
+                    tokio::pin!(sleep);
+                    loop {
+                        tokio::select! {
+                            () = &mut shutdown_fut => return,
+                            () = &mut sleep => break,
+                            () = refresh.notified() => break,
+                            msg = ipc_refresh.recv() => match msg {
+                                Ok(target) if mshell_common::custom_refresh::targets(&target, &name) => break,
+                                // Lagged: skip. Closed can't happen (the
+                                // sender is a static), but don't spin on it.
+                                Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                                    ipc_refresh = mshell_common::custom_refresh::subscribe();
+                                }
+                            },
+                        }
                     }
                 }
             });
@@ -293,8 +353,177 @@ impl Component for CustomWidgetModel {
                     }
                 }
             }
+            CustomWidgetCommandOutput::JsonResult(parsed) => {
+                self.apply_json(widgets, parsed);
+            }
         }
         self.update_view(widgets, sender);
+    }
+}
+
+impl CustomWidgetModel {
+    /// Apply one JSON-mode poll to the pill.
+    fn apply_json(&mut self, widgets: &CustomWidgetModelWidgets, parsed: Option<JsonOutput>) {
+        let root = &widgets.root;
+        let Some(j) = parsed else {
+            // Not a JSON object: keep the pill visible with its configured
+            // icon and say why, rather than silently vanishing.
+            root.set_visible(true);
+            self.label.clear();
+            self.set_json_glyph(widgets, None);
+            self.swap_json_classes(root, Vec::new());
+            root.set_tooltip_text(Some("This widget's exec did not print a JSON object"));
+            return;
+        };
+        root.set_visible(j.visible);
+        self.label = j.text.clone();
+        self.set_json_glyph(widgets, j.glyph.clone());
+        self.swap_json_classes(root, j.css_classes());
+        match j.tooltip_markup() {
+            Some(markup) => root.set_tooltip_markup(Some(&markup)),
+            None if self.tooltip.trim().is_empty() => root.set_tooltip_text(None),
+            None => root.set_tooltip_text(Some(&self.tooltip)),
+        }
+    }
+
+    /// Show `glyph` (or fall back to the configured icon) as the leading icon.
+    fn set_json_glyph(&mut self, widgets: &CustomWidgetModelWidgets, glyph: Option<String>) {
+        if self.json_glyph == glyph && widgets.icon_box.first_child().is_some() {
+            return;
+        }
+        while let Some(child) = widgets.icon_box.first_child() {
+            widgets.icon_box.remove(&child);
+        }
+        let name = glyph
+            .clone()
+            .unwrap_or_else(|| self.icon.trim().to_string());
+        if !name.is_empty() {
+            let img = gtk::Image::from_icon_name(&name);
+            img.set_pixel_size(ICON_SIZE);
+            widgets.icon_box.append(&img);
+        }
+        self.json_glyph = glyph;
+    }
+
+    /// Replace the JSON-driven CSS classes on the pill.
+    fn swap_json_classes(&mut self, root: &gtk::Button, next: Vec<String>) {
+        if self.json_classes == next {
+            return;
+        }
+        for c in &self.json_classes {
+            root.remove_css_class(c);
+        }
+        for c in &next {
+            root.add_css_class(c);
+        }
+        self.json_classes = next;
+    }
+}
+
+/// Theme roles a JSON pill may colour its text / glyph with. Raw hex is
+/// deliberately not accepted: every colour follows the matugen theme
+/// (DESIGN.md §1); the SCSS maps each class to its `var(--role)`.
+const COLOR_ROLES: &[&str] = &["primary", "secondary", "tertiary", "error", "muted"];
+
+/// One JSON-mode poll, parsed. Keys follow the noctalia `stdout` plugin
+/// (camelCase `textColor` / `glyphColor` are accepted too).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct JsonOutput {
+    pub(crate) visible: bool,
+    pub(crate) text: String,
+    pub(crate) glyph: Option<String>,
+    pub(crate) text_color: Option<&'static str>,
+    pub(crate) glyph_color: Option<&'static str>,
+    pub(crate) class: Option<String>,
+    pub(crate) tooltip: Option<String>,
+    pub(crate) tips: Vec<(String, String)>,
+}
+
+impl JsonOutput {
+    /// Parse the exec's stdout. `None` unless it is a JSON object.
+    pub(crate) fn parse(stdout: &str) -> Option<Self> {
+        let v: serde_json::Value = serde_json::from_str(stdout.trim()).ok()?;
+        let o = v.as_object()?;
+        let str_of = |keys: &[&str]| {
+            keys.iter()
+                .find_map(|k| o.get(*k).and_then(|v| v.as_str()))
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        };
+        let role = |keys: &[&str]| {
+            let want = str_of(keys)?.to_ascii_lowercase();
+            COLOR_ROLES.iter().copied().find(|r| *r == want)
+        };
+        let tips = o
+            .get("tips")
+            .and_then(|t| t.as_array())
+            .map(|rows| {
+                rows.iter()
+                    .filter_map(|row| {
+                        let row = row.as_array()?;
+                        let cell = |i: usize| match row.get(i) {
+                            Some(serde_json::Value::String(s)) => s.clone(),
+                            Some(serde_json::Value::Null) | None => String::new(),
+                            Some(other) => other.to_string(),
+                        };
+                        let (k, v) = (cell(0), cell(1));
+                        (!k.is_empty() || !v.is_empty()).then_some((k, v))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        Some(Self {
+            visible: o.get("visible").and_then(|v| v.as_bool()).unwrap_or(true),
+            text: match o.get("text") {
+                Some(serde_json::Value::String(s)) => s.clone(),
+                Some(serde_json::Value::Number(n)) => n.to_string(),
+                _ => String::new(),
+            },
+            glyph: str_of(&["glyph", "icon"]),
+            text_color: role(&["text_color", "textColor"]),
+            glyph_color: role(&["glyph_color", "glyphColor"]),
+            class: str_of(&["class"]).filter(|c| {
+                c.chars()
+                    .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+            }),
+            tooltip: str_of(&["tooltip"]),
+            tips,
+        })
+    }
+
+    /// CSS classes for the pill: `custom-text-<role>`, `custom-glyph-<role>`
+    /// and the sanitised `class`.
+    pub(crate) fn css_classes(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        if let Some(r) = self.text_color {
+            out.push(format!("custom-text-{r}"));
+        }
+        if let Some(r) = self.glyph_color {
+            out.push(format!("custom-glyph-{r}"));
+        }
+        if let Some(c) = &self.class {
+            out.push(c.clone());
+        }
+        out
+    }
+
+    /// Tooltip as Pango markup: the `tooltip` line, then one
+    /// "<b>label</b> value" row per tip. `None` when there's neither.
+    pub(crate) fn tooltip_markup(&self) -> Option<String> {
+        let esc = |s: &str| gtk::glib::markup_escape_text(s).to_string();
+        let mut lines = Vec::new();
+        if let Some(t) = &self.tooltip {
+            lines.push(esc(t));
+        }
+        for (k, v) in &self.tips {
+            lines.push(match (k.is_empty(), v.is_empty()) {
+                (false, false) => format!("<b>{}</b> {}", esc(k), esc(v)),
+                (false, true) => format!("<b>{}</b>", esc(k)),
+                _ => esc(v),
+            });
+        }
+        (!lines.is_empty()).then(|| lines.join("\n"))
     }
 }
 
@@ -406,7 +635,7 @@ fn truncate(s: &str, max: u32) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{render, split_art_output, truncate};
+    use super::{JsonOutput, render, split_art_output, truncate};
 
     #[test]
     fn art_output_splits_three_fields() {
@@ -455,5 +684,65 @@ mod tests {
         assert_eq!(truncate("hello", 3), "hel");
         assert_eq!(truncate("hi", 5), "hi");
         assert_eq!(truncate("h\u{e9}llo", 3), "h\u{e9}l"); // char-based, not byte
+    }
+
+    #[test]
+    fn json_output_parses_the_stdout_plugin_example() {
+        // The noctalia `stdout` plugin README's example (bt battery).
+        let j = JsonOutput::parse(
+            r##"{"visible": true, "glyph": "input-mouse-symbolic", "text": "26%",
+                "fontWeight": "bold", "textColor": "#00FF00", "glyphColor": "error",
+                "tips": [["Name:", "TX Track"], ["Paired:", "yes"]]}"##,
+        )
+        .unwrap();
+        assert!(j.visible);
+        assert_eq!(j.text, "26%");
+        assert_eq!(j.glyph.as_deref(), Some("input-mouse-symbolic"));
+        // Hex isn't a theme role: ignored. `error` is.
+        assert_eq!(j.text_color, None);
+        assert_eq!(j.glyph_color, Some("error"));
+        assert_eq!(j.css_classes(), vec!["custom-glyph-error".to_string()]);
+        assert_eq!(
+            j.tooltip_markup().as_deref(),
+            Some("<b>Name:</b> TX Track\n<b>Paired:</b> yes")
+        );
+    }
+
+    #[test]
+    fn json_output_defaults_and_hiding() {
+        let j = JsonOutput::parse(r#"{"visible": false}"#).unwrap();
+        assert!(!j.visible);
+        assert_eq!(j.text, "");
+        assert_eq!(j.glyph, None);
+        assert_eq!(j.tooltip_markup(), None);
+        // Missing `visible` means visible; numbers are fine as text.
+        let j = JsonOutput::parse(r#"{"text": 42}"#).unwrap();
+        assert!(j.visible);
+        assert_eq!(j.text, "42");
+    }
+
+    #[test]
+    fn json_output_rejects_non_objects_and_garbage() {
+        assert!(JsonOutput::parse("").is_none());
+        assert!(JsonOutput::parse("26%").is_none());
+        assert!(JsonOutput::parse("[1, 2]").is_none());
+        assert!(JsonOutput::parse("{\"text\": ").is_none());
+    }
+
+    #[test]
+    fn json_output_escapes_markup_and_sanitises_class() {
+        let j = JsonOutput::parse(
+            r#"{"tooltip": "a <b> & c", "tips": [["k<", 3], ["", "only value"], []],
+                "class": "warn ing", "text_color": "Primary"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            j.tooltip_markup().as_deref(),
+            Some("a &lt;b&gt; &amp; c\n<b>k&lt;</b> 3\nonly value")
+        );
+        assert_eq!(j.class, None, "a class with a space is not CSS-safe");
+        assert_eq!(j.text_color, Some("primary"));
+        let j = JsonOutput::parse(r#"{"class": "active"}"#).unwrap();
+        assert_eq!(j.css_classes(), vec!["active".to_string()]);
     }
 }

@@ -209,6 +209,7 @@ fn to_custom_widget(
         interval: w.interval,
         max_chars: w.max_chars,
         art: w.art,
+        json: false,
         menu: w
             .menu
             .iter()

@@ -2,6 +2,7 @@ pub mod a11y;
 pub mod box_with_resize;
 pub mod color;
 pub mod css_vars;
+pub mod custom_refresh;
 pub mod diagonal_revealer;
 pub mod dynamic_box;
 pub mod hidden_bar;

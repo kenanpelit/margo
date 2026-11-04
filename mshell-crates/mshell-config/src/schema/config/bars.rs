@@ -378,6 +378,14 @@ pub struct CustomWidgetConfig {
     /// leading image (reloaded on every poll — e.g. live album art), the rest
     /// is the label. An empty/missing first line falls back to `icon`.
     pub art: bool,
+    /// When true and `exec` is set, the exec's stdout is one JSON object
+    /// that drives the whole pill on every poll: `visible` (bool, hide the
+    /// pill when false), `text` (label, through `template`), `glyph` (icon
+    /// name), `text_color` / `glyph_color` (a theme role: `primary`,
+    /// `secondary`, `tertiary`, `error`, `muted`), `class` (extra CSS
+    /// class), `tooltip` (string) and `tips` (`[["label", "value"], …]` →
+    /// one tooltip row each). Unknown keys are ignored. Off by default.
+    pub json: bool,
     /// Optional dropdown menu (popover of command rows). When non-empty, a
     /// left click opens this menu instead of running `on_click`.
     pub menu: Vec<CustomMenuRow>,

@@ -149,6 +149,12 @@ pub enum Commands {
         /// Optional drawer name to target (omit to act on all drawers).
         name: Option<String>,
     },
+    /// Re-run a custom bar pill's `exec` now instead of waiting for its
+    /// interval. With no `name`, every custom pill refreshes.
+    CustomRefresh {
+        /// The `bars.widgets.custom_widgets` entry's `name` (omit for all).
+        name: Option<String>,
+    },
     /// Audio control — output/input volume, mute, and device switching.
     Audio {
         #[command(subcommand)]

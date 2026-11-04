@@ -90,6 +90,7 @@ pub trait Shell {
     fn alarm_clock(&self) -> zbus::Result<()>;
     fn control_center(&self) -> zbus::Result<()>;
     fn hidden_bar(&self, action: &str, name: &str) -> zbus::Result<()>;
+    fn custom_refresh(&self, name: &str) -> zbus::Result<u32>;
     fn ssh_sessions(&self) -> zbus::Result<()>;
     fn usb(&self) -> zbus::Result<()>;
     fn discord_voice(&self) -> zbus::Result<()>;

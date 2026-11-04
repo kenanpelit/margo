@@ -23,6 +23,40 @@
   &.active image {
     color: var(--primary);
   }
+
+  // `json: true` pills pick a theme role per poll for the label
+  // (`text_color`) and the glyph (`glyph_color`). Roles only — never hex
+  // (DESIGN.md §1) — so a script's colours re-theme with the wallpaper.
+  &.custom-text-primary .custom-bar-label {
+    color: var(--primary);
+  }
+  &.custom-glyph-primary image {
+    color: var(--primary);
+  }
+  &.custom-text-secondary .custom-bar-label {
+    color: var(--secondary);
+  }
+  &.custom-glyph-secondary image {
+    color: var(--secondary);
+  }
+  &.custom-text-tertiary .custom-bar-label {
+    color: var(--tertiary);
+  }
+  &.custom-glyph-tertiary image {
+    color: var(--tertiary);
+  }
+  &.custom-text-error .custom-bar-label {
+    color: var(--error);
+  }
+  &.custom-glyph-error image {
+    color: var(--error);
+  }
+  &.custom-text-muted .custom-bar-label {
+    color: var(--on-surface-variant);
+  }
+  &.custom-glyph-muted image {
+    color: var(--on-surface-variant);
+  }
 }
 
 // Declarative dropdown menu (plugin / custom widget click-popover). Matches

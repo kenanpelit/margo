@@ -449,6 +449,11 @@ impl IPCService {
         };
         self.send(IPCCommand::HiddenBar(verb, target))
     }
+    /// Re-run the `exec` of the custom bar pill called `name` now (an empty
+    /// `name` refreshes every custom pill). Returns how many pills listened.
+    async fn custom_refresh(&self, name: String) -> fdo::Result<u32> {
+        Ok(mshell_common::custom_refresh::request(&name) as u32)
+    }
     async fn ssh_sessions(&self) -> fdo::Result<()> {
         self.send(IPCCommand::SshSessions)
     }
