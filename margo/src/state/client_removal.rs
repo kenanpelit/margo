@@ -112,6 +112,10 @@ impl MargoState {
             .unwrap_or_else(|| self.config.animation_type_close.clone());
         let kind = crate::render::open_close::OpenCloseKind::parse(&kind_str);
         let border_radius = self.client_radius(idx);
+        let opacity = crate::animation::client_opacity(
+            &self.clients[idx],
+            self.focused_client_idx() == Some(idx),
+        );
         let c = &self.clients[idx];
         self.closing_clients.push(ClosingClient {
             id: smithay::backend::renderer::element::Id::new(),
@@ -126,6 +130,7 @@ impl MargoState {
             kind,
             extreme_scale: self.config.zoom_end_ratio.clamp(0.05, 1.0),
             border_radius,
+            opacity,
             source_surface: Some(surface),
         });
         self.request_repaint();

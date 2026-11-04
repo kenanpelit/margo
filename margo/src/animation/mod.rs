@@ -279,6 +279,44 @@ pub struct OpacityAnimation {
     pub initial_border_color: [f32; 4],
 }
 
+/// Alpha a window's content is drawn with: `focused_opacity` /
+/// `unfocused_opacity` (global or window rule), following the focus
+/// crossfade in `anim` while it runs. Fullscreen windows are always opaque.
+pub fn window_opacity(
+    anim: &OpacityAnimation,
+    focused: bool,
+    fullscreen: bool,
+    focused_opacity: f32,
+    unfocused_opacity: f32,
+) -> f32 {
+    if fullscreen {
+        return 1.0;
+    }
+    let alpha = if anim.running {
+        anim.current_opacity
+    } else if focused {
+        focused_opacity
+    } else {
+        unfocused_opacity
+    };
+    if alpha.is_finite() {
+        alpha.clamp(0.0, 1.0)
+    } else {
+        1.0
+    }
+}
+
+/// [`window_opacity`] for `client`.
+pub fn client_opacity(client: &crate::state::MargoClient, focused: bool) -> f32 {
+    window_opacity(
+        &client.opacity_animation,
+        focused,
+        client.is_fullscreen,
+        client.focused_opacity,
+        client.unfocused_opacity,
+    )
+}
+
 // ── Tick pacing ───────────────────────────────────────────────────────────────
 
 /// Longest gap between animation ticks while animations run but no output
@@ -630,5 +668,66 @@ mod tests {
         let _ = baked.sample(0.0);
         let _ = baked.sample(1.0);
         let _ = baked.sample(1.5);
+    }
+}
+
+#[cfg(test)]
+mod window_opacity_tests {
+    use super::{OpacityAnimation, window_opacity};
+
+    fn settled() -> OpacityAnimation {
+        OpacityAnimation::default()
+    }
+
+    #[test]
+    fn settled_windows_use_their_focus_opacity() {
+        assert_eq!(window_opacity(&settled(), true, false, 0.8, 0.5), 0.8);
+        assert_eq!(window_opacity(&settled(), false, false, 0.8, 0.5), 0.5);
+    }
+
+    #[test]
+    fn the_defaults_draw_opaque() {
+        assert_eq!(window_opacity(&settled(), true, false, 1.0, 1.0), 1.0);
+        assert_eq!(window_opacity(&settled(), false, false, 1.0, 1.0), 1.0);
+    }
+
+    #[test]
+    fn a_running_crossfade_wins_over_the_static_value() {
+        let anim = OpacityAnimation {
+            running: true,
+            initial_opacity: 0.5,
+            target_opacity: 0.8,
+            current_opacity: 0.65,
+            ..Default::default()
+        };
+        assert_eq!(window_opacity(&anim, true, false, 0.8, 0.5), 0.65);
+    }
+
+    #[test]
+    fn a_finished_crossfade_does_not_pin_a_stale_value() {
+        // A reload or window rule may change the opacity after the fade.
+        let anim = OpacityAnimation {
+            running: false,
+            current_opacity: 0.3,
+            ..Default::default()
+        };
+        assert_eq!(window_opacity(&anim, true, false, 0.9, 0.5), 0.9);
+    }
+
+    #[test]
+    fn fullscreen_windows_are_never_translucent() {
+        let anim = OpacityAnimation {
+            running: true,
+            current_opacity: 0.6,
+            ..Default::default()
+        };
+        assert_eq!(window_opacity(&anim, false, true, 0.8, 0.5), 1.0);
+        assert_eq!(window_opacity(&settled(), false, true, 0.8, 0.5), 1.0);
+    }
+
+    #[test]
+    fn out_of_range_values_are_clamped() {
+        assert_eq!(window_opacity(&settled(), true, false, 1.7, 0.5), 1.0);
+        assert_eq!(window_opacity(&settled(), false, false, 0.8, -0.2), 0.0);
     }
 }

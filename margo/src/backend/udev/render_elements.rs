@@ -1543,7 +1543,7 @@ fn push_closing_clients(
                 dst,
                 scale,
                 cc.progress,
-                1.0,
+                cc.opacity,
                 cc.kind,
                 true, // is_close
                 cc.extreme_scale,
@@ -1851,6 +1851,15 @@ fn push_client_elements(
             }
         } else {
             1.0
+        };
+        // `focused_opacity` / `unfocused_opacity` (with the focus crossfade),
+        // on top of the overview dim. A window cast shows the window itself,
+        // so it stays opaque there.
+        let window_alpha = match client {
+            Some(c) if only_window.is_none() => {
+                overview_alpha * crate::animation::client_opacity(c, focused_window == Some(window))
+            }
+            _ => overview_alpha,
         };
 
         // Screencast blackout: when we're building the element list
@@ -2173,7 +2182,7 @@ fn push_client_elements(
                                     dst,
                                     scale,
                                     anim.progress,
-                                    1.0,
+                                    window_alpha,
                                     anim.kind,
                                     false,
                                     anim.extreme_scale,
@@ -2280,7 +2289,7 @@ fn push_client_elements(
                             dst,
                             scale,
                             progress,
-                            1.0,
+                            window_alpha,
                             resize_commit,
                             radius,
                             resize_program,
@@ -2318,7 +2327,7 @@ fn push_client_elements(
                     wl_surface,
                     physical_location,
                     scale,
-                    overview_alpha,
+                    window_alpha,
                     Kind::Unspecified,
                 );
 
@@ -2442,11 +2451,10 @@ fn push_client_elements(
                     );
                 }
 
-                let rendered = AsRenderElements::<GlesRenderer>::render_elements::<
-                    WaylandSurfaceRenderElement<GlesRenderer>,
-                >(
-                    window, renderer, physical_location, scale, overview_alpha
-                );
+                let rendered =
+                    AsRenderElements::<GlesRenderer>::render_elements::<
+                        WaylandSurfaceRenderElement<GlesRenderer>,
+                    >(window, renderer, physical_location, scale, window_alpha);
                 // XWayland clients route through the same
                 // `clipped_surface` shader as native Wayland: without
                 // this, the X11 branch pushed the rendered surface

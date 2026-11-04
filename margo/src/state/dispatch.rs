@@ -358,6 +358,7 @@ impl MargoState {
             let radii: Vec<f32> = (0..self.clients.len())
                 .map(|i| self.client_radius(i))
                 .collect();
+            let focused_idx = self.focused_client_idx();
             for (ci, c) in self.clients.iter().enumerate() {
                 if c.monitor != mon_idx {
                     continue;
@@ -385,6 +386,7 @@ impl MargoState {
                         kind: crate::render::open_close::OpenCloseKind::Slide(slide_dir),
                         extreme_scale: 1.0, // pure slide, no scale
                         border_radius: radii[ci],
+                        opacity: crate::animation::client_opacity(c, focused_idx == Some(ci)),
                         source_surface: surface,
                     });
                 }
@@ -666,6 +668,10 @@ impl MargoState {
             return;
         }
         let border_radius = self.client_radius(idx);
+        let opacity = crate::animation::client_opacity(
+            &self.clients[idx],
+            self.focused_client_idx() == Some(idx),
+        );
         let c = &self.clients[idx];
         if !c.is_visible_on(mon_idx, self.monitors[mon_idx].current_tagset()) {
             return;
@@ -684,6 +690,7 @@ impl MargoState {
             kind: crate::render::open_close::OpenCloseKind::Fade,
             extreme_scale: 1.0,
             border_radius,
+            opacity,
             source_surface: surface,
         });
     }

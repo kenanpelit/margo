@@ -731,6 +731,9 @@ pub struct ClosingClient {
     pub kind: crate::render::open_close::OpenCloseKind,
     pub extreme_scale: f32,
     pub border_radius: f32,
+    /// The window's alpha when it left (`animation::client_opacity`), so
+    /// the fade starts from what was on screen.
+    pub opacity: f32,
     pub source_surface: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
 }
 
