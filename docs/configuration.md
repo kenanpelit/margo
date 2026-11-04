@@ -441,6 +441,7 @@ Every action below can be bound to a key (`bind`), a mouse button (`mousebind`),
 | `moveresize` | `curmove`\|`curresize` | Start an interactive pointer move/resize — for `mousebind`. |
 | `tagmon` | `<DIR>` | Move the focused window to an adjacent monitor. |
 | `disable_output` / `enable_output` / `toggle_output` | `<NAME>` | Soft-disable / re-enable / toggle an output by name (dock/undock). |
+| `mirror_output` / `toggle_mirror` / `stop_mirror` | `[SOURCE] [TARGET]` | Mirror SOURCE onto TARGET (presentation mode), scaled to fit and letterboxed. TARGET leaves the layout (windows move off it, the pointer can't enter it) until `stop_mirror` or either output unplugs. No args: the laptop panel onto the first external output. `mctl mirror start\|stop\|toggle\|status`. |
 
 ### Scratchpad
 

@@ -811,6 +811,25 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
                 }
             }
         }
+        // Output mirroring (presentation mode): show arg 1's picture on
+        // arg 2, scaled to fit and letterboxed. Bare: laptop panel onto
+        // the first external output. The target leaves the layout until
+        // `stop_mirror` / either output unplugs. A refusal is logged and
+        // published as `mirror.error` in the state snapshot.
+        //   mctl dispatch mirror_output eDP-1 DP-3
+        //   bind = super,p,toggle_mirror
+        "mirror_output" | "mirror-output" | "mirror" => {
+            let r = state.start_mirror(arg.v.as_deref(), arg.v2.as_deref());
+            state.note_mirror_result(r);
+        }
+        "toggle_mirror" | "toggle-mirror" => {
+            let r = state.toggle_mirror(arg.v.as_deref(), arg.v2.as_deref());
+            state.note_mirror_result(r);
+        }
+        "stop_mirror" | "stop-mirror" | "unmirror" => {
+            state.stop_mirror();
+            state.note_mirror_result(Ok(()));
+        }
         // Real panel power (DPMS) off/on. arg.v = on|off|toggle (default
         // toggle); arg.v2 = optional output name (default all). Any input
         // afterwards wakes the screen, so an off is always recoverable.

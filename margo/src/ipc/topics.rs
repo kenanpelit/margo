@@ -202,6 +202,7 @@ pub const TOPICS: &[&str] = &[
     "monitors",
     "layouts",
     "twilight",
+    "mirror",
     "config-errors",
     "keyboard-layout",
     "focused",
@@ -228,6 +229,7 @@ pub fn project_topic(snap: &Value, kb_layout: &str, topic: &str, args: &[String]
         "monitors" => json!({ "monitors": snap["outputs"].clone() }),
         "layouts" => json!({ "layouts": snap["layouts"].clone() }),
         "twilight" => snap["twilight"].clone(),
+        "mirror" => snap["mirror"].clone(),
         "config-errors" => json!({ "config_errors": snap["config_errors"].clone() }),
         "keyboard-layout" => json!({ "keyboard_layout": kb_layout }),
         "focused" => {

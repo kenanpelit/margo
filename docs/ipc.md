@@ -36,6 +36,7 @@ file — both removed.
 | `layouts` | — | `{"layouts":[…]}` |
 | `keyboard-layout` | — | `{"keyboard_layout":"…"}` |
 | `twilight` | — | twilight state object |
+| `mirror` | — | `active` (`{source,target}` or null) and `error` (why the last mirror request was refused, or null) — output mirroring. Each `outputs[]` entry also carries `mirroring` (true on the target, which then reads disabled in wlr-output-management). |
 | `config-errors` | — | `{"config_errors":[…]}` |
 | `layers` | — | `{"layers":[{"monitor","layer","name"},…]}` — every layer-shell surface (`layer` = background/bottom/top/overlay, `name` = its namespace). `get` only. |
 

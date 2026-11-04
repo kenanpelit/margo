@@ -20,6 +20,7 @@ mod focus_methods;
 mod focus_target;
 mod frame_clock_sched;
 mod groups;
+mod mirror;
 mod reload;
 mod repaint;
 pub(crate) use groups::GroupLock;
@@ -750,6 +751,9 @@ pub struct MargoState {
     /// Twilight (blue-light filter) engine and its timer (`state/twilight_methods.rs`).
     pub twilight: Twilight,
 
+    /// Output mirroring session, if any (`crate::mirror`, `state/mirror.rs`).
+    pub mirror: crate::mirror::MirrorState,
+
     /// Source of the keyboard event being processed: physical, or a
     /// `zwp_virtual_keyboard_v1` device (smithay tracks held keys per
     /// source). `virtual_input` marks the latter for the binding filter.
@@ -909,6 +913,7 @@ impl MargoState {
             scroller_overview: None,
             input_timers: InputTimers::new(),
             twilight: Twilight::new(),
+            mirror: crate::mirror::MirrorState::default(),
             keyboard_source: smithay::input::keyboard::KeyboardSource::MAIN,
             virtual_input: false,
             active_virtual_keymap: None,
@@ -983,6 +988,8 @@ impl MargoState {
     }
 
     pub fn remove_output(&mut self, output: &Output) {
+        // Every removal path (not only udev hotplug) ends a mirror using it.
+        self.mirror_output_unplugged(&output.name());
         // Close and unmap the output's layers now. The client destroys the
         // surface later, when the monitor is already gone, so per-surface
         // bookkeeping is dropped here rather than in `layer_destroyed`.

@@ -34,6 +34,7 @@ mod input_handler;
 mod ipc;
 mod layout;
 mod libinput_config;
+mod mirror;
 mod plugin;
 mod protocols;
 mod render;

@@ -47,6 +47,69 @@ pub(super) fn build_render_elements(
     build_render_elements_inner(renderer, od, state, RenderTarget::Display)
 }
 
+/// An output's full display scene: [`build_render_elements`] plus the
+/// compositor wallpaper at the bottom of the z-order (skipped while the
+/// session is locked, unless the lock surface shows the desktop).
+pub(super) fn build_output_scene(
+    renderer: &mut GlesRenderer,
+    od: &OutputDevice,
+    state: &MargoState,
+) -> Vec<MargoRenderElement> {
+    let mut elements = build_render_elements(renderer, od, state);
+    // Wallpaper sits at the *bottom* of the z-order: pushed last so
+    // it's at the tail of the slice. smithay's `render_frame`
+    // iterates element[0] = topmost, so trailing entries are drawn
+    // first / occluded by everything above. Skip while session is
+    // locked — mlock paints its own backdrop over the entire output.
+    if (!state.session_locked || state.lock_shows_desktop(&od.output))
+        && let Some(ref wp) = state.wallpaper
+        && let Some(output_geo) = state.space.output_geometry(&od.output)
+        && let Some(wp_elem) = wp.render_element(
+            renderer,
+            output_geo.size,
+            state.config.wallpaper_fit,
+            od.output.current_scale().fractional_scale(),
+        )
+    {
+        elements.push(MargoRenderElement::Wallpaper(wp_elem));
+    }
+    elements
+}
+
+/// An output's mode size after its transform: the extent of the space
+/// its render elements live in.
+fn transformed_mode_size(output: &Output) -> Option<(i32, i32)> {
+    let mode = output.current_mode()?;
+    let size = output.current_transform().transform_size(mode.size);
+    Some((size.w, size.h))
+}
+
+/// The frame for the active mirror's target: the source output's scene,
+/// scaled and letterboxed into the target. `None` when nothing is
+/// mirrored, or either end has no device / mode right now.
+pub(super) fn build_mirror_frame(
+    renderer: &mut GlesRenderer,
+    outputs: &HashMap<crtc::Handle, OutputDevice>,
+    state: &MargoState,
+) -> Option<(Output, Vec<MargoRenderElement>)> {
+    let session = state.mirror.active()?;
+    let src = outputs
+        .values()
+        .find(|od| od.output_name == session.source)?;
+    let dst = outputs
+        .values()
+        .find(|od| od.output_name == session.target)?;
+    let fit = crate::mirror::letterbox(
+        transformed_mode_size(&src.output)?,
+        transformed_mode_size(&dst.output)?,
+    )?;
+    let elements = build_output_scene(renderer, src, state)
+        .into_iter()
+        .map(|e| MargoRenderElement::Mirrored(super::mirror_element::MirroredElement::new(e, fit)))
+        .collect();
+    Some((dst.output.clone(), elements))
+}
+
 /// Drain `MargoState::pending_image_copy_frames` and render each
 /// frame into its client buffer. Step 2 of the per-window
 /// screencast story — output capture today, toplevel capture

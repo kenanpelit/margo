@@ -148,6 +148,9 @@ impl MargoState {
                     "exclusive_fullscreen": !mon.is_overview
                         && self.monitor_has_exclusive_fullscreen(i),
                     "is_overview": mon.is_overview,
+                    // Out of the layout to show another output's picture
+                    // (`enabled` reads false in wlr-output-management).
+                    "mirroring": self.mirror.is_target(&mon.name),
                     // W3.6: per-tag wallpaper hint of the *active*
                     // tag. Wallpaper daemons watching state snapshot
                     // can swap on tag change. Empty string = "use
@@ -312,6 +315,15 @@ impl MargoState {
             // like mshell's layout menu.
             "circle_layouts": self.config.circle_layouts,
             "config_errors": config_errors,
+            // Output mirroring: the running session (null when idle) and
+            // why the last request was refused (null when it wasn't).
+            "mirror": {
+                "active": self.mirror.active().map(|m| json!({
+                    "source": m.source,
+                    "target": m.target,
+                })),
+                "error": self.mirror.last_error,
+            },
             "twilight": {
                 "enabled": self.config.twilight,
                 "mode": match self.config.twilight_mode {

@@ -55,6 +55,7 @@ mod ipc;
 mod layer_shell;
 mod lock_keys;
 mod logical_output_area;
+mod mirror;
 mod mosaic_layout;
 mod move_client;
 mod mru_switcher;

@@ -30,7 +30,9 @@ use smithay::{
 use tracing::{error, warn};
 
 use super::{
-    MargoRenderElement, OutputDevice, build_render_elements, helpers::output_refresh_duration,
+    MargoRenderElement, OutputDevice,
+    helpers::output_refresh_duration,
+    render_elements::{build_mirror_frame, build_output_scene},
     serve_screencopies, take_pending_open_close_captures, take_pending_snapshots,
 };
 use crate::state::MargoState;
@@ -419,16 +421,33 @@ pub(super) fn render_all_outputs(
     apply_pending_dpms(outputs, state);
 
     let per_output = state.per_output_frame_clock_enabled();
+    let mut mirror = build_mirror_frame(renderer, outputs, state);
     for od in outputs.values_mut() {
         if state.output_render_retry_pending(&od.output) {
             continue;
         }
+        let mirrored = take_mirror_frame(&mut mirror, &od.output);
+        // A mirror target has no frame clock of its own (it is out of
+        // the layout): it renders on the global gate.
+        let per_output = per_output && mirrored.is_none();
         if per_output {
             state.begin_forced_render_per_output(&od.output);
         }
-        render_output(renderer, od, state, reason, per_output);
+        render_output(renderer, od, state, reason, per_output, mirrored);
     }
     finish_repaint_batch(state);
+}
+
+/// The mirror frame, if `output` is the target it was built for.
+fn take_mirror_frame(
+    mirror: &mut Option<(Output, Vec<MargoRenderElement>)>,
+    output: &Output,
+) -> Option<Vec<MargoRenderElement>> {
+    if mirror.as_ref().is_some_and(|(target, _)| target == output) {
+        mirror.take().map(|(_, elements)| elements)
+    } else {
+        None
+    }
 }
 
 /// Opt-in per-output frame-clock render. Renders ONLY the outputs in
@@ -447,9 +466,25 @@ pub(super) fn render_due_outputs(
 ) {
     apply_pending_gamma(outputs, drm, state);
     apply_pending_dpms(outputs, state);
+    // A mirror target has no frame clock (it is out of the layout): it
+    // follows its source, re-rendering whenever the source is due and the
+    // target's previous flip has landed.
+    let source_due = state
+        .mirror
+        .active()
+        .is_some_and(|m| due.iter().any(|o| o.name() == m.source));
+    let mut mirror = if source_due {
+        build_mirror_frame(renderer, outputs, state)
+    } else {
+        None
+    };
     for od in outputs.values_mut() {
         if due.contains(&od.output) {
-            render_output(renderer, od, state, reason, true);
+            render_output(renderer, od, state, reason, true, None);
+        } else if !od.flip_in_flight
+            && let Some(elements) = take_mirror_frame(&mut mirror, &od.output)
+        {
+            render_output(renderer, od, state, reason, false, Some(elements));
         }
     }
     finish_repaint_batch(state);
@@ -463,12 +498,16 @@ fn finish_repaint_batch(state: &mut MargoState) {
     }
 }
 
+/// Render and queue one output's frame. `mirror` is the prebuilt frame
+/// when this output is the active mirror target ([`build_mirror_frame`]):
+/// it then shows that instead of its own (out-of-layout) scene.
 fn render_output(
     renderer: &mut GlesRenderer,
     od: &mut OutputDevice,
     state: &mut MargoState,
     reason: &'static str,
     per_output: bool,
+    mirror: Option<Vec<MargoRenderElement>>,
 ) {
     let _span = tracy_client::span!("render_output");
     // Delineate frames for Tracy's frame/FPS view — one mark per render
@@ -486,7 +525,9 @@ fn render_output(
         return;
     }
     // Soft-disabled output: skip entirely.
-    if let Some(mon) = state.monitors.iter().find(|m| m.output == od.output) {
+    if mirror.is_none()
+        && let Some(mon) = state.monitors.iter().find(|m| m.output == od.output)
+    {
         if !mon.enabled {
             if per_output {
                 state.clear_pending_vblank_per_output(&od.output);
@@ -506,28 +547,15 @@ fn render_output(
     take_pending_open_close_captures(renderer, od, state);
     super::take_mru_thumbnails(renderer, od, state);
 
-    let mut elements = build_render_elements(renderer, od, state);
-    // Wallpaper sits at the *bottom* of the z-order: pushed last so
-    // it's at the tail of the slice. smithay's `render_frame`
-    // iterates element[0] = topmost, so trailing entries are drawn
-    // first / occluded by everything above. Skip while session is
-    // locked — mlock paints its own backdrop over the entire output.
-    if (!state.session_locked || state.lock_shows_desktop(&od.output))
-        && let Some(ref wp) = state.wallpaper
-        && let Some(output_geo) = state.space.output_geometry(&od.output)
-    {
-        if let Some(wp_elem) = wp.render_element(
-            renderer,
-            output_geo.size,
-            state.config.wallpaper_fit,
-            od.output.current_scale().fractional_scale(),
-        ) {
-            elements.push(MargoRenderElement::Wallpaper(wp_elem));
-        }
-    }
+    let is_mirror = mirror.is_some();
+    let elements = match mirror {
+        Some(elements) => elements,
+        None => build_output_scene(renderer, od, state),
+    };
 
     serve_screencopies(renderer, od, state, &elements);
-    let clear_color = if state.session_locked {
+    // A mirror's letterbox bars are black, like a projector's.
+    let clear_color = if state.session_locked || is_mirror {
         [0.0, 0.0, 0.0, 1.0]
     } else {
         [0.1, 0.1, 0.1, 1.0]
@@ -567,9 +595,11 @@ fn render_output(
     // radius nor guarantee a clean full-region prime on a mid-session
     // reload, so it shimmered and ghosted on hardware.
     if (state.config.blur || state.config.blur_layer)
-        && elements
-            .iter()
-            .any(|e| matches!(e, MargoRenderElement::Blur(_)))
+        && elements.iter().any(|e| match e {
+            MargoRenderElement::Blur(_) => true,
+            MargoRenderElement::Mirrored(m) => m.is_blur(),
+            _ => false,
+        })
     {
         od.compositor.reset_buffers();
     }
@@ -690,10 +720,18 @@ fn render_output(
                     // `wp_presentation_feedback` is silently dropped
                     // and `send_frame_callbacks` can't filter occluded
                     // surfaces.
-                    update_primary_scanout_outputs(state, &od.output, &result.states);
-                    let feedback = build_presentation_feedback(&od.output, state, &result.states);
-                    od.pending_presentation.push(feedback);
-                    update_client_scanout_flags(state, &od.output, &result.states);
+                    // A mirror target shows surfaces that live on its
+                    // source: they keep the source as their primary
+                    // scanout output (their frame callbacks and
+                    // presentation feedback pace on it), so the mirrored
+                    // frame stamps none of that.
+                    if !is_mirror {
+                        update_primary_scanout_outputs(state, &od.output, &result.states);
+                        let feedback =
+                            build_presentation_feedback(&od.output, state, &result.states);
+                        od.pending_presentation.push(feedback);
+                        update_client_scanout_flags(state, &od.output, &result.states);
+                    }
                     // Bump sequence at queue_frame Ok per niri's
                     // `tty.rs:1975-1979` comment ("buffers were
                     // latched, new commits will wait for VBlank").

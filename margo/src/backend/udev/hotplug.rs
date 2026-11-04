@@ -97,6 +97,9 @@ pub(super) fn rescan_outputs(backend_data: &Rc<RefCell<BackendData>>, state: &mu
     drop(bd);
 
     for output in &removed_outputs {
+        // End a mirror using it first, so a lost source's target is back
+        // in the layout before clients migrate.
+        state.mirror_output_unplugged(&output.name());
         migrate_clients_off_output(state, output);
         state.remove_output(output);
     }

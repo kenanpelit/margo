@@ -58,6 +58,7 @@ use crate::{
 mod frame;
 mod helpers;
 mod hotplug;
+mod mirror_element;
 mod mode;
 mod render_elements;
 mod session;
@@ -103,6 +104,9 @@ render_elements! {
     // wrap-around loop doesn't collide in the damage tracker. See
     // `crate::render::namespaced`.
     NamespacedSurface=smithay::backend::renderer::element::utils::RelocateRenderElement<smithay::backend::renderer::element::utils::RescaleRenderElement<crate::render::namespaced::NamespacedElement<WaylandSurfaceRenderElement<GlesRenderer>>>>,
+    // A mirror target's frame: the source output's scene, each element
+    // scaled + letterboxed (see `crate::mirror`).
+    Mirrored=mirror_element::MirroredElement,
 }
 
 // ── Type aliases ──────────────────────────────────────────────────────────────

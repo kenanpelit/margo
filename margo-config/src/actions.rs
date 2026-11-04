@@ -568,6 +568,34 @@ pub const ACTIONS: &[Action] = &[
         detail: "Convenience for dock/undock keybinds: \
                  `bind = super+ctrl,F12,toggle_output,eDP-1`.",
     },
+    Action {
+        name: "mirror_output",
+        aliases: &["mirror-output", "mirror"],
+        args: "[SOURCE] [TARGET]",
+        group: Group::Window,
+        summary: "Mirror one output onto another (presentation mode).",
+        detail: "Shows SOURCE's picture on TARGET, scaled to fit and \
+                 letterboxed; TARGET leaves the layout (its windows move, the \
+                 pointer can't enter it) until `stop_mirror` or either output \
+                 unplugs. No args: the laptop panel onto the first external \
+                 output. `mctl mirror eDP-1 DP-3`.",
+    },
+    Action {
+        name: "toggle_mirror",
+        aliases: &["toggle-mirror"],
+        args: "[SOURCE] [TARGET]",
+        group: Group::Window,
+        summary: "Stop mirroring, or start it like `mirror_output`.",
+        detail: "`bind = super,p,toggle_mirror`.",
+    },
+    Action {
+        name: "stop_mirror",
+        aliases: &["stop-mirror", "unmirror"],
+        args: "",
+        group: Group::Window,
+        summary: "Stop output mirroring; the target returns to the layout.",
+        detail: "No-op when nothing is mirrored.",
+    },
     // ── Scratchpad ─────────────────────────────────────────────────
     Action {
         name: "toggle_named_scratchpad",

@@ -76,8 +76,24 @@ impl MargoState {
         if mon_idx >= self.monitors.len() {
             return;
         }
+        // Switching off either end of a mirror ends it first (that puts a
+        // mirror target back, so it is then switched off for real).
+        let name = self.monitors[mon_idx].name.clone();
+        self.mirror_output_gone(&name);
+        self.take_monitor_out_of_layout(mon_idx, true);
+    }
+
+    /// Take a monitor out of the layout: clients migrate to another
+    /// enabled monitor, the pointer and focus leave it, it leaves the
+    /// space. `blank` also powers the panel down (a soft-disable); a
+    /// mirror target keeps it lit to show the mirrored picture. `false`
+    /// when refused (already out, or no other enabled monitor).
+    pub(crate) fn take_monitor_out_of_layout(&mut self, mon_idx: usize, blank: bool) -> bool {
+        if mon_idx >= self.monitors.len() {
+            return false;
+        }
         if !self.monitors[mon_idx].enabled {
-            return;
+            return false;
         }
         // Pick a migration target — first OTHER enabled monitor.
         let target = (0..self.monitors.len()).find(|&i| i != mon_idx && self.monitors[i].enabled);
@@ -86,7 +102,7 @@ impl MargoState {
                 "disable_monitor: refusing to disable {} — no other enabled monitor",
                 self.monitors[mon_idx].name
             );
-            return;
+            return false;
         };
         let target_tagset = self.monitors[target].current_tagset();
         let target_name = self.monitors[target].name.clone();
@@ -115,7 +131,9 @@ impl MargoState {
         // disabled output. And take it out of the space so surfaces leave
         // it and nothing hit-tests against it.
         let output = self.monitors[mon_idx].output.clone();
-        self.output_pending.dpms.push((output.clone(), false));
+        if blank {
+            self.output_pending.dpms.push((output.clone(), false));
+        }
         self.space.unmap_output(&output);
         self.wake_repaint_backend();
         // Move the pointer off the dark area onto an enabled output.
@@ -131,12 +149,27 @@ impl MargoState {
             to = %target_name,
             "disabled output: migrated clients"
         );
+        true
     }
 
     /// Re-enable a previously soft-disabled monitor. New windows can
     /// land on it again; arrange picks it up; render starts drawing
     /// it on the next frame.
     pub fn enable_monitor(&mut self, mon_idx: usize) {
+        if mon_idx >= self.monitors.len() {
+            return;
+        }
+        // Switching a mirror target on ends the mirror, which puts it back.
+        if self.mirror.is_target(&self.monitors[mon_idx].name) {
+            let name = self.monitors[mon_idx].name.clone();
+            self.mirror_output_gone(&name);
+            return;
+        }
+        self.put_monitor_back_in_layout(mon_idx);
+    }
+
+    /// Undo [`Self::take_monitor_out_of_layout`].
+    pub(crate) fn put_monitor_back_in_layout(&mut self, mon_idx: usize) {
         if mon_idx >= self.monitors.len() {
             return;
         }
