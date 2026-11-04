@@ -1,4 +1,3 @@
-use std::fs::File;
 use std::io;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::time::{Duration, Instant};
@@ -25,6 +24,7 @@ mod console_palette;
 mod daemon;
 mod greeter_startup;
 mod info_caching;
+mod log_file;
 mod post_login;
 mod runner;
 mod theme_sync;
@@ -259,7 +259,7 @@ fn setup_logger(log_path: &str) {
         .filter_level(log::LevelFilter::Info)
         .format_timestamp_secs();
 
-    match File::create(log_path) {
+    match log_file::open_private_log(Path::new(log_path)) {
         Ok(file) => {
             builder.target(env_logger::Target::Pipe(Box::new(file)));
         }

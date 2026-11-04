@@ -347,7 +347,7 @@ fn spawn_greeter(
     }
     // Capture the host's own output — it inherits the greeter's VT otherwise,
     // where a later redraw wipes any error it printed.
-    if let Ok(out) = std::fs::File::create(&log)
+    if let Ok(out) = crate::log_file::open_private_log(&log)
         && let Ok(err) = out.try_clone()
     {
         cmd.stdout(out).stderr(err);
@@ -577,7 +577,9 @@ fn serve(
                 None => {
                     // Log the real reason; tell the greeter only that it failed.
                     // Whether the account exists is not the greeter's business.
-                    info!("runner: authentication failed for '{username}': {pam_err}");
+                    // Never the typed name: people type their password into the
+                    // user field, and that string must not reach any log.
+                    info!("runner: authentication failed: {pam_err}");
                     auth.get_handler().send_failure("Invalid login credentials");
                 }
             }

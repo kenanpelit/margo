@@ -1,6 +1,5 @@
 //! This module implements a thread that ensures that the log files don't exceed a specific size.
 
-use std::fs::OpenOptions;
 use std::io::{self, BufWriter};
 use std::path::Path;
 use std::process::{Child, Command, ExitStatus, Stdio};
@@ -136,14 +135,11 @@ impl LimitedOutputChild {
 
         use io::Write;
 
-        let mut file_options = OpenOptions::new();
-        file_options.create(true);
-        file_options.write(true);
-        file_options.truncate(true);
+        // Private (0600): it carries every user's session output in turn.
+        // Opened before the spawn, so a failure leaves no orphaned session.
+        let file = crate::log_file::open_private_log(log_path)?;
 
         let mut process = command.spawn()?;
-
-        let file = file_options.open(log_path)?;
 
         let Some(stdout) = process.stdout.take() else {
             return Err(io::Error::other("Failed to grab stdout"));
