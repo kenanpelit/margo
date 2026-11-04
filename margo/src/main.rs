@@ -879,29 +879,52 @@ fn start_dbus_services(event_loop: &EventLoop<'static, MargoState>, margo: &mut 
     {
         use crate::dbus::Start as _;
         use crate::dbus::gnome_shell_screenshot::{
-            CompositorToScreenshot, Screenshot, ScreenshotToCompositor,
+            Screenshot, ScreenshotToCompositor, grim_target_args,
         };
 
         let (shot_tx, shot_rx) = calloop::channel::channel::<ScreenshotToCompositor>();
-        let (resp_tx, resp_rx) = async_channel::unbounded::<CompositorToScreenshot>();
 
-        match event_loop.handle().insert_source(
-            shot_rx,
-            move |event, _, _state: &mut MargoState| {
+        match event_loop
+            .handle()
+            .insert_source(shot_rx, move |event, _, state: &mut MargoState| {
                 let calloop::channel::Event::Msg(msg) = event else {
                     return;
                 };
                 match msg {
-                    ScreenshotToCompositor::TakeScreenshot { include_cursor } => {
-                        // Capture the whole desktop to a temp PNG via
-                        // `grim` — a child process that speaks
-                        // wlr-screencopy, so margo's event loop keeps
-                        // servicing it while it runs. We must NOT block
-                        // here (that would deadlock the capture), so we
-                        // wait for grim in a detached thread and report
-                        // the resulting path back to the portal shim.
-                        // The portal frontend turns it into the
-                        // `file://` URI the requesting app receives.
+                    ScreenshotToCompositor::TakeScreenshot {
+                        include_cursor,
+                        target,
+                        reply,
+                    } => {
+                        // Capture into a temp PNG via `grim` — a child
+                        // process that speaks wlr-screencopy (whole
+                        // screen / output / region) or ext-image-copy-
+                        // capture (`-T`, one window), so margo's event
+                        // loop keeps servicing it while it runs. We must
+                        // NOT block here (that would deadlock the
+                        // capture), so we wait for grim in a detached
+                        // thread and report the resulting path back to
+                        // the shim. The portal frontend turns it into
+                        // the `file://` URI the requesting app receives.
+                        let outputs: Vec<_> = state
+                            .monitors
+                            .iter()
+                            .map(|m| (m.name.clone(), m.monitor_area))
+                            .collect();
+                        let target_args = grim_target_args(&target, &outputs, |id| {
+                            state
+                                .clients
+                                .iter()
+                                .find(|c| c.id == id)
+                                .and_then(|c| c.foreign_toplevel_handle.as_ref())
+                                .map(|h| h.identifier())
+                        });
+                        let Some(target_args) = target_args else {
+                            // Never fall back to a wider capture.
+                            warn!(?target, "portal screenshot target not capturable");
+                            let _ = reply.try_send(None);
+                            return;
+                        };
                         let runtime =
                             std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".to_owned());
                         let stamp = std::time::SystemTime::now()
@@ -916,23 +939,19 @@ fn start_dbus_services(event_loop: &EventLoop<'static, MargoState>, margo: &mut 
                         if include_cursor {
                             cmd.arg("-c");
                         }
+                        cmd.args(&target_args);
                         cmd.arg(&path);
                         match cmd.spawn() {
                             Ok(mut child) => {
-                                let resp = resp_tx.clone();
                                 std::thread::spawn(move || {
                                     let ok = matches!(child.wait(), Ok(s) if s.success())
                                         && path.exists();
-                                    let _ =
-                                        resp.try_send(CompositorToScreenshot::ScreenshotResult(
-                                            ok.then_some(path),
-                                        ));
+                                    let _ = reply.try_send(ok.then_some(path));
                                 });
                             }
                             Err(e) => {
                                 warn!("grim spawn for portal screenshot failed: {e}");
-                                let _ = resp_tx
-                                    .try_send(CompositorToScreenshot::ScreenshotResult(None));
+                                let _ = reply.try_send(None);
                             }
                         }
                     }
@@ -942,12 +961,11 @@ fn start_dbus_services(event_loop: &EventLoop<'static, MargoState>, margo: &mut 
                         let _ = reply.try_send(None);
                     }
                 }
-            },
-        ) {
+            }) {
             Err(e) => {
                 warn!("Screenshot calloop source insert failed: {e}");
             }
-            _ => match Screenshot::new(shot_tx, resp_rx).start() {
+            _ => match Screenshot::new(shot_tx).start() {
                 Ok(conn) => margo.dbus_servers.conn_screen_shot = Some(conn),
                 Err(e) => warn!("Screenshot D-Bus start failed: {e}"),
             },
