@@ -6,13 +6,16 @@
 //! network / signal stats, quick actions (find / ping / browse /
 //! share file / share text / clipboard push-pull), and inline
 //! alias/avatar editing. Probing + actions live in [`crate::valent`].
+//! A "Screen mirroring" card (scrcpy over adb, [`super::phone_mirror`])
+//! sits below.
 
+use super::phone_mirror::PhoneMirrorModel;
 use crate::valent::{self, Device, ValentReport};
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, ValentDeviceOverride, ValentStoreFields};
 use reactive_graph::traits::GetUntracked;
 use relm4::gtk::prelude::*;
-use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use relm4::{Component, ComponentController, ComponentParts, ComponentSender, gtk};
 
 pub(crate) struct ValentMenuWidgetModel {
     report: Option<ValentReport>,
@@ -24,6 +27,8 @@ pub(crate) struct ValentMenuWidgetModel {
     /// Device id currently being renamed inline (header shows an Entry
     /// instead of the name Label for this device).
     renaming_id: Option<String>,
+    /// "Screen mirroring" card (scrcpy over adb) under the state card.
+    _mirror: relm4::Controller<PhoneMirrorModel>,
 }
 
 #[derive(Debug)]
@@ -211,8 +216,10 @@ impl Component for ValentMenuWidgetModel {
             switcher_open: false,
             share_text_open: false,
             renaming_id: None,
+            _mirror: PhoneMirrorModel::builder().launch(()).detach(),
         };
         let widgets = view_output!();
+        root.append(model._mirror.widget());
 
         // Pre-fill the settings popover from config each time it opens —
         // it isn't reactive (relm4 doesn't watch a plain gtk::Popover), so

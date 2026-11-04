@@ -718,6 +718,12 @@ pub struct Valent {
     pub show_battery_percent: bool,
     /// Per-device alias/avatar overrides, keyed by matching `device_id`.
     pub devices: Vec<ValentDeviceOverride>,
+    /// Screen mirroring (scrcpy): keep the phone's own screen off while
+    /// mirroring. Off by default.
+    pub scrcpy_screen_off: bool,
+    /// Extra scrcpy arguments (whitespace-separated, no shell), e.g.
+    /// `--max-size=1280 --stay-awake`. Empty by default.
+    pub scrcpy_args: String,
 }
 
 impl Default for Valent {
@@ -727,6 +733,8 @@ impl Default for Valent {
             poll_interval_secs: default_valent_poll_interval_secs(),
             show_battery_percent: true,
             devices: Vec::new(),
+            scrcpy_screen_off: false,
+            scrcpy_args: String::new(),
         }
     }
 }

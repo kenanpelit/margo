@@ -80,3 +80,21 @@
 .valent-settings-popover {
   min-width: 220px;
 }
+
+// ── Screen mirroring card (scrcpy over adb) ─────────────────
+// Sits under the state card, same card chrome; rows are flat inside it.
+.valent-mirror {
+  margin-top: var(--space-2);
+}
+
+.valent-mirror-row image {
+  color: var(--on-surface-variant);
+}
+
+.valent-mirror-caption {
+  color: var(--on-surface-variant);
+}
+
+.valent-mirror-status.danger {
+  color: var(--error);
+}

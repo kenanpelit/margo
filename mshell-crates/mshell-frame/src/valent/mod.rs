@@ -11,6 +11,10 @@
 //! `gdbus` spawns cost a process plus a fresh bus connection each. Actions
 //! use the same connection with typed `av` parameters (no GVariant text
 //! escaping or subprocesses).
+//!
+//! [`scrcpy`] adds phone screen mirroring over adb (Valent has none).
+
+pub(crate) mod scrcpy;
 
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, ValentStoreFields};

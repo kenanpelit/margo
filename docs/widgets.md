@@ -199,5 +199,16 @@ dumps core. The very first run only records the crashes already on disk, so
 turning it on never floods you with old ones.
 Needs `coredumpctl` / `journalctl` (systemd).
 
+## Phone screen mirroring (Valent menu)
+
+The Valent menu ends with a **Screen mirroring** card: every adb device
+(USB, or Wi-Fi after wireless debugging) gets a **Mirror** button that opens
+a scrcpy window you can control with mouse and keyboard, and **Stop** to
+close it. Pair a phone once with the IP:port and 6-digit code from its
+*Developer options → Wireless debugging → Pair device with pairing code*,
+then **Connect** to the IP:port shown there. `valent.scrcpy_screen_off`
+keeps the phone's own screen dark; `valent.scrcpy_args` adds scrcpy flags
+(e.g. `--max-size=1280 --stay-awake`). Needs `scrcpy` and `android-tools`.
+
 See [Configuration](configuration.md) for the full profile layout, and
 [Scripting](scripting.md) for driving the shell and compositor from scripts.
