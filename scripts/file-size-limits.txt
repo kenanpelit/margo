@@ -15,3 +15,7 @@ mshell-crates/mshell-core/src/ipc.rs 1100
 # Settings panel component (view, init, update). Page registry, search,
 # sidebar and the Widgets sub-page catalogue live in settings/*.rs.
 mshell-crates/mshell-settings/src/settings.rs 1100
+# The config root (Config, General, OSD/toasts, alarms, idle, session,
+# launcher, notifications, wallpaper, frame). Theme, bars, menus, dock and
+# system-service sections live in schema/config/*.rs.
+mshell-crates/mshell-config/src/schema/config.rs 1100
