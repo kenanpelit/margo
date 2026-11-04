@@ -46,6 +46,9 @@ the scroller layout, else `{"viewport_width", "columns":[{"id","app_id",
 column's target rect with `x` relative to the work area (negative = off
 the left edge, `x >= viewport_width` = off the right).
 
+Each `clients[]` entry carries `scratchpad` (in the scratchpad set),
+`scratchpad_shown` (on screen now) and `named_scratchpad`.
+
 Error frames are `{"error":"<message>"}`. Unknown verb/topic returns an
 error frame; the connection stays open.
 

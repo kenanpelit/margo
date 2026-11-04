@@ -300,6 +300,12 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
             icon: "square-symbolic",
         },
         WidgetEntry::Pill {
+            kind: BarPillKind::Scratchpads,
+            stack_name: "pill_scratchpads",
+            label: "Scratchpads",
+            icon: "view-app-grid-symbolic",
+        },
+        WidgetEntry::Pill {
             kind: BarPillKind::ScrollerRibbon,
             stack_name: "pill_scroller_ribbon",
             label: "Scroller Ribbon",

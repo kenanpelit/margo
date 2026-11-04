@@ -218,6 +218,12 @@ pub struct RawClient {
     pub global: bool,
     #[serde(default)]
     pub scratchpad: bool,
+    /// A scratchpad currently on screen (false while tucked away).
+    #[serde(default)]
+    pub scratchpad_shown: bool,
+    /// A named scratchpad (`toggle_named_scratchpad` / window rule).
+    #[serde(default)]
+    pub named_scratchpad: bool,
     pub tags: u32,
     pub monitor: String,
     pub monitor_idx: i32,

@@ -88,6 +88,61 @@ pub fn ribbon(view: Option<&crate::state_json::RawScroller>) -> Option<Ribbon> {
     })
 }
 
+/// One scratchpad chip.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScratchpadChip {
+    pub id: u64,
+    pub app_id: String,
+    pub title: String,
+    /// On screen now (vs tucked away).
+    pub shown: bool,
+}
+
+/// The scratchpad chips, in a stable order: every scratchpad window (named
+/// or anonymous, shown or hidden), sorted by app id then window id, so a
+/// chip never jumps when its scratchpad is toggled.
+pub fn scratchpad_chips(clients: &[crate::state_json::RawClient]) -> Vec<ScratchpadChip> {
+    let mut chips: Vec<ScratchpadChip> = clients
+        .iter()
+        .filter(|c| c.scratchpad)
+        .map(|c| ScratchpadChip {
+            id: c.id,
+            app_id: c.app_id.clone(),
+            title: c.title.clone(),
+            shown: c.scratchpad_shown,
+        })
+        .collect();
+    chips.sort_by(|a, b| {
+        a.app_id
+            .to_lowercase()
+            .cmp(&b.app_id.to_lowercase())
+            .then(a.id.cmp(&b.id))
+    });
+    chips
+}
+
+/// Most characters a chip label shows before it is cut with "…".
+pub const CHIP_LABEL_MAX: usize = 12;
+
+/// A short chip label for an app id: the last reverse-DNS segment
+/// (`org.wezfurlong.wezterm` → `wezterm`), cut to [`CHIP_LABEL_MAX`]
+/// characters. An empty app id falls back to the window title.
+pub fn chip_label(app_id: &str, title: &str) -> String {
+    let base = app_id
+        .rsplit('.')
+        .find(|s| !s.trim().is_empty())
+        .unwrap_or("")
+        .trim();
+    let base = if base.is_empty() { title.trim() } else { base };
+    let base = if base.is_empty() { "scratchpad" } else { base };
+    if base.chars().count() > CHIP_LABEL_MAX {
+        let cut: String = base.chars().take(CHIP_LABEL_MAX - 1).collect();
+        format!("{cut}…")
+    } else {
+        base.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -191,5 +246,45 @@ mod tests {
         assert_eq!(keymode_change(Some("default"), "resize"), Some("resize"));
         assert_eq!(keymode_change(Some("resize"), "default"), Some("default"));
         assert_eq!(keymode_change(Some("resize"), ""), None);
+    }
+
+    fn raw(id: u64, app: &str, scratchpad: bool, shown: bool) -> crate::state_json::RawClient {
+        crate::state_json::RawClient {
+            id,
+            app_id: app.into(),
+            title: format!("{app} title"),
+            scratchpad,
+            scratchpad_shown: shown,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn scratchpad_chips_list_only_scratchpads_in_a_stable_order() {
+        let clients = [
+            raw(5, "kitty", false, false),
+            raw(9, "Wiremix", true, false),
+            raw(3, "dropterm", true, true),
+            raw(4, "dropterm", true, false),
+        ];
+        let chips = scratchpad_chips(&clients);
+        let ids: Vec<u64> = chips.iter().map(|c| c.id).collect();
+        assert_eq!(ids, [3, 4, 9], "by app id (case-insensitive), then id");
+        assert!(chips[0].shown && !chips[1].shown);
+        assert!(scratchpad_chips(&[raw(1, "a", false, false)]).is_empty());
+    }
+
+    #[test]
+    fn chip_labels_are_short_and_never_empty() {
+        assert_eq!(chip_label("org.wezfurlong.wezterm", ""), "wezterm");
+        assert_eq!(chip_label("dropterm", ""), "dropterm");
+        assert_eq!(chip_label("", "Notes"), "Notes");
+        assert_eq!(chip_label("", ""), "scratchpad");
+        assert_eq!(chip_label("trailing.", ""), "trailing");
+        assert_eq!(chip_label("averyveryverylongappname", ""), "averyveryve…");
+        assert_eq!(
+            chip_label("averyveryverylongappname", "").chars().count(),
+            CHIP_LABEL_MAX
+        );
     }
 }

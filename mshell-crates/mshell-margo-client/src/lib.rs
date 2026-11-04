@@ -503,6 +503,10 @@ pub struct MargoService {
     /// outside the scroller layout or on a margo that predates the field.
     /// The scroller ribbon pill reads this.
     pub scroller: Reactive<Option<crate::state_json::RawScroller>>,
+    /// Every scratchpad window (shown or tucked away), in chip order. Empty
+    /// when there are none or the running margo predates the fields. The
+    /// scratchpad chips pill reads this.
+    pub scratchpads: Reactive<Vec<crate::indicators::ScratchpadChip>>,
     /// The focused output's tiling layout. `None` until the first
     /// snapshot, or while the output's `layout_idx` is past the
     /// layouts list (transient during a config reload). The layout
@@ -554,6 +558,7 @@ impl MargoService {
             lock_keys: Reactive::new(None),
             keymode: Reactive::new(None),
             scroller: Reactive::new(None),
+            scratchpads: Reactive::new(Vec::new()),
             active_layout: Reactive::new(None),
             config_errors: Reactive::new(Vec::new()),
             fullscreen_outputs: Reactive::new(Vec::new()),

@@ -451,6 +451,7 @@ Every action below can be bound to a key (`bind`), a mouse button (`mousebind`),
 | `summon`, `bring_here` | `<APPID> <TITLE\|none> <SPAWN> [OP]` | Bring a matching app **to the current tag**, or launch it if not running. Repeated presses cycle through every match (run-or-raise). `OP` (optional 4th field) combines appid+title: `and` (default) / `or` / `difference` (appid but not title). |
 | `focusapp`, `raiseapp` | `<APPID> <TITLE\|none> <SPAWN> [OP]` | Run-or-raise counterpart to `summon`: focus the app **where it is** (switch to its tag/monitor), cycling instances; launch if none match. Same matching + `OP` operator. |
 | `toggle_scratchpad` | | Toggle every anonymous scratchpad on the focused monitor. |
+| `togglescratchpadid`, `toggle_scratchpad_id` | `<ID>` | Show/hide one scratchpad window by its stable id (the shell's scratchpad chips). Never promotes a non-scratchpad window. |
 | `unscratchpad`, `exit_scratchpad` | | Emergency reset of the focused window's scratchpad/floating/fullscreen state. |
 
 ### Overview

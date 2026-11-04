@@ -32,6 +32,23 @@ fn arg_v(v: &str) -> Arg {
     }
 }
 
+fn arg_i(i: i32) -> Arg {
+    Arg {
+        i,
+        ..Arg::default()
+    }
+}
+
+fn snapshot_client(fx: &Fixture, id: u64) -> serde_json::Value {
+    fx.server.state.build_state_snapshot()["clients"]
+        .as_array()
+        .expect("clients")
+        .iter()
+        .find(|c| c["id"] == id)
+        .cloned()
+        .expect("client in snapshot")
+}
+
 #[test]
 fn keymode_is_published_and_a_change_pushes_a_frame() {
     let mut fx = Fixture::new();
@@ -103,4 +120,53 @@ fn scroller_viewport_lists_every_column_relative_to_the_work_area() {
     fx.server.state.monitors[0].pertag.ltidxs[curtag] = LayoutId::Tile;
     fx.server.state.arrange_monitor(0);
     assert!(fx.server.state.build_state_snapshot()["outputs"][0]["scroller"].is_null());
+}
+
+#[test]
+fn scratchpad_state_is_published_and_toggled_by_id() {
+    let mut fx = Fixture::new();
+    fx.add_output("DP-1", (1920, 1080));
+    fx.add_keyboard();
+    let plain = map_window(&mut fx, "plain");
+    let pad = map_window(&mut fx, "dropterm");
+
+    let c = snapshot_client(&fx, plain);
+    assert_eq!(c["scratchpad"], false);
+    assert_eq!(c["scratchpad_shown"], false);
+    assert_eq!(c["named_scratchpad"], false);
+
+    dispatch_action(
+        &mut fx.server.state,
+        "toggle_named_scratchpad",
+        &arg_v("^dropterm$"),
+    );
+    let c = snapshot_client(&fx, pad);
+    assert_eq!(c["scratchpad"], true);
+    assert_eq!(c["named_scratchpad"], true);
+    assert_eq!(c["scratchpad_shown"], true, "the first toggle reveals it");
+
+    fx.server.state.state_dirty.set(false);
+    dispatch_action(
+        &mut fx.server.state,
+        "togglescratchpadid",
+        &arg_i(pad as i32),
+    );
+    assert!(fx.server.state.state_dirty.get(), "a toggle pushes a frame");
+    assert_eq!(snapshot_client(&fx, pad)["scratchpad_shown"], false);
+    dispatch_action(
+        &mut fx.server.state,
+        "togglescratchpadid",
+        &arg_i(pad as i32),
+    );
+    assert_eq!(snapshot_client(&fx, pad)["scratchpad_shown"], true);
+
+    // A window that is not a scratchpad is never promoted by the id toggle.
+    dispatch_action(
+        &mut fx.server.state,
+        "togglescratchpadid",
+        &arg_i(plain as i32),
+    );
+    let c = snapshot_client(&fx, plain);
+    assert_eq!(c["scratchpad"], false);
+    assert_eq!(c["minimized"], false);
 }

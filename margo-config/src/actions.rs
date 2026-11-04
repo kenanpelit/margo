@@ -608,6 +608,15 @@ pub const ACTIONS: &[Action] = &[
                  Works with windowrule `isnamedscratchpad:1`.",
     },
     Action {
+        name: "togglescratchpadid",
+        aliases: &["toggle_scratchpad_id"],
+        args: "<ID>",
+        group: Group::Scratchpad,
+        summary: "Show / hide one scratchpad window by its stable id (arg 1).",
+        detail: "What the shell's scratchpad chips send. Only acts on a window \
+                 that is already a scratchpad; honours `single_scratchpad`.",
+    },
+    Action {
         name: "summon",
         aliases: &["taghere", "tag_here", "tag-here", "bring_here", "bringhere"],
         args: "<APPID> <TITLE|none> <SPAWN> [OP]",

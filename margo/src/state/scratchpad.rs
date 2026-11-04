@@ -344,6 +344,25 @@ impl MargoState {
         self.switch_scratchpad_state(idx);
     }
 
+    /// Public action: show / hide the scratchpad window with stable `id`
+    /// (what the shell's scratchpad chips send). Same show path as its own
+    /// toggle, `single_scratchpad` included. A window that is not a
+    /// scratchpad is left alone — the chips only list scratchpads, and an
+    /// id toggle must never promote an ordinary window.
+    pub fn toggle_scratchpad_id(&mut self, id: u64) {
+        let Some(idx) = self.clients.iter().position(|c| c.id == id) else {
+            return;
+        };
+        if !self.clients[idx].is_in_scratchpad {
+            return;
+        }
+        if !self.clients[idx].is_scratchpad_show {
+            self.hide_other_scratchpads_if_single(idx);
+        }
+        self.switch_scratchpad_state(idx);
+        self.mark_state_dirty();
+    }
+
     /// Public action: bring a window matching <name>/<title> to the
     /// currently-focused monitor's active tag, launching it via
     /// <spawn> if no instance is open. The mango-here.sh script

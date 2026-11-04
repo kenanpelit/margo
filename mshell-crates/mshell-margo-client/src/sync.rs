@@ -247,6 +247,12 @@ fn apply(service: &MargoService, state: &StateJson) {
         service.scroller.set(scroller);
     }
 
+    // Mirror the scratchpad list (change-only).
+    let scratchpads = crate::indicators::scratchpad_chips(&state.clients);
+    if service.scratchpads.get() != scratchpads {
+        service.scratchpads.set(scratchpads);
+    }
+
     // Mirror the focused output's layout (change-only).
     let layout = active_layout(state);
     if service.active_layout.get() != layout {
@@ -1097,6 +1103,7 @@ mod apply_tests {
             lock_keys: Reactive::new(None),
             keymode: Reactive::new(None),
             scroller: Reactive::new(None),
+            scratchpads: Reactive::new(Vec::new()),
             config_errors: Reactive::new(Vec::new()),
             active_layout: Reactive::new(None),
             fullscreen_outputs: Reactive::new(Vec::new()),
@@ -1626,6 +1633,23 @@ mod apply_tests {
         .expect("frame with a scroller strip parses");
         let s = parsed.outputs[0].scroller.as_ref().expect("strip");
         assert_eq!((s.columns[0].id, s.columns[0].x), (7, 12));
+    }
+
+    #[test]
+    fn scratchpads_are_mirrored_change_only() {
+        let svc = service();
+        let mut f = frame();
+        apply(&svc, &f);
+        assert!(svc.scratchpads.get().is_empty());
+        f.clients[1].scratchpad = true;
+        f.clients[1].scratchpad_shown = true;
+        apply(&svc, &f);
+        let chips = svc.scratchpads.get();
+        assert_eq!(chips.len(), 1);
+        assert_eq!((chips[0].id, chips[0].shown), (2, true));
+        f.clients[1].scratchpad_shown = false;
+        apply(&svc, &f);
+        assert!(!svc.scratchpads.get()[0].shown, "hide is mirrored");
     }
 
     /// A frame as margo serialises it (extra fields included), parsed and

@@ -253,6 +253,10 @@ impl MargoState {
                     "minimized": c.is_minimized,
                     "urgent": c.is_urgent,
                     "scratchpad": c.is_in_scratchpad,
+                    // Scratchpad on screen (vs tucked away), and whether it
+                    // is a named one — the shell's scratchpad chips.
+                    "scratchpad_shown": c.is_in_scratchpad && c.is_scratchpad_show,
+                    "named_scratchpad": c.is_named_scratchpad,
                     "global": c.is_global,
                     "focused": Some(idx) == focused_idx,
                     "pid": c.pid,

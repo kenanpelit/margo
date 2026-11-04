@@ -672,6 +672,13 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
             state.toggle_named_scratchpad(name, title, spawn);
         }
         "toggle_scratchpad" | "togglescratchpad" => state.toggle_scratchpad(),
+        // Show / hide one scratchpad by its stable window id (the shell's
+        // scratchpad chips). Ids are session-monotonic from 1 → `arg.i`.
+        "togglescratchpadid" | "toggle_scratchpad_id" => {
+            if arg.i > 0 {
+                state.toggle_scratchpad_id(arg.i as u64);
+            }
+        }
         // mango-here equivalent — bring a window to the current tag,
         // launch it if it isn't running. Three args mirror
         // toggle_named_scratchpad:

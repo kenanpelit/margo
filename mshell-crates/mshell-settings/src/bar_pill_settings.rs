@@ -29,6 +29,7 @@ pub(crate) enum BarPillKind {
     Logout,
     MargoTags,
     ScrollerRibbon,
+    Scratchpads,
     Reboot,
     RecordingIndicator,
     Shutdown,
@@ -47,6 +48,7 @@ impl BarPillKind {
             Self::Logout => "Logout",
             Self::MargoTags => "Margo Tags",
             Self::ScrollerRibbon => "Scroller Ribbon",
+            Self::Scratchpads => "Scratchpads",
             Self::Reboot => "Reboot",
             Self::RecordingIndicator => "Recording Indicator",
             Self::Shutdown => "Shutdown",
@@ -84,6 +86,9 @@ impl BarPillKind {
             }
             Self::ScrollerRibbon => {
                 "One small segment per column of the focused output's scroller strip: lit inside the viewport, accented for the focused column, dim when scrolled off, with ‹N / N› counts of the columns hidden on each side. Click a segment to focus that column; scroll over the pill to move focus left / right. Hidden outside the scroller layout."
+            }
+            Self::Scratchpads => {
+                "One chip per scratchpad window (named or anonymous), labelled with its app. A scratchpad on screen is the filled accent capsule, a tucked-away one an accent label. Click a chip to show / hide it — the same toggle as its keybind. Hidden when there are no scratchpads."
             }
             Self::Reboot => "Reboots the system. Confirms with a dialog.",
             Self::RecordingIndicator => {

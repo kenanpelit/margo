@@ -107,6 +107,9 @@ pub enum BarWidget {
     /// counts per side. Click a column to focus it, scroll to move focus.
     /// Hidden outside the scroller layout.
     ScrollerRibbon,
+    /// Scratchpad chips — one chip per scratchpad window (accent capsule
+    /// while shown); click toggles it. Hidden when there are none.
+    Scratchpads,
     ColorPicker,
     Lock,
     Logout,
@@ -202,6 +205,7 @@ impl BarWidget {
             BarWidget::MargoLayoutSwitcher => "Margo Layout Switcher",
             BarWidget::MargoTags => "Margo Tags",
             BarWidget::ScrollerRibbon => "Scroller Ribbon",
+            BarWidget::Scratchpads => "Scratchpads",
             BarWidget::ColorPicker => "ColorPicker",
             BarWidget::Lock => "Lock",
             BarWidget::Logout => "Logout",
@@ -269,6 +273,7 @@ impl BarWidget {
             BarWidget::MargoLayoutSwitcher,
             BarWidget::MargoTags,
             BarWidget::ScrollerRibbon,
+            BarWidget::Scratchpads,
             BarWidget::ColorPicker,
             BarWidget::Lock,
             BarWidget::Logout,

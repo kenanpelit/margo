@@ -41,6 +41,7 @@ use crate::bars::bar_widgets::reboot::{RebootInit, RebootModel};
 use crate::bars::bar_widgets::recording_indicator::{
     RecordingIndicatorInit, RecordingIndicatorModel,
 };
+use crate::bars::bar_widgets::scratchpads::{ScratchpadsInit, ScratchpadsModel};
 use crate::bars::bar_widgets::screenshot::{ScreenshotInit, ScreenshotModel, ScreenshotOutput};
 use crate::bars::bar_widgets::scroller_ribbon::{ScrollerRibbonInit, ScrollerRibbonModel};
 use crate::bars::bar_widgets::setup::{SetupInit, SetupModel, SetupOutput};
@@ -1183,6 +1184,11 @@ impl BarModel {
             BarWidget::MargoTags => Box::new(
                 MargoTagsModel::builder()
                     .launch(MargoTagsInit { orientation })
+                    .detach(),
+            ),
+            BarWidget::Scratchpads => Box::new(
+                ScratchpadsModel::builder()
+                    .launch(ScratchpadsInit { orientation })
                     .detach(),
             ),
             BarWidget::ScrollerRibbon => Box::new(
