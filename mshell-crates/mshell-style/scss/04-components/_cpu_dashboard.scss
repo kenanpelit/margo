@@ -255,3 +255,33 @@
   // scheme colour); danger switches to red.
   &.danger progress { background-color: var(--error); }
 }
+
+// ── Tabs: Processes / Ports / Drives ───────────────────────────
+// List tabs reuse the §5 boxed-list (.ok-boxed-list.compact) for the
+// rows; these rules only cover the dashboard-specific bits.
+
+// Keep the list + its scroller transparent so slack under a short list
+// reads as the panel surface, not a dark band (DESIGN.md §5).
+.cpu-dashboard-menu-widget scrolledwindow,
+.cpu-dashboard-list {
+  background-color: transparent;
+}
+
+// Sort segmented row: equal-width surface buttons, the active column
+// carries `.selected` (same shape as the VPN network-mode row).
+.cpu-dashboard-sort-row > button {
+  min-width: 0;
+}
+
+// Inline kill confirm: a calm card, the destructive choice carries the
+// error ladder on its own button (.ok-button-error), not the card.
+.cpu-dashboard-confirm {
+  background-color: var(--surface-container);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+// "By app" grouping: the window row is a header, its processes indent.
+.cpu-dashboard-group-member > box {
+  margin-left: var(--space-4);
+}

@@ -15,10 +15,15 @@
 //!   - Memory (used / total + swap)
 //!   - Load average (1m / 5m / 15m) + uptime
 //!
+//! The page above is the **Overview** tab; the other tabs are child
+//! components that poll only while the menu is open and their tab is
+//! visible (`sync_tabs`): **Processes** (`processes_tab.rs`).
+//!
 //! Severity classes (calm / warn / danger) come from the same
 //! thresholds the bar pill uses so the menu's tint reads the same
 //! signal at the same time.
 
+use super::processes_tab::{ProcessesTabInput, ProcessesTabModel};
 use crate::bars::bar_widgets::sysstat::{
     find_cpu_temp_sensor_pub, read_all_fans_pub, read_all_temp_sensors_pub, read_cpu_stat_pub,
     read_temp_millideg_pub,
@@ -29,7 +34,9 @@ use mshell_services::sys_info_service;
 use relm4::gtk::prelude::{
     BoxExt, DrawingAreaExt, DrawingAreaExtManual, GridExt, OrientableExt, WidgetExt,
 };
-use relm4::{Component, ComponentParts, ComponentSender, RelmWidgetExt, gtk};
+use relm4::{
+    Component, ComponentController, ComponentParts, ComponentSender, Controller, RelmWidgetExt, gtk,
+};
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -162,6 +169,11 @@ pub(crate) struct CpuDashboardMenuWidgetModel {
     /// removes it — so a closed dashboard neither works nor wakes. Starts
     /// running since the widget is built on first reveal.
     poll: RevealPoll,
+    /// Whether the host menu is revealed (gates the tab children's polls).
+    revealed: bool,
+    /// Visible tab name (`overview`, `processes`, …).
+    tab: String,
+    processes: Controller<ProcessesTabModel>,
 }
 
 impl std::fmt::Debug for CpuDashboardMenuWidgetModel {
@@ -180,6 +192,8 @@ pub(crate) enum CpuDashboardMenuWidgetInput {
     /// Host menu show/hide. Gates the poll so a closed dashboard does no
     /// /proc / hwmon work.
     ParentRevealChanged(bool),
+    /// The tab stack switched page (its child name).
+    TabChanged(String),
 }
 
 #[derive(Debug)]
@@ -223,328 +237,352 @@ impl Component for CpuDashboardMenuWidgetModel {
                 },
             },
 
-            // CPU identity — model + core/thread count.
-            gtk::Label {
-                add_css_class: "cpu-dashboard-model",
-                #[watch]
-                set_label: &model.identity_line(),
-                #[watch]
-                set_visible: !model.cpu_model.is_empty(),
+            // ── Tabs (podman pattern: StackSwitcher + Stack) ────
+            #[name = "stack_switcher"]
+            gtk::StackSwitcher {
+                set_stack: Some(&stack),
                 set_halign: gtk::Align::Start,
-                set_xalign: 0.0,
-                set_wrap: true,
             },
 
-            // Hero — aggregate CPU + frequency + temp.
-            gtk::Box {
-                #[watch]
-                set_css_classes: &[
-                    "cpu-dashboard-hero",
-                    severity_class(model.cpu_percent, model.temp_celsius),
-                ],
-                set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 16,
-                set_homogeneous: true,
+            #[name = "stack"]
+            gtk::Stack {
+                set_transition_type: gtk::StackTransitionType::SlideLeftRight,
+                set_transition_duration: 200,
+                // Each tab keeps its own height: the Overview must not be
+                // padded out to the process list's scroll height.
+                set_vhomogeneous: false,
+                connect_visible_child_name_notify[sender] => move |s| {
+                    let name = s.visible_child_name().map(|n| n.to_string()).unwrap_or_default();
+                    sender.input(CpuDashboardMenuWidgetInput::TabChanged(name));
+                },
 
-                gtk::Box {
+                add_titled[Some("overview"), "Overview"] = &gtk::Box {
                     set_orientation: gtk::Orientation::Vertical,
-                    set_spacing: 2,
+                    set_spacing: 14,
+                    // CPU identity — model + core/thread count.
                     gtk::Label {
-                        add_css_class: "cpu-dashboard-hero-value",
+                        add_css_class: "cpu-dashboard-model",
                         #[watch]
-                        set_label: &format!("{}%", model.cpu_percent),
-                        set_halign: gtk::Align::Center,
-                    },
-                    gtk::Label {
-                        add_css_class: "cpu-dashboard-hero-caption",
-                        set_label: "CPU LOAD",
-                        set_halign: gtk::Align::Center,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_spacing: 2,
-                    gtk::Label {
-                        add_css_class: "cpu-dashboard-hero-value",
+                        set_label: &model.identity_line(),
                         #[watch]
-                        set_label: &if model.freq_ghz > 0.0 {
-                            format!("{:.1}", model.freq_ghz)
-                        } else {
-                            "—".to_string()
-                        },
-                        set_halign: gtk::Align::Center,
-                    },
-                    gtk::Label {
-                        add_css_class: "cpu-dashboard-hero-caption",
-                        set_label: "GHZ",
-                        set_halign: gtk::Align::Center,
-                    },
-                    gtk::Label {
-                        add_css_class: "cpu-dashboard-hero-subcaption",
-                        #[watch]
-                        set_visible: model.freq_max_ghz > 0.0,
-                        #[watch]
-                        set_label: &format!("{:.1}–{:.1}", model.freq_min_ghz, model.freq_max_ghz),
-                        set_halign: gtk::Align::Center,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_spacing: 2,
-                    gtk::Label {
-                        // Semantic temperature colour: amber at ≥75 °C,
-                        // red at ≥85 °C. Replaces any accent borrowing
-                        // (DESIGN.md §Severity ladder).
-                        #[watch]
-                        set_css_classes: &[
-                            "cpu-dashboard-hero-value",
-                            temp_label_class(model.temp_celsius),
-                        ],
-                        #[watch]
-                        set_label: &format!("{}°C", model.temp_celsius),
-                        set_halign: gtk::Align::Center,
-                    },
-                    gtk::Label {
-                        add_css_class: "cpu-dashboard-hero-caption",
-                        set_label: "PACKAGE TEMP",
-                        set_halign: gtk::Align::Center,
-                    },
-                },
-            },
-
-            // User vs System split + history sparkline.
-            gtk::Label {
-                add_css_class: "cpu-dashboard-split",
-                #[watch]
-                set_label: &format!(
-                    "User {}%      System {}%",
-                    model.user_percent, model.system_percent,
-                ),
-                set_halign: gtk::Align::Start,
-            },
-            #[name = "sparkline"]
-            gtk::DrawingArea {
-                add_css_class: "cpu-dashboard-sparkline",
-                set_hexpand: true,
-                set_content_height: 44,
-            },
-
-            // Per-core load — a compact heat-grid (tile per core), built
-            // dynamically once the core count is known (see the poll handler).
-            gtk::Label {
-                add_css_class: "cpu-dashboard-section-label",
-                set_label: "PER-CORE",
-                set_halign: gtk::Align::Start,
-            },
-            #[name = "cores_box"]
-            gtk::Grid {
-                add_css_class: "cpu-dashboard-core-grid",
-                set_row_spacing: 4,
-                set_column_spacing: 4,
-                set_column_homogeneous: true,
-            },
-
-            // Sensors — one tidy line: the average across all hwmon
-            // temperature sensors (CPU/GPU/NVMe/…) + the average fan
-            // RPM. Each half hides when it has no readings; the whole
-            // line hides on a sensorless host.
-            gtk::Box {
-                add_css_class: "cpu-dashboard-sensor-line",
-                set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 18,
-                set_margin_top: 2,
-                #[watch]
-                set_visible: !model.temps.is_empty() || !model.fans.is_empty(),
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 6,
-                    #[watch]
-                    set_visible: !model.temps.is_empty(),
-                    gtk::Image {
-                        add_css_class: "current-weather-detail-icon",
-                        set_icon_name: Some("temperature-symbolic"),
-                    },
-                    gtk::Label {
-                        add_css_class: "cpu-dashboard-section-label",
-                        set_label: "TEMP",
-                        set_valign: gtk::Align::Center,
-                    },
-                    gtk::Label {
-                        #[watch]
-                        set_css_classes: &[
-                            "cpu-dashboard-stat-value",
-                            temp_label_class(model.avg_temp()),
-                        ],
-                        #[watch]
-                        set_label: &format!("{}°C", model.avg_temp()),
-                        set_valign: gtk::Align::Center,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 6,
-                    #[watch]
-                    set_visible: !model.fans.is_empty(),
-                    gtk::Image {
-                        add_css_class: "current-weather-detail-icon",
-                        set_icon_name: Some("weather-windy-symbolic"),
-                    },
-                    gtk::Label {
-                        add_css_class: "cpu-dashboard-section-label",
-                        set_label: "FAN",
-                        set_valign: gtk::Align::Center,
-                    },
-                    gtk::Label {
-                        add_css_class: "cpu-dashboard-stat-value",
-                        #[watch]
-                        set_label: &format!("{} RPM", model.avg_fan()),
-                        set_valign: gtk::Align::Center,
-                    },
-                },
-            },
-
-            // Memory + swap — symmetric labelled bar rows: caption,
-            // bar, "used / total", percent. Same row shape so RAM and
-            // Swap read as one consistent group.
-            gtk::Label {
-                add_css_class: "cpu-dashboard-section-label",
-                set_label: "MEMORY",
-                set_halign: gtk::Align::Start,
-            },
-            gtk::Box {
-                set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 10,
-                gtk::Label {
-                    add_css_class: "cpu-dashboard-stat-caption",
-                    set_label: "RAM",
-                    set_width_chars: 4,
-                    set_xalign: 0.0,
-                },
-                gtk::ProgressBar {
-                    set_hexpand: true,
-                    set_valign: gtk::Align::Center,
-                    #[watch]
-                    set_fraction: (model.ram_percent as f64) / 100.0,
-                    #[watch]
-                    set_css_classes: &[
-                        "cpu-dashboard-bar",
-                        if model.ram_percent >= 90 { "danger" }
-                        else if model.ram_percent >= 75 { "warn" }
-                        else { "calm" },
-                    ],
-                },
-                gtk::Label {
-                    add_css_class: "cpu-dashboard-stat-detail",
-                    #[watch]
-                    set_label: &format!(
-                        "{} / {}",
-                        fmt_gb(model.mem_used_kb), fmt_gb(model.mem_total_kb),
-                    ),
-                },
-                gtk::Label {
-                    add_css_class: "cpu-dashboard-stat-value",
-                    #[watch]
-                    set_label: &format!("{}%", model.ram_percent),
-                    set_width_chars: 4,
-                    set_xalign: 1.0,
-                },
-            },
-            gtk::Box {
-                set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 10,
-                #[watch]
-                set_visible: model.swap_total_kb > 0,
-                gtk::Label {
-                    add_css_class: "cpu-dashboard-stat-caption",
-                    set_label: "Swap",
-                    set_width_chars: 4,
-                    set_xalign: 0.0,
-                },
-                gtk::ProgressBar {
-                    set_hexpand: true,
-                    set_valign: gtk::Align::Center,
-                    #[watch]
-                    set_fraction: model.swap_fraction(),
-                    add_css_class: "cpu-dashboard-bar",
-                    add_css_class: "calm",
-                },
-                gtk::Label {
-                    add_css_class: "cpu-dashboard-stat-detail",
-                    #[watch]
-                    set_label: &format!(
-                        "{} / {}",
-                        fmt_gb(model.swap_used_kb), fmt_gb(model.swap_total_kb),
-                    ),
-                },
-                gtk::Label {
-                    add_css_class: "cpu-dashboard-stat-value",
-                    #[watch]
-                    set_label: &format!("{}%", swap_pct(model.swap_used_kb, model.swap_total_kb)),
-                    set_width_chars: 4,
-                    set_xalign: 1.0,
-                },
-            },
-
-            // Storage — per-mount usage, read from the shared
-            // SysinfoService (disks). Same labelled-bar row shape as
-            // Memory; rows are rebuilt imperatively each poll (the menu
-            // reads the service's cached snapshot — no extra disk I/O).
-            gtk::Label {
-                add_css_class: "cpu-dashboard-section-label",
-                set_label: "STORAGE",
-                set_halign: gtk::Align::Start,
-            },
-            #[name = "disk_box"]
-            gtk::Box {
-                set_orientation: gtk::Orientation::Vertical,
-                set_spacing: 6,
-            },
-
-            // Load average + uptime — two labelled stat columns
-            // (caption above value), the same caption→value rhythm the
-            // hero uses, so the footer doesn't read as raw text.
-            gtk::Box {
-                set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 16,
-                set_homogeneous: true,
-                set_margin_top: 4,
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_spacing: 3,
-                    gtk::Label {
-                        add_css_class: "cpu-dashboard-section-label",
-                        set_label: "LOAD AVG · 1 / 5 / 15M",
+                        set_visible: !model.cpu_model.is_empty(),
                         set_halign: gtk::Align::Start,
+                        set_xalign: 0.0,
+                        set_wrap: true,
                     },
+
+                    // Hero — aggregate CPU + frequency + temp.
+                    gtk::Box {
+                        #[watch]
+                        set_css_classes: &[
+                            "cpu-dashboard-hero",
+                            severity_class(model.cpu_percent, model.temp_celsius),
+                        ],
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 16,
+                        set_homogeneous: true,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_spacing: 2,
+                            gtk::Label {
+                                add_css_class: "cpu-dashboard-hero-value",
+                                #[watch]
+                                set_label: &format!("{}%", model.cpu_percent),
+                                set_halign: gtk::Align::Center,
+                            },
+                            gtk::Label {
+                                add_css_class: "cpu-dashboard-hero-caption",
+                                set_label: "CPU LOAD",
+                                set_halign: gtk::Align::Center,
+                            },
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_spacing: 2,
+                            gtk::Label {
+                                add_css_class: "cpu-dashboard-hero-value",
+                                #[watch]
+                                set_label: &if model.freq_ghz > 0.0 {
+                                    format!("{:.1}", model.freq_ghz)
+                                } else {
+                                    "—".to_string()
+                                },
+                                set_halign: gtk::Align::Center,
+                            },
+                            gtk::Label {
+                                add_css_class: "cpu-dashboard-hero-caption",
+                                set_label: "GHZ",
+                                set_halign: gtk::Align::Center,
+                            },
+                            gtk::Label {
+                                add_css_class: "cpu-dashboard-hero-subcaption",
+                                #[watch]
+                                set_visible: model.freq_max_ghz > 0.0,
+                                #[watch]
+                                set_label: &format!("{:.1}–{:.1}", model.freq_min_ghz, model.freq_max_ghz),
+                                set_halign: gtk::Align::Center,
+                            },
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_spacing: 2,
+                            gtk::Label {
+                                // Semantic temperature colour: amber at ≥75 °C,
+                                // red at ≥85 °C. Replaces any accent borrowing
+                                // (DESIGN.md §Severity ladder).
+                                #[watch]
+                                set_css_classes: &[
+                                    "cpu-dashboard-hero-value",
+                                    temp_label_class(model.temp_celsius),
+                                ],
+                                #[watch]
+                                set_label: &format!("{}°C", model.temp_celsius),
+                                set_halign: gtk::Align::Center,
+                            },
+                            gtk::Label {
+                                add_css_class: "cpu-dashboard-hero-caption",
+                                set_label: "PACKAGE TEMP",
+                                set_halign: gtk::Align::Center,
+                            },
+                        },
+                    },
+
+                    // User vs System split + history sparkline.
                     gtk::Label {
-                        add_css_class: "cpu-dashboard-stat-value",
+                        add_css_class: "cpu-dashboard-split",
                         #[watch]
                         set_label: &format!(
-                            "{:.2} · {:.2} · {:.2}",
-                            model.load_1m, model.load_5m, model.load_15m,
+                            "User {}%      System {}%",
+                            model.user_percent, model.system_percent,
                         ),
                         set_halign: gtk::Align::Start,
                     },
-                },
+                    #[name = "sparkline"]
+                    gtk::DrawingArea {
+                        add_css_class: "cpu-dashboard-sparkline",
+                        set_hexpand: true,
+                        set_content_height: 44,
+                    },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_spacing: 3,
+                    // Per-core load — a compact heat-grid (tile per core), built
+                    // dynamically once the core count is known (see the poll handler).
                     gtk::Label {
                         add_css_class: "cpu-dashboard-section-label",
-                        set_label: "UPTIME",
+                        set_label: "PER-CORE",
                         set_halign: gtk::Align::Start,
                     },
-                    gtk::Label {
-                        add_css_class: "cpu-dashboard-stat-value",
+                    #[name = "cores_box"]
+                    gtk::Grid {
+                        add_css_class: "cpu-dashboard-core-grid",
+                        set_row_spacing: 4,
+                        set_column_spacing: 4,
+                        set_column_homogeneous: true,
+                    },
+
+                    // Sensors — one tidy line: the average across all hwmon
+                    // temperature sensors (CPU/GPU/NVMe/…) + the average fan
+                    // RPM. Each half hides when it has no readings; the whole
+                    // line hides on a sensorless host.
+                    gtk::Box {
+                        add_css_class: "cpu-dashboard-sensor-line",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 18,
+                        set_margin_top: 2,
                         #[watch]
-                        set_label: &model.uptime,
+                        set_visible: !model.temps.is_empty() || !model.fans.is_empty(),
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 6,
+                            #[watch]
+                            set_visible: !model.temps.is_empty(),
+                            gtk::Image {
+                                add_css_class: "current-weather-detail-icon",
+                                set_icon_name: Some("temperature-symbolic"),
+                            },
+                            gtk::Label {
+                                add_css_class: "cpu-dashboard-section-label",
+                                set_label: "TEMP",
+                                set_valign: gtk::Align::Center,
+                            },
+                            gtk::Label {
+                                #[watch]
+                                set_css_classes: &[
+                                    "cpu-dashboard-stat-value",
+                                    temp_label_class(model.avg_temp()),
+                                ],
+                                #[watch]
+                                set_label: &format!("{}°C", model.avg_temp()),
+                                set_valign: gtk::Align::Center,
+                            },
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 6,
+                            #[watch]
+                            set_visible: !model.fans.is_empty(),
+                            gtk::Image {
+                                add_css_class: "current-weather-detail-icon",
+                                set_icon_name: Some("weather-windy-symbolic"),
+                            },
+                            gtk::Label {
+                                add_css_class: "cpu-dashboard-section-label",
+                                set_label: "FAN",
+                                set_valign: gtk::Align::Center,
+                            },
+                            gtk::Label {
+                                add_css_class: "cpu-dashboard-stat-value",
+                                #[watch]
+                                set_label: &format!("{} RPM", model.avg_fan()),
+                                set_valign: gtk::Align::Center,
+                            },
+                        },
+                    },
+
+                    // Memory + swap — symmetric labelled bar rows: caption,
+                    // bar, "used / total", percent. Same row shape so RAM and
+                    // Swap read as one consistent group.
+                    gtk::Label {
+                        add_css_class: "cpu-dashboard-section-label",
+                        set_label: "MEMORY",
                         set_halign: gtk::Align::Start,
+                    },
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 10,
+                        gtk::Label {
+                            add_css_class: "cpu-dashboard-stat-caption",
+                            set_label: "RAM",
+                            set_width_chars: 4,
+                            set_xalign: 0.0,
+                        },
+                        gtk::ProgressBar {
+                            set_hexpand: true,
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            set_fraction: (model.ram_percent as f64) / 100.0,
+                            #[watch]
+                            set_css_classes: &[
+                                "cpu-dashboard-bar",
+                                if model.ram_percent >= 90 { "danger" }
+                                else if model.ram_percent >= 75 { "warn" }
+                                else { "calm" },
+                            ],
+                        },
+                        gtk::Label {
+                            add_css_class: "cpu-dashboard-stat-detail",
+                            #[watch]
+                            set_label: &format!(
+                                "{} / {}",
+                                fmt_gb(model.mem_used_kb), fmt_gb(model.mem_total_kb),
+                            ),
+                        },
+                        gtk::Label {
+                            add_css_class: "cpu-dashboard-stat-value",
+                            #[watch]
+                            set_label: &format!("{}%", model.ram_percent),
+                            set_width_chars: 4,
+                            set_xalign: 1.0,
+                        },
+                    },
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 10,
+                        #[watch]
+                        set_visible: model.swap_total_kb > 0,
+                        gtk::Label {
+                            add_css_class: "cpu-dashboard-stat-caption",
+                            set_label: "Swap",
+                            set_width_chars: 4,
+                            set_xalign: 0.0,
+                        },
+                        gtk::ProgressBar {
+                            set_hexpand: true,
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            set_fraction: model.swap_fraction(),
+                            add_css_class: "cpu-dashboard-bar",
+                            add_css_class: "calm",
+                        },
+                        gtk::Label {
+                            add_css_class: "cpu-dashboard-stat-detail",
+                            #[watch]
+                            set_label: &format!(
+                                "{} / {}",
+                                fmt_gb(model.swap_used_kb), fmt_gb(model.swap_total_kb),
+                            ),
+                        },
+                        gtk::Label {
+                            add_css_class: "cpu-dashboard-stat-value",
+                            #[watch]
+                            set_label: &format!("{}%", swap_pct(model.swap_used_kb, model.swap_total_kb)),
+                            set_width_chars: 4,
+                            set_xalign: 1.0,
+                        },
+                    },
+
+                    // Storage — per-mount usage, read from the shared
+                    // SysinfoService (disks). Same labelled-bar row shape as
+                    // Memory; rows are rebuilt imperatively each poll (the menu
+                    // reads the service's cached snapshot — no extra disk I/O).
+                    gtk::Label {
+                        add_css_class: "cpu-dashboard-section-label",
+                        set_label: "STORAGE",
+                        set_halign: gtk::Align::Start,
+                    },
+                    #[name = "disk_box"]
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_spacing: 6,
+                    },
+
+                    // Load average + uptime — two labelled stat columns
+                    // (caption above value), the same caption→value rhythm the
+                    // hero uses, so the footer doesn't read as raw text.
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 16,
+                        set_homogeneous: true,
+                        set_margin_top: 4,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_spacing: 3,
+                            gtk::Label {
+                                add_css_class: "cpu-dashboard-section-label",
+                                set_label: "LOAD AVG · 1 / 5 / 15M",
+                                set_halign: gtk::Align::Start,
+                            },
+                            gtk::Label {
+                                add_css_class: "cpu-dashboard-stat-value",
+                                #[watch]
+                                set_label: &format!(
+                                    "{:.2} · {:.2} · {:.2}",
+                                    model.load_1m, model.load_5m, model.load_15m,
+                                ),
+                                set_halign: gtk::Align::Start,
+                            },
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_spacing: 3,
+                            gtk::Label {
+                                add_css_class: "cpu-dashboard-section-label",
+                                set_label: "UPTIME",
+                                set_halign: gtk::Align::Start,
+                            },
+                            gtk::Label {
+                                add_css_class: "cpu-dashboard-stat-value",
+                                #[watch]
+                                set_label: &model.uptime,
+                                set_halign: gtk::Align::Start,
+                            },
+                        },
                     },
                 },
             },
@@ -617,9 +655,15 @@ impl Component for CpuDashboardMenuWidgetModel {
             core_rows: Vec::new(),
             history: Rc::new(RefCell::new(Vec::with_capacity(HISTORY_LEN))),
             poll,
+            revealed: true,
+            tab: "overview".to_string(),
+            processes: ProcessesTabModel::builder().launch(()).detach(),
         };
 
         let widgets = view_output!();
+        widgets
+            .stack
+            .add_titled(model.processes.widget(), Some("processes"), "Processes");
 
         // Sparkline: a filled area + line of the CPU history. The
         // DrawingArea's CSS `color` (var(--primary)) is read at paint
@@ -729,11 +773,17 @@ impl Component for CpuDashboardMenuWidgetModel {
         match message {
             CpuDashboardMenuWidgetInput::ParentRevealChanged(visible) => {
                 self.poll.set_revealed(visible);
+                self.revealed = visible;
+                self.sync_tabs();
                 // Refresh immediately on open so reappearing shows live
                 // numbers instead of a (up to 2 s) stale snapshot.
                 if visible {
                     sender.input(CpuDashboardMenuWidgetInput::Poll);
                 }
+            }
+            CpuDashboardMenuWidgetInput::TabChanged(name) => {
+                self.tab = name;
+                self.sync_tabs();
             }
             CpuDashboardMenuWidgetInput::Poll => {
                 if let Some((total, idle, user, system)) = read_cpu_breakdown() {
@@ -863,6 +913,13 @@ impl Component for CpuDashboardMenuWidgetModel {
 }
 
 impl CpuDashboardMenuWidgetModel {
+    /// A tab polls only while the menu is open AND it is the visible page.
+    fn sync_tabs(&self) {
+        self.processes.emit(ProcessesTabInput::SetActive(
+            self.revealed && self.tab == "processes",
+        ));
+    }
+
     fn identity_line(&self) -> String {
         format!(
             "{} · {}C / {}T",
