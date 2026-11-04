@@ -47,7 +47,10 @@ image = { version = "0.25", default-features = false, features = [
 ] }
 # Pure-Rust glyph rasteriser for compositor-drawn text (tabbed-group
 # tab labels). No system font lib (pango/freetype) dependency.
-fontdue = "0.9"
+# std HashMap instead of the default `hashbrown` feature: the glyph maps are
+# only hit for tab labels, and hashbrown 0.15 here was a second copy next to
+# the 0.16/0.17 the rest of the tree uses.
+fontdue = { version = "0.9", default-features = false, features = ["simd"] }
 # HDR Phase 4 — per-output ICC profile parsing + transform.
 # Always-on dep; the colord D-Bus client that reads the user's
 # per-output profile path lives behind the `dbus` feature, but
