@@ -3,8 +3,9 @@
 
 use smithay::{
     backend::input::{
-        Axis, AxisSource, ButtonState, GestureBeginEvent, GestureSwipeUpdateEvent, InputBackend,
-        InputEvent, KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
+        Axis, AxisSource, ButtonState, Event, GestureBeginEvent, GestureEndEvent,
+        GesturePinchUpdateEvent, GestureSwipeUpdateEvent, InputBackend, InputEvent, InputTime,
+        KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
         PointerMotionAbsoluteEvent, PointerMotionEvent,
     },
     desktop::{WindowSurfaceType, layer_map_for_output},
@@ -38,6 +39,11 @@ pub fn handle_input<B: InputBackend>(state: &mut MargoState, event: InputEvent<B
             | InputEvent::GestureSwipeBegin { .. }
             | InputEvent::GestureSwipeUpdate { .. }
             | InputEvent::GestureSwipeEnd { .. }
+            | InputEvent::GesturePinchBegin { .. }
+            | InputEvent::GesturePinchUpdate { .. }
+            | InputEvent::GesturePinchEnd { .. }
+            | InputEvent::GestureHoldBegin { .. }
+            | InputEvent::GestureHoldEnd { .. }
             | InputEvent::TouchDown { .. }
             | InputEvent::TouchMotion { .. }
             | InputEvent::TouchUp { .. }
@@ -60,9 +66,36 @@ pub fn handle_input<B: InputBackend>(state: &mut MargoState, event: InputEvent<B
         InputEvent::PointerMotionAbsolute { event } => handle_pointer_motion_abs(state, event),
         InputEvent::PointerButton { event } => handle_pointer_button(state, event),
         InputEvent::PointerAxis { event } => handle_pointer_axis(state, event),
-        InputEvent::GestureSwipeBegin { event } => handle_swipe_begin(state, event),
-        InputEvent::GestureSwipeUpdate { event } => handle_swipe_update(state, event),
-        InputEvent::GestureSwipeEnd { event: _ } => handle_swipe_end(state),
+        InputEvent::GestureSwipeBegin { event } => {
+            gesture_swipe_begin(state, event.fingers(), event.time().millis())
+        }
+        InputEvent::GestureSwipeUpdate { event } => gesture_swipe_update(
+            state,
+            event.time().millis(),
+            (event.delta_x(), event.delta_y()),
+        ),
+        InputEvent::GestureSwipeEnd { event } => {
+            gesture_swipe_end(state, event.time().millis(), event.cancelled())
+        }
+        InputEvent::GesturePinchBegin { event } => {
+            gesture_pinch_begin(state, event.fingers(), event.time().millis())
+        }
+        InputEvent::GesturePinchUpdate { event } => gesture_pinch_update(
+            state,
+            event.time().millis(),
+            (event.delta_x(), event.delta_y()),
+            event.scale(),
+            event.rotation(),
+        ),
+        InputEvent::GesturePinchEnd { event } => {
+            gesture_pinch_end(state, event.time().millis(), event.cancelled())
+        }
+        InputEvent::GestureHoldBegin { event } => {
+            gesture_hold_begin(state, event.fingers(), event.time().millis())
+        }
+        InputEvent::GestureHoldEnd { event } => {
+            gesture_hold_end(state, event.time().millis(), event.cancelled())
+        }
         InputEvent::TouchDown { event } => handle_touch_down(state, event),
         InputEvent::TouchMotion { event } => handle_touch_motion(state, event),
         InputEvent::TouchUp { event } => handle_touch_up(state, event),
@@ -108,30 +141,176 @@ fn handle_switch_toggle<B: InputBackend, E: smithay::backend::input::SwitchToggl
 /// gives users with very-short-throw swipes a way to lower it.
 const SWIPE_MIN_DISTANCE_DEFAULT: f64 = 30.0;
 
-fn handle_swipe_begin<B: InputBackend, E: GestureBeginEvent<B>>(state: &mut MargoState, event: E) {
-    state.input_gesture.swipe_active = true;
-    state.input_gesture.fingers = event.fingers();
-    state.input_gesture.dx = 0.0;
-    state.input_gesture.dy = 0.0;
+/// A touchpad swipe with `fingers` belongs to margo when any `gesturebind`
+/// uses that finger count; otherwise it goes to the client (browser
+/// back/forward, GTK swipes). Decided at begin: the direction a bind
+/// matches on is only known at the end.
+fn swipe_is_bound(config: &margo_config::Config, fingers: u32) -> bool {
+    config.gesture_bindings.iter().any(|b| b.fingers == fingers)
 }
 
-fn handle_swipe_update<B: InputBackend, E: GestureSwipeUpdateEvent<B>>(
-    state: &mut MargoState,
-    event: E,
-) {
-    if !state.input_gesture.swipe_active {
+/// The pointer that gesture events go to, unless the session is locked.
+fn gesture_pointer(
+    state: &MargoState,
+) -> Option<smithay::input::pointer::PointerHandle<MargoState>> {
+    if state.session_locked {
+        return None;
+    }
+    state.seat.get_pointer()
+}
+
+pub(crate) fn gesture_swipe_begin(state: &mut MargoState, fingers: u32, time_ms: u32) {
+    use smithay::input::pointer::GestureSwipeBeginEvent;
+    state.input_gesture = Default::default();
+    state.input_gesture.fingers = fingers;
+    if swipe_is_bound(&state.config, fingers) {
+        state.input_gesture.swipe_active = true;
         return;
     }
-    state.input_gesture.dx += event.delta_x();
-    state.input_gesture.dy += event.delta_y();
+    let Some(pointer) = gesture_pointer(state) else {
+        return;
+    };
+    state.input_gesture.swipe_forwarded = true;
+    pointer.gesture_swipe_begin(
+        state,
+        &GestureSwipeBeginEvent {
+            serial: SERIAL_COUNTER.next_serial(),
+            time: InputTime::from_millis(time_ms),
+            fingers,
+        },
+    );
 }
 
-fn handle_swipe_end(state: &mut MargoState) {
+pub(crate) fn gesture_swipe_update(state: &mut MargoState, time_ms: u32, delta: (f64, f64)) {
+    use smithay::input::pointer::GestureSwipeUpdateEvent;
+    if state.input_gesture.swipe_active {
+        state.input_gesture.dx += delta.0;
+        state.input_gesture.dy += delta.1;
+    } else if state.input_gesture.swipe_forwarded
+        && let Some(pointer) = state.seat.get_pointer()
+    {
+        pointer.gesture_swipe_update(
+            state,
+            &GestureSwipeUpdateEvent {
+                time: InputTime::from_millis(time_ms),
+                delta: delta.into(),
+            },
+        );
+    }
+}
+
+pub(crate) fn gesture_swipe_end(state: &mut MargoState, time_ms: u32, cancelled: bool) {
+    use smithay::input::pointer::GestureSwipeEndEvent;
     let g = std::mem::take(&mut state.input_gesture);
-    if !g.swipe_active {
+    if g.swipe_active {
+        if !cancelled {
+            dispatch_swipe(state, g.dx, g.dy, g.fingers, "touchpad");
+        }
+    } else if g.swipe_forwarded
+        && let Some(pointer) = state.seat.get_pointer()
+    {
+        pointer.gesture_swipe_end(
+            state,
+            &GestureSwipeEndEvent {
+                serial: SERIAL_COUNTER.next_serial(),
+                time: InputTime::from_millis(time_ms),
+                cancelled,
+            },
+        );
+    }
+}
+
+pub(crate) fn gesture_pinch_begin(state: &mut MargoState, fingers: u32, time_ms: u32) {
+    use smithay::input::pointer::GesturePinchBeginEvent;
+    let Some(pointer) = gesture_pointer(state) else {
+        return;
+    };
+    state.input_gesture.pinch_forwarded = true;
+    pointer.gesture_pinch_begin(
+        state,
+        &GesturePinchBeginEvent {
+            serial: SERIAL_COUNTER.next_serial(),
+            time: InputTime::from_millis(time_ms),
+            fingers,
+        },
+    );
+}
+
+pub(crate) fn gesture_pinch_update(
+    state: &mut MargoState,
+    time_ms: u32,
+    delta: (f64, f64),
+    scale: f64,
+    rotation: f64,
+) {
+    use smithay::input::pointer::GesturePinchUpdateEvent;
+    if !state.input_gesture.pinch_forwarded {
         return;
     }
-    dispatch_swipe(state, g.dx, g.dy, g.fingers, "touchpad");
+    let Some(pointer) = state.seat.get_pointer() else {
+        return;
+    };
+    pointer.gesture_pinch_update(
+        state,
+        &GesturePinchUpdateEvent {
+            time: InputTime::from_millis(time_ms),
+            delta: delta.into(),
+            scale,
+            rotation,
+        },
+    );
+}
+
+pub(crate) fn gesture_pinch_end(state: &mut MargoState, time_ms: u32, cancelled: bool) {
+    use smithay::input::pointer::GesturePinchEndEvent;
+    if !std::mem::take(&mut state.input_gesture.pinch_forwarded) {
+        return;
+    }
+    let Some(pointer) = state.seat.get_pointer() else {
+        return;
+    };
+    pointer.gesture_pinch_end(
+        state,
+        &GesturePinchEndEvent {
+            serial: SERIAL_COUNTER.next_serial(),
+            time: InputTime::from_millis(time_ms),
+            cancelled,
+        },
+    );
+}
+
+pub(crate) fn gesture_hold_begin(state: &mut MargoState, fingers: u32, time_ms: u32) {
+    use smithay::input::pointer::GestureHoldBeginEvent;
+    let Some(pointer) = gesture_pointer(state) else {
+        return;
+    };
+    state.input_gesture.hold_forwarded = true;
+    pointer.gesture_hold_begin(
+        state,
+        &GestureHoldBeginEvent {
+            serial: SERIAL_COUNTER.next_serial(),
+            time: InputTime::from_millis(time_ms),
+            fingers,
+        },
+    );
+}
+
+pub(crate) fn gesture_hold_end(state: &mut MargoState, time_ms: u32, cancelled: bool) {
+    use smithay::input::pointer::GestureHoldEndEvent;
+    if !std::mem::take(&mut state.input_gesture.hold_forwarded) {
+        return;
+    }
+    let Some(pointer) = state.seat.get_pointer() else {
+        return;
+    };
+    pointer.gesture_hold_end(
+        state,
+        &GestureHoldEndEvent {
+            serial: SERIAL_COUNTER.next_serial(),
+            time: InputTime::from_millis(time_ms),
+            cancelled,
+        },
+    );
 }
 
 /// Map a 2D displacement into the 0..=7 motion code the gesture

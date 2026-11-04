@@ -3,6 +3,6 @@
 //! Smithay's `PointerGesturesState` only needs `SeatHandler` from the
 //! compositor — there is no per-protocol handler trait, just the
 //! delegate macro to wire dispatch + global-dispatch onto `MargoState`.
-//! libinput-side gesture events are already plumbed through margo's
-//! existing `input_handler.rs` swipe / pinch / hold paths; the
-//! protocol global just lets clients subscribe to them.
+//! `input_handler.rs` forwards libinput's pinch and hold gestures to the
+//! surface under the pointer, and swipes whose finger count no
+//! `gesturebind` uses (`gesture_swipe_begin` & co.); nothing while locked.

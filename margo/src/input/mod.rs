@@ -104,13 +104,17 @@ pub struct TouchState {
 
 #[derive(Debug, Default)]
 pub struct GestureState {
+    /// A touchpad swipe margo keeps for its `gesturebind`s (a bind uses
+    /// its finger count): accumulated here, resolved at the end.
     pub swipe_active: bool,
-    pub pinch_active: bool,
     pub fingers: u32,
     pub dx: f64,
     pub dy: f64,
-    pub scale: f64,
-    pub rotation: f64,
+    /// Gestures whose begin went to the client under the pointer through
+    /// `zwp_pointer_gestures_v1`; their updates and end follow it.
+    pub swipe_forwarded: bool,
+    pub pinch_forwarded: bool,
+    pub hold_forwarded: bool,
 }
 
 // ── Keybinding matching ───────────────────────────────────────────────────────

@@ -32,6 +32,12 @@ use smithay::reexports::wayland_protocols::wp::pointer_constraints::zv1::client:
     zwp_locked_pointer_v1::{self, ZwpLockedPointerV1},
     zwp_pointer_constraints_v1::{self, ZwpPointerConstraintsV1},
 };
+use smithay::reexports::wayland_protocols::wp::pointer_gestures::zv1::client::{
+    zwp_pointer_gesture_hold_v1::{self, ZwpPointerGestureHoldV1},
+    zwp_pointer_gesture_pinch_v1::{self, ZwpPointerGesturePinchV1},
+    zwp_pointer_gesture_swipe_v1::{self, ZwpPointerGestureSwipeV1},
+    zwp_pointer_gestures_v1::ZwpPointerGesturesV1,
+};
 use smithay::reexports::wayland_protocols::xdg::decoration::zv1::client::{
     zxdg_decoration_manager_v1::ZxdgDecorationManagerV1,
     zxdg_toplevel_decoration_v1::{self, ZxdgToplevelDecorationV1},
@@ -125,6 +131,9 @@ pub struct ClientState {
     /// protocol id.
     pub preferred_buffer_scale: BTreeMap<u32, i32>,
     pub preferred_buffer_transform: BTreeMap<u32, wayland_client::WEnum<wl_output::Transform>>,
+    /// `zwp_pointer_gesture_*` events in arrival order, e.g.
+    /// `"pinch begin 2"`, `"swipe end"`.
+    pub gesture_events: Vec<String>,
 }
 
 /// Sync sentinel: each `roundtrip` mints one and the fixture spins
@@ -451,6 +460,25 @@ impl Client {
         let pointer = seat.get_pointer(&self.qh, ());
         self.connection.flush().expect("client flush");
         pointer
+    }
+
+    /// Subscribe `pointer` to swipe, pinch and hold gestures
+    /// (`zwp_pointer_gestures_v1` v3); events land in
+    /// `state.gesture_events`.
+    pub fn subscribe_gestures(
+        &mut self,
+        pointer: &WlPointer,
+    ) -> (
+        ZwpPointerGestureSwipeV1,
+        ZwpPointerGesturePinchV1,
+        ZwpPointerGestureHoldV1,
+    ) {
+        let gestures: ZwpPointerGesturesV1 = self.bind_global(3);
+        let swipe = gestures.get_swipe_gesture(pointer, &self.qh, ());
+        let pinch = gestures.get_pinch_gesture(pointer, &self.qh, ());
+        let hold = gestures.get_hold_gesture(pointer, &self.qh, ());
+        self.connection.flush().expect("client flush");
+        (swipe, pinch, hold)
     }
 
     /// Lock a pointer to a `wl_surface` via
@@ -1017,5 +1045,73 @@ impl Dispatch<ZwpLockedPointerV1, ()> for ClientState {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
+    }
+}
+
+impl Dispatch<ZwpPointerGesturesV1, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &ZwpPointerGesturesV1,
+        _: <ZwpPointerGesturesV1 as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ZwpPointerGestureSwipeV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &ZwpPointerGestureSwipeV1,
+        event: zwp_pointer_gesture_swipe_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use zwp_pointer_gesture_swipe_v1::Event;
+        state.gesture_events.push(match event {
+            Event::Begin { fingers, .. } => format!("swipe begin {fingers}"),
+            Event::Update { .. } => "swipe update".into(),
+            Event::End { .. } => "swipe end".into(),
+            _ => "swipe ?".into(),
+        });
+    }
+}
+
+impl Dispatch<ZwpPointerGesturePinchV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &ZwpPointerGesturePinchV1,
+        event: zwp_pointer_gesture_pinch_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use zwp_pointer_gesture_pinch_v1::Event;
+        state.gesture_events.push(match event {
+            Event::Begin { fingers, .. } => format!("pinch begin {fingers}"),
+            Event::Update { scale, .. } => format!("pinch update {scale}"),
+            Event::End { .. } => "pinch end".into(),
+            _ => "pinch ?".into(),
+        });
+    }
+}
+
+impl Dispatch<ZwpPointerGestureHoldV1, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &ZwpPointerGestureHoldV1,
+        event: zwp_pointer_gesture_hold_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use zwp_pointer_gesture_hold_v1::Event;
+        state.gesture_events.push(match event {
+            Event::Begin { fingers, .. } => format!("hold begin {fingers}"),
+            Event::End { .. } => "hold end".into(),
+            _ => "hold ?".into(),
+        });
     }
 }

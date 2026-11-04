@@ -61,6 +61,7 @@ mod output_management;
 mod overview;
 mod pacing;
 mod pointer_constraints;
+mod pointer_gestures;
 mod preferred_scale;
 mod repaint;
 mod screencopy;
