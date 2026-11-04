@@ -1,0 +1,56 @@
+// USB Drives — bar pill + removable-drive panel (usb-manager port).
+// DESIGN.md: §3 active tint on the pill, §12 content cards for drives,
+// §5 flat rows inside a card (no card-in-card), transparent scroller.
+
+@use "../02-functions/index" as *;
+
+// ── Bar pill ──────────────────────────────────────────────
+.usb-bar-label {
+  font-size: var(--font-bar);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface);
+}
+.usb-bar-widget.active image {
+  color: var(--primary);
+}
+
+// ── Panel ─────────────────────────────────────────────────
+.usb-menu-widget {
+  padding: var(--space-1);
+}
+
+// Keep the list + scroller transparent (the "dark band" rule, §5).
+.usb-drive-list,
+.usb-menu scrolledwindow {
+  background-color: transparent;
+}
+
+// One content card per drive (§12): surface-container, card corner.
+.usb-drive-card {
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container);
+  padding: var(--space-1) 0;
+}
+
+.usb-drive-header {
+  padding: var(--space-2) var(--space-3);
+}
+
+// Volume rows are flat inside the drive card; hairline above each.
+.usb-volume-row {
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--list-separator);
+}
+.usb-volume-row.mounted > box > label:first-child {
+  color: var(--primary);
+}
+
+.usb-passphrase-row {
+  padding: 0 var(--space-3) var(--space-2) var(--space-3);
+}
+
+.usb-remove-btn {
+  background-color: var(--surface-container-high);
+  @include state-layer(var(--surface-container-high));
+}

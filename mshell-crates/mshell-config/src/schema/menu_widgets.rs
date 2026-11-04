@@ -133,6 +133,9 @@ pub enum MenuWidget {
     /// from `~/.ssh/config`, active connections first, click to
     /// connect in a new terminal.
     SshSessions,
+    /// `usb` bar pill's panel — removable drives with mount / open,
+    /// LUKS unlock / lock and safe removal (udisks2).
+    Usb,
     ThemePicker,
     /// `translate` bar pill's panel — source/target language picker +
     /// swap, manual entry, result card, and a short history list.
@@ -208,6 +211,7 @@ impl MenuWidget {
             MenuWidget::Twilight => "Twilight",
             MenuWidget::Keybinds => "Keyboard Shortcuts",
             MenuWidget::SshSessions => "SSH Sessions",
+            MenuWidget::Usb => "USB Drives",
             MenuWidget::ThemePicker => "Theme Picker",
             MenuWidget::Translate => "Translate",
             MenuWidget::Wallpaper => "Wallpaper",
@@ -277,6 +281,7 @@ impl MenuWidget {
             MenuWidget::Twilight,
             MenuWidget::Keybinds,
             MenuWidget::SshSessions,
+            MenuWidget::Usb,
             MenuWidget::ThemePicker,
             MenuWidget::Translate,
             MenuWidget::Wallpaper,

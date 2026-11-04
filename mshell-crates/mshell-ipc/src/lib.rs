@@ -91,6 +91,7 @@ pub trait Shell {
     fn control_center(&self) -> zbus::Result<()>;
     fn hidden_bar(&self, action: &str, name: &str) -> zbus::Result<()>;
     fn ssh_sessions(&self) -> zbus::Result<()>;
+    fn usb(&self) -> zbus::Result<()>;
     fn vpn(&self) -> zbus::Result<()>;
     fn ai(&self) -> zbus::Result<()>;
     fn dns(&self) -> zbus::Result<()>;

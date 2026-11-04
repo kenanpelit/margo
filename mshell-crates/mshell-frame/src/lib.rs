@@ -13,6 +13,7 @@ mod menus;
 mod plugin_cmd;
 #[cfg(feature = "wasm-plugins")]
 mod plugin_providers;
+mod removable_drives;
 pub mod screen_corners;
 mod ssh;
 

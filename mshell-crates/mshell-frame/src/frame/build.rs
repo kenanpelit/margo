@@ -84,6 +84,7 @@ impl Frame {
                 BarOutput::CountdownClicked => FrameInput::ToggleMenu(MenuId::AlarmClock),
                 BarOutput::ControlCenterClicked => FrameInput::ToggleMenu(MenuId::ControlCenter),
                 BarOutput::SshSessionsClicked => FrameInput::ToggleMenu(MenuId::SshSessions),
+                BarOutput::UsbClicked => FrameInput::ToggleMenu(MenuId::Usb),
                 BarOutput::VpnClicked => FrameInput::ToggleMenu(MenuId::Vpn),
                 BarOutput::AiClicked => FrameInput::ToggleMenu(MenuId::Ai),
                 BarOutput::DnsClicked => FrameInput::ToggleMenu(MenuId::Dns),

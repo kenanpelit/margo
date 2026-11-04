@@ -262,6 +262,9 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::SshSessions => {
                     app_sender.emit(ShellInput::ToggleSshSessionsMenu(active_monitor().await));
                 }
+                IPCCommand::Usb => {
+                    app_sender.emit(ShellInput::ToggleUsbMenu(active_monitor().await));
+                }
                 IPCCommand::Vpn => {
                     app_sender.emit(ShellInput::ToggleVpnMenu(active_monitor().await));
                 }
@@ -713,6 +716,7 @@ enum IPCCommand {
     ControlCenter,
     HiddenBar(mshell_common::hidden_bar::HiddenBarVerb, Option<String>),
     SshSessions,
+    Usb,
     Vpn,
     Ai,
     Dns,

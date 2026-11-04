@@ -144,6 +144,8 @@ pub(crate) enum MenuType {
     /// `ssh_sessions` bar pill's panel — searchable `~/.ssh/config`
     /// host list with active-session indicators.
     SshSessions,
+    /// `usb` bar pill's panel — removable drives (udisks2).
+    Usb,
     /// `privacy` bar pill's panel — live "in use now" rows + a
     /// clearable mic / camera / screen-share access log.
     Privacy,
@@ -597,6 +599,12 @@ impl Component for MenuModel {
                 effect_widgets!(effects, base_config, sender, ssh_menu);
                 effect_min_width!(effects, base_config, sender, ssh_menu);
                 effect_max_height!(effects, base_config, sender, ssh_menu);
+            }
+            MenuType::Usb => {
+                css_class = "quick-settings-menu usb-menu".to_string();
+                effect_widgets!(effects, base_config, sender, usb_menu);
+                effect_min_width!(effects, base_config, sender, usb_menu);
+                effect_max_height!(effects, base_config, sender, usb_menu);
             }
             MenuType::Power => {
                 css_class = "power-menu".to_string();

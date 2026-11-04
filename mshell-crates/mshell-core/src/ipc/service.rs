@@ -452,6 +452,9 @@ impl IPCService {
     async fn ssh_sessions(&self) -> fdo::Result<()> {
         self.send(IPCCommand::SshSessions)
     }
+    async fn usb(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Usb)
+    }
     async fn vpn(&self) -> fdo::Result<()> {
         self.send(IPCCommand::Vpn)
     }

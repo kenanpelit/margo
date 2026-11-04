@@ -98,6 +98,8 @@ pub enum MenuCommands {
     ControlCenter,
     /// Toggle the SSH Sessions menu (searchable ~/.ssh/config host list)
     SshSessions,
+    /// Toggle the USB Drives menu (removable drives: mount, unlock, safe removal)
+    Usb,
     /// Toggle the DNS / VPN menu (Mullvad controls + a collapsible DNS section)
     Vpn,
     /// Toggle the DNS / VPN menu (alias for `vpn`)
@@ -236,6 +238,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::SshSessions => {
             shell().await?.ssh_sessions().await?;
+        }
+        MenuCommands::Usb => {
+            shell().await?.usb().await?;
         }
         MenuCommands::Vpn => {
             shell().await?.vpn().await?;

@@ -31,6 +31,7 @@ pub(crate) struct ToastSettingsModel {
     dnd: bool,
     idle_inhibitor: bool,
     game_mode: bool,
+    removable_drives: bool,
     battery: bool,
     battery_critical: u32,
     position: Position,
@@ -55,6 +56,7 @@ pub(crate) enum ToastSettingsInput {
     DndChanged(bool),
     IdleInhibitorChanged(bool),
     GameModeChanged(bool),
+    RemovableDrivesChanged(bool),
     BatteryChanged(bool),
     BatteryCriticalChanged(u32),
     PositionChanged(Position),
@@ -75,6 +77,7 @@ pub(crate) enum ToastSettingsInput {
     DndEffect(bool),
     IdleInhibitorEffect(bool),
     GameModeEffect(bool),
+    RemovableDrivesEffect(bool),
     BatteryEffect(bool),
     BatteryCriticalEffect(u8),
     PositionEffect(Position),
@@ -792,6 +795,43 @@ impl Component for ToastSettingsModel {
                             } @game_mode_handler,
                         },
                     },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/toasts/removable_drives",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "USB drives",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "When a removable drive is plugged in or removed. A drive unplugged while still mounted always warns.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(removable_drives_handler)]
+                            set_active: model.removable_drives,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(ToastSettingsInput::RemovableDrivesChanged(v));
+                                glib::Propagation::Proceed
+                            } @removable_drives_handler,
+                        },
+                    },
                 },
 
                 gtk::Label {
@@ -914,6 +954,7 @@ impl Component for ToastSettingsModel {
         push_effect!(dnd, DndEffect);
         push_effect!(idle_inhibitor, IdleInhibitorEffect);
         push_effect!(game_mode, GameModeEffect);
+        push_effect!(removable_drives, RemovableDrivesEffect);
         push_effect!(battery, BatteryEffect);
         push_effect!(battery_critical_level, BatteryCriticalEffect);
         push_effect!(position, PositionEffect);
@@ -970,6 +1011,11 @@ impl Component for ToastSettingsModel {
                 .config()
                 .toasts()
                 .game_mode()
+                .get_untracked(),
+            removable_drives: config_manager()
+                .config()
+                .toasts()
+                .removable_drives()
                 .get_untracked(),
             battery: config_manager().config().toasts().battery().get_untracked(),
             battery_critical: config_manager()
@@ -1046,6 +1092,9 @@ impl Component for ToastSettingsModel {
             ToastSettingsInput::GameModeChanged(v) => {
                 config_manager().update_config(|c| c.toasts.game_mode = v);
             }
+            ToastSettingsInput::RemovableDrivesChanged(v) => {
+                config_manager().update_config(|c| c.toasts.removable_drives = v);
+            }
             ToastSettingsInput::BatteryChanged(v) => {
                 config_manager().update_config(|c| c.toasts.battery = v);
             }
@@ -1078,6 +1127,7 @@ impl Component for ToastSettingsModel {
             ToastSettingsInput::DndEffect(v) => self.dnd = v,
             ToastSettingsInput::IdleInhibitorEffect(v) => self.idle_inhibitor = v,
             ToastSettingsInput::GameModeEffect(v) => self.game_mode = v,
+            ToastSettingsInput::RemovableDrivesEffect(v) => self.removable_drives = v,
             ToastSettingsInput::BatteryEffect(v) => self.battery = v,
             ToastSettingsInput::BatteryCriticalEffect(v) => self.battery_critical = v as u32,
             ToastSettingsInput::PositionEffect(p) => self.position = p,

@@ -52,6 +52,7 @@ use crate::bars::bar_widgets::system_update::{SystemUpdateInit, SystemUpdateMode
 use crate::bars::bar_widgets::translate::{TranslateInit, TranslateModel, TranslateOutput};
 use crate::bars::bar_widgets::twilight::{TwilightInit, TwilightModel};
 use crate::bars::bar_widgets::ufw::{UfwInit, UfwModel};
+use crate::bars::bar_widgets::usb::{UsbInit, UsbModel};
 use crate::bars::bar_widgets::vpn_indicator::{VpnIndicatorInit, VpnIndicatorModel};
 use crate::bars::bar_widgets::wallpaper::{WallpaperInit, WallpaperModel, WallpaperOutput};
 use crate::bars::bar_widgets::weather::{WeatherInit, WeatherModel, WeatherOutput};
@@ -227,6 +228,7 @@ pub(crate) enum BarOutput {
     CountdownClicked,
     ControlCenterClicked,
     SshSessionsClicked,
+    UsbClicked,
     AudioDashboardClicked,
     VpnClicked,
     AiClicked,
@@ -1159,6 +1161,14 @@ impl BarModel {
                         }
                     }),
             ),
+            BarWidget::Usb => {
+                Box::new(UsbModel::builder().launch(UsbInit { orientation }).forward(
+                    sender.output_sender(),
+                    |msg| match msg {
+                        crate::bars::bar_widgets::usb::UsbOutput::Clicked => BarOutput::UsbClicked,
+                    },
+                ))
+            }
             BarWidget::LockKeys => Box::new(
                 LockKeysModel::builder()
                     .launch(LockKeysInit { orientation })

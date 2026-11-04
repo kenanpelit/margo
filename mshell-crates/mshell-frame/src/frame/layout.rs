@@ -318,6 +318,7 @@ pub(super) fn menu_position(name: &str) -> Position {
         DOCK_MENU => pos!(dock_menu),
         CONTROL_CENTER_MENU => pos!(control_center_menu),
         SSH_MENU => pos!(ssh_menu),
+        USB_MENU => pos!(usb_menu),
         NDNS_MENU => pos!(dns_menu),
         NVPN_MENU => pos!(vpn_menu),
         NAI_MENU => pos!(ai_menu),

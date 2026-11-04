@@ -68,6 +68,7 @@ pub(crate) enum MenuKind {
     AlarmClock,
     ControlCenter,
     SshSessions,
+    Usb,
     Ufw,
     Wallpaper,
     /// The Translate menu (`translate_menu`), opened by the Translate
@@ -116,6 +117,7 @@ macro_rules! menu_read {
             MenuKind::AlarmClock => m.alarmclock_menu().$field().$g(),
             MenuKind::ControlCenter => m.control_center_menu().$field().$g(),
             MenuKind::SshSessions => m.ssh_menu().$field().$g(),
+            MenuKind::Usb => m.usb_menu().$field().$g(),
             MenuKind::MargoLayout => m.margo_layout_menu().$field().$g(),
             MenuKind::Translate => m.translate_menu().$field().$g(),
         }
@@ -157,6 +159,7 @@ macro_rules! menu_write {
             MenuKind::AlarmClock => c.menus.alarmclock_menu.$field = $val,
             MenuKind::ControlCenter => c.menus.control_center_menu.$field = $val,
             MenuKind::SshSessions => c.menus.ssh_menu.$field = $val,
+            MenuKind::Usb => c.menus.usb_menu.$field = $val,
             MenuKind::MargoLayout => c.menus.margo_layout_menu.$field = $val,
             MenuKind::Translate => c.menus.translate_menu.$field = $val,
         });
@@ -197,6 +200,7 @@ impl MenuKind {
             Self::AlarmClock => "Alarm Clock",
             Self::ControlCenter => "Control Center",
             Self::SshSessions => "SSH Sessions",
+            Self::Usb => "USB Drives",
             Self::Ufw => "UFW Firewall",
             Self::Wallpaper => "Wallpaper",
             Self::Translate => "Translate",
@@ -231,6 +235,7 @@ impl MenuKind {
             MenuKind::AlarmClock,
             MenuKind::ControlCenter,
             MenuKind::SshSessions,
+            MenuKind::Usb,
             MenuKind::Ufw,
             MenuKind::Vpn,
             MenuKind::Dns,

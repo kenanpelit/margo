@@ -108,6 +108,7 @@ use crate::menus::menu_widgets::twilight::twilight_menu_widget::{
     TwilightMenuWidgetInit, TwilightMenuWidgetModel,
 };
 use crate::menus::menu_widgets::ufw::ufw_menu_widget::{UfwMenuWidgetInit, UfwMenuWidgetModel};
+use crate::menus::menu_widgets::usb::usb_menu_widget::{UsbMenuWidgetInit, UsbMenuWidgetModel};
 use crate::menus::menu_widgets::valent::valent_menu_widget::{
     ValentMenuWidgetInit, ValentMenuWidgetModel, ValentMenuWidgetOutput,
 };
@@ -238,6 +239,11 @@ pub fn build_widget(
         MenuWidget::SshSessions => Box::new(
             SshSessionsMenuWidgetModel::builder()
                 .launch(SshSessionsMenuWidgetInit {})
+                .detach(),
+        ),
+        MenuWidget::Usb => Box::new(
+            UsbMenuWidgetModel::builder()
+                .launch(UsbMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::Divider => Box::new(

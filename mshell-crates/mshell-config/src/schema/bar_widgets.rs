@@ -88,6 +88,10 @@ pub enum BarWidget {
     /// clients; click opens a searchable host list from `~/.ssh/config`
     /// (active first), click a host to connect in a new terminal.
     SshSessions,
+    /// Removable drives (udisks2) — USB glyph + drive count, tinted while
+    /// a volume is mounted; hidden while nothing is plugged in. Click
+    /// opens the drive panel, right-click removes every drive safely.
+    Usb,
     LockKeys,
     /// Keyboard-layout pill — shows the active xkb layout (e.g. "US",
     /// "TR") read from margo's state.json. Click cycles to the next
@@ -197,6 +201,7 @@ impl BarWidget {
             BarWidget::KeepAwake => "Keep Awake",
             BarWidget::Keybinds => "Keyboard Shortcuts",
             BarWidget::SshSessions => "SSH Sessions",
+            BarWidget::Usb => "USB Drives",
             BarWidget::LockKeys => "Lock Keys (Caps/Num/Scroll)",
             BarWidget::KeyboardLayout => "Keyboard Layout",
             BarWidget::Keymode => "Keymode",
@@ -265,6 +270,7 @@ impl BarWidget {
             BarWidget::KeepAwake,
             BarWidget::Keybinds,
             BarWidget::SshSessions,
+            BarWidget::Usb,
             BarWidget::LockKeys,
             BarWidget::KeyboardLayout,
             BarWidget::Keymode,

@@ -55,6 +55,7 @@ const ALARMCLOCK_MENU: &str = "alarmclock";
 const DOCK_MENU: &str = "dock";
 const CONTROL_CENTER_MENU: &str = "control_center";
 const SSH_MENU: &str = "ssh_sessions";
+const USB_MENU: &str = "usb";
 const NDNS_MENU: &str = "dns";
 const NVPN_MENU: &str = "vpn";
 const NAI_MENU: &str = "ai";
@@ -786,6 +787,7 @@ impl Component for Frame {
             pos!(dock_menu);
             pos!(control_center_menu);
             pos!(ssh_menu);
+            pos!(usb_menu);
             pos!(vpn_menu);
             pos!(ai_menu);
             pos!(margo_layout_menu);

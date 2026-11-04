@@ -49,6 +49,8 @@ pub struct Menus {
     pub control_center_menu: Menu,
     #[serde(default = "default_ssh_menu")]
     pub ssh_menu: Menu,
+    #[serde(default = "default_usb_menu")]
+    pub usb_menu: Menu,
     #[serde(default = "default_privacy_menu")]
     pub privacy_menu: Menu,
     /// Generic-VPN detail menu opened by the `vpn_indicator` bar pill.
@@ -344,6 +346,15 @@ pub(super) fn default_control_center_menu() -> Menu {
     }
 }
 
+pub(super) fn default_usb_menu() -> Menu {
+    Menu {
+        position: Position::TopRight,
+        widgets: vec![MenuWidget::Usb],
+        minimum_width: 380,
+        maximum_height: 0,
+    }
+}
+
 pub(super) fn default_ssh_menu() -> Menu {
     Menu {
         position: Position::TopRight,
@@ -507,6 +518,7 @@ impl Default for Menus {
             dock_menu: default_dock_menu(),
             control_center_menu: default_control_center_menu(),
             ssh_menu: default_ssh_menu(),
+            usb_menu: default_usb_menu(),
             privacy_menu: default_privacy_menu(),
             vpn_indicator_menu: default_vpn_indicator_menu(),
             translate_menu: default_translate_menu(),

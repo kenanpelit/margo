@@ -152,6 +152,10 @@ pub struct Toasts {
     /// Toast when Game Mode is engaged / released.
     #[serde(default = "default_true")]
     pub game_mode: bool,
+    /// Toast when a removable drive is plugged in / removed. A drive
+    /// unplugged while still mounted always warns, regardless.
+    #[serde(default = "default_true")]
+    pub removable_drives: bool,
     /// Toast as the battery crosses a warning / critical level.
     #[serde(default = "default_true")]
     pub battery: bool,
@@ -194,6 +198,7 @@ impl Default for Toasts {
             dnd: true,
             idle_inhibitor: true,
             game_mode: true,
+            removable_drives: true,
             battery: true,
             battery_warn_levels: default_battery_warn_levels(),
             battery_critical_level: default_battery_critical_level(),

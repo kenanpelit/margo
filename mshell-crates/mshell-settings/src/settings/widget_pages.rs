@@ -238,6 +238,12 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
             icon: "utilities-terminal-symbolic",
         },
         WidgetEntry::Menu {
+            kind: MenuKind::Usb,
+            stack_name: "usb",
+            label: "USB Drives",
+            icon: "drive-removable-media-symbolic",
+        },
+        WidgetEntry::Menu {
             kind: MenuKind::MargoLayout,
             stack_name: "margo_layout",
             label: "Margo Layout Switcher",
