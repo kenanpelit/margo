@@ -22,6 +22,9 @@
 //! After an action the D-Bus watchers refresh the panel — no
 //! re-probe.
 //!
+//! **Speed test** card (`speed_test.rs`): on-demand Ookla/speedtest-cli
+//! run with a live ring gauge, ping/jitter/loss and server/ISP.
+//!
 //! **Hotspot** section: a switch row that starts/stops a NetworkManager
 //! access point (`mshell_utils::hotspot`, SSID/password from
 //! `network.hotspot_*`) and, while it runs, the connected clients
@@ -29,6 +32,7 @@
 //! [`HOTSPOT_INTERVAL`] while the panel is visible — nmcli has no cheap
 //! client-change signal, so this is the one polled part of the panel.
 
+use super::speed_test::{SpeedTestInput, SpeedTestModel};
 use crate::bars::bar_widgets::network::{
     LinkKind, NetworkState, SpeedSample, WifiNetwork, format_speed, read_net_totals,
     read_network_state, wifi_signal_icon,
@@ -44,7 +48,7 @@ use relm4::gtk::prelude::{
     BoxExt, ButtonExt, DrawingAreaExt, DrawingAreaExtManual, ListBoxRowExt, ObjectExt,
     OrientableExt, WidgetExt,
 };
-use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -95,6 +99,8 @@ pub(crate) struct NetworkMenuWidgetModel {
     hotspot_switch_signal: glib::SignalHandlerId,
     hotspot_subtitle: gtk::Label,
     hotspot_clients: gtk::ListBox,
+    // ── Speed test card (child component) ──
+    speed_test: Controller<SpeedTestModel>,
 }
 
 impl std::fmt::Debug for NetworkMenuWidgetModel {
@@ -303,6 +309,10 @@ impl Component for NetworkMenuWidgetModel {
                 },
             },
 
+            // ── Speed test (on demand; Ookla / speedtest-cli) ───
+            #[local_ref]
+            speed_test_widget -> gtk::Box {},
+
             // ── Wi-Fi toggle (Adwaita switch row) ───────────────
             gtk::Box {
                 add_css_class: "network-wifi-row",
@@ -422,6 +432,8 @@ impl Component for NetworkMenuWidgetModel {
         let connectivity_badge_widget = gtk::Label::new(Some("unknown"));
         let wifi_switch_widget = gtk::Switch::new();
         let network_list_widget = gtk::ListBox::new();
+        let speed_test = SpeedTestModel::builder().launch(()).detach();
+        let speed_test_widget = speed_test.widget().clone();
         let hotspot_switch_widget = gtk::Switch::new();
         let hotspot_subtitle_widget = gtk::Label::new(Some("…"));
         let hotspot_clients_widget = gtk::ListBox::new();
@@ -494,6 +506,7 @@ impl Component for NetworkMenuWidgetModel {
             hotspot_switch_signal,
             hotspot_subtitle: hotspot_subtitle_widget.clone(),
             hotspot_clients: hotspot_clients_widget.clone(),
+            speed_test,
         };
         arm_wifi_watchers(&sender, &mut model.wifi_watcher_token);
         arm_wired_watcher(&sender, &mut model.wired_watcher_token);
@@ -540,6 +553,8 @@ impl Component for NetworkMenuWidgetModel {
             }
             NetworkMenuWidgetInput::ParentRevealChanged(visible) => {
                 self.visible.store(visible, Ordering::Relaxed);
+                self.speed_test
+                    .emit(SpeedTestInput::ParentRevealChanged(visible));
                 if visible && !self.poll_started {
                     self.poll_started = true;
                     start_speed_sampler(&sender, self.visible.clone());
