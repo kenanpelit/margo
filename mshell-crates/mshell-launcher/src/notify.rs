@@ -17,6 +17,11 @@
 pub fn toast(title: impl Into<String>, body: impl Into<String>) {
     let title = title.into();
     let body = body.into();
+    // Unit tests exercise activation closures; don't pop real
+    // notifications in the developer's session.
+    if cfg!(test) {
+        return;
+    }
     if let Err(err) = notify_rust::Notification::new()
         .summary(&title)
         .body(&body)

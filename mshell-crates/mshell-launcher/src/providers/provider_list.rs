@@ -59,6 +59,12 @@ const ENTRIES: &[Entry] = &[
         icon: "accessories-calculator-symbolic",
     },
     Entry {
+        prefix: "= <expr>",
+        example: "= 5 usd to eur",
+        description: "Calculator — qalc units/currency/% (bare = shows history)",
+        icon: "accessories-calculator-symbolic",
+    },
+    Entry {
         prefix: "",
         example: "lock / reboot / shutdown",
         description: "Session — power actions",
