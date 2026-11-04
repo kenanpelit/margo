@@ -79,7 +79,9 @@ const PAGES: &[(&str, &[&str])] = &[
 /// than a preference with a meaningful default. Never part of a page's
 /// Defaults.
 const USER_DATA: &[&str] = &[
-    "/bars/widgets",
+    "/bars/widgets/custom_widgets",
+    "/bars/widgets/hidden_bars",
+    "/bars/widgets/system_update/hidden_packages",
     "/game_mode/active",
     "/calendars/subscriptions",
     "/general/weather_saved_locations",
