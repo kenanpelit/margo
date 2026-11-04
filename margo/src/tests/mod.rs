@@ -56,6 +56,7 @@ mod logical_output_area;
 mod mosaic_layout;
 mod move_client;
 mod mru_switcher;
+mod opacity;
 mod output_assignment;
 mod output_management;
 mod overview;

@@ -72,6 +72,19 @@ impl MargoState {
         self.reload_config_inner(true)
     }
 
+    /// Put every client back on the global `focused_opacity` /
+    /// `unfocused_opacity`. Both are copied into the client at map time, so
+    /// without this a reload only reached windows opened afterwards; the
+    /// reload's `reapply_rules` pass then restores window-rule overrides
+    /// (nothing else writes these fields).
+    pub(crate) fn reset_client_opacity_to_config(&mut self) {
+        let (focused, unfocused) = (self.config.focused_opacity, self.config.unfocused_opacity);
+        for client in &mut self.clients {
+            client.focused_opacity = focused;
+            client.unfocused_opacity = unfocused;
+        }
+    }
+
     fn reload_config_inner(&mut self, auto: bool) -> Result<()> {
         // Validate first. The parser is permissive (silent defaults
         // on malformed values), so a "successful" parse can still mean
@@ -271,6 +284,7 @@ impl MargoState {
         // theme baseline so a subsequent `mctl theme default` resets
         // to the freshly-parsed values.
         self.theme_baseline = None;
+        self.reset_client_opacity_to_config();
         for idx in 0..self.clients.len() {
             self.reapply_rules(idx, WindowRuleReason::Reload);
         }
