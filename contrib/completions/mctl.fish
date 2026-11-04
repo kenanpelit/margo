@@ -157,6 +157,7 @@ complete -c mctl -n "__fish_mctl_using_subcommand config; and __fish_seen_subcom
 complete -c mctl -n "__fish_mctl_using_subcommand config; and __fish_seen_subcommand_from help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
 complete -c mctl -n "__fish_mctl_using_subcommand config-errors" -s h -l help -d 'Print help (see more with \'--help\')'
 complete -c mctl -n "__fish_mctl_using_subcommand check-config" -l config -d 'Path to inspect. Defaults to `~/.config/margo/config.conf`' -r -F
+complete -c mctl -n "__fish_mctl_using_subcommand check-config" -l strict -d 'Treat warnings as errors: exit 1 when there is any diagnostic (for CI and pre-commit checks of a config)'
 complete -c mctl -n "__fish_mctl_using_subcommand check-config" -s h -l help -d 'Print help (see more with \'--help\')'
 complete -c mctl -n "__fish_mctl_using_subcommand rules" -l config -d 'Path to the config to inspect. Defaults to `$XDG_CONFIG_HOME/margo/config.conf`, falling back to `~/.config/margo/config.conf`' -r -F
 complete -c mctl -n "__fish_mctl_using_subcommand rules" -l appid -d 'app_id pattern to test rules against' -r

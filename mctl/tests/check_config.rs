@@ -65,3 +65,15 @@ fn regex_errors_in_sourced_files_are_found() {
         "regex errors no longer reuse E004: {err}"
     );
 }
+
+#[test]
+fn strict_fails_on_warnings() {
+    let dir = tempfile::tempdir().unwrap();
+    let main = dir.path().join("config.conf");
+    std::fs::write(&main, "bind = super,q,killclient\nbind = super,q,quit\n").unwrap();
+    assert_eq!(check(&main, &[]).status.code(), Some(0));
+    assert_eq!(check(&main, &["--strict"]).status.code(), Some(1));
+    let clean = dir.path().join("clean.conf");
+    std::fs::write(&clean, "borderpx = 2\n").unwrap();
+    assert_eq!(check(&clean, &["--strict"]).status.code(), Some(0));
+}

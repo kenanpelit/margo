@@ -529,7 +529,7 @@ _mctl() {
             return 0
             ;;
         mctl__subcmd__check__subcmd__config)
-            opts="-h --config --help"
+            opts="-h --config --strict --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

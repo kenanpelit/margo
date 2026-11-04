@@ -711,6 +711,7 @@ _arguments "${_arguments_options[@]}" : \
 (check-config)
 _arguments "${_arguments_options[@]}" : \
 '--config=[Path to inspect. Defaults to \`~/.config/margo/config.conf\`]:CONFIG:_files' \
+'--strict[Treat warnings as errors\: exit 1 when there is any diagnostic (for CI and pre-commit checks of a config)]' \
 '-h[Print help (see more with '\''--help'\'')]' \
 '--help[Print help (see more with '\''--help'\'')]' \
 && ret=0

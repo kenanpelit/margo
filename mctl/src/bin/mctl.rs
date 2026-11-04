@@ -441,11 +441,13 @@ enum Command {
                         * Unresolvable `source = …` / `include = …` includes.\n  \
                         * Lone-mango option carry-overs that margo doesn't yet implement (warning).\n  \
                       \n\
-                      Exits 0 on a clean parse, 1 on errors, 2 if the file itself can't be read.\n\
+                      Exits 0 on a clean parse, 1 on errors (or on any warning with --strict), \
+                      2 if the file itself can't be read.\n\
                       \n\
                       EXAMPLES:\n  \
                         mctl check-config\n  \
                         mctl check-config --config ~/dotfiles/margo/config.conf\n  \
+                        mctl check-config --strict      # CI: warnings fail too\n  \
                         mctl check-config 2>&1 | grep ERROR"
     )]
     #[command(display_order = 42)]
@@ -453,6 +455,10 @@ enum Command {
         /// Path to inspect. Defaults to `~/.config/margo/config.conf`.
         #[arg(long)]
         config: Option<std::path::PathBuf>,
+        /// Treat warnings as errors: exit 1 when there is any diagnostic
+        /// (for CI and pre-commit checks of a config).
+        #[arg(long)]
+        strict: bool,
     },
 
     /// Dry-run windowrules against an app_id / title pair
@@ -874,8 +880,8 @@ fn main() -> Result<()> {
         } => {
             return cmd_rules(config.as_deref(), appid, title, *verbose);
         }
-        Command::CheckConfig { config } => {
-            return cmd_check_config(config.as_deref());
+        Command::CheckConfig { config, strict } => {
+            return cmd_check_config(config.as_deref(), *strict);
         }
         // The state-file commands don't need a Wayland connection.
         // They read whatever margo last wrote out.
@@ -2330,7 +2336,7 @@ fn cmd_config_rollback(
     Ok(())
 }
 
-fn cmd_check_config(config_override: Option<&std::path::Path>) -> Result<()> {
+fn cmd_check_config(config_override: Option<&std::path::Path>, strict: bool) -> Result<()> {
     use margo_config::diagnostics::Severity;
 
     let cfg_path = config_override.map(|p| p.to_path_buf()).unwrap_or_else(|| {
@@ -2411,7 +2417,10 @@ fn cmd_check_config(config_override: Option<&std::path::Path>) -> Result<()> {
         warn_count,
         if warn_count == 1 { "" } else { "s" },
     );
-    if err_count > 0 {
+    if err_count > 0 || (strict && warn_count > 0) {
+        if err_count == 0 {
+            println!("--strict: warnings count as failures");
+        }
         std::process::exit(1);
     }
     Ok(())

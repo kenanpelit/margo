@@ -328,7 +328,8 @@ mousebind = super, btn_right, moveresize, curresize
 Duplicate-bind detection runs offline:
 
 ```bash
-mctl check-config       # exits 1 if any bind is shadowed
+mctl check-config            # lists shadowed binds (W004, first one wins)
+mctl check-config --strict   # …and exits 1 on any warning (CI)
 ```
 
 ## Gestures
