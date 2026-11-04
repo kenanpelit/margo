@@ -60,6 +60,7 @@ mod helpers;
 mod hotplug;
 mod mode;
 mod render_elements;
+mod session;
 // Render-element builders live in `render_elements` now; a plain `use` pulls
 // them into the udev-module namespace so `run` / `serve_screencopies` (here)
 // and the sibling `frame` module (`use super::build_render_elements`, a child
@@ -968,9 +969,32 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                         ls.suspend();
                     }
                     state.libinput_devices.clear();
+                    // Release DRM master and stop committing: repaint_tick
+                    // and the hotplug rescan skip KMS until the resume.
+                    session::pause_drm(&mut backend_data.borrow_mut().drm);
                 }
                 SessionEvent::ActivateSession => {
                     info!("session activated");
+                    {
+                        let mut bd = backend_data.borrow_mut();
+                        session::activate_drm(&mut bd.drm);
+                        // Another DRM master may have reprogrammed the CRTCs
+                        // while we were away: make every compositor re-read
+                        // the hardware state and render its next frame in
+                        // full (niri does the same). Failures from the paused
+                        // stretch must not leave a retry backoff behind.
+                        for od in bd.outputs.values_mut() {
+                            if let Err(err) = od.compositor.reset_state() {
+                                warn!(output = %od.output_name, "session resume: DrmCompositor reset failed: {err:?}");
+                            }
+                            od.compositor.reset_buffers();
+                            od.render_failure_streak = 0;
+                            state.clear_output_render_retry(&od.output);
+                        }
+                    }
+                    // Monitors plugged or unplugged while paused: the udev
+                    // rescan skipped them (no KMS access), catch up now.
+                    rescan_outputs(&backend_data, state);
                     if let Some(li) = state.libinput.as_mut() {
                         if li.resume().is_err() {
                             warn!("libinput resume failed");
@@ -1020,10 +1044,14 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
 
     // If the session isn't active yet (e.g. launched from a display manager that
     // hasn't switched VTs to us yet), suspend libinput so the eventual
-    // ActivateSession does a full re-enumeration via resume().
+    // ActivateSession does a full re-enumeration via resume(), and pause the
+    // DRM device the same way.
     if !session.is_active() {
-        info!("session not active at startup, suspending libinput");
+        info!("session not active at startup, suspending libinput and DRM");
         libinput.suspend();
+        // Same as a PauseSession: no KMS commits until ActivateSession, which
+        // re-takes master and resets every output's state.
+        session::pause_drm(&mut backend_data.borrow_mut().drm);
     }
 
     state.libinput = Some(libinput.clone());
@@ -1889,6 +1917,10 @@ impl DrmLeaseHandler for MargoState {
 /// image-copy and PipeWire captures. Run by the repaint-ping source and,
 /// through [`MargoState::set_repaint_hook`], by a firing present timer.
 fn repaint_tick(backend_data: &Rc<RefCell<BackendData>>, state: &mut MargoState) {
+    // Session paused (VT switch): the KMS work below waits for the resume,
+    // which re-queues gamma, wakes DPMS and pings this source again. The
+    // repaint request stays set until then. Offscreen captures still run.
+    let kms_usable = session::kms_usable(&backend_data.borrow().drm);
     // Apply any wlr_output_management mode changes
     // before rendering. The handler that accepted them
     // ran on MargoState (no backend handle), so it
@@ -1896,14 +1928,14 @@ fn repaint_tick(backend_data: &Rc<RefCell<BackendData>>, state: &mut MargoState)
     // we drain here where DrmCompositor::use_mode is
     // reachable. A successful apply re-arranges and
     // re-pings repaint internally.
-    if !state.output_pending.mode_changes.is_empty() {
+    if kms_usable && !state.output_pending.mode_changes.is_empty() {
         let mut bd = backend_data.borrow_mut();
         apply_pending_mode_changes(&mut bd, state);
     }
     // Gamma ramps (twilight, wlr-gamma-control) are CRTC
     // properties, not frames: their producers only wake this
     // source, so apply them whether or not anything renders.
-    if !state.output_pending.gamma.is_empty() {
+    if kms_usable && !state.output_pending.gamma.is_empty() {
         let mut bd = backend_data.borrow_mut();
         let BackendData { outputs, drm, .. } = &mut *bd;
         apply_pending_gamma(outputs, drm, state);
@@ -1916,7 +1948,9 @@ fn repaint_tick(backend_data: &Rc<RefCell<BackendData>>, state: &mut MargoState)
     // whenever `output_pending.dpms` is non-empty guarantees the queue is
     // serviced (and is the recovery path the VT-switch relies on).
     let force_all_for_dpms = !state.output_pending.dpms.is_empty();
-    if state.per_output_frame_clock_enabled() && !force_all_for_dpms {
+    if !kms_usable {
+        // Leave the repaint request and the due clocks for the resume.
+    } else if state.per_output_frame_clock_enabled() && !force_all_for_dpms {
         // Opt-in per-output path: render ONLY the outputs
         // whose present timer has come due (dirty + refresh
         // interval elapsed + not awaiting a vblank). Each

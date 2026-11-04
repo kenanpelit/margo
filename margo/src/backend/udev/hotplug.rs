@@ -36,8 +36,15 @@ use super::{
 use crate::state::MargoState;
 
 pub(super) fn rescan_outputs(backend_data: &Rc<RefCell<BackendData>>, state: &mut MargoState) {
-    // Phase 1: remove disconnected outputs.
     let mut bd = backend_data.borrow_mut();
+    // While the session is paused another DRM master owns KMS: new outputs
+    // couldn't be set up and a connector read can be mid-change. The resume
+    // runs this rescan again.
+    if !super::session::kms_usable(&bd.drm) {
+        tracing::debug!("output rescan skipped: session paused");
+        return;
+    }
+    // Phase 1: remove disconnected outputs.
     let BackendData {
         renderer: _,
         outputs,
