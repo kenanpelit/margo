@@ -14,6 +14,7 @@ use crate::bars::bar_widgets::keep_awake::{KeepAwakeInit, KeepAwakeModel};
 use crate::bars::bar_widgets::keybinds::{KeybindsInit, KeybindsModel};
 use crate::bars::bar_widgets::keyboard::{KeyboardInit, KeyboardModel, KeyboardOutput};
 use crate::bars::bar_widgets::keyboard_layout::{KeyboardLayoutInit, KeyboardLayoutModel};
+use crate::bars::bar_widgets::keymode::{KeymodeInit, KeymodeModel};
 use crate::bars::bar_widgets::lock::{LockInit, LockModel, LockOutput};
 use crate::bars::bar_widgets::lock_keys::{LockKeysInit, LockKeysModel};
 use crate::bars::bar_widgets::logout::{LogoutInit, LogoutModel};
@@ -1083,6 +1084,11 @@ impl BarModel {
             BarWidget::KeyboardLayout => Box::new(
                 KeyboardLayoutModel::builder()
                     .launch(KeyboardLayoutInit { orientation })
+                    .detach(),
+            ),
+            BarWidget::Keymode => Box::new(
+                KeymodeModel::builder()
+                    .launch(KeymodeInit { orientation })
                     .detach(),
             ),
             BarWidget::Keyboard => Box::new(

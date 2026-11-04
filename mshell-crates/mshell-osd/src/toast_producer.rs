@@ -56,6 +56,8 @@ pub struct ToastProducerModel {
     line_power_first: bool,
     prev_online: Option<bool>,
     prev_layout: Option<String>,
+    /// Last seen margo keymode (`None` = not yet baselined).
+    prev_keymode: Option<String>,
     prev_out_dev: Option<String>,
     prev_in_dev: Option<String>,
     prev_caps: Option<bool>,
@@ -105,6 +107,8 @@ pub enum ToastProducerCmd {
     Charging,
     Battery,
     Layout(String),
+    /// margo's keymode (`None` on a margo that doesn't report it).
+    Keymode(Option<String>),
     OutputDevice,
     InputDevice,
     Vpn(bool),
@@ -256,6 +260,22 @@ impl Component for ToastProducerModel {
             }
         });
 
+        // Keymode — reactive mirror of margo's `setkeymode` state.
+        sender.command(|out, shutdown| async move {
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            let mut stream = margo_service().keymode.watch();
+            loop {
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    next = stream.next() => match next {
+                        Some(mode) => { let _ = out.send(ToastProducerCmd::Keymode(mode)); }
+                        None => break,
+                    },
+                }
+            }
+        });
+
         // VPN — the shared `mvpn` poll (one loop with the VPN pills),
         // counted as a subscriber only while VPN toasts are enabled, so the
         // subprocess never runs for the toast when the toggle is off.
@@ -339,6 +359,7 @@ impl Component for ToastProducerModel {
             line_power_first: false,
             prev_online: None,
             prev_layout: None,
+            prev_keymode: None,
             prev_out_dev: None,
             prev_in_dev: None,
             prev_caps: None,
@@ -396,6 +417,7 @@ impl Component for ToastProducerModel {
             ToastProducerCmd::Charging => self.on_charging(),
             ToastProducerCmd::Battery => self.on_battery(),
             ToastProducerCmd::Layout(name) => self.on_layout(name),
+            ToastProducerCmd::Keymode(mode) => self.on_keymode(mode),
             ToastProducerCmd::OutputDevice => self.on_audio_device(true),
             ToastProducerCmd::InputDevice => self.on_audio_device(false),
             ToastProducerCmd::Vpn(connected) => self.on_vpn(connected),
@@ -562,6 +584,31 @@ impl ToastProducerModel {
             body: Some(layout),
             severity: ToastSeverity::Calm,
         });
+    }
+
+    /// Toast a keymode change. The first value only baselines (the shell may
+    /// start inside a mode); the mode is tracked even while the toast is
+    /// off so switching it on never fires for a stale change.
+    fn on_keymode(&mut self, mode: Option<String>) {
+        let Some(mode) = mode else {
+            return;
+        };
+        let changed =
+            mshell_margo_client::indicators::keymode_change(self.prev_keymode.as_deref(), &mode)
+                .map(str::to_string);
+        self.prev_keymode = Some(mode);
+        let cfg = toasts_cfg();
+        if let Some(mode) = changed
+            && cfg.enabled
+            && cfg.keymode
+        {
+            push_toast(ToastEvent {
+                icon: "input-keyboard-symbolic".to_string(),
+                title: "Keymode".to_string(),
+                body: Some(mode),
+                severity: ToastSeverity::Calm,
+            });
+        }
     }
 
     fn on_audio_device(&mut self, output: bool) {

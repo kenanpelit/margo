@@ -764,9 +764,14 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
         "resizewin" => state.resize_focused(arg.i, arg.i2),
         "zoom" => state.zoom(),
         "setkeymode" => {
-            if let Some(mode) = &arg.v {
+            if let Some(mode) = &arg.v
+                && state.input_keyboard.mode != *mode
+            {
                 debug!(mode = %mode, "key mode change");
                 state.input_keyboard.mode = mode.clone();
+                // The shell's keymode pill / toast read `keymode` from the
+                // state snapshot, so a change must push a frame.
+                state.mark_state_dirty();
             }
         }
         "focusmon" => {

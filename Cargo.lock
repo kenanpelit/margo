@@ -5475,6 +5475,7 @@ dependencies = [
  "gtk4-layer-shell",
  "mshell-common",
  "mshell-config",
+ "mshell-margo-client",
  "mshell-services",
  "mshell-sounds",
  "mshell-utils",

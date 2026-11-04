@@ -21,6 +21,7 @@ pub(crate) mod keep_awake;
 pub(crate) mod keybinds;
 pub(crate) mod keyboard;
 pub(crate) mod keyboard_layout;
+pub(crate) mod keymode;
 pub(crate) mod lock;
 pub(crate) mod lock_keys;
 pub(crate) mod logout;

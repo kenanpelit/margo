@@ -51,6 +51,10 @@ pub struct StateJson {
     /// builds that don't emit the field (callers then poll sysfs).
     #[serde(default)]
     pub lock_keys: Option<RawLockKeys>,
+    /// Active keymode (`setkeymode`), `"default"` outside any mode.
+    /// `None` on margo builds that don't emit the field.
+    #[serde(default)]
+    pub keymode: Option<String>,
     /// Diagnostics from the most recent config parse/reload (`mctl
     /// config-errors`'s source). `#[serde(default)]` for forward-compat
     /// with older margo builds that don't emit the field.

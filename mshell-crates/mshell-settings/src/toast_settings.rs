@@ -21,6 +21,7 @@ pub(crate) struct ToastSettingsModel {
     charging: bool,
     lock_keys: bool,
     kb_layout: bool,
+    keymode: bool,
     audio_device: bool,
     vpn: bool,
     now_playing: bool,
@@ -44,6 +45,7 @@ pub(crate) enum ToastSettingsInput {
     ChargingChanged(bool),
     LockKeysChanged(bool),
     KbLayoutChanged(bool),
+    KeymodeChanged(bool),
     AudioDeviceChanged(bool),
     VpnChanged(bool),
     NowPlayingChanged(bool),
@@ -63,6 +65,7 @@ pub(crate) enum ToastSettingsInput {
     ChargingEffect(bool),
     LockKeysEffect(bool),
     KbLayoutEffect(bool),
+    KeymodeEffect(bool),
     AudioDeviceEffect(bool),
     VpnEffect(bool),
     NowPlayingEffect(bool),
@@ -417,6 +420,43 @@ impl Component for ToastSettingsModel {
                                 sender.input(ToastSettingsInput::KbLayoutChanged(v));
                                 glib::Propagation::Proceed
                             } @kb_layout_handler,
+                        },
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/toasts/keymode",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Keymode",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "When margo enters or leaves a keymode (setkeymode).",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(keymode_handler)]
+                            set_active: model.keymode,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(ToastSettingsInput::KeymodeChanged(v));
+                                glib::Propagation::Proceed
+                            } @keymode_handler,
                         },
                     },
 
@@ -864,6 +904,7 @@ impl Component for ToastSettingsModel {
         push_effect!(charging, ChargingEffect);
         push_effect!(lock_keys, LockKeysEffect);
         push_effect!(kb_layout, KbLayoutEffect);
+        push_effect!(keymode, KeymodeEffect);
         push_effect!(audio_device, AudioDeviceEffect);
         push_effect!(vpn, VpnEffect);
         push_effect!(now_playing, NowPlayingEffect);
@@ -896,6 +937,7 @@ impl Component for ToastSettingsModel {
                 .toasts()
                 .kb_layout()
                 .get_untracked(),
+            keymode: config_manager().config().toasts().keymode().get_untracked(),
             audio_device: config_manager()
                 .config()
                 .toasts()
@@ -974,6 +1016,9 @@ impl Component for ToastSettingsModel {
             ToastSettingsInput::KbLayoutChanged(v) => {
                 config_manager().update_config(|c| c.toasts.kb_layout = v);
             }
+            ToastSettingsInput::KeymodeChanged(v) => {
+                config_manager().update_config(|c| c.toasts.keymode = v);
+            }
             ToastSettingsInput::AudioDeviceChanged(v) => {
                 config_manager().update_config(|c| c.toasts.audio_device = v);
             }
@@ -1023,6 +1068,7 @@ impl Component for ToastSettingsModel {
             ToastSettingsInput::ChargingEffect(v) => self.charging = v,
             ToastSettingsInput::LockKeysEffect(v) => self.lock_keys = v,
             ToastSettingsInput::KbLayoutEffect(v) => self.kb_layout = v,
+            ToastSettingsInput::KeymodeEffect(v) => self.keymode = v,
             ToastSettingsInput::AudioDeviceEffect(v) => self.audio_device = v,
             ToastSettingsInput::VpnEffect(v) => self.vpn = v,
             ToastSettingsInput::NowPlayingEffect(v) => self.now_playing = v,

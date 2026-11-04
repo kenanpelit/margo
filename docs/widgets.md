@@ -86,6 +86,7 @@ parameter and use YAML tag syntax:
 | --- | --- | --- |
 | `LockKeys` | Lock Keys | Caps / Num / Scroll lock capsules (A / N / S) that light when engaged; the whole pill hides when all three are off. Read from `/sys/class/leds`. |
 | `KeyboardLayout` | Keyboard Layout | Active xkb layout (e.g. US, TR). Click cycles to the next configured layout (`cyclekblayout`). |
+| `Keymode` | Keymode | margo's active keymode (`setkeymode`, e.g. `resize`). Hidden in the default keymode; click returns to it. Settings → Toasts → Keymode (`toasts.keymode`, off by default) adds a toast on every change. |
 | `Privacy` | Privacy | Lights up while the mic, camera, or screen is in use; click shows a per-sensor access log. |
 | `RecordingIndicator` | Recording Indicator | Lights up while a screen recording is in progress; click stops the recording. |
 | `Tray` | System Tray | StatusNotifierItem tray icons for apps that publish one. |

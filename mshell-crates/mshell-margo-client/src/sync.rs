@@ -223,6 +223,9 @@ fn apply(service: &MargoService, state: &StateJson) {
     if service.lock_keys.get() != state.lock_keys {
         service.lock_keys.set(state.lock_keys);
     }
+    if service.keymode.get() != state.keymode {
+        service.keymode.set(state.keymode.clone());
+    }
 
     let fullscreen_outputs: Vec<String> = state
         .outputs
@@ -955,6 +958,7 @@ mod tests {
             keyboard_layout: String::new(),
             session_locked: None,
             lock_keys: None,
+            keymode: None,
             config_errors: Vec::new(),
         }
     }
@@ -1080,6 +1084,7 @@ mod apply_tests {
             keyboard_layout: Reactive::new(String::new()),
             session_locked: Reactive::new(None),
             lock_keys: Reactive::new(None),
+            keymode: Reactive::new(None),
             config_errors: Reactive::new(Vec::new()),
             active_layout: Reactive::new(None),
             fullscreen_outputs: Reactive::new(Vec::new()),
@@ -1156,6 +1161,7 @@ mod apply_tests {
             keyboard_layout: "English (US)".into(),
             session_locked: None,
             lock_keys: None,
+            keymode: None,
             config_errors: Vec::new(),
         }
     }
@@ -1554,6 +1560,23 @@ mod apply_tests {
                 ..Default::default()
             })
         );
+    }
+
+    #[test]
+    fn keymode_is_mirrored_and_unknown_on_older_margo() {
+        let svc = service();
+        let mut f = frame();
+        apply(&svc, &f);
+        assert_eq!(svc.keymode.get(), None, "older margo: unknown");
+        f.keymode = Some("resize".into());
+        apply(&svc, &f);
+        assert_eq!(svc.keymode.get().as_deref(), Some("resize"));
+        let parsed: StateJson = serde_json::from_str(
+            r#"{"active_output":"","layouts":[],"outputs":[],"clients":[],
+                "tag_count":9,"keymode":"default"}"#,
+        )
+        .expect("frame parses");
+        assert_eq!(parsed.keymode.as_deref(), Some("default"));
     }
 
     /// A frame as margo serialises it (extra fields included), parsed and

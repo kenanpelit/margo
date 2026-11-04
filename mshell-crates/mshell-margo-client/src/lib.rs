@@ -36,6 +36,7 @@ use anyhow::Result;
 use futures::{Stream, StreamExt};
 
 pub mod ctl;
+pub mod indicators;
 pub mod state_json;
 mod sync;
 
@@ -493,6 +494,11 @@ pub struct MargoService {
     /// `lock_keys`. `None` until the first snapshot or when the running
     /// margo predates the field (consumers then fall back to sysfs).
     pub lock_keys: Reactive<Option<RawLockKeys>>,
+    /// Active keymode, mirrored from the state document's `keymode`
+    /// (`"default"` outside any `setkeymode` mode). `None` until the first
+    /// snapshot or when the running margo predates the field. The keymode
+    /// pill and the keymode toast read this.
+    pub keymode: Reactive<Option<String>>,
     /// The focused output's tiling layout. `None` until the first
     /// snapshot, or while the output's `layout_idx` is past the
     /// layouts list (transient during a config reload). The layout
@@ -542,6 +548,7 @@ impl MargoService {
             keyboard_layout: Reactive::new(String::new()),
             session_locked: Reactive::new(None),
             lock_keys: Reactive::new(None),
+            keymode: Reactive::new(None),
             active_layout: Reactive::new(None),
             config_errors: Reactive::new(Vec::new()),
             fullscreen_outputs: Reactive::new(Vec::new()),

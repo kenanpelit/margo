@@ -26,7 +26,7 @@ file — both removed.
 
 | Topic | Args | Payload |
 |---|---|---|
-| `state` | — | full snapshot (outputs, clients, layouts, focused_idx, keyboard_layout, session_locked, lock_keys, twilight, …) |
+| `state` | — | full snapshot (outputs, clients, layouts, focused_idx, keyboard_layout, keymode, session_locked, lock_keys, twilight, …) |
 | `clients` | — | `{"clients":[…]}` |
 | `client` | `<id>` | one client object, or `{"error":…}` |
 | `monitors` | — | `{"monitors":[…]}` |

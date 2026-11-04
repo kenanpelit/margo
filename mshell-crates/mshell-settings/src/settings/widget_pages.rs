@@ -269,6 +269,12 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
             icon: "input-keyboard-symbolic",
         },
         WidgetEntry::Pill {
+            kind: BarPillKind::Keymode,
+            stack_name: "pill_keymode",
+            label: "Keymode",
+            icon: "input-keyboard-symbolic",
+        },
+        WidgetEntry::Pill {
             kind: BarPillKind::DarkMode,
             stack_name: "pill_dark_mode",
             label: "Dark Mode Toggle",

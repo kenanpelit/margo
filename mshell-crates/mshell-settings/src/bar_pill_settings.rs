@@ -22,6 +22,7 @@ pub(crate) enum BarPillKind {
     Countdown,
     DarkMode,
     KeyboardLayout,
+    Keymode,
     ColorPicker,
     // Lock has its own rich page (lock-screen background) — see
     // `lock_settings.rs` — so it's not a generic bar-pill info page.
@@ -40,6 +41,7 @@ impl BarPillKind {
             Self::Countdown => "Countdown",
             Self::DarkMode => "Dark Mode Toggle",
             Self::KeyboardLayout => "Keyboard Layout",
+            Self::Keymode => "Keymode",
             Self::ColorPicker => "ColorPicker",
             Self::Logout => "Logout",
             Self::MargoTags => "Margo Tags",
@@ -67,6 +69,9 @@ impl BarPillKind {
             }
             Self::KeyboardLayout => {
                 "Shows the active xkb keyboard layout (e.g. US, TR). Click cycles to the next configured layout — set multiple via `xkb_rules_layout = tr,us` in config.conf."
+            }
+            Self::Keymode => {
+                "Shows margo's active keymode (`setkeymode`, e.g. resize) and hides in the default mode. Click returns to the default keymode. Turn on Settings → Toasts → Keymode for a toast on every change."
             }
             Self::ColorPicker => {
                 "Picks a colour from the screen and copies hex/rgb to the clipboard. Click to start picking."

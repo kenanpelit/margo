@@ -8,3 +8,12 @@
   font-variant-numeric: tabular-nums;
   color: var(--on-surface);
 }
+
+// Keymode — bar pill naming margo's active keymode (hidden in default).
+// Same plain bar-pill text as the keyboard-layout code.
+.keymode-bar-label {
+  font-size: var(--font-bar);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--on-surface);
+}

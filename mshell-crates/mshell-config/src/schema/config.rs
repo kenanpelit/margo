@@ -121,6 +121,10 @@ pub struct Toasts {
     /// Toast when the keyboard layout changes.
     #[serde(default = "default_true")]
     pub kb_layout: bool,
+    /// Toast when margo's keymode (`setkeymode`) changes. Off by default so
+    /// existing setups see no new toast; turn it on to get a mode OSD.
+    #[serde(default)]
+    pub keymode: bool,
     /// Toast when the default audio output / input device changes.
     #[serde(default = "default_true")]
     pub audio_device: bool,
@@ -180,6 +184,7 @@ impl Default for Toasts {
             charging: true,
             lock_keys: true,
             kb_layout: true,
+            keymode: false,
             audio_device: true,
             vpn: true,
             now_playing: false,
