@@ -125,3 +125,37 @@
   font-size: var(--font-2xs);
   color: var(--on-surface-variant);
 }
+
+// .pacnew review: a unified diff on a --surface-container card,
+// monospace like the version column. Added/removed lines take the §2
+// positive/danger tiers; hunk headers recede to --outline.
+.system-update-diff {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container);
+
+  label {
+    font-family: monospace;
+    font-size: var(--font-2xs);
+  }
+
+  .diff-context {
+    color: var(--on-surface-variant);
+  }
+
+  .diff-added {
+    color: var(--success);
+  }
+
+  .diff-removed {
+    color: var(--error);
+  }
+
+  .diff-hunk {
+    color: var(--outline);
+  }
+}
+
+.system-update-menu-widget label.danger {
+  color: var(--error);
+}

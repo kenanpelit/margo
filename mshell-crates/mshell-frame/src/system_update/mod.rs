@@ -9,6 +9,7 @@
 
 pub(crate) mod history;
 pub(crate) mod news;
+pub(crate) mod pacnew;
 pub(crate) mod run;
 pub(crate) mod size;
 

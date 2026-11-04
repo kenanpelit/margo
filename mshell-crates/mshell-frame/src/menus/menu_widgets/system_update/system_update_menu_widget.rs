@@ -6,6 +6,7 @@
 
 use crate::system_update::history::{self, HistorySource, Transaction};
 use crate::system_update::news::{self, NewsItem};
+use crate::system_update::pacnew::{self, ConfigFile, DiffLine, Kind, Op, Prefer, Review};
 use crate::system_update::run::{self, RunStatus};
 use crate::system_update::{self, ProbeConfig, Source, UpdateReport};
 use mshell_config::config_manager::config_manager;
@@ -16,7 +17,7 @@ use mshell_config::schema::config::{
 use mshell_process::SpawnReaped;
 use reactive_graph::traits::GetUntracked;
 use relm4::gtk::glib;
-use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{AccessibleExtManual, BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
 pub(crate) struct SystemUpdateMenuWidgetModel {
@@ -43,6 +44,25 @@ pub(crate) struct SystemUpdateMenuWidgetModel {
     cache_files: Vec<String>,
     /// Row armed for rollback (first click arms, second confirms).
     armed_rollback: Option<String>,
+    /// `.pacnew` / `.pacsave` / `.pacorig` files under /etc.
+    configs: Vec<ConfigFile>,
+    /// The file open in the review view.
+    review: Option<(ConfigFile, Review)>,
+    /// A privileged config action is in flight.
+    config_busy: bool,
+    /// Last config action error.
+    config_error: Option<String>,
+}
+
+/// What the review view's buttons do.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum ConfigAction {
+    /// Write the 3-way merge (conflicts resolved to one side).
+    Merge(Prefer),
+    /// Replace the live file with the .pacnew / restore the .pacsave.
+    TakeFile,
+    /// Delete the review file, keep the live config.
+    Delete,
 }
 
 #[derive(Debug)]
@@ -69,7 +89,16 @@ pub(crate) enum SystemUpdateMenuWidgetInput {
     LoadHistory,
     /// Rollback button on a history row: first press arms it, the
     /// second (on the same package) runs `pkexec pacman -U <file>`.
-    Rollback { name: String, file: String },
+    Rollback {
+        name: String,
+        file: String,
+    },
+    /// Re-scan /etc for review files.
+    ScanConfigs,
+    /// Open the review (diff) view for one file.
+    OpenReview(usize),
+    CloseReview,
+    ConfigAction(ConfigAction),
 }
 
 #[derive(Debug)]
@@ -90,6 +119,9 @@ pub(crate) enum SystemUpdateMenuWidgetCommandOutput {
     /// A background start failed.
     LaunchFailed(String),
     History(HistorySource, Vec<Transaction>, Vec<String>),
+    Configs(Vec<ConfigFile>),
+    Reviewed(ConfigFile, Review),
+    ConfigDone(Result<(), String>),
 }
 
 #[relm4::component(pub(crate))]
@@ -275,6 +307,135 @@ impl Component for SystemUpdateMenuWidgetModel {
                     },
                 },
 
+                add_titled[Some("configs"), "Config files"] = &gtk::ScrolledWindow {
+                    set_vscrollbar_policy: gtk::PolicyType::Automatic,
+                    set_hscrollbar_policy: gtk::PolicyType::Never,
+                    set_propagate_natural_height: true,
+                    set_min_content_height: 80,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_spacing: 8,
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            add_css_class: "danger",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            #[watch]
+                            set_visible: model.config_error.is_some(),
+                            #[watch]
+                            set_label: model.config_error.as_deref().unwrap_or(""),
+                        },
+
+                        #[name = "config_list"]
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_spacing: 2,
+                            #[watch]
+                            set_visible: model.review.is_none(),
+                        },
+
+                        // Review view: header, diff, actions.
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_spacing: 8,
+                            #[watch]
+                            set_visible: model.review.is_some(),
+
+                            gtk::Box {
+                                set_orientation: gtk::Orientation::Horizontal,
+                                set_spacing: 8,
+                                gtk::Button {
+                                    add_css_class: "ok-button-flat",
+                                    set_valign: gtk::Align::Center,
+                                    set_icon_name: "go-previous-symbolic",
+                                    set_tooltip_text: Some("All config files"),
+                                    update_property: &[gtk::accessible::Property::Label("All config files")],
+                                    connect_clicked[sender] => move |_| {
+                                        sender.input(SystemUpdateMenuWidgetInput::CloseReview);
+                                    },
+                                },
+                                gtk::Box {
+                                    set_orientation: gtk::Orientation::Vertical,
+                                    set_hexpand: true,
+                                    gtk::Label {
+                                        add_css_class: "label-medium-bold",
+                                        set_xalign: 0.0,
+                                        set_ellipsize: gtk::pango::EllipsizeMode::Start,
+                                        #[watch]
+                                        set_label: &model.review.as_ref().map(|(f, _)| f.path.display().to_string()).unwrap_or_default(),
+                                    },
+                                    gtk::Label {
+                                        add_css_class: "label-small",
+                                        add_css_class: "dim-label",
+                                        set_xalign: 0.0,
+                                        set_wrap: true,
+                                        #[watch]
+                                        set_label: &model.review.as_ref().map(|(f, r)| review_summary(f, r)).unwrap_or_default(),
+                                    },
+                                },
+                            },
+
+                            #[name = "diff_view"]
+                            gtk::Box {
+                                add_css_class: "system-update-diff",
+                                set_orientation: gtk::Orientation::Vertical,
+                            },
+
+                            gtk::FlowBox {
+                                set_selection_mode: gtk::SelectionMode::None,
+                                set_column_spacing: 6,
+                                set_row_spacing: 6,
+                                set_max_children_per_line: 3,
+                                set_homogeneous: false,
+                                #[watch]
+                                set_sensitive: !model.config_busy,
+
+                                gtk::Button {
+                                    add_css_class: "ok-button-surface",
+                                    #[watch]
+                                    set_visible: review_can_merge(model.review.as_ref()),
+                                    #[watch]
+                                    set_label: merge_label(model.review.as_ref(), Prefer::Mine),
+                                    set_tooltip_text: Some("Write the 3-way merge; conflicting lines keep your version"),
+                                    connect_clicked[sender] => move |_| {
+                                        sender.input(SystemUpdateMenuWidgetInput::ConfigAction(ConfigAction::Merge(Prefer::Mine)));
+                                    },
+                                },
+                                gtk::Button {
+                                    add_css_class: "ok-button-surface",
+                                    #[watch]
+                                    set_visible: review_has_conflicts(model.review.as_ref()),
+                                    set_label: "Merge, take new lines",
+                                    set_tooltip_text: Some("Write the 3-way merge; conflicting lines take the new default"),
+                                    connect_clicked[sender] => move |_| {
+                                        sender.input(SystemUpdateMenuWidgetInput::ConfigAction(ConfigAction::Merge(Prefer::Theirs)));
+                                    },
+                                },
+                                gtk::Button {
+                                    add_css_class: "ok-button-surface",
+                                    #[watch]
+                                    set_visible: model.review.as_ref().is_some_and(|(_, r)| !r.unreadable),
+                                    #[watch]
+                                    set_label: take_label(model.review.as_ref()),
+                                    connect_clicked[sender] => move |_| {
+                                        sender.input(SystemUpdateMenuWidgetInput::ConfigAction(ConfigAction::TakeFile));
+                                    },
+                                },
+                                gtk::Button {
+                                    add_css_class: "ok-button-error",
+                                    #[watch]
+                                    set_label: delete_label(model.review.as_ref()),
+                                    connect_clicked[sender] => move |_| {
+                                        sender.input(SystemUpdateMenuWidgetInput::ConfigAction(ConfigAction::Delete));
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+
                 add_titled[Some("history"), "History"] = &gtk::ScrolledWindow {
                     set_vscrollbar_policy: gtk::PolicyType::Automatic,
                     set_hscrollbar_policy: gtk::PolicyType::Never,
@@ -399,6 +560,10 @@ impl Component for SystemUpdateMenuWidgetModel {
             history: None,
             cache_files: Vec::new(),
             armed_rollback: None,
+            configs: Vec::new(),
+            review: None,
+            config_busy: false,
+            config_error: None,
         };
         let widgets = view_output!();
 
@@ -450,6 +615,7 @@ impl Component for SystemUpdateMenuWidgetModel {
                 // build/startup). Hidden → nothing.
                 if visible {
                     sender.input(SystemUpdateMenuWidgetInput::Refresh);
+                    sender.input(SystemUpdateMenuWidgetInput::ScanConfigs);
                     if news_enabled() {
                         sender.oneshot_command(async {
                             SystemUpdateMenuWidgetCommandOutput::News(
@@ -525,6 +691,66 @@ impl Component for SystemUpdateMenuWidgetModel {
                     );
                 }
             }
+            SystemUpdateMenuWidgetInput::ScanConfigs => {
+                sender.oneshot_command(async {
+                    let found = tokio::task::spawn_blocking(|| {
+                        pacnew::scan(std::path::Path::new(pacnew::SEARCH_ROOT))
+                    })
+                    .await
+                    .unwrap_or_default();
+                    SystemUpdateMenuWidgetCommandOutput::Configs(found)
+                });
+            }
+            SystemUpdateMenuWidgetInput::OpenReview(i) => {
+                if let Some(file) = self.configs.get(i).cloned() {
+                    self.config_error = None;
+                    sender.oneshot_command(async move {
+                        let f = file.clone();
+                        let review =
+                            tokio::task::spawn_blocking(move || pacnew::review_blocking(&f))
+                                .await
+                                .unwrap_or_default();
+                        SystemUpdateMenuWidgetCommandOutput::Reviewed(file, review)
+                    });
+                }
+            }
+            SystemUpdateMenuWidgetInput::CloseReview => self.review = None,
+            SystemUpdateMenuWidgetInput::ConfigAction(action) => {
+                if let Some((file, review)) = self.review.clone() {
+                    let op = match action {
+                        ConfigAction::Merge(prefer) => review
+                            .merge
+                            .as_ref()
+                            .map(|segs| pacnew::resolve(segs, prefer))
+                            .ok_or_else(|| "no 3-way merge available".to_string())
+                            .and_then(|text| pacnew::stage_merged(&text))
+                            .map(|src| Op::Install {
+                                src,
+                                live: file.live.clone(),
+                                review: file.path.clone(),
+                            }),
+                        ConfigAction::TakeFile => Ok(Op::Install {
+                            src: file.path.clone(),
+                            live: file.live.clone(),
+                            review: file.path.clone(),
+                        }),
+                        ConfigAction::Delete => Ok(Op::Remove {
+                            review: file.path.clone(),
+                        }),
+                    };
+                    match op {
+                        Ok(op) => {
+                            self.config_busy = true;
+                            sender.oneshot_command(async move {
+                                SystemUpdateMenuWidgetCommandOutput::ConfigDone(
+                                    pacnew::apply(op).await,
+                                )
+                            });
+                        }
+                        Err(e) => self.config_error = Some(e),
+                    }
+                }
+            }
             SystemUpdateMenuWidgetInput::DismissRun => {
                 self.run_error = None;
                 run::dismiss();
@@ -589,6 +815,33 @@ impl Component for SystemUpdateMenuWidgetModel {
             }
             SystemUpdateMenuWidgetCommandOutput::Run(status) => self.run = status,
             SystemUpdateMenuWidgetCommandOutput::LaunchFailed(e) => self.run_error = Some(e),
+            SystemUpdateMenuWidgetCommandOutput::Configs(found) => {
+                rebuild_configs(&widgets.config_list, &found, &sender);
+                let title = if found.is_empty() {
+                    "Config files".to_string()
+                } else {
+                    format!("Config files ({})", found.len())
+                };
+                if let Some(page) = widgets.stack.child_by_name("configs") {
+                    widgets.stack.page(&page).set_title(&title);
+                }
+                self.configs = found;
+            }
+            SystemUpdateMenuWidgetCommandOutput::Reviewed(file, review) => {
+                rebuild_diff(&widgets.diff_view, &review);
+                self.review = Some((file, review));
+            }
+            SystemUpdateMenuWidgetCommandOutput::ConfigDone(result) => {
+                self.config_busy = false;
+                match result {
+                    Ok(()) => {
+                        self.review = None;
+                        self.config_error = None;
+                        sender.input(SystemUpdateMenuWidgetInput::ScanConfigs);
+                    }
+                    Err(e) => self.config_error = Some(format!("Couldn't apply: {e}")),
+                }
+            }
             SystemUpdateMenuWidgetCommandOutput::History(source, runs, files) => {
                 self.armed_rollback = None;
                 rebuild_history(&widgets.history_list, source, &runs, &files, None, &sender);
@@ -930,6 +1183,134 @@ fn rebuild_history(
             group.append(&row);
         }
         list.append(&group);
+    }
+}
+
+/// Config file list: one boxed-list row per review file.
+fn rebuild_configs(
+    list: &gtk::Box,
+    files: &[ConfigFile],
+    sender: &ComponentSender<SystemUpdateMenuWidgetModel>,
+) {
+    while let Some(child) = list.first_child() {
+        list.remove(&child);
+    }
+    if files.is_empty() {
+        list.append(&info_label("No .pacnew or .pacsave files under /etc."));
+        return;
+    }
+    let group = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .build();
+    group.add_css_class("ok-boxed-list");
+    group.add_css_class("compact");
+    for (i, f) in files.iter().enumerate() {
+        let inner = gtk::Box::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .spacing(8)
+            .build();
+        let path = gtk::Label::builder()
+            .label(f.live.display().to_string())
+            .xalign(0.0)
+            .hexpand(true)
+            .ellipsize(gtk::pango::EllipsizeMode::Start)
+            .build();
+        path.add_css_class("system-update-name");
+        inner.append(&path);
+        let kind = gtk::Label::new(Some(f.kind.label()));
+        kind.add_css_class("system-update-version");
+        inner.append(&kind);
+        inner.append(&gtk::Image::from_icon_name("go-next-symbolic"));
+        let row = gtk::Button::builder().child(&inner).build();
+        row.add_css_class("ok-button-flat");
+        let s = sender.clone();
+        row.connect_clicked(move |_| s.input(SystemUpdateMenuWidgetInput::OpenReview(i)));
+        group.append(&row);
+    }
+    list.append(&group);
+}
+
+/// Most diff lines the view renders (the rest are summarised).
+const MAX_DIFF_LINES: usize = 400;
+
+fn rebuild_diff(view: &gtk::Box, review: &Review) {
+    while let Some(child) = view.first_child() {
+        view.remove(&child);
+    }
+    for (kind, text) in review.unified.iter().take(MAX_DIFF_LINES) {
+        let l = gtk::Label::builder()
+            .label(text)
+            .xalign(0.0)
+            .selectable(true)
+            .wrap(true)
+            .wrap_mode(gtk::pango::WrapMode::Char)
+            .build();
+        l.add_css_class(match kind {
+            DiffLine::Added => "diff-added",
+            DiffLine::Removed => "diff-removed",
+            DiffLine::Hunk => "diff-hunk",
+            DiffLine::Context => "diff-context",
+        });
+        view.append(&l);
+    }
+    if review.unified.len() > MAX_DIFF_LINES {
+        view.append(&info_label(&format!(
+            "… {} more lines",
+            review.unified.len() - MAX_DIFF_LINES
+        )));
+    }
+}
+
+fn review_summary(file: &ConfigFile, r: &Review) -> String {
+    if r.unreadable {
+        return "Needs root to read — only Delete is available here.".into();
+    }
+    if r.identical {
+        return "Identical to the live file — safe to delete.".into();
+    }
+    match (&r.merge, &r.base_from) {
+        (Some(segs), Some(base)) => match pacnew::conflicts(segs) {
+            0 => format!("3-way merge with the default from {base}: merges cleanly."),
+            n => format!(
+                "3-way merge with the default from {base}: {n} conflict{}.",
+                if n == 1 { "" } else { "s" }
+            ),
+        },
+        _ if file.kind == Kind::Pacnew => {
+            "2-way diff — the previous default isn't in the pacman cache.".into()
+        }
+        _ => format!("{} vs the live file.", file.kind.label()),
+    }
+}
+
+fn review_can_merge(r: Option<&(ConfigFile, Review)>) -> bool {
+    r.is_some_and(|(_, r)| r.merge.is_some() && !r.identical)
+}
+
+fn review_has_conflicts(r: Option<&(ConfigFile, Review)>) -> bool {
+    r.is_some_and(|(_, r)| r.merge.as_ref().is_some_and(|m| pacnew::conflicts(m) > 0))
+}
+
+fn merge_label(r: Option<&(ConfigFile, Review)>, _prefer: Prefer) -> &'static str {
+    if review_has_conflicts(r) {
+        "Merge, keep my lines"
+    } else {
+        "Apply merge"
+    }
+}
+
+fn take_label(r: Option<&(ConfigFile, Review)>) -> &'static str {
+    match r.map(|(f, _)| f.kind) {
+        Some(Kind::Pacnew) => "Replace with new",
+        _ => "Restore",
+    }
+}
+
+fn delete_label(r: Option<&(ConfigFile, Review)>) -> &'static str {
+    match r.map(|(f, _)| f.kind) {
+        Some(Kind::Pacnew) => "Delete .pacnew",
+        Some(Kind::Pacsave) => "Delete .pacsave",
+        _ => "Delete .pacorig",
     }
 }
 

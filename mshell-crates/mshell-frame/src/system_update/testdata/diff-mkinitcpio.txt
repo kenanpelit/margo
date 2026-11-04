@@ -1,0 +1,16 @@
+--- /etc/mkinitcpio.conf	2026-02-14 22:24:10.467076677 +0300
++++ /etc/mkinitcpio.conf.pacnew	2026-10-01 17:16:03.000000000 +0300
+@@ -48,11 +48,11 @@
+ #    HOOKS=(base udev microcode modconf block lvm2 filesystems fsck)
+ #
+ ##   This will create a systemd based initramfs which loads an encrypted root filesystem.
+-#    HOOKS=(base systemd autodetect microcode modconf kms keyboard sd-vconsole sd-encrypt block filesystems fsck)
++#    HOOKS=(base systemd autodetect microcode modconf kms keyboard sd-vconsole block sd-encrypt filesystems fsck)
+ #
+ ##   NOTE: If you have /usr on a separate partition, you MUST include the
+ #    usr and fsck hooks.
+-HOOKS=(base systemd autodetect microcode kms modconf block keyboard sd-vconsole plymouth filesystems)
++HOOKS=(base systemd autodetect microcode modconf kms keyboard sd-vconsole block filesystems fsck)
+ 
+ # COMPRESSION
+ # Use this to compress the initramfs image. By default, zstd compression
