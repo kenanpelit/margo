@@ -357,6 +357,14 @@ strip = "none"
 # target/dist). CI, `just` and the AUR PKGBUILD stay on `release`: AUR users
 # compile on their own machines, where fat LTO + one codegen unit over the
 # whole compositor + GTK shell stack makes every update build much longer.
+#
+# Measured for mshell alone (rustc 1.95, `size -A`): without wasm-plugins,
+# dist cuts .text from 67.4 MB to 50.0 MB (-26 %), .rodata 4.2 -> 3.6 MB and
+# the file 532 -> 365 MB, for a ~17 min build. But the packaged shell is built
+# `--features mshell/wasm-plugins`, and with it dist fails to link
+# ("rust-lld: relocation refers to a symbol in a discarded section:
+# wasmtime_fiber_switch_36_0_20"; wasmtime 36's fiber asm under fat LTO), so
+# the PKGBUILD can't move to dist until that is solved.
 [profile.dist]
 inherits = "release"
 lto = "fat"
