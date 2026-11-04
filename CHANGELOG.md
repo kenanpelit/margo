@@ -5,6 +5,21 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.9.1] – 2026-11-04
+
+**The VPN pill shows the exit city again — for real this time, including
+after a reconnect.**
+
+### Fixed
+
+- After a reconnect (and the login autoconnect) `mullvad status listen`
+  prints a final "Connected" block that lists only what changed
+  (`Visible location (new): …`). mvpn did not read those lines nor keep the
+  details of the block before, so `mvpn status --follow` reported a tunnel
+  with no relay and no location and the pill's label stayed empty. mvpn now
+  carries the details over while the tunnel stays up and reads `(new)`
+  lines; mshell also completes a streamed status that lacks its relay.
+
 ## [4.9.0] – 2026-11-04
 
 **The best ideas of the noctalia community plugins, built natively into
