@@ -237,6 +237,7 @@ pub(crate) fn watch_config_loop(
     available_profiles: ArcStore<Vec<String>>,
     config: ArcStore<Config>,
     degraded: DegradedFlag,
+    persister: crate::persist::Persister,
 ) {
     let mut pending = false;
     let mut last_event_at = Instant::now();
@@ -264,9 +265,26 @@ pub(crate) fn watch_config_loop(
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
         if pending && last_event_at.elapsed() >= Duration::from_millis(DEBOUNCE_MS) {
+            // mshell is about to write the profile itself: reloading now
+            // would read the older file back over the live config. Check
+            // again after the write lands.
+            if persister.busy() {
+                last_event_at = Instant::now();
+                continue;
+            }
             pending = false;
             let active = active_profile.read_untracked();
             let active = active.as_deref();
+            // Our own write (the usual case): the live config already holds
+            // it, so skip the re-read + migrate + figment parse.
+            let layer = match active {
+                Some(name) => crate::paths::profile_path(name),
+                None => crate::paths::default_config_path(),
+            };
+            if persister.is_own_write(&layer) {
+                available_profiles.patch(list_available_profiles());
+                continue;
+            }
             match load_effective_config(active) {
                 Ok(new_cfg) => {
                     degraded.set(false);
@@ -322,6 +340,15 @@ pub(crate) fn persist_config_layer(
     value: &Config,
     path: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    persist_config_layer_bytes(value, path).map(|_| ())
+}
+
+/// [`persist_config_layer`], returning the bytes written (the persister
+/// remembers their hash to recognise its own write in the watcher).
+pub(crate) fn persist_config_layer_bytes(
+    value: &Config,
+    path: &Path,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -346,7 +373,7 @@ pub(crate) fn persist_config_layer(
     // time Settings was saved.
     crate::atomic_write::atomic_write(path, yaml.as_bytes())?;
 
-    Ok(())
+    Ok(yaml.into_bytes())
 }
 
 /// The sparse profile YAML `persist_config_layer` writes for `value`: only

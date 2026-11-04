@@ -19,6 +19,7 @@ pub struct ConfigManager {
     available_profiles: ArcStore<Vec<String>>,
     config: ArcStore<Config>,
     degraded: DegradedFlag,
+    persister: crate::persist::Persister,
 }
 
 static CONFIG_MANAGER: OnceLock<ConfigManager> = OnceLock::new();
@@ -87,6 +88,7 @@ impl ConfigManager {
             available_profiles,
             config,
             degraded,
+            persister: crate::persist::Persister::new(crate::persist::PERSIST_DEBOUNCE),
         }
     }
 
@@ -261,28 +263,35 @@ impl ConfigManager {
             "update_config: persisting layer"
         );
 
-        if let Err(e) = persist_config_layer(&updated, &layer_path) {
-            tracing::error!(error = %e, path = %layer_path.display(), "update_config: persist_config_layer failed");
-            return;
-        }
-
-        // Write-through: we already hold the new effective config in `updated`,
-        // so push it straight into the reactive store instead of bouncing back
-        // through disk. The old path called `reload_config`, which rebuilt a
-        // default `Config`, re-read + re-parsed the just-written YAML, ran the
-        // migration pre-pass (another read), and re-derived the plugin layer —
-        // a full deserialize on every toggle / slider step. Here we only need
-        // to re-add the derived plugin-widget layer that we stripped before
-        // persisting (a fresh load does the same via `resync_plugin_widgets`),
-        // then patch. Result matches a reload byte-for-byte, minus the round
-        // trip. The `None` (default-layer) branch keeps its original
-        // bootstrap-on-first-write behaviour.
+        // Apply now, persist later: the store is patched immediately (the
+        // UI follows at once) and the profile write is queued on the
+        // persist thread with a short trailing debounce, so a slider drag is
+        // one write of the final value instead of a serialise + two fsyncs
+        // on the GTK thread per step. `flush()` (shutdown) writes anything
+        // still queued. Only the plugin-widget layer stripped above needs
+        // re-adding before the patch (a fresh load does the same).
+        //
+        // The `None` (default-layer) branch keeps its bootstrap behaviour:
+        // write the default profile now, then make it active.
         if active.is_some() {
+            drop(active);
+            self.persister.schedule(layer_path, updated.clone());
             crate::plugin_bridge::resync_plugin_widgets(&mut updated);
             self.config.patch(updated);
         } else {
+            drop(active);
+            if let Err(e) = persist_config_layer(&updated, &layer_path) {
+                tracing::error!(error = %e, path = %layer_path.display(), "update_config: persist_config_layer failed");
+                return;
+            }
             self.set_active_profile(Some(DEFAULT_PROFILE_NAME.to_string()));
         }
+    }
+
+    /// Write any queued profile change now (shutdown; before reading the
+    /// profile file back).
+    pub fn flush(&self) {
+        self.persister.flush();
     }
 
     /// Re-derive the plugin-widget layer on the live config (after plugin
@@ -297,6 +306,8 @@ impl ConfigManager {
     }
 
     pub fn reload_config(&self) {
+        // A queued change must be on disk before the file is read back.
+        self.persister.flush();
         let active = self.active_profile.read_untracked();
         let active = active.as_deref();
 
@@ -320,6 +331,7 @@ impl ConfigManager {
         let available_profiles = self.available_profiles.clone();
         let config = self.config.clone();
         let degraded = self.degraded.clone();
+        let persister = self.persister.clone();
 
         thread::spawn(move || {
             let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
@@ -346,7 +358,14 @@ impl ConfigManager {
 
             let _ = watcher.watch(&prof_dir, RecursiveMode::NonRecursive);
 
-            watch_config_loop(rx, active_profile, available_profiles, config, degraded);
+            watch_config_loop(
+                rx,
+                active_profile,
+                available_profiles,
+                config,
+                degraded,
+                persister,
+            );
         });
     }
 }
@@ -413,6 +432,7 @@ mod tests {
         mgr.reload_config();
         assert!(!mgr.is_degraded(), "a clean reload clears degraded");
         mgr.update_config(|c| c.osd.distance += 1);
+        mgr.flush();
         let saved = fs::read_to_string(&path).unwrap();
         assert!(
             saved.contains("width: 333"),
@@ -453,7 +473,35 @@ mod tests {
         let mgr = ConfigManager::new();
         assert_eq!(mgr.config.read_untracked().osd.width, 444);
         mgr.update_config(|c| c.osd.distance += 1);
+        mgr.flush();
         let saved = fs::read_to_string(&path).unwrap();
         assert!(saved.contains("width: 444"), "user value kept: {saved}");
+    }
+
+    /// A slider drag (many `update_config` calls in a row) applies every
+    /// step to the live config at once but writes the profile once, with
+    /// the final value, off the calling thread.
+    #[test]
+    fn rapid_updates_apply_at_once_and_persist_once() {
+        let _home = TempHome::new("debounce-test");
+        let path = write_profile("work", "osd:\n  width: 300\n");
+        let mgr = ConfigManager::new();
+        let before = fs::read_to_string(&path).unwrap();
+        for w in 1..=60 {
+            mgr.update_config(|c| c.osd.width = 300 + w);
+            assert_eq!(
+                mgr.config.read_untracked().osd.width,
+                300 + w,
+                "live at once"
+            );
+        }
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            before,
+            "nothing written synchronously"
+        );
+        mgr.flush();
+        assert_eq!(mgr.persister.writes(), 1, "one write for the burst");
+        assert!(fs::read_to_string(&path).unwrap().contains("width: 360"));
     }
 }

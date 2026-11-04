@@ -5,6 +5,7 @@ pub mod doc_store;
 mod errors;
 pub mod migration;
 pub mod paths;
+mod persist;
 pub mod plugin_bridge;
 pub mod schema;
 pub mod toast;

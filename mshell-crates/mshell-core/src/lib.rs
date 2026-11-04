@@ -538,9 +538,34 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     }
 
     let app = RelmApp::new("mshell.main");
+    // `systemctl --user stop/restart mshell` sends SIGTERM: quit the app
+    // cleanly so the shutdown path below (the debounced settings write)
+    // runs instead of the default action killing the process.
+    mshell_services::tokio_rt_spawn(async {
+        use tokio::signal::unix::{SignalKind, signal};
+        let (Ok(mut term), Ok(mut int)) = (
+            signal(SignalKind::terminate()),
+            signal(SignalKind::interrupt()),
+        ) else {
+            tracing::warn!("could not install SIGTERM/SIGINT handlers");
+            return;
+        };
+        tokio::select! {
+            _ = term.recv() => {}
+            _ = int.recv() => {}
+        }
+        info!("Termination signal; quitting");
+        relm4::gtk::glib::MainContext::default().invoke(|| {
+            use relm4::gtk::prelude::ApplicationExt;
+            relm4::main_application().quit();
+        });
+    });
     info!("Startup completed in {:?}", start.elapsed());
     app.run::<Shell>(ShellInit {});
 
+    // Settings changes are persisted with a short debounce; write anything
+    // still queued before the process exits.
+    mshell_config::config_manager::config_manager().flush();
     info!("Goodbye!");
 
     Ok(())
