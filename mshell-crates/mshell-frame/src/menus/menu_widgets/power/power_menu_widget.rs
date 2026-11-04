@@ -36,6 +36,7 @@
 use crate::bars::bar_widgets::power::{PowerState, Profile, read_power_state, set_charge_limit};
 use crate::menus::menu_widgets::network::network_menu_widget::smooth_path;
 use crate::menus::menu_widgets::power::battery_history::{self, Point};
+use crate::menus::menu_widgets::power::usb_c_power::{self, UsbCPort};
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, PowerConfigStoreFields};
 use mshell_idle::inhibitor::IdleInhibitor;
@@ -83,6 +84,11 @@ pub(crate) struct PowerMenuWidgetModel {
     charge_section: gtk::Box,
     charge_buttons: Vec<(u8, gtk::Button)>,
     charge_spin: gtk::SpinButton,
+    /// USB-C Power Delivery ports with something plugged in (sysfs);
+    /// section hidden when none / no typec class.
+    usb_c_ports: Vec<UsbCPort>,
+    usb_c_section: gtk::Box,
+    usb_c_box: gtk::Box,
     /// Battery-level history (UPower) — section hidden without a battery.
     history_section: gtk::Box,
     history_area: gtk::DrawingArea,
@@ -238,6 +244,24 @@ impl Component for PowerMenuWidgetModel {
                 set_homogeneous: true,
             },
 
+            // ── USB-C power (typec sysfs; hidden with nothing plugged) ──
+            #[local_ref]
+            usb_c_section -> gtk::Box {
+                set_orientation: gtk::Orientation::Vertical,
+                set_spacing: 6,
+                gtk::Label {
+                    add_css_class: "power-section-label",
+                    set_label: "USB-C POWER",
+                    set_halign: gtk::Align::Start,
+                },
+                #[local_ref]
+                usb_c_box -> gtk::Box {
+                    add_css_class: "power-stats",
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 4,
+                },
+            },
+
             // ── Battery history (UPower; hidden without a battery) ──
             #[local_ref]
             history_section -> gtk::Box {
@@ -374,6 +398,9 @@ impl Component for PowerMenuWidgetModel {
         custom_row.append(&apply_button);
         charge_section.append(&custom_row);
 
+        let usb_c_section = gtk::Box::new(gtk::Orientation::Vertical, 6);
+        let usb_c_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
+
         // ── Battery history (UPower GetHistory) ─────────────────
         let history_section = gtk::Box::new(gtk::Orientation::Vertical, 6);
         let history_area = gtk::DrawingArea::new();
@@ -439,6 +466,9 @@ impl Component for PowerMenuWidgetModel {
             charge_section: charge_section.clone(),
             charge_buttons,
             charge_spin: charge_spin.clone(),
+            usb_c_ports: usb_c_power::scan(),
+            usb_c_section: usb_c_section.clone(),
+            usb_c_box: usb_c_box.clone(),
             history_section: history_section.clone(),
             history_area: history_area.clone(),
             history_points,
@@ -522,8 +552,12 @@ impl Component for PowerMenuWidgetModel {
         match message {
             PowerMenuWidgetCommandOutput::StateChanged => {
                 let state = read_power_state();
-                if self.state != state {
+                // AC / battery changes are also what a USB-C charger
+                // plug fires — re-read the (tiny) typec sysfs with them.
+                let ports = usb_c_power::scan();
+                if self.state != state || self.usb_c_ports != ports {
                     self.state = state;
+                    self.usb_c_ports = ports;
                     sync_view(self);
                 }
                 self.maybe_fetch_history(&sender, false);
@@ -744,6 +778,19 @@ fn sync_view(model: &PowerMenuWidgetModel) {
                 .stats_box
                 .append(&stat_row("Charge cycles", &c.to_string()));
         }
+    }
+
+    // USB-C power — one row per occupied port (role, watts / amps, PD).
+    while let Some(child) = model.usb_c_box.first_child() {
+        model.usb_c_box.remove(&child);
+    }
+    model
+        .usb_c_section
+        .set_visible(!model.usb_c_ports.is_empty());
+    for port in &model.usb_c_ports {
+        model
+            .usb_c_box
+            .append(&stat_row(&port.title(), &port.summary()));
     }
 
     // Battery history — laptop only; highlight the active timeframe chip.
