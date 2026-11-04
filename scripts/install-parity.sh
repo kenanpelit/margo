@@ -3,7 +3,8 @@
 # kept by hand, so this gate diffs them:
 #   1. the cargo build groups (`-p` sets per invocation),
 #   2. the binaries installed to /usr/bin (and the no-manifest uninstall list),
-#   3. every installed destination path (units, wants links, assets, docs).
+#   3. every installed destination path (units, wants links, assets, docs),
+#   4. that the justfile (`just all`) installs every packaged binary.
 # Usage: ./scripts/install-parity.sh [repo-root]   (exit 1 on drift)
 set -euo pipefail
 root="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -81,6 +82,15 @@ is_paths="$(body "$installsh" debian_install_files |
     grep -v '^usr/bin/\$bin$' | grep -v '^usr/local/')"
 report "installed paths" "$(comm -23 <(echo "$pk_paths") <(echo "$is_paths"))" \
     "$(comm -13 <(echo "$pk_paths") <(echo "$is_paths"))"
+
+# 4. `just all` (the dev install) covers every packaged binary, so a dev
+# install never leaves an older packaged copy of one helper behind.
+if [ -f "$root/justfile" ]; then
+    just_bins="$( (grep -oE 'target/release/[A-Za-z0-9_-]+' "$root/justfile" | sed 's#.*/##'
+        grep -oE 'for b in [^;]*;' "$root/justfile" | sed 's/^for b in //; s/;$//' | tr ' ' '\n') |
+        sed '/^$/d' | sort -u)"
+    report "justfile installs" "$(comm -23 <(echo "$pk_bins") <(echo "$just_bins"))" ""
+fi
 
 if [ "$fail" = 0 ]; then
     echo "install-parity: install.sh matches the PKGBUILD"

@@ -24,7 +24,7 @@ members = [
     "mwizard",
     "start-margo",
     # Shell — port of OkShell. 3 binaries (mshell, mshellctl,
-    # mshellshare) + 33 helper crates under mshell-crates/
+    # mshellshare) + 35 helper crates under mshell-crates/
     # (scripts/crate-table.sh lists them).
     "mshell",
     "mshellctl",

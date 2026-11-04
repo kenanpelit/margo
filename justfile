@@ -32,9 +32,10 @@ margo:
     sudo install -m755 target/release/margo {{bindir}}/margo
     @echo "installed margo → re-login or reboot to run the new compositor (mctl reload won't swap the binary)"
 
+# Built with the WASM plugin panels on, like the package (PKGBUILD).
 # Build + install the shell and restart it live (no logout needed).
 shell:
-    cargo build --release -p mshell
+    cargo build --release -p mshell --features wasm-plugins
     sudo install -m755 target/release/mshell {{bindir}}/mshell
     systemctl --user restart mshell
     @echo "mshell rebuilt + restarted"
@@ -74,28 +75,50 @@ mtune:
 completions:
     ./contrib/completions/generate.sh
 
-# Everything: compositor + shell + CLI tools + music player.
-all: margo shell cli dots mtune
+# PKGBUILD build groups (compositor-side crates apart from the tokio/GTK
+# shell stack). mlogind/mgreet/mlock take effect at the next login / lock,
+# start-margo and margo-portal at the next session.
+# Build + install every other binary the package ships.
+helpers:
+    cargo build --release -p start-margo -p mlock -p mlayout -p mvisual -p mlogind -p mpower -p mtm
+    cargo build --release -p mshellshare -p mwizard -p mkeys -p mvpn -p mgreet -p margo-portal
+    for b in start-margo mlock mlayout mvisual mlogind mpower mtm mshellshare mwizard mkeys mvpn mgreet; do sudo install -m755 target/release/$b {{bindir}}/$b; done
+    sudo install -Dm755 target/release/margo-portal /usr/lib/margo/margo-portal
+
+# scripts/install-parity.sh fails if a packaged binary is missing here.
+# Everything the package ships: compositor, shell, CLI tools, mtune, helpers.
+all: margo shell cli dots mtune helpers
 
 # Re-read the compositor config (config.conf + sourced fragments). Does NOT
 # install or swap the margo binary — use `just margo` + re-login for that.
 reload:
     mctl reload
 
-# The exact pre-push CI gate set (ci.yml). Run this before pushing — a clean
-# `cargo check` is NOT enough: CI fails on clippy --all-targets -D warnings,
-# fmt, the panic ratchet, the file-size gate, the design lint, and the
-# example-config parse that a plain check never sees.
+# The pre-push CI gate set: the steps of ci.yml's `check` job, with the
+# same `--locked`. Run this before pushing — a clean `cargo check` is NOT
+# enough: CI fails on clippy --all-targets -D warnings, fmt, the panic
+# ratchet, the file-size gate, the design lint, the packaging parity and
+# completion-drift checks, and the example-config check. Not run here: the
+# separate machete / MSRV / cargo-deny / debian jobs.
+# The pre-push CI gate set (ci.yml `check` job).
 check:
     cargo fmt --all -- --check
-    cargo clippy --workspace --all-targets -- -D warnings
-    cargo clippy --all-targets -p mshell -p mshell-frame -p mshell-plugin-ui -p mshell-plugin-host --features mshell/wasm-plugins,mshell-plugin-ui/wasm -- -D warnings
-    ./scripts/panic-ratchet.sh
-    ./scripts/file-size-gate.sh
+    cargo clippy --workspace --all-targets --locked -- -D warnings
+    cargo clippy --locked --all-targets -p mshell -p mshell-frame -p mshell-plugin-ui -p mshell-plugin-host --features mshell/wasm-plugins,mshell-plugin-ui/wasm -- -D warnings
     ./scripts/design-lint.sh
+    ./scripts/test-panic-baseline-guard.sh
+    ./scripts/panic-ratchet.sh
+    ./scripts/test-file-size-gate.sh
+    ./scripts/file-size-gate.sh
+    ./scripts/install-parity.sh
+    ./scripts/test-install-parity.sh
+    ./scripts/test-install-arch.sh
+    ./scripts/test-retire-old-sync-variables.sh
     ./scripts/mtune-debrand-gate.sh
-    cargo run -q -p mctl -- check-config --config margo/src/config.example.conf
-    cargo test --workspace
+    cargo build --locked -p mctl -p mshellctl -p mdots
+    ./contrib/completions/generate.sh --check
+    cargo run --locked -q -p mctl -- check-config --config margo/src/config.example.conf
+    cargo test --workspace --locked
 
 # Format the whole workspace.
 fmt:

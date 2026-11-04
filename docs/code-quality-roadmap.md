@@ -158,10 +158,9 @@ files, and overlapping feature mechanisms.**
 
 ## Low priority / quick wins
 
-- [ ] **Build/deploy ergonomics.** No single "build+install+restart" target;
-  recurring confusion between compositor vs shell rebuilds and "`mctl reload`
-  doesn't pick up new binary code (needs relogin)". Add an `xtask`/`just`
-  flow + document the split.
+- [x] **Build/deploy ergonomics**: shipped — the repo-root `justfile`
+  (`just margo` / `shell` / `cli` / `helpers` / `all`, `just check` = the CI
+  gate set) documents the compositor-vs-shell restart split in its header.
 - [x] **CI gate**: shipped — `ci.yml` runs build/test/clippy (`-D warnings`) +
   `mctl check-config`; `smoke.yml` runs the winit smoke under Xvfb.
 - [ ] **TODO/FIXME triage** (20): link to issues or remove; "temporary" markers
