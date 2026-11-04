@@ -39,7 +39,9 @@ pub struct ConfigDiagnostic {
     pub end_col: usize,
     pub severity: Severity,
     /// Short stable code so machine-readable consumers can switch on
-    /// it (`E001` = trailing comma, `W001` = unknown key, etc.).
+    /// it (`E001` = empty bind field, `W001` = unknown key, etc.; the full
+    /// list is in `validator.rs`'s module docs). An `E…` code means margo
+    /// drops or misreads the line; a `W…` code means it loads it.
     /// Owned `String` rather than `&'static str` so the struct can
     /// round-trip through serde for IPC.
     pub code: String,

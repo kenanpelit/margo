@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 /// `source`/`include`'d files (a file can use a variable defined before its
 /// `source` line). Threaded through the recursive parse calls the same way
 /// `visited` already is.
-type Vars = HashMap<String, String>;
+pub(crate) type Vars = HashMap<String, String>;
 
 use anyhow::{Context, Result, anyhow, bail};
 use tracing::{error, warn};
@@ -108,7 +108,7 @@ pub fn resolve_config_path(explicit: Option<&Path>) -> Result<PathBuf> {
     Ok(PathBuf::from(home).join(".config/margo/config.conf"))
 }
 
-fn resolve_include_path(include: &str, relative_to: &Path) -> PathBuf {
+pub(crate) fn resolve_include_path(include: &str, relative_to: &Path) -> PathBuf {
     // ~/-relative — substitute $HOME.
     let path = if let Some(rest) = include.strip_prefix("~/") {
         let home = std::env::var("HOME").unwrap_or_default();
@@ -135,6 +135,82 @@ fn resolve_include_path(include: &str, relative_to: &Path) -> PathBuf {
     // sourced rules disappear into the void.
     let dir = relative_to.parent().unwrap_or(Path::new("."));
     dir.join(path)
+}
+
+/// What a `source`/`include` value points at.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum IncludeTarget {
+    /// Files to load, in order. Empty when a wildcard matched nothing —
+    /// a fragments directory with no fragments yet is not an error.
+    Files(Vec<PathBuf>),
+    /// A plain path that doesn't exist (the resolved path).
+    Missing(PathBuf),
+}
+
+/// Resolve a `source`/`include` value to the files it loads. A `*` or `?`
+/// in the last path component is a wildcard: every regular file in that
+/// directory whose name matches is loaded, in lexical order (`*` doesn't
+/// match a leading `.`, as in a shell). Wildcards in directory components
+/// are not expanded. Shared by the parser and the validator so both read
+/// the same files.
+pub(crate) fn include_targets(include: &str, relative_to: &Path) -> IncludeTarget {
+    let path = resolve_include_path(include, relative_to);
+    let pattern = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .filter(|n| n.contains(['*', '?']))
+        .map(str::to_owned);
+    let Some(pattern) = pattern else {
+        return if path.exists() {
+            IncludeTarget::Files(vec![path])
+        } else {
+            IncludeTarget::Missing(path)
+        };
+    };
+    let dir = path.parent().unwrap_or(Path::new("."));
+    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| {
+            e.file_name()
+                .to_str()
+                .is_some_and(|name| wildcard_match(&pattern, name))
+        })
+        .map(|e| e.path())
+        .filter(|p| p.is_file())
+        .collect();
+    files.sort();
+    IncludeTarget::Files(files)
+}
+
+/// Shell-style match of `name` against `pattern` with `*` (any run, not a
+/// leading `.`) and `?` (one char). No character classes.
+fn wildcard_match(pattern: &str, name: &str) -> bool {
+    if name.starts_with('.') && !pattern.starts_with('.') {
+        return false;
+    }
+    let p: Vec<char> = pattern.chars().collect();
+    let n: Vec<char> = name.chars().collect();
+    // Iterative matcher with single-star backtracking.
+    let (mut pi, mut ni) = (0usize, 0usize);
+    let mut star: Option<(usize, usize)> = None;
+    while ni < n.len() {
+        if pi < p.len() && (p[pi] == '?' || p[pi] == n[ni]) {
+            pi += 1;
+            ni += 1;
+        } else if pi < p.len() && p[pi] == '*' {
+            star = Some((pi, ni));
+            pi += 1;
+        } else if let Some((sp, sn)) = star {
+            pi = sp + 1;
+            ni = sn + 1;
+            star = Some((sp, sn + 1));
+        } else {
+            return false;
+        }
+    }
+    p[pi..].iter().all(|&c| c == '*')
 }
 
 // ── File-level parsing ───────────────────────────────────────────────────────
@@ -165,6 +241,12 @@ fn parse_file(
             if required {
                 bail!("cannot open config file {}: {}", path.display(), e);
             }
+            // A sourced path that exists but can't be read (a directory, no
+            // permission): say so, the validator reports it as E000.
+            warn!(
+                "cannot read sourced config file {}: {e} — skipping",
+                path.display()
+            );
             return Ok(());
         }
     };
@@ -277,20 +359,26 @@ fn parse_line(
         return parse_var(val, vars);
     }
 
-    // include/source directive
+    // include/source directive (a wildcard in the file name loads every
+    // match in lexical order)
     if key == "include" || key == "source" {
-        let p = resolve_include_path(val, origin);
-        if !p.exists() {
-            warn!(
-                "{}: source/include `{}` resolved to `{}` which doesn't exist — \
-                 skipping (rules / binds in that file won't load)",
-                origin.display(),
-                val,
-                p.display()
-            );
-            return Ok(());
+        match include_targets(val, origin) {
+            IncludeTarget::Missing(p) => {
+                warn!(
+                    "{}: source/include `{}` resolved to `{}` which doesn't exist — \
+                     skipping (rules / binds in that file won't load)",
+                    origin.display(),
+                    val,
+                    p.display()
+                );
+            }
+            IncludeTarget::Files(files) => {
+                for p in files {
+                    parse_file(cfg, &p, false, visited, vars)?;
+                }
+            }
         }
-        return parse_file(cfg, &p, false, visited, vars);
+        return Ok(());
     }
 
     // bind variants
@@ -328,7 +416,7 @@ fn parse_line(
 /// match `[A-Za-z_][A-Za-z0-9_]*`; anything else is a parse error (reported
 /// and skipped, per the permissive-parser contract — this `var=` line is
 /// simply dropped, not fatal to the rest of the file).
-fn parse_var(val: &str, vars: &mut Vars) -> Result<()> {
+pub(crate) fn parse_var(val: &str, vars: &mut Vars) -> Result<()> {
     let (name, value) = val
         .split_once(',')
         .ok_or_else(|| anyhow!("invalid var format (expected name,value): {val}"))?;
@@ -355,7 +443,7 @@ fn is_valid_var_name(name: &str) -> bool {
 /// anything else (`$HOME`, `$(date …)`, `$1`, `$$`, an undefined `$foo`)
 /// is copied through byte-for-byte, so shell commands in
 /// `spawn`/`spawn_shell` keep working exactly as before.
-fn expand_vars(value: &str, vars: &Vars) -> String {
+pub(crate) fn expand_vars(value: &str, vars: &Vars) -> String {
     if vars.is_empty() || !value.contains('$') {
         return value.to_string();
     }
@@ -922,6 +1010,11 @@ fn parse_bind(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
     let modifiers = parse_modifiers(&parts[0])?;
     let key_sym_code = parse_key(&parts[1], key_type == KeyType::Sym)?;
     let action = parts[2].clone();
+    if action.is_empty() {
+        // A stray comma (`super,q,,killclient`): binding it would only
+        // dispatch the empty action, a silent no-op.
+        bail!("bind has an empty ACTION field: {}", val);
+    }
     let args = build_arg(&parts[3..]);
 
     let mode = cfg.key_mode.clone();
@@ -1632,7 +1725,7 @@ pub fn keysym_raw_from_name(name: &str, case_insensitive: bool) -> u32 {
     xkb::keysym_from_name(name, flags).raw()
 }
 
-fn parse_key(s: &str, prefer_sym: bool) -> Result<KeySymCode> {
+pub(crate) fn parse_key(s: &str, prefer_sym: bool) -> Result<KeySymCode> {
     let s = s.trim();
 
     // "code:NNN" form

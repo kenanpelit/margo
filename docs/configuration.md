@@ -55,7 +55,7 @@ include = rules.conf
 source  = ~/.config/margo/conf.d/*.conf
 ```
 
-Both `include = …` (single file) and `source = …` (glob; matches in lex order) are supported. Re-applying via `mctl reload` re-reads the entire tree.
+`include` and `source` are the same directive. A `*` or `?` in the **file name** is a wildcard: every matching regular file in that directory loads, in lexical order (`*` skips dot-files; a wildcard in a directory name is not expanded; no match is not an error). A plain path that doesn't exist is reported by `mctl check-config` (E003) and skipped. Relative paths resolve against the file that contains the line; `~/` and `$var`s work. Re-applying via `mctl reload` re-reads the entire tree.
 
 ## Configuration variables
 
@@ -295,9 +295,9 @@ animation_curve_move  = 0.25,1.0,0.50,1.0
 animation_curve_tag   = 0.20,0.7,0.20,1.0
 
 # Spring tuning (used when clock = spring)
-spring_stiffness  = 800
-spring_damping    = 1.0
-spring_mass       = 1.0
+animation_spring_stiffness     = 800
+animation_spring_damping_ratio = 1.0
+animation_spring_mass          = 1.0
 ```
 
 ## Keybindings
@@ -311,13 +311,13 @@ Format: `bind = MODIFIERS, KEY, ACTION[, ARG[, ARG…]]`
 ```ini
 bind = super,       Return,        spawn, kitty
 bind = super,       q,             killclient
-bind = super,       j,             focus_next
-bind = super,       k,             focus_prev
+bind = super,       j,             focusstack, 1
+bind = super,       k,             focusstack, -1
 bind = super,       space,         togglefloating
 bind = super+shift, space,         togglefullscreen
 bind = super,       1,             view, 1
 bind = super+shift, 1,             tag,  1
-bind = super,       Tab,           switch_tag_back
+bind = super,       Tab,           focuslast
 bind = super+ctrl,  r,             reload_config
 
 # Mouse binds

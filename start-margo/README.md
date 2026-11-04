@@ -54,13 +54,16 @@ readiness, shutdown and crashes instantly. On top of that:
    unrecoverable init failure returns to the DM immediately.
 
 Before each session, `start-margo` also runs `mctl check-config` unless
-`--no-preflight` is passed. That catches syntax/regex/bind errors before the
-watchdog ever enters a restart loop. Diagnostics are written through the shared
+`--no-preflight` is passed. Its errors are logged, but margo starts anyway:
+margo loads what it can of a broken config (or its last good generation), shows
+a banner and lists the problems in `mctl config-errors`. Pass
+`--strict-preflight` to refuse to start instead (exit `78`). The
+`--safe-config` fallback is always checked strictly. Diagnostics are written through the shared
 `margo-logging` file sink (`~/.local/state/margo/logs/start_margo-*.log`), so
 the reason a session bounced back to the DM survives even without a journal.
 
 start-margo's own terminal conditions use distinct exit codes: `78` (config
-preflight failed), `69` (crash budget exhausted), `127` (margo binary could not
+preflight failed under `--strict-preflight`, or a broken `--safe-config`), `69` (crash budget exhausted), `127` (margo binary could not
 be spawned); any other non-zero code is margo's own.
 
 Shared with `start-hyprland`: `PR_SET_PDEATHSIG(SIGKILL)` so a `kill -9

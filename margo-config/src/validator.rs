@@ -11,17 +11,19 @@
 //! The validator does NOT try to be a full re-implementation of the
 //! parser. It focuses on the failure modes a user can actually hit:
 //!
-//!   * E001 — trailing or doubled comma in CSV-shaped values
-//!     (`bind`, `gesturebind`, `monitorrule`, `windowrule`, …).
-//!     These are silently absorbed by `split_csv` and the bind
-//!     ends up with an empty arg slot, which is what the user hit
-//!     this session.
+//!   * E001 — an empty KEY or ACTION field in a `bind` (a stray comma):
+//!     margo drops the bind. A stray comma margo just ignores (a
+//!     trailing one, an empty rule slot) is the warning W010.
 //!   * E002 — malformed line that the parser would log via
 //!     `error!()` and skip. We hoist the same condition up to the
 //!     diagnostic stream so it's visible without scraping logs.
-//!   * E003 — include/source path that doesn't resolve.
+//!   * E003 — include/source path that doesn't resolve or can't be read.
 //!   * E004 — incomplete `bind` (fewer than MODS,KEY,ACTION fields).
 //!   * E005 — unknown modifier in a `bind` (with a "did you mean").
+//!   * E006 — a malformed `var = name, value` line: the variable is not
+//!     defined, so later `$name` references stay literal.
+//!   * E007 — a `bind` KEY margo can't resolve to a keysym: the bind is
+//!     dropped.
 //!   * W001 — unknown top-level key (parser warns into tracing; we
 //!     surface it structured, with a closest-key suggestion).
 //!   * W002 — out-of-set value for an enum key (lists the allowed set
@@ -46,6 +48,12 @@
 //!     carries an unknown option: almost always a misspelled selector
 //!     (`class:`, `namespace:`). margo drops such a rule instead of
 //!     applying it to every window or layer surface.
+//!   * W010 — a leading, trailing or doubled comma margo ignores.
+//!
+//! Values are `$var`-expanded and `source` wildcards resolved exactly as in
+//! the parser (shared code), so both read the same text and the same files.
+//! Every error marks a line the parser also drops or misreads;
+//! `tests/parity.rs` holds both to that.
 //!
 //! New rules slot into `validate_text` as more conditions show up.
 
@@ -76,10 +84,9 @@ struct BindEntry {
 pub fn validate_config(path: Option<&Path>) -> std::io::Result<DiagnosticReport> {
     let resolved = resolve_config_path(path)?;
     let mut report = DiagnosticReport::default();
-    let mut visited = Vec::new();
-    let mut binds = Vec::new();
-    validate_file(&resolved, &mut report, &mut visited, &mut binds)?;
-    check_bind_conflicts(&binds, &mut report);
+    let mut walk = Walk::default();
+    validate_file(&resolved, &mut report, &mut walk)?;
+    check_bind_conflicts(&walk.binds, &mut report);
     Ok(report)
 }
 
@@ -126,17 +133,27 @@ fn resolve_config_path(explicit: Option<&Path>) -> std::io::Result<PathBuf> {
     Ok(PathBuf::from(home).join(".config/margo/config.conf"))
 }
 
+/// State carried across the whole `source`/`include` tree, in parse order —
+/// the same things the parser threads through its recursion.
+#[derive(Default)]
+struct Walk {
+    visited: Vec<PathBuf>,
+    binds: Vec<BindEntry>,
+    /// `var = name, value` definitions so far; a sourced file sees the
+    /// variables defined before its `source` line, as in the parser.
+    vars: crate::parser::Vars,
+}
+
 fn validate_file(
     path: &Path,
     report: &mut DiagnosticReport,
-    visited: &mut Vec<PathBuf>,
-    binds: &mut Vec<BindEntry>,
+    walk: &mut Walk,
 ) -> std::io::Result<()> {
     let canon = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    if visited.contains(&canon) {
+    if walk.visited.contains(&canon) {
         return Ok(());
     }
-    visited.push(canon);
+    walk.visited.push(canon);
 
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
@@ -154,17 +171,35 @@ fn validate_file(
             return Ok(());
         }
     };
-    validate_text(path, &text, report, visited, binds)
+    validate_text(path, &text, report, walk)
+}
+
+/// When `$var` expansion changed a value, the per-check carets (computed on
+/// the expanded text) don't line up with the raw line: widen them to the
+/// whole raw value instead.
+fn widen_carets(report: &mut DiagnosticReport, from: usize, span: Option<(usize, usize)>) {
+    if let Some((start, end)) = span {
+        for d in &mut report.diagnostics[from..] {
+            if d.col >= start {
+                d.col = start;
+                d.end_col = end;
+            }
+        }
+    }
 }
 
 fn validate_text(
     path: &Path,
     text: &str,
     report: &mut DiagnosticReport,
-    visited: &mut Vec<PathBuf>,
-    binds: &mut Vec<BindEntry>,
+    walk: &mut Walk,
 ) -> std::io::Result<()> {
+    // (index of the line's first diagnostic, raw value span) of the
+    // previous line when its value was `$var`-expanded.
+    let mut pending: (usize, Option<(usize, usize)>) = (0, None);
     for (idx, raw) in text.lines().enumerate() {
+        widen_carets(report, pending.0, pending.1.take());
+        pending.0 = report.diagnostics.len();
         let lineno = idx + 1;
         let line_trim = raw.trim_start();
         if line_trim.is_empty() || line_trim.starts_with('#') {
@@ -199,35 +234,93 @@ fn validate_text(
             // whitespace that followed it.
             val_trim_offset += commentless[1..].len() - commentless[1..].trim_start().len() + 1;
         }
-        let val = unquoted.to_string();
+        // `$name` / `${name}` expand exactly as in the parser, so a bind's
+        // `$mod` or a `source = $dir/x.conf` is checked as margo reads it.
+        let val = crate::parser::expand_vars(unquoted, &walk.vars);
+        if val != unquoted {
+            let start = eq_pos + 1 + val_trim_offset + 1;
+            pending.1 = Some((start, start + unquoted.len().max(1)));
+        }
 
-        // include/source path resolution check.
-        if key == "include" || key == "source" {
-            let resolved = resolve_include_path(&val, path);
-            if !resolved.exists() {
-                let val_start = eq_pos + 1 + val_trim_offset + 1; // 1-indexed
+        if key == "var" {
+            if let Err(e) = crate::parser::parse_var(&val, &mut walk.vars) {
+                let val_start = eq_pos + 1 + val_trim_offset + 1;
                 report.push(ConfigDiagnostic {
                     path: path.to_path_buf(),
                     line: lineno,
                     col: val_start,
-                    end_col: val_start + val.len(),
+                    end_col: val_start + val.len().max(1),
                     severity: Severity::Error,
-                    code: "E003".into(),
-                    message: format!(
-                        "source/include `{}` does not exist (resolved to `{}`)",
-                        val,
-                        resolved.display()
-                    ),
+                    code: "E006".into(),
+                    message: format!("{e} — the variable is not defined"),
                     line_text: raw.to_string(),
                 });
-            } else {
-                let _ = validate_file(&resolved, report, visited, binds);
             }
             continue;
         }
 
-        // CSV-shaped values get the trailing/doubled comma check.
-        if is_csv_shaped_key(key) {
+        // include/source path resolution check.
+        if key == "include" || key == "source" {
+            match crate::parser::include_targets(&val, path) {
+                crate::parser::IncludeTarget::Missing(resolved) => {
+                    let val_start = eq_pos + 1 + val_trim_offset + 1; // 1-indexed
+                    report.push(ConfigDiagnostic {
+                        path: path.to_path_buf(),
+                        line: lineno,
+                        col: val_start,
+                        end_col: val_start + val.len(),
+                        severity: Severity::Error,
+                        code: "E003".into(),
+                        message: format!(
+                            "source/include `{}` does not exist (resolved to `{}`)",
+                            val,
+                            resolved.display()
+                        ),
+                        line_text: raw.to_string(),
+                    });
+                }
+                crate::parser::IncludeTarget::Files(files) => {
+                    for f in files {
+                        // Unreadable (a directory, no permission): report it
+                        // on this line, where the parser logs it too.
+                        let readable = std::fs::File::open(&f)
+                            .and_then(|h| h.metadata())
+                            .map_err(|e| e.to_string())
+                            .and_then(|m| {
+                                if m.is_dir() {
+                                    Err("it is a directory".to_string())
+                                } else {
+                                    Ok(())
+                                }
+                            });
+                        if let Err(e) = readable {
+                            let val_start = eq_pos + 1 + val_trim_offset + 1;
+                            report.push(ConfigDiagnostic {
+                                path: path.to_path_buf(),
+                                line: lineno,
+                                col: val_start,
+                                end_col: val_start + val.len().max(1),
+                                severity: Severity::Error,
+                                code: "E003".into(),
+                                message: format!(
+                                    "source/include `{}` cannot be read ({e}; resolved to `{}`)",
+                                    val,
+                                    f.display()
+                                ),
+                                line_text: raw.to_string(),
+                            });
+                            continue;
+                        }
+                        let _ = validate_file(&f, report, walk);
+                    }
+                }
+            }
+            continue;
+        }
+
+        // CSV-shaped values get the stray-comma check (W010). `env`'s value
+        // is free text after the name, commas included.
+        if is_csv_shaped_key(key) && key != "env" {
             check_csv_commas(path, lineno, raw, eq_pos, &val, val_trim_offset, report);
         }
 
@@ -276,6 +369,51 @@ fn validate_text(
                         .to_string(),
                     line_text: raw.to_string(),
                 });
+            } else {
+                // E001: an empty KEY or ACTION field (a stray comma) — the
+                // parser drops the bind. E007: a KEY margo can't resolve —
+                // also dropped.
+                let fields: Vec<&str> = val.splitn(4, ',').collect();
+                let key_col = val_start + fields[0].len() + 1;
+                let action_col = key_col + fields[1].len() + 1;
+                for (field, col, what) in [
+                    (fields[1], key_col, "KEY"),
+                    (fields[2], action_col, "ACTION"),
+                ] {
+                    if field.trim().is_empty() {
+                        report.push(ConfigDiagnostic {
+                            path: path.to_path_buf(),
+                            line: lineno,
+                            col: col.saturating_sub(1).max(1),
+                            end_col: col + field.len().max(1),
+                            severity: Severity::Error,
+                            code: "E001".into(),
+                            message: format!(
+                                "empty {what} field in `{key}` (stray comma?) — margo drops this bind"
+                            ),
+                            line_text: raw.to_string(),
+                        });
+                    }
+                }
+                let key_field = fields[1].trim();
+                if !key_field.is_empty()
+                    && crate::parser::parse_key(key_field, key[4..].contains('s')).is_err()
+                {
+                    let lead = fields[1].len() - fields[1].trim_start().len();
+                    report.push(ConfigDiagnostic {
+                        path: path.to_path_buf(),
+                        line: lineno,
+                        col: key_col + lead,
+                        end_col: key_col + lead + key_field.len(),
+                        severity: Severity::Error,
+                        code: "E007".into(),
+                        message: format!(
+                            "unknown key `{key_field}` in `{key}` — margo drops this bind \
+                             (an xkb keysym name such as `Return`, or `code:NN`)"
+                        ),
+                        line_text: raw.to_string(),
+                    });
+                }
             }
             // E005: unknown modifier in the first (MODS) field. Walk the
             // `+`-joined tokens, tracking byte offset for a precise caret.
@@ -358,7 +496,7 @@ fn validate_text(
                     } else {
                         format!("{}+{key_lower}", mods.join("+"))
                     };
-                    binds.push(BindEntry {
+                    walk.binds.push(BindEntry {
                         path: path.to_path_buf(),
                         line: lineno,
                         col: val_start,
@@ -480,6 +618,7 @@ fn validate_text(
             });
         }
     }
+    widen_carets(report, pending.0, pending.1);
     Ok(())
 }
 
@@ -634,6 +773,11 @@ fn monitorrule_problem(val: &str) -> Option<&'static str> {
     }
 }
 
+/// W010: a leading, trailing or doubled comma. margo reads the empty
+/// field as unset, which is harmless in most places (a bind's trailing
+/// argument, a rule's option list) — so a warning. Where an empty field
+/// makes margo drop the line, that check reports an error of its own
+/// (E001 for a bind's KEY/ACTION, E004, E007).
 fn check_csv_commas(
     path: &Path,
     lineno: usize,
@@ -653,9 +797,9 @@ fn check_csv_commas(
             line: lineno,
             col: val_start,
             end_col: val_start + 1,
-            severity: Severity::Error,
-            code: "E001".into(),
-            message: "leading comma in CSV value — remove the `,`".to_string(),
+            severity: Severity::Warning,
+            code: "W010".into(),
+            message: "leading comma — the first field is empty; remove the `,`".to_string(),
             line_text: raw.to_string(),
         });
     }
@@ -668,9 +812,9 @@ fn check_csv_commas(
             line: lineno,
             col: caret_col,
             end_col: caret_col + 1,
-            severity: Severity::Error,
-            code: "E001".into(),
-            message: "trailing comma in CSV value — remove the `,`".to_string(),
+            severity: Severity::Warning,
+            code: "W010".into(),
+            message: "trailing comma — remove the `,` (margo ignores the empty field)".to_string(),
             line_text: raw.to_string(),
         });
     }
@@ -686,9 +830,9 @@ fn check_csv_commas(
                 line: lineno,
                 col: caret_col,
                 end_col: caret_col + 2,
-                severity: Severity::Error,
-                code: "E001".into(),
-                message: "doubled comma in CSV value — empty slot between two `,`".to_string(),
+                severity: Severity::Warning,
+                code: "W010".into(),
+                message: "doubled comma — an empty field between two `,`".to_string(),
                 line_text: raw.to_string(),
             });
             // Skip to after the run of commas to avoid N N-1 ... 1
@@ -700,23 +844,6 @@ fn check_csv_commas(
         }
         i += 1;
     }
-}
-
-fn resolve_include_path(include: &str, relative_to: &Path) -> PathBuf {
-    let path = if let Some(rest) = include.strip_prefix("~/") {
-        let home = std::env::var("HOME").unwrap_or_default();
-        PathBuf::from(home).join(rest)
-    } else if let Some(rest) = include.strip_prefix("./") {
-        let dir = relative_to.parent().unwrap_or(Path::new("."));
-        dir.join(rest)
-    } else {
-        PathBuf::from(include)
-    };
-    if path.is_absolute() {
-        return path;
-    }
-    let dir = relative_to.parent().unwrap_or(Path::new("."));
-    dir.join(path)
 }
 
 fn is_bind_key(k: &str) -> bool {
@@ -1083,10 +1210,9 @@ mod tests {
     fn validate_str(text: &str) -> DiagnosticReport {
         let path = PathBuf::from("/tmp/test.conf");
         let mut report = DiagnosticReport::default();
-        let mut visited = Vec::new();
-        let mut binds = Vec::new();
-        validate_text(&path, text, &mut report, &mut visited, &mut binds).unwrap();
-        check_bind_conflicts(&binds, &mut report);
+        let mut walk = Walk::default();
+        validate_text(&path, text, &mut report, &mut walk).unwrap();
+        check_bind_conflicts(&walk.binds, &mut report);
         report
     }
 
@@ -1105,19 +1231,46 @@ mod tests {
     }
 
     #[test]
-    fn trailing_comma_in_bind_is_an_error() {
+    fn trailing_comma_in_bind_is_a_warning() {
+        // margo loads this bind (the empty trailing argument is unset), so
+        // it must not block a reload.
         let r = validate_str("bind = alt,Tab,overview_focus_next,\n");
-        assert!(r.has_errors(), "trailing comma must surface as E001");
-        let e = r.errors().next().unwrap();
-        assert_eq!(e.code, "E001");
-        assert_eq!(e.line, 1);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let w = r.warnings().next().unwrap();
+        assert_eq!(w.code, "W010");
+        assert_eq!(w.line, 1);
     }
 
     #[test]
-    fn leading_comma_in_bind_is_an_error() {
+    fn leading_comma_in_bind_shifts_fields_into_an_error() {
+        // MODS empty, KEY `alt` (no such keysym) — margo drops the bind.
         let r = validate_str("bind = ,alt,Tab,overview_focus_next\n");
         assert!(r.has_errors());
-        assert_eq!(r.errors().next().unwrap().code, "E001");
+        assert!(r.errors().any(|e| e.code == "E007"), "{:?}", r.diagnostics);
+    }
+
+    #[test]
+    fn empty_action_and_unknown_key_are_errors() {
+        let r = validate_str("bind = super,q,,1\nbind = super,Retrun,spawn,kitty\n");
+        assert_eq!(
+            r.errors()
+                .map(|e| (e.code.as_str(), e.line))
+                .collect::<Vec<_>>(),
+            [("E001", 1), ("E007", 2)]
+        );
+    }
+
+    #[test]
+    fn empty_bind_arguments_are_a_documented_form() {
+        // `focusapp,app,,cmd` — an empty middle argument stays unset.
+        let r = validate_str("bind = super,f,focusapp,firefox,,firefox\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+    }
+
+    #[test]
+    fn env_value_may_contain_commas() {
+        let r = validate_str("env = LIST,a,,b\n");
+        assert!(r.diagnostics.is_empty(), "{:?}", r.diagnostics);
     }
 
     #[test]

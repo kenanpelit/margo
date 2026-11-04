@@ -79,7 +79,8 @@ const FORWARDED_SIGNALS: [libc::c_int; 3] = [libc::SIGTERM, libc::SIGINT, libc::
 // supervising unit / `systemctl status` can tell them apart from whatever margo
 // itself returned. We deliberately use the sysexits.h range to avoid colliding
 // with margo's small exit codes.
-/// `mctl check-config` rejected the config (sysexits `EX_CONFIG`).
+/// `mctl check-config` rejected the config and `--strict-preflight` (or the
+/// safe-config fallback) made that fatal (sysexits `EX_CONFIG`).
 const EXIT_CONFIG_PREFLIGHT: i32 = 78;
 /// The crash budget was exhausted — margo kept dying (sysexits `EX_UNAVAILABLE`).
 const EXIT_CRASH_BUDGET: i32 = 69;
@@ -119,11 +120,19 @@ struct Args {
     #[arg(long)]
     no_restart: bool,
 
-    /// Validate the margo config with `mctl check-config` before spawning.
-    /// Enabled by default; pass this when testing a broken config path or a
-    /// partial install without `mctl`.
+    /// Skip the `mctl check-config` preflight. By default it runs before
+    /// spawning and its errors are logged, but margo starts anyway (see
+    /// `--strict-preflight`).
     #[arg(long)]
     no_preflight: bool,
+
+    /// Refuse to start margo (exit 78) when the preflight reports a config
+    /// error. Off by default: margo itself loads what it can of a broken
+    /// config (or its last good generation), shows a banner and lists the
+    /// problems in `mctl config-errors`, which beats a session that bounces
+    /// straight back to the display manager.
+    #[arg(long)]
+    strict_preflight: bool,
 
     /// Last-resort config to fall back to when the crash budget is exhausted.
     /// Instead of dropping straight back to the display-manager, start-margo
@@ -589,7 +598,10 @@ fn config_arg(args: &[OsString]) -> Option<OsString> {
 /// `--safe-config` should fail fast and clearly here, not get spawned blind
 /// and burn through a whole fresh crash budget (with backoff delays)
 /// rediscovering the same problem one doomed restart at a time.
-fn run_preflight(no_preflight: bool, spawn_args: &[OsString]) -> Result<Option<i32>> {
+///
+/// A failed check only stops the launch when `strict` is set (see
+/// [`preflight_verdict`]).
+fn run_preflight(no_preflight: bool, strict: bool, spawn_args: &[OsString]) -> Result<Option<i32>> {
     if no_preflight {
         return Ok(None);
     }
@@ -601,10 +613,18 @@ fn run_preflight(no_preflight: bool, spawn_args: &[OsString]) -> Result<Option<i
     }
 
     match cmd.status() {
-        Ok(status) if status.success() => Ok(None),
         Ok(status) => {
-            error!(?status, "config preflight failed; refusing to start margo");
-            Ok(Some(EXIT_CONFIG_PREFLIGHT))
+            let verdict = preflight_verdict(status.success(), strict);
+            if verdict.is_some() {
+                error!(?status, "config preflight failed; refusing to start margo");
+            } else if !status.success() {
+                warn!(
+                    ?status,
+                    "config preflight found errors; starting margo anyway — it loads what \
+                     it can (or its last good config) and lists them in `mctl config-errors`"
+                );
+            }
+            Ok(verdict)
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
             warn!("mctl not found; skipping config preflight");
@@ -612,6 +632,14 @@ fn run_preflight(no_preflight: bool, spawn_args: &[OsString]) -> Result<Option<i
         }
         Err(e) => Err(e).context("run config preflight"),
     }
+}
+
+/// The exit code to stop with after a preflight, or `None` to spawn margo.
+/// A failed check is fatal only when `strict`: margo never needs a clean
+/// config to run, and its own recovery (last-good generation, banner,
+/// `mctl config-errors`) is unreachable if the launcher refuses first.
+fn preflight_verdict(passed: bool, strict: bool) -> Option<i32> {
+    (!passed && strict).then_some(EXIT_CONFIG_PREFLIGHT)
 }
 
 // ── exit / budget / backoff helpers ───────────────────────────────────────────
@@ -837,7 +865,7 @@ fn next_timeout_ms(
 fn run_loop(args: &Args, signalfd: RawFd) -> Result<i32> {
     let margo_path = args.path.clone().unwrap_or_else(|| PathBuf::from("margo"));
 
-    if let Some(code) = run_preflight(args.no_preflight, &args.margo_args)? {
+    if let Some(code) = run_preflight(args.no_preflight, args.strict_preflight, &args.margo_args)? {
         return Ok(code);
     }
 
@@ -931,7 +959,10 @@ fn run_loop(args: &Args, signalfd: RawFd) -> Result<i32> {
                 safe_mode = true;
                 active_args = vec![OsString::from("-c"), safe.clone().into_os_string()];
 
-                if let Some(code) = run_preflight(args.no_preflight, &active_args)? {
+                // Always strict here: this is the last attempt after the
+                // crash budget ran out, and a safe config that doesn't even
+                // pass the check would only burn a second budget.
+                if let Some(code) = run_preflight(args.no_preflight, true, &active_args)? {
                     error!("safe-config preflight failed; giving up");
                     sd_notify(
                         "STOPPING=1\nSTATUS=safe-config preflight failed\n",
@@ -1091,6 +1122,14 @@ mod tests {
             parse_proto_line("garbage"),
             ProtoLine::Other("garbage".to_string())
         );
+    }
+
+    #[test]
+    fn preflight_failure_is_fatal_only_when_strict() {
+        assert_eq!(preflight_verdict(true, false), None);
+        assert_eq!(preflight_verdict(true, true), None);
+        assert_eq!(preflight_verdict(false, false), None);
+        assert_eq!(preflight_verdict(false, true), Some(EXIT_CONFIG_PREFLIGHT));
     }
 
     #[test]

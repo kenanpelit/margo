@@ -202,6 +202,60 @@ fn broken_safe_config_fails_preflight_instead_of_burning_a_second_budget() {
     );
 }
 
+/// A `start-margo` with preflight ON and a fake `mctl` on PATH whose
+/// `check-config` always fails, running a fake margo that leaves a marker.
+fn with_failing_preflight(scratch: &Scratch, extra: &[&str]) -> (std::process::ExitStatus, bool) {
+    let marker = scratch.path("margo-ran");
+    let fake_margo = scratch.script(
+        "margo",
+        &format!("#!/bin/sh\ntouch {}\nexit 0\n", marker.display()),
+    );
+    let bin_dir = scratch.dir.join("bin");
+    fs::create_dir_all(&bin_dir).unwrap();
+    let fake_mctl = bin_dir.join("mctl");
+    fs::write(&fake_mctl, "#!/bin/sh\nexit 1\n").unwrap();
+    let mut perms = fs::metadata(&fake_mctl).unwrap().permissions();
+    perms.set_mode(0o755);
+    fs::set_permissions(&fake_mctl, perms).unwrap();
+    let path_env = format!(
+        "{}:{}",
+        bin_dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let status = Command::new(env!("CARGO_BIN_EXE_start-margo"))
+        .arg("--path")
+        .arg(&fake_margo)
+        .arg("--no-notify")
+        .arg("--ready-timeout-secs")
+        .arg("0")
+        .args(extra)
+        .env("PATH", path_env)
+        .env("XDG_STATE_HOME", scratch.dir.join("state"))
+        .env_remove("NOTIFY_SOCKET")
+        .env_remove("WATCHDOG_USEC")
+        .status()
+        .unwrap();
+    (status, marker.exists())
+}
+
+#[test]
+fn failing_preflight_still_starts_margo() {
+    // A config error must not cost the user their session: margo loads what
+    // it can (or the last good generation) and shows the errors itself.
+    let scratch = Scratch::new();
+    let (status, ran) = with_failing_preflight(&scratch, &[]);
+    assert!(ran, "margo must be spawned despite a failing preflight");
+    assert_eq!(status.code(), Some(0));
+}
+
+#[test]
+fn strict_preflight_refuses_to_start() {
+    let scratch = Scratch::new();
+    let (status, ran) = with_failing_preflight(&scratch, &["--strict-preflight"]);
+    assert!(!ran, "--strict-preflight must not spawn margo");
+    assert_eq!(status.code(), Some(78));
+}
+
 #[test]
 fn sigterm_is_forwarded_for_graceful_teardown() {
     let scratch = Scratch::new();
