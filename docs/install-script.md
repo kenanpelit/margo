@@ -30,8 +30,8 @@ Parse `/etc/os-release`:
 - `ID`/`ID_LIKE` contains **arch** (arch, cachyos, manjaro,
   endeavouros) → **Arch path**.
 - `ID`/`ID_LIKE` contains **debian** (debian, ubuntu, pop, mint) →
-  **Debian path**. Tuned for Ubuntu 24.04; warns (does not abort) on
-  other releases.
+  **Debian path**. Needs GTK >= 4.20 (Debian trixie+/sid, Ubuntu
+  25.10+); the GTK check stops with a clear message on older releases.
 - Otherwise → error with a clear "unsupported distro" message.
 
 ## Arch / CachyOS path
@@ -53,7 +53,7 @@ self-contained:
 
 **Uninstall:** `sudo pacman -R margo-git`.
 
-## Debian / Ubuntu 24.04 path
+## Debian / Ubuntu path
 
 ### 1. Build dependencies (`apt-get install -y`)
 
@@ -69,7 +69,8 @@ the `universe` component first (`add-apt-repository universe` /
 | Seat/session | `libseat-dev seatd` |
 | Core libs | `libpixman-1-dev libsystemd-dev libudev-dev libgudev-1.0-dev libglib2.0-dev libpcre2-dev libpam0g-dev libcairo2-dev libpango1.0-dev libdbus-1-dev` |
 | GTK/shell | `libgtk-4-dev libgdk-pixbuf-2.0-dev libgraphene-1.0-dev libfontconfig1-dev libfreetype-dev` |
-| GStreamer | `libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-good` |
+| GTK/shell (cont.) | `libadwaita-1-dev` (mtune), `libmpv-dev` (mshellctl links libmpv) |
+| GStreamer | `libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-dev gstreamer1.0-plugins-good` (-bad: mtune's gstreamer-play) |
 | Audio | `libasound2-dev libpulse-dev libpipewire-0.3-dev` |
 | Runtime tools | `grim slurp wl-clipboard libnotify-bin xdg-desktop-portal xdg-desktop-portal-gtk pipewire` |
 
@@ -80,7 +81,8 @@ via apt; if unavailable on the host's release, clone + build
 
 ### 2. Rust toolchain
 
-margo is edition 2024 → needs Rust ≥ 1.85. If `rustc` is missing or
+Needs at least the workspace `rust-version` (Cargo.toml; install.sh
+reads it from there, so the two can't drift). If `rustc` is missing or
 older, bootstrap rustup non-interactively
 (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y`),
 source `$HOME/.cargo/env`, and use the freshly-installed stable. If a
@@ -92,12 +94,10 @@ Two separate `cargo build --release` invocations, matching the PKGBUILD
 split exactly (so feature unification does not contaminate the
 compositor build):
 
-```
-cargo build --release -p margo -p start-margo \
-  -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual
-cargo build --release -p mshell -p mshellctl -p mshellshare \
-  -p mpicker -p mwizard -p margo-portal
-```
+The same `-p` groups as the PKGBUILD's `build()` (compositor group, shell
+group, mtune alone), with `--profile dist`. `scripts/install-parity.sh`
+(a CI gate) fails when the groups, the `/usr/bin` binaries, or any
+installed path differ between the two.
 
 (Built from the **local working tree** on Debian — unlike the Arch
 path — so a developer's checkout is what installs.)
@@ -114,8 +114,9 @@ layout is the robust choice.
 
 Layout:
 
-- Binaries → `/usr/bin/`: `margo start-margo mctl mlock mlayout
-  mscreenshot mvisual mshell mshellctl mshellshare mpicker mwizard`
+- Binaries → `/usr/bin/`: the PKGBUILD `package()` bin loop
+- systemd user units `mshell.service` + `mpower.service`, linked into
+  `graphical-session.target.wants` (the links are in the manifest too)
 - `margo-portal` → `/usr/lib/margo/margo-portal`
 - `margo.desktop` → `/usr/share/wayland-sessions/`
 - Portal assets → `/usr/share/xdg-desktop-portal/margo-portals.conf`,

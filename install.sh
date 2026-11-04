@@ -11,7 +11,7 @@
 #     and is incremental on repeat runs. Uninstall = `pacman -R`.
 #
 #   * Debian / Ubuntu → installs build deps via apt, bootstraps a
-#     recent Rust via rustup if needed (margo is edition 2024), builds
+#     recent Rust via rustup if needed (the workspace `rust-version`), builds
 #     the LOCAL working tree with cargo, and installs the binaries +
 #     assets to /usr — mirroring the PKGBUILD package() layout — while
 #     recording every path in a manifest. Uninstall = remove the
@@ -41,7 +41,10 @@ ARCH_PKGNAME="margo-git"
 DEB_DOCNAME="margo"                       # /usr/share/doc/<name> on Debian
 MANIFEST="/usr/local/share/margo/install-manifest.txt"
 MARGO_BUILD_DIR="${MARGO_BUILD_DIR:-${HOME}/.kod/margo_build}"
-MIN_RUST_MINOR=85                         # margo is Rust edition 2024 → ≥ 1.85
+# Rust floor = the workspace `rust-version` (deps need it, not just edition
+# 2024), read from Cargo.toml so the two can't drift.
+MIN_RUST_MINOR="$(sed -n 's/^rust-version = "1\.\([0-9]\+\).*/\1/p' "${REPO_ROOT}/Cargo.toml")"
+[[ -n "$MIN_RUST_MINOR" ]] || { echo "install.sh: no rust-version in ${REPO_ROOT}/Cargo.toml" >&2; exit 1; }
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 if [[ -t 1 ]]; then
@@ -136,8 +139,13 @@ DEBIAN_DEPS=(
   # gtk / shell
   libgtk-4-dev libgdk-pixbuf-2.0-dev libgraphene-1.0-dev
   libfontconfig1-dev libfreetype-dev
-  # gstreamer
-  libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-good
+  # mtune window chrome (libadwaita-1)
+  libadwaita-1-dev
+  # mshellctl links libmpv directly (build.rs -lmpv: wallpaper engine)
+  libmpv-dev
+  # gstreamer (+ -bad for mtune's gstreamer-play)
+  libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+  libgstreamer-plugins-bad1.0-dev gstreamer1.0-plugins-good
   # audio
   libasound2-dev libpulse-dev libpipewire-0.3-dev
   # runtime tools
@@ -154,14 +162,6 @@ DEBIAN_DEPS=(
   # Ubuntu 25.10+, rolling).
   uwsm
 )
-
-debian_check_release() {
-  # shellcheck disable=SC1091
-  . /etc/os-release
-  if [[ "${ID:-}" == "ubuntu" && "${VERSION_ID:-}" != "24.04" ]]; then
-    warn "tuned for Ubuntu 24.04; you're on ${VERSION_ID:-unknown} — proceeding best-effort"
-  fi
-}
 
 # margo's gtk4-rs (0.10) requires GTK ≥ 4.19 at build time. Many LTS
 # releases ship older GTK (Ubuntu 24.04 = 4.14), where the shell build
@@ -185,7 +185,6 @@ debian_check_gtk4() {
 
 debian_install_deps() {
   need_sudo
-  debian_check_release
   log "enabling 'universe' (best effort) and refreshing apt"
   if have add-apt-repository; then
     $SUDO add-apt-repository -y universe >/dev/null 2>&1 || true
@@ -196,8 +195,8 @@ debian_install_deps() {
   ensure_gtk4_layer_shell
 }
 
-# gtk4-layer-shell is the one dep that may be absent on a given 24.04
-# host. Prefer the distro package; otherwise build + install it from
+# gtk4-layer-shell is the one dep that may be absent on a given
+# release. Prefer the distro package; otherwise build + install it from
 # source so the cargo build can link against it.
 ensure_gtk4_layer_shell() {
   if $SUDO apt-get install -y libgtk4-layer-shell-dev >/dev/null 2>&1; then
@@ -224,7 +223,7 @@ ensure_gtk4_layer_shell() {
   log "gtk4-layer-shell: built + installed from source"
 }
 
-# Ensure a Rust toolchain new enough for edition 2024 (≥ 1.85). Use an
+# Ensure a Rust toolchain at least the workspace `rust-version`. Use an
 # existing one if recent; otherwise bootstrap rustup non-interactively.
 ensure_rust() {
   local minor=0
@@ -260,7 +259,7 @@ debian_build() {
   log "building compositor group (dist)"
   cargo build --profile dist -p margo -p start-margo \
     -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mdots \
-    -p mlogind -p mpower -p mcal
+    -p mlogind -p mpower -p mcal -p mtm
   log "building shell group (dist)"
   cargo build --profile dist -p mshell -p mshellctl -p mshellshare \
     -p mpicker -p mwizard -p mkeys -p mvpn -p margo-portal -p mgreet
@@ -281,6 +280,14 @@ install_file() {
 
 # install_tree <src_dir> <dst_dir> — copy a directory's contents and
 # record every resulting file in the manifest.
+# install_link <target> <link> — create a symlink and record <link>.
+install_link() {
+  local target="$1" link="$2"
+  $SUDO install -d "$(dirname "$link")"
+  $SUDO ln -sfn "$target" "$link"
+  printf '%s\n' "$link" | $SUDO tee -a "$MANIFEST" >/dev/null
+}
+
 install_tree() {
   local src="$1" dst="$2"
   [[ -d "$src" ]] || { warn "skip (missing dir): $src"; return; }
@@ -302,7 +309,7 @@ debian_install_files() {
   # ── binaries ──
   local bin
   for bin in margo start-margo mctl mlock mlayout mscreenshot mvisual mdots \
-             mlogind mgreet mpower mshell mshellctl mshellshare mpicker mwizard mkeys mvpn mcal mtune; do
+             mlogind mgreet mpower mshell mshellctl mshellshare mpicker mwizard mkeys mvpn mcal mtm mtune; do
     install_file 755 "${tgt}/${bin}" "/usr/bin/${bin}"
   done
   # margo-portal lives under /usr/lib (D-Bus-activated, not a CLI)
@@ -343,6 +350,9 @@ debian_install_files() {
   # no-systemd launching only.
   install_file 644 "${REPO_ROOT}/margo.desktop" \
     "/usr/share/doc/${DEB_DOCNAME}/sessions/margo-bare.desktop"
+  # The full contrib/sessions set as reference (README, the optional
+  # wayland-wm@ lifecycle drop-in), as the PKGBUILD ships it.
+  install_tree "${REPO_ROOT}/contrib/sessions" "/usr/share/doc/${DEB_DOCNAME}/sessions"
 
   # ── icons ──
   install_file 644 "${REPO_ROOT}/docs/assets/margo-icon.svg" \
@@ -368,6 +378,14 @@ debian_install_files() {
   # ── example config + layouts ──
   install_file 644 "${REPO_ROOT}/margo/src/config.example.conf" \
     "/usr/share/doc/${DEB_DOCNAME}/config.example.conf"
+  install_file 644 "${REPO_ROOT}/contrib/scripts/init.example.rhai" \
+    "/usr/share/doc/${DEB_DOCNAME}/init.example.rhai"
+  install_file 644 "${REPO_ROOT}/mlayout/README.md" "/usr/share/doc/${DEB_DOCNAME}/mlayout.md"
+  local doc
+  for doc in README.md CHANGELOG.md road_map.md CONTRIBUTING.md; do
+    install_file 644 "${REPO_ROOT}/$doc" "/usr/share/doc/${DEB_DOCNAME}/$doc"
+  done
+  install_file 644 "${REPO_ROOT}/mshell/README.md" "/usr/share/doc/${DEB_DOCNAME}/mshell/README.md"
   local layout
   for layout in "${REPO_ROOT}"/mlayout/examples/layout_*.conf; do
     [[ -e "$layout" ]] || continue
@@ -393,6 +411,20 @@ debian_install_files() {
     "/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.margo.service"
   install_file 644 "${REPO_ROOT}/assets/margo-portal.service" \
     "/usr/lib/systemd/user/margo-portal.service"
+
+  # ── mshell + mpower user services, enabled into the session target ──
+  # graphical-session.target is what starts the shell: without these the
+  # session comes up with no bar. Both units carry
+  # ConditionEnvironment=XDG_CURRENT_DESKTOP=margo, so the global wants
+  # links never fire under another desktop (same as the PKGBUILD).
+  install_file 644 "${REPO_ROOT}/assets/mshell.service" \
+    "/usr/lib/systemd/user/mshell.service"
+  install_link "../mshell.service" \
+    "/usr/lib/systemd/user/graphical-session.target.wants/mshell.service"
+  install_file 644 "${REPO_ROOT}/mpower/mpower.service" \
+    "/usr/lib/systemd/user/mpower.service"
+  install_link "../mpower.service" \
+    "/usr/lib/systemd/user/graphical-session.target.wants/mpower.service"
 
   # ── mlogind display manager (opt-in; inert until `systemctl enable`) ──
   # The same file set the Arch PKGBUILD ships; before this block the
@@ -431,6 +463,9 @@ MLOGIND_ETC
     "/usr/lib/sysusers.d/mlogind.conf"
   install_file 644 "${REPO_ROOT}/mlogind/extra/60-mlogind-greeter.rules" \
     "/usr/share/polkit-1/rules.d/60-mlogind-greeter.rules"
+  install_file 644 "${REPO_ROOT}/mlogind/extra/sessions/margo.desktop" \
+    "/usr/share/doc/${DEB_DOCNAME}/mlogind/margo-supervised.desktop"
+  install_file 644 "${REPO_ROOT}/mlogind/README.md" "/usr/share/doc/${DEB_DOCNAME}/mlogind/README.md"
   # pacman creates the greeter user through its systemd-sysusers hook;
   # dpkg has no such hook, so run it here. mlogind survives the user being
   # missing (it logs and falls back to the TTY greeter), hence warn-and-continue.
@@ -444,8 +479,12 @@ MLOGIND_ETC
     install_file 644 "$snd" "/usr/share/mshell/sounds/$(basename "$snd")"
   done
   install_tree "${REPO_ROOT}/mshell-crates/mshell-style/scss" "/usr/share/mshell/scss"
-  install_file 644 "${REPO_ROOT}/mshell-crates/mshell-config/profiles/default.yaml" \
-    "/usr/share/doc/${DEB_DOCNAME}/mshell/profile.example.yaml"
+  # Starter profiles the first-run wizard offers (Default / Nova).
+  local profile
+  for profile in "${REPO_ROOT}"/mshell/examples/profiles/*.yaml; do
+    [[ -e "$profile" ]] || continue
+    install_file 644 "$profile" "/usr/share/margo/mshell/profiles/$(basename "$profile")"
+  done
 
   # ── shell completions for mctl ──
   install_file 644 "${REPO_ROOT}/contrib/completions/mctl.bash" \
@@ -479,6 +518,15 @@ MLOGIND_ETC
     [ -f "$lic" ] || continue
     install_file 644 "$lic" "/usr/share/licenses/${DEB_DOCNAME}/$(basename "$lic")"
   done
+  # mlogind is a fork of lemurs (MIT OR Apache-2.0); mtune of a GPL-3.0 player.
+  for lic in "${REPO_ROOT}"/mlogind/LICENSE-MIT "${REPO_ROOT}"/mlogind/LICENSE-APACHE; do
+    [ -f "$lic" ] || continue
+    install_file 644 "$lic" "/usr/share/licenses/${DEB_DOCNAME}/mlogind-$(basename "$lic")"
+  done
+  for lic in "${REPO_ROOT}"/mtune/licenses/*; do
+    [ -f "$lic" ] || continue
+    install_file 644 "$lic" "/usr/share/licenses/${DEB_DOCNAME}/mtune-$(basename "$lic")"
+  done
 }
 
 debian_install() {
@@ -504,7 +552,7 @@ debian_uninstall() {
   if [[ ! -f "$MANIFEST" ]]; then
     warn "no manifest at ${MANIFEST} — removing known fixed paths only"
     local p
-    for p in /usr/bin/{margo,start-margo,mctl,mlock,mlayout,mscreenshot,mvisual,mdots,mlogind,mgreet,mshell,mshellctl,mshellshare,mpicker,mwizard,mkeys,mvpn,mcal,mtune} \
+    for p in /usr/bin/{margo,start-margo,mctl,mlock,mlayout,mscreenshot,mvisual,mdots,mlogind,mgreet,mpower,mshell,mshellctl,mshellshare,mpicker,mwizard,mkeys,mvpn,mcal,mtm,mtune} \
              /usr/bin/margo-uwsm-session /usr/bin/margo-session \
              /usr/lib/margo/margo-portal \
              /usr/share/wayland-sessions/margo-uwsm.desktop \
@@ -512,24 +560,33 @@ debian_uninstall() {
              /usr/share/xdg-desktop-portal/margo-portals.conf \
              /usr/share/xdg-desktop-portal/portals/margo.portal \
              /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.margo.service \
-             /usr/lib/systemd/user/margo-portal.service; do
-      [[ -e "$p" ]] && $SUDO rm -f "$p"
+             /usr/lib/systemd/user/margo-portal.service \
+             /usr/lib/systemd/user/{mshell,mpower}.service \
+             /usr/lib/systemd/user/graphical-session.target.wants/{mshell,mpower}.service; do
+      [[ -e "$p" || -L "$p" ]] && $SUDO rm -f "$p"
     done
   else
     log "removing files listed in ${MANIFEST}"
     # Reverse order isn't required for files; just remove each path.
     while IFS= read -r path; do
-      [[ -n "$path" && -e "$path" ]] && $SUDO rm -f "$path"
+      # -L too: a wants link dangles once its unit is gone.
+      [[ -n "$path" ]] && [[ -e "$path" || -L "$path" ]] && $SUDO rm -f "$path"
     done < "$MANIFEST"
     $SUDO rm -f "$MANIFEST"
   fi
 
-  # Prune now-empty margo-owned directories.
+  # Prune now-empty margo-owned directories (deepest first under the
+  # copied contrib/sessions reference tree).
+  [[ -d /usr/share/doc/${DEB_DOCNAME}/sessions ]] &&
+    $SUDO find /usr/share/doc/${DEB_DOCNAME}/sessions -depth -type d -empty -delete 2>/dev/null || true
   local d
-  for d in /usr/lib/margo /usr/share/margo/wallpapers /usr/share/margo \
+  for d in /usr/lib/margo /usr/lib/systemd/user/graphical-session.target.wants \
+           /usr/share/margo/wallpapers \
+           /usr/share/margo/mshell/profiles /usr/share/margo/mshell /usr/share/margo \
            /usr/share/icons/MargoMaterial /usr/share/mshell/sounds \
            /usr/share/mshell/scss /usr/share/mshell \
            /usr/share/doc/${DEB_DOCNAME}/layouts /usr/share/doc/${DEB_DOCNAME}/mshell \
+           /usr/share/doc/${DEB_DOCNAME}/mlogind /usr/share/doc/${DEB_DOCNAME}/sessions \
            /usr/share/doc/${DEB_DOCNAME} /usr/share/licenses/${DEB_DOCNAME} \
            /usr/local/share/margo; do
     [[ -d "$d" ]] && $SUDO rmdir --ignore-fail-on-non-empty "$d" 2>/dev/null || true

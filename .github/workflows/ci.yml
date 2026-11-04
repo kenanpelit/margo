@@ -154,6 +154,14 @@ jobs:
           ./scripts/test-file-size-gate.sh
           ./scripts/file-size-gate.sh
 
+      - name: install.sh ⇄ PKGBUILD parity (gate)
+        # install.sh's Debian path is kept by hand next to the PKGBUILD; this
+        # fails when a build group, binary, unit or installed path exists in
+        # one and not the other (then the self-test of the check itself).
+        run: |
+          ./scripts/install-parity.sh
+          ./scripts/test-install-parity.sh
+
       - name: mlogind old theme-sync retirement (test)
         # The packaging helper that replaces an /etc/mlogind/variables.toml
         # the old `mlogind sync-theme` wrote, and only such a file.
@@ -182,6 +190,39 @@ jobs:
           EOF
           fi
           ./target/debug/mctl check-config --config "$CFG"
+
+  # install.sh's Debian path on a current Debian: its apt list must carry
+  # every -dev package the build needs (pkg-config probes and the -sys build
+  # scripts run during `check`), on the same build groups as install.sh.
+  debian:
+    name: install.sh deps + check (debian sid)
+    runs-on: ubuntu-latest
+    container: debian:sid
+    timeout-minutes: 60
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: git (for checkout)
+        run: apt-get update && apt-get install -y git
+      - uses: actions/checkout@v5
+      - name: ./install.sh deps
+        run: ./install.sh deps
+      - name: pkg-config probes (libs the build links that `check` doesn't)
+        run: pkg-config --exists --print-errors gtk4 gtk4-layer-shell-0 libadwaita-1 mpv gstreamer-play-1.0
+      - name: Rust (rust-toolchain.toml pin)
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+          . "$HOME/.cargo/env"
+          rustup toolchain install --profile minimal "$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: debian
+      - name: cargo check (install.sh build groups)
+        run: |
+          cargo check --locked -p margo -p start-margo -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mdots -p mlogind -p mpower -p mcal -p mtm
+          cargo check --locked -p mshell -p mshellctl -p mshellshare -p mpicker -p mwizard -p mkeys -p mvpn -p margo-portal -p mgreet
+          cargo check --locked -p mtune
 
   # Unused dependencies. cargo-machete is a static scan (no build), so it runs
   # on the plain runner. Only workspace members are scanned — vendor/ holds
