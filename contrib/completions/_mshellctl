@@ -262,6 +262,24 @@ _arguments "${_arguments_options[@]}" : \
 '--help[Print help]' \
 && ret=0
 ;;
+(usb)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(discord-voice)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(crashes)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
 (vpn)
 _arguments "${_arguments_options[@]}" : \
 '-h[Print help]' \
@@ -583,6 +601,18 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(usb)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(discord-voice)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(crashes)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (vpn)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -843,6 +873,13 @@ _arguments "${_arguments_options[@]}" : \
 '--help[Print help]' \
 ':action -- toggle | expand | collapse | pin | unpin:_default' \
 '::name -- Optional drawer name to target (omit to act on all drawers):_default' \
+&& ret=0
+;;
+(custom-refresh)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+'::name -- The `bars.widgets.custom_widgets` entry'\''s `name` (omit for all):_default' \
 && ret=0
 ;;
 (audio)
@@ -2334,6 +2371,28 @@ _arguments "${_arguments_options[@]}" : \
 '::editor -- Force a specific annotation editor (satty | swappy | gimp | krita). Implies `--edit`. Omit to use the default chain (`SCREENSHOT_EDITOR` env, then satty → swappy → gimp → krita):_default' \
 && ret=0
 ;;
+(ocr)
+_arguments "${_arguments_options[@]}" : \
+'-l+[tesseract languages joined with \`+\` (default\: \$MSCREENSHOT_OCR_LANG, else eng+tur when installed)]:LANG:_default' \
+'--lang=[tesseract languages joined with \`+\` (default\: \$MSCREENSHOT_OCR_LANG, else eng+tur when installed)]:LANG:_default' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(qr)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(palette)
+_arguments "${_arguments_options[@]}" : \
+'-n+[Number of colours (1-16, default 8)]:COUNT:_default' \
+'--count=[Number of colours (1-16, default 8)]:COUNT:_default' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
 (select-region)
 _arguments "${_arguments_options[@]}" : \
 '-h[Print help]' \
@@ -2372,6 +2431,18 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(ocr)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(qr)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(palette)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (select-region)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -2404,7 +2475,8 @@ _arguments "${_arguments_options[@]}" : \
         case $line[1] in
             (start)
 _arguments "${_arguments_options[@]}" : \
-'--audio=[Mix in an audio source (PipeWire source name). Omit for silent]:AUDIO:_default' \
+'--audio=[Audio\: a PipeWire source name, \`desktop\`, \`mic\`, \`both\` (desktop + microphone mixed), or several sources joined with \`|\`. Omit for silent]:AUDIO:_default' \
+'--backend=[Recorder\: \`wf\` (wf-recorder, CPU x264) or \`gsr\` (gpu-screen-recorder, VAAPI/NVENC). Omit to use the menu'\''s choice]:BACKEND:(wf gsr)' \
 '-h[Print help]' \
 '--help[Print help]' \
 '::area -- What to record. Region prompts the in-shell selector; output prompts a monitor pick; full grabs the whole layout:(region window output full)' \
@@ -2418,7 +2490,8 @@ _arguments "${_arguments_options[@]}" : \
 ;;
 (toggle)
 _arguments "${_arguments_options[@]}" : \
-'--audio=[Mix in an audio source (PipeWire source name). Omit for silent]:AUDIO:_default' \
+'--audio=[Audio\: a PipeWire source name, \`desktop\`, \`mic\`, \`both\` (desktop + microphone mixed), or several sources joined with \`|\`. Omit for silent]:AUDIO:_default' \
+'--backend=[Recorder\: \`wf\` (wf-recorder, CPU x264) or \`gsr\` (gpu-screen-recorder, VAAPI/NVENC). Omit to use the menu'\''s choice]:BACKEND:(wf gsr)' \
 '-h[Print help]' \
 '--help[Print help]' \
 '::area -- What to record. Region prompts the in-shell selector; output prompts a monitor pick; full grabs the whole layout:(region window output full)' \
@@ -3528,6 +3601,18 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(usb)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(discord-voice)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(crashes)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (vpn)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -3677,6 +3762,10 @@ _arguments "${_arguments_options[@]}" : \
 esac
 ;;
 (hidden-bar)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(custom-refresh)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -4276,6 +4365,18 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(ocr)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(qr)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(palette)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (select-region)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -4694,6 +4795,7 @@ _mshellctl_commands() {
 'menu:Open, close, or toggle a shell menu (control-center, mdash, clipboard, …)' \
 'bar:Show, hide, or toggle the top and bottom bars' \
 'hidden-bar:Control a Hidden Bar drawer widget. With no \`name\`, the verb reaches every drawer; pass a \`name\` to target one named drawer (a \`bars.widgets.hidden_bars\` entry, placed via \`!HiddenBarNamed <name>\`)' \
+'custom-refresh:Re-run a custom bar pill'\''s \`exec\` now instead of waiting for its interval. With no \`name\`, every custom pill refreshes' \
 'audio:Audio control — output/input volume, mute, and device switching' \
 'bluetooth:Bluetooth auto-connect engine\: toggle / connect / disconnect the configured device(s). Bind \`bluetooth toggle\` to F10 to replace the old bluetooth_toggle script' \
 'mtune:Control the native \`mtune\` music player — playback, speed, queue, library + playlists. Talks straight to mtune (no shell needed)' \
@@ -5301,6 +5403,11 @@ _mshellctl__subcmd__completions_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl completions commands' commands "$@"
 }
+(( $+functions[_mshellctl__subcmd__custom-refresh_commands] )) ||
+_mshellctl__subcmd__custom-refresh_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl custom-refresh commands' commands "$@"
+}
 (( $+functions[_mshellctl__subcmd__dock_commands] )) ||
 _mshellctl__subcmd__dock_commands() {
     local commands; commands=(
@@ -5387,6 +5494,7 @@ _mshellctl__subcmd__help_commands() {
 'menu:Open, close, or toggle a shell menu (control-center, mdash, clipboard, …)' \
 'bar:Show, hide, or toggle the top and bottom bars' \
 'hidden-bar:Control a Hidden Bar drawer widget. With no \`name\`, the verb reaches every drawer; pass a \`name\` to target one named drawer (a \`bars.widgets.hidden_bars\` entry, placed via \`!HiddenBarNamed <name>\`)' \
+'custom-refresh:Re-run a custom bar pill'\''s \`exec\` now instead of waiting for its interval. With no \`name\`, every custom pill refreshes' \
 'audio:Audio control — output/input volume, mute, and device switching' \
 'bluetooth:Bluetooth auto-connect engine\: toggle / connect / disconnect the configured device(s). Bind \`bluetooth toggle\` to F10 to replace the old bluetooth_toggle script' \
 'mtune:Control the native \`mtune\` music player — playback, speed, queue, library + playlists. Talks straight to mtune (no shell needed)' \
@@ -5689,6 +5797,11 @@ _mshellctl__subcmd__help__subcmd__completions_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help completions commands' commands "$@"
 }
+(( $+functions[_mshellctl__subcmd__help__subcmd__custom-refresh_commands] )) ||
+_mshellctl__subcmd__help__subcmd__custom-refresh_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help custom-refresh commands' commands "$@"
+}
 (( $+functions[_mshellctl__subcmd__help__subcmd__dock_commands] )) ||
 _mshellctl__subcmd__help__subcmd__dock_commands() {
     local commands; commands=(
@@ -5906,6 +6019,9 @@ _mshellctl__subcmd__help__subcmd__menu_commands() {
 'alarm-clock:Toggle the Alarm Clock menu (alarms list + add/edit + stopwatch)' \
 'control-center:Toggle the Control Center menu (system preferences + quick controls)' \
 'ssh-sessions:Toggle the SSH Sessions menu (searchable ~/.ssh/config host list)' \
+'usb:Toggle the USB Drives menu (removable drives\: mount, unlock, safe removal)' \
+'discord-voice:Toggle the Discord voice menu (call controls + participants)' \
+'crashes:Toggle the Crashes menu (your core dumps + this boot'\''s journal errors)' \
 'vpn:Toggle the DNS / VPN menu (Mullvad controls + a collapsible DNS section)' \
 'dns:Toggle the DNS / VPN menu (alias for \`vpn\`)' \
 'ai:Toggle the AI assistant chat menu' \
@@ -5982,6 +6098,16 @@ _mshellctl__subcmd__help__subcmd__menu__subcmd__control-center_commands() {
 _mshellctl__subcmd__help__subcmd__menu__subcmd__cpu-dashboard_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help menu cpu-dashboard commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__menu__subcmd__crashes_commands] )) ||
+_mshellctl__subcmd__help__subcmd__menu__subcmd__crashes_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help menu crashes commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__menu__subcmd__discord-voice_commands] )) ||
+_mshellctl__subcmd__help__subcmd__menu__subcmd__discord-voice_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help menu discord-voice commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__help__subcmd__menu__subcmd__dns_commands] )) ||
 _mshellctl__subcmd__help__subcmd__menu__subcmd__dns_commands() {
@@ -6158,6 +6284,11 @@ _mshellctl__subcmd__help__subcmd__menu__subcmd__twilight_commands() {
 _mshellctl__subcmd__help__subcmd__menu__subcmd__ufw_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help menu ufw commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__menu__subcmd__usb_commands] )) ||
+_mshellctl__subcmd__help__subcmd__menu__subcmd__usb_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help menu usb commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__help__subcmd__menu__subcmd__valent_commands] )) ||
 _mshellctl__subcmd__help__subcmd__menu__subcmd__valent_commands() {
@@ -6582,6 +6713,9 @@ _mshellctl__subcmd__help__subcmd__screenshot_commands() {
 'output:Pick an output (monitor) → capture' \
 'full:Whole layout (every output) → capture' \
 'repeat:Re-capture the last selected region (no reselect). Falls back to a normal region select the first time it'\''s used' \
+'ocr:Region select → OCR (tesseract) → copy the text. Runs the \`mscreenshot ocr\` pipeline, which uses the in-shell selector' \
+'qr:Region select → decode QR codes / barcodes (zbarimg) → copy' \
+'palette:Region select → dominant colours → copy the hex codes' \
 'select-region:(internal) Open the in-shell area selector and print the chosen region as "X,Y WxH" (slurp format). Used by the \`mscreenshot\` CLI'\''s region bridge; not meant for direct use' \
     )
     _describe -t commands 'mshellctl help screenshot commands' commands "$@"
@@ -6591,10 +6725,25 @@ _mshellctl__subcmd__help__subcmd__screenshot__subcmd__full_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help screenshot full commands' commands "$@"
 }
+(( $+functions[_mshellctl__subcmd__help__subcmd__screenshot__subcmd__ocr_commands] )) ||
+_mshellctl__subcmd__help__subcmd__screenshot__subcmd__ocr_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help screenshot ocr commands' commands "$@"
+}
 (( $+functions[_mshellctl__subcmd__help__subcmd__screenshot__subcmd__output_commands] )) ||
 _mshellctl__subcmd__help__subcmd__screenshot__subcmd__output_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help screenshot output commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__screenshot__subcmd__palette_commands] )) ||
+_mshellctl__subcmd__help__subcmd__screenshot__subcmd__palette_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help screenshot palette commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__screenshot__subcmd__qr_commands] )) ||
+_mshellctl__subcmd__help__subcmd__screenshot__subcmd__qr_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help screenshot qr commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__help__subcmd__screenshot__subcmd__region_commands] )) ||
 _mshellctl__subcmd__help__subcmd__screenshot__subcmd__region_commands() {
@@ -7155,6 +7304,9 @@ _mshellctl__subcmd__menu_commands() {
 'alarm-clock:Toggle the Alarm Clock menu (alarms list + add/edit + stopwatch)' \
 'control-center:Toggle the Control Center menu (system preferences + quick controls)' \
 'ssh-sessions:Toggle the SSH Sessions menu (searchable ~/.ssh/config host list)' \
+'usb:Toggle the USB Drives menu (removable drives\: mount, unlock, safe removal)' \
+'discord-voice:Toggle the Discord voice menu (call controls + participants)' \
+'crashes:Toggle the Crashes menu (your core dumps + this boot'\''s journal errors)' \
 'vpn:Toggle the DNS / VPN menu (Mullvad controls + a collapsible DNS section)' \
 'dns:Toggle the DNS / VPN menu (alias for \`vpn\`)' \
 'ai:Toggle the AI assistant chat menu' \
@@ -7233,6 +7385,16 @@ _mshellctl__subcmd__menu__subcmd__cpu-dashboard_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl menu cpu-dashboard commands' commands "$@"
 }
+(( $+functions[_mshellctl__subcmd__menu__subcmd__crashes_commands] )) ||
+_mshellctl__subcmd__menu__subcmd__crashes_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl menu crashes commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__menu__subcmd__discord-voice_commands] )) ||
+_mshellctl__subcmd__menu__subcmd__discord-voice_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl menu discord-voice commands' commands "$@"
+}
 (( $+functions[_mshellctl__subcmd__menu__subcmd__dns_commands] )) ||
 _mshellctl__subcmd__menu__subcmd__dns_commands() {
     local commands; commands=()
@@ -7267,6 +7429,9 @@ _mshellctl__subcmd__menu__subcmd__help_commands() {
 'alarm-clock:Toggle the Alarm Clock menu (alarms list + add/edit + stopwatch)' \
 'control-center:Toggle the Control Center menu (system preferences + quick controls)' \
 'ssh-sessions:Toggle the SSH Sessions menu (searchable ~/.ssh/config host list)' \
+'usb:Toggle the USB Drives menu (removable drives\: mount, unlock, safe removal)' \
+'discord-voice:Toggle the Discord voice menu (call controls + participants)' \
+'crashes:Toggle the Crashes menu (your core dumps + this boot'\''s journal errors)' \
 'vpn:Toggle the DNS / VPN menu (Mullvad controls + a collapsible DNS section)' \
 'dns:Toggle the DNS / VPN menu (alias for \`vpn\`)' \
 'ai:Toggle the AI assistant chat menu' \
@@ -7344,6 +7509,16 @@ _mshellctl__subcmd__menu__subcmd__help__subcmd__control-center_commands() {
 _mshellctl__subcmd__menu__subcmd__help__subcmd__cpu-dashboard_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl menu help cpu-dashboard commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__menu__subcmd__help__subcmd__crashes_commands] )) ||
+_mshellctl__subcmd__menu__subcmd__help__subcmd__crashes_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl menu help crashes commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__menu__subcmd__help__subcmd__discord-voice_commands] )) ||
+_mshellctl__subcmd__menu__subcmd__help__subcmd__discord-voice_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl menu help discord-voice commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__menu__subcmd__help__subcmd__dns_commands] )) ||
 _mshellctl__subcmd__menu__subcmd__help__subcmd__dns_commands() {
@@ -7525,6 +7700,11 @@ _mshellctl__subcmd__menu__subcmd__help__subcmd__twilight_commands() {
 _mshellctl__subcmd__menu__subcmd__help__subcmd__ufw_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl menu help ufw commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__menu__subcmd__help__subcmd__usb_commands] )) ||
+_mshellctl__subcmd__menu__subcmd__help__subcmd__usb_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl menu help usb commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__menu__subcmd__help__subcmd__valent_commands] )) ||
 _mshellctl__subcmd__menu__subcmd__help__subcmd__valent_commands() {
@@ -7796,6 +7976,11 @@ _mshellctl__subcmd__menu__subcmd__twilight_commands() {
 _mshellctl__subcmd__menu__subcmd__ufw_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl menu ufw commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__menu__subcmd__usb_commands] )) ||
+_mshellctl__subcmd__menu__subcmd__usb_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl menu usb commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__menu__subcmd__valent_commands] )) ||
 _mshellctl__subcmd__menu__subcmd__valent_commands() {
@@ -8679,6 +8864,9 @@ _mshellctl__subcmd__screenshot_commands() {
 'output:Pick an output (monitor) → capture' \
 'full:Whole layout (every output) → capture' \
 'repeat:Re-capture the last selected region (no reselect). Falls back to a normal region select the first time it'\''s used' \
+'ocr:Region select → OCR (tesseract) → copy the text. Runs the \`mscreenshot ocr\` pipeline, which uses the in-shell selector' \
+'qr:Region select → decode QR codes / barcodes (zbarimg) → copy' \
+'palette:Region select → dominant colours → copy the hex codes' \
 'select-region:(internal) Open the in-shell area selector and print the chosen region as "X,Y WxH" (slurp format). Used by the \`mscreenshot\` CLI'\''s region bridge; not meant for direct use' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
@@ -8697,6 +8885,9 @@ _mshellctl__subcmd__screenshot__subcmd__help_commands() {
 'output:Pick an output (monitor) → capture' \
 'full:Whole layout (every output) → capture' \
 'repeat:Re-capture the last selected region (no reselect). Falls back to a normal region select the first time it'\''s used' \
+'ocr:Region select → OCR (tesseract) → copy the text. Runs the \`mscreenshot ocr\` pipeline, which uses the in-shell selector' \
+'qr:Region select → decode QR codes / barcodes (zbarimg) → copy' \
+'palette:Region select → dominant colours → copy the hex codes' \
 'select-region:(internal) Open the in-shell area selector and print the chosen region as "X,Y WxH" (slurp format). Used by the \`mscreenshot\` CLI'\''s region bridge; not meant for direct use' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
@@ -8712,10 +8903,25 @@ _mshellctl__subcmd__screenshot__subcmd__help__subcmd__help_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl screenshot help help commands' commands "$@"
 }
+(( $+functions[_mshellctl__subcmd__screenshot__subcmd__help__subcmd__ocr_commands] )) ||
+_mshellctl__subcmd__screenshot__subcmd__help__subcmd__ocr_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl screenshot help ocr commands' commands "$@"
+}
 (( $+functions[_mshellctl__subcmd__screenshot__subcmd__help__subcmd__output_commands] )) ||
 _mshellctl__subcmd__screenshot__subcmd__help__subcmd__output_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl screenshot help output commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__screenshot__subcmd__help__subcmd__palette_commands] )) ||
+_mshellctl__subcmd__screenshot__subcmd__help__subcmd__palette_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl screenshot help palette commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__screenshot__subcmd__help__subcmd__qr_commands] )) ||
+_mshellctl__subcmd__screenshot__subcmd__help__subcmd__qr_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl screenshot help qr commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__screenshot__subcmd__help__subcmd__region_commands] )) ||
 _mshellctl__subcmd__screenshot__subcmd__help__subcmd__region_commands() {
@@ -8737,10 +8943,25 @@ _mshellctl__subcmd__screenshot__subcmd__help__subcmd__window_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl screenshot help window commands' commands "$@"
 }
+(( $+functions[_mshellctl__subcmd__screenshot__subcmd__ocr_commands] )) ||
+_mshellctl__subcmd__screenshot__subcmd__ocr_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl screenshot ocr commands' commands "$@"
+}
 (( $+functions[_mshellctl__subcmd__screenshot__subcmd__output_commands] )) ||
 _mshellctl__subcmd__screenshot__subcmd__output_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl screenshot output commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__screenshot__subcmd__palette_commands] )) ||
+_mshellctl__subcmd__screenshot__subcmd__palette_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl screenshot palette commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__screenshot__subcmd__qr_commands] )) ||
+_mshellctl__subcmd__screenshot__subcmd__qr_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl screenshot qr commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__screenshot__subcmd__region_commands] )) ||
 _mshellctl__subcmd__screenshot__subcmd__region_commands() {
