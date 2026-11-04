@@ -8,7 +8,9 @@ use mshell_common::dynamic_box::generic_widget_controller::{
 use mshell_common::notification::{NotificationInit, NotificationInput, NotificationModel};
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{ConfigStoreFields, NotificationsStoreFields};
+use mshell_config::schema::config::{
+    ConfigStoreFields, NotificationsStoreFields, first_sound_rule,
+};
 use mshell_config::schema::position::NotificationPosition;
 use mshell_services::notification_service;
 use mshell_utils::notifications::spawn_notification_popups_watcher;
@@ -278,8 +280,8 @@ impl Component for PopupNotificationsModel {
 
 /// Play the notification sound for a freshly-shown toast, honouring the
 /// whole decision ladder: master toggle → spec `suppress-sound` hint →
-/// quiet hours → per-urgency toggles → client `sound-file` hint (when
-/// allowed) or the built-in chime. DND never reaches here — wayle drops
+/// quiet hours → per-urgency toggles → a matching `sound_rules` entry →
+/// client `sound-file` hint (when allowed) or the built-in chime. DND never reaches here — wayle drops
 /// the popup itself.
 fn maybe_play_sound(n: &Notification) {
     let cfg = config_manager().config();
@@ -318,6 +320,18 @@ fn maybe_play_sound(n: &Notification) {
     };
     if !allowed {
         return;
+    }
+    // A matching per-app / per-contact rule wins over the client's own
+    // sound and the built-in chime.
+    let rules = cfg.clone().notifications().sound_rules().get_untracked();
+    if !rules.is_empty() {
+        let app = n.app_name.get().unwrap_or_default();
+        let summary = n.summary.get();
+        let body = n.body.get().unwrap_or_default();
+        if let Some(rule) = first_sound_rule(&rules, &app, &summary, &body) {
+            mshell_sounds::play_sound_path_or_folder(&rule.sound);
+            return;
+        }
     }
     let from_client = cfg
         .clone()

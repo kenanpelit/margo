@@ -2,7 +2,7 @@
 
 use super::bars::default_true;
 use crate::schema::position::NotificationPosition;
-use reactive_stores::{Patch, Store};
+use reactive_stores::{KeyMap, Patch, PatchField, Store, StorePath};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -98,6 +98,100 @@ pub struct Notifications {
     /// so a stop/start pair (switching the shared window) doesn't flap.
     #[serde(default = "default_auto_dnd_release_ms")]
     pub auto_dnd_release_ms: u32,
+    /// Per-app / per-contact sounds: the first rule whose pattern matches
+    /// replaces the built-in chime (and an app-supplied sound) for that
+    /// notification. The usual gates (master switch, quiet hours,
+    /// per-urgency toggles, `suppress-sound`) still apply. Empty by default.
+    #[serde(default)]
+    pub sound_rules: Vec<SoundRule>,
+}
+
+/// Which notification text a [`SoundRule`] pattern is matched against.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SoundRuleField {
+    /// App name, title (summary) or body.
+    #[default]
+    Any,
+    /// The sending app's name only (a mention in another app's text
+    /// can't trigger it).
+    App,
+    /// The title (summary) — usually the contact / group name.
+    Summary,
+    /// The body text.
+    Body,
+}
+
+impl SoundRuleField {
+    pub fn all() -> &'static [Self] {
+        &[Self::Any, Self::App, Self::Summary, Self::Body]
+    }
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Any => "App, title or body",
+            Self::App => "App name",
+            Self::Summary => "Title",
+            Self::Body => "Body",
+        }
+    }
+}
+
+impl PatchField for SoundRuleField {
+    fn patch_field(
+        &mut self,
+        new: Self,
+        path: &StorePath,
+        notify: &mut dyn FnMut(&StorePath),
+        _keys: Option<&KeyMap>,
+    ) {
+        if *self != new {
+            *self = new;
+            notify(path);
+        }
+    }
+}
+
+/// One `notifications.sound_rules` entry.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize, Store, Patch, JsonSchema,
+)]
+#[serde(default)]
+pub struct SoundRule {
+    /// Case-insensitive substring to look for. An empty pattern never
+    /// matches.
+    pub pattern: String,
+    /// Where to look for `pattern`.
+    pub field: SoundRuleField,
+    /// Sound file to play, or a folder: one of its audio files
+    /// (ogg / oga / mp3) is picked at random each time.
+    pub sound: String,
+}
+
+impl SoundRule {
+    /// Whether this rule applies to a notification.
+    pub fn matches(&self, app: &str, summary: &str, body: &str) -> bool {
+        let needle = self.pattern.trim().to_lowercase();
+        if needle.is_empty() || self.sound.trim().is_empty() {
+            return false;
+        }
+        let hit = |s: &str| s.to_lowercase().contains(&needle);
+        match self.field {
+            SoundRuleField::Any => hit(app) || hit(summary) || hit(body),
+            SoundRuleField::App => hit(app),
+            SoundRuleField::Summary => hit(summary),
+            SoundRuleField::Body => hit(body),
+        }
+    }
+}
+
+/// The first rule (in list order) matching the notification.
+pub fn first_sound_rule<'a>(
+    rules: &'a [SoundRule],
+    app: &str,
+    summary: &str,
+    body: &str,
+) -> Option<&'a SoundRule> {
+    rules.iter().find(|r| r.matches(app, summary, body))
 }
 
 fn default_auto_dnd_release_ms() -> u32 {
@@ -144,6 +238,81 @@ impl Default for Notifications {
             show_progress: true,
             auto_dnd_screen_share: false,
             auto_dnd_release_ms: default_auto_dnd_release_ms(),
+            sound_rules: Vec::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rule(pattern: &str, field: SoundRuleField) -> SoundRule {
+        SoundRule {
+            pattern: pattern.into(),
+            field,
+            sound: "/tmp/a.ogg".into(),
+        }
+    }
+
+    #[test]
+    fn any_field_matches_app_title_or_body_case_insensitively() {
+        let r = rule("alice", SoundRuleField::Any);
+        assert!(r.matches("Valent", "Alice Smith", "hi"));
+        assert!(r.matches("Valent", "Bob", "tell ALICE"));
+        assert!(r.matches("alice-app", "", ""));
+        assert!(!r.matches("Valent", "Bob", "hello"));
+    }
+
+    #[test]
+    fn app_rule_ignores_mentions_in_text() {
+        let r = rule("discord", SoundRuleField::App);
+        assert!(r.matches("discord", "general", "x"));
+        assert!(!r.matches("Firefox", "Discord is down", "discord"));
+    }
+
+    #[test]
+    fn summary_and_body_rules_look_only_there() {
+        assert!(rule("mom", SoundRuleField::Summary).matches("Valent", "Mom", ""));
+        assert!(!rule("mom", SoundRuleField::Summary).matches("Valent", "x", "mom"));
+        assert!(rule("urgent", SoundRuleField::Body).matches("Mail", "x", "Urgent!"));
+        assert!(!rule("urgent", SoundRuleField::Body).matches("urgent", "urgent", ""));
+    }
+
+    #[test]
+    fn empty_pattern_or_sound_never_matches() {
+        assert!(!rule("  ", SoundRuleField::Any).matches("a", "b", "c"));
+        let mut r = rule("a", SoundRuleField::Any);
+        r.sound = String::new();
+        assert!(!r.matches("a", "a", "a"));
+    }
+
+    #[test]
+    fn first_matching_rule_wins_in_list_order() {
+        let mut a = rule("alice", SoundRuleField::Summary);
+        a.sound = "/a.ogg".into();
+        let mut b = rule("valent", SoundRuleField::App);
+        b.sound = "/b.ogg".into();
+        let rules = vec![a, b];
+        assert_eq!(
+            first_sound_rule(&rules, "Valent", "Alice", "").map(|r| r.sound.as_str()),
+            Some("/a.ogg")
+        );
+        assert_eq!(
+            first_sound_rule(&rules, "Valent", "Bob", "").map(|r| r.sound.as_str()),
+            Some("/b.ogg")
+        );
+        assert!(first_sound_rule(&rules, "Mail", "Bob", "").is_none());
+    }
+
+    #[test]
+    fn sound_rules_default_to_empty_and_deserialize_from_yaml() {
+        assert!(Notifications::default().sound_rules.is_empty());
+        let n: Notifications = yaml_serde::from_str(
+            "sound_rules:\n  - pattern: Alice\n    field: summary\n    sound: /s/alice.ogg\n",
+        )
+        .unwrap();
+        assert_eq!(n.sound_rules[0].field, SoundRuleField::Summary);
+        assert_eq!(n.sound_rules[0].sound, "/s/alice.ogg");
     }
 }

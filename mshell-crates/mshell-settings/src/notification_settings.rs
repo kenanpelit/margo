@@ -35,6 +35,7 @@ pub(crate) struct NotificationSettingsModel {
     quiet_start: String,
     quiet_end: String,
     _effects: EffectScope,
+    _sound_rules_effects: EffectScope,
 }
 
 #[derive(Debug)]
@@ -113,6 +114,7 @@ impl Component for NotificationSettingsModel {
             set_hexpand: true,
             set_vexpand: true,
 
+            #[name = "page_box"]
             gtk::Box {
                 add_css_class: "settings-page",
                 set_orientation: gtk::Orientation::Vertical,
@@ -1149,7 +1151,11 @@ impl Component for NotificationSettingsModel {
             sender_clone.input(NotificationSettingsInput::AutoDndEffect(v));
         });
 
+        let (sound_rules_section, sound_rules_effects) =
+            crate::notification_sound_rules::build_sound_rules_section();
+
         let model = NotificationSettingsModel {
+            _sound_rules_effects: sound_rules_effects,
             auto_dnd: config_manager()
                 .config()
                 .notifications()
@@ -1298,6 +1304,7 @@ impl Component for NotificationSettingsModel {
                 .connect_activate(move |e| submit(e, &sender));
         }
         rebuild_blocklist_rows(&widgets.blocklist_list, &model.blocklist, &sender);
+        widgets.page_box.append(&sound_rules_section);
 
         ComponentParts { model, widgets }
     }

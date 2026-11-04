@@ -143,6 +143,52 @@ pub fn play_notification_file(path: &str) {
     });
 }
 
+/// Extensions rodio can decode here (vorbis + mp3 features; no WAV/FLAC).
+const PLAYABLE_EXTENSIONS: &[&str] = &["ogg", "oga", "mp3"];
+
+/// Resolve a user-configured sound (a notification sound rule): a file is
+/// returned as-is; a folder yields one of its playable files, picked by
+/// `seed` from the name-sorted list (so tests are deterministic and the
+/// caller supplies the randomness). `None` for an empty folder or a
+/// missing path.
+pub fn resolve_sound_path(path: &str, seed: u64) -> Option<std::path::PathBuf> {
+    let path = std::path::Path::new(path.trim());
+    if path.as_os_str().is_empty() {
+        return None;
+    }
+    if path.is_file() {
+        return Some(path.to_path_buf());
+    }
+    let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(path)
+        .ok()?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| {
+            p.is_file()
+                && p.extension()
+                    .and_then(|x| x.to_str())
+                    .is_some_and(|x| PLAYABLE_EXTENSIONS.contains(&x.to_ascii_lowercase().as_str()))
+        })
+        .collect();
+    if files.is_empty() {
+        return None;
+    }
+    files.sort();
+    let idx = (seed % files.len() as u64) as usize;
+    Some(files.swap_remove(idx))
+}
+
+/// Play a user-configured sound file, or a random file from a folder (see
+/// [`resolve_sound_path`]). Missing / undecodable sounds are silent.
+pub fn play_sound_path_or_folder(path: &str) {
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos() as u64 ^ d.as_secs())
+        .unwrap_or(0);
+    if let Some(file) = resolve_sound_path(path, seed) {
+        play_notification_file(&file.to_string_lossy());
+    }
+}
+
 /// Fire-and-forget playback of already-fetched/generated audio bytes (e.g.
 /// an mp3 TTS clip) on a background thread — same shape as
 /// [`play_notification_file`], but for bytes already in hand rather than a
@@ -292,6 +338,36 @@ mod tests {
         assert!(!is_safe_sound_file(oversized.to_str().unwrap()));
 
         assert!(!is_safe_sound_file(dir.to_str().unwrap()), "a directory");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_sound_path_handles_file_folder_and_missing() {
+        let dir =
+            std::env::temp_dir().join(format!("mshell-sounds-resolve-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = dir.join("a.ogg");
+        let b = dir.join("b.MP3");
+        std::fs::write(&a, b"x").unwrap();
+        std::fs::write(&b, b"x").unwrap();
+        std::fs::write(dir.join("notes.txt"), b"x").unwrap();
+        std::fs::write(dir.join("c.wav"), b"x").unwrap(); // not decodable here
+
+        // A file resolves to itself.
+        assert_eq!(resolve_sound_path(a.to_str().unwrap(), 7), Some(a.clone()));
+        // A folder picks among playable files only, by seed.
+        let d = dir.to_str().unwrap();
+        assert_eq!(resolve_sound_path(d, 0), Some(a.clone()));
+        assert_eq!(resolve_sound_path(d, 1), Some(b.clone()));
+        assert_eq!(resolve_sound_path(d, 2), Some(a.clone()));
+        // Missing / empty / blank.
+        assert_eq!(resolve_sound_path("/nonexistent/x.ogg", 0), None);
+        assert_eq!(resolve_sound_path("  ", 0), None);
+        let empty = dir.join("empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        assert_eq!(resolve_sound_path(empty.to_str().unwrap(), 0), None);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

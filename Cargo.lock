@@ -5636,6 +5636,7 @@ dependencies = [
  "mshell-plugins",
  "mshell-process",
  "mshell-services",
+ "mshell-sounds",
  "mshell-style",
  "mshell-translate",
  "mshell-utils",
