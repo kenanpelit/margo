@@ -373,7 +373,16 @@ fn matugen_css(real_greeter: bool) -> Option<String> {
         // This used to read `/etc/mgreet/theme.css`, which nothing has ever
         // written — so the real greeter always rendered the baked Dracula
         // palette, whatever the wallpaper theme was.
-        std::fs::read_to_string("/var/lib/mgreet/theme.css").ok()
+        //
+        // Sanitised again here, not only by mlogind before publishing: the file
+        // came from the last user's home, and an older mlogind copied it byte
+        // for byte. Only the allowlisted palette reaches GTK.
+        let css = std::fs::read_to_string("/var/lib/mgreet/theme.css").ok()?;
+        let sanitized = mlogind_proto::theme_css::sanitize(&css);
+        if sanitized.is_none() {
+            eprintln!("[mgreet] /var/lib/mgreet/theme.css is not a plain palette; ignoring it");
+        }
+        sanitized
     } else {
         // Under a live session: reuse the shell's cached theme so the greeter
         // matches the desktop the user just came from.

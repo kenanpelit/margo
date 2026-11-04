@@ -18,6 +18,7 @@ use std::io;
 
 use zeroize::{Zeroize, Zeroizing};
 
+pub mod theme_css;
 mod transport;
 
 pub use transport::{FdTransport, MemTransport, Transport};

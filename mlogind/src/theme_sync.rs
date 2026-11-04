@@ -302,8 +302,11 @@ enum Kind {
     Background,
     /// An encoded image, copied through verbatim and sniffed at both ends.
     Avatar,
-    /// Copied through verbatim.
-    Text,
+    /// The matugen palette CSS. Must already be a palette for the child to
+    /// take it; the parent then publishes its own re-serialisation of the
+    /// allowlisted declarations ([`mlogind_proto::theme_css::sanitize`]) —
+    /// never the user's bytes, which the next user's greeter would render.
+    ThemeCss,
     /// The TUI palette. Copied by the child, then parsed and reduced to the
     /// whitelisted keys by the parent, which publishes its own re-serialised
     /// copy — never the user's bytes.
@@ -317,7 +320,7 @@ impl Kind {
         match self {
             Kind::Background => MAX_INPUT_BYTES,
             Kind::Avatar => MAX_AVATAR_BYTES,
-            Kind::Text | Kind::Variables => MAX_TEXT_BYTES,
+            Kind::ThemeCss | Kind::Variables => MAX_TEXT_BYTES,
         }
     }
 
@@ -328,7 +331,8 @@ impl Kind {
         match self {
             Kind::Background => parse_header(bytes).is_some(),
             Kind::Avatar => is_image(bytes),
-            Kind::Text => true,
+            Kind::ThemeCss => std::str::from_utf8(bytes)
+                .is_ok_and(|text| mlogind_proto::theme_css::sanitize(text).is_some()),
             Kind::Variables => std::str::from_utf8(bytes)
                 .is_ok_and(|text| crate::config::Variables::sanitize_synced(text).is_some()),
         }
@@ -380,7 +384,7 @@ impl Output {
             && match self.kind {
                 Kind::Background => baked_is_sane(&self.tmp, len),
                 Kind::Avatar => starts_with_image_signature(&self.tmp),
-                Kind::Text => true,
+                Kind::ThemeCss => rewrite_sanitized_theme_css(&self.tmp),
                 Kind::Variables => rewrite_sanitized_variables(&self.tmp),
             };
         if !sane {
@@ -434,6 +438,19 @@ fn rewrite_sanitized_variables(path: &Path) -> bool {
     fs::write(path, variables.to_toml_string()).is_ok()
 }
 
+/// Replace the child's copy of the theme CSS with the parent's own sanitised
+/// serialisation of it. `false` (discard) when it is anything but a palette.
+fn rewrite_sanitized_theme_css(path: &Path) -> bool {
+    let Ok(text) = fs::read_to_string(path) else {
+        return false;
+    };
+    let Some(css) = mlogind_proto::theme_css::sanitize(&text) else {
+        return false;
+    };
+    // `path` is our own `.tmp` in the root-owned STATE_DIR.
+    fs::write(path, css).is_ok()
+}
+
 /// The parent sniffs the published avatar itself. The child chose the file, and
 /// the child is the user.
 fn starts_with_image_signature(path: &Path) -> bool {
@@ -461,7 +478,7 @@ fn read_capped(path: &Path, cap: u64) -> Option<Vec<u8>> {
 /// What the reader fills, in the order of its fd arguments.
 const READS: [(&[&str], Kind); 4] = [
     (WALLPAPER_REL, Kind::Background),
-    (THEME_CSS_REL, Kind::Text),
+    (THEME_CSS_REL, Kind::ThemeCss),
     (AVATAR_REL, Kind::Avatar),
     (VARIABLES_REL, Kind::Variables),
 ];
@@ -486,7 +503,7 @@ fn read_sources(home: &Path, outputs: &mut [(&[&str], Kind, File)]) {
                 Some(baked) => baked,
                 None => continue,
             },
-            Kind::Avatar | Kind::Text | Kind::Variables => raw,
+            Kind::Avatar | Kind::ThemeCss | Kind::Variables => raw,
         };
         let _ = file.write_all(&bytes);
     }
@@ -616,7 +633,7 @@ pub fn sync(user: &UserInfo) -> io::Result<Vec<PathBuf>> {
     // Same order as READS: the reader matches fds to sources by position.
     let outputs = vec![
         Output::open(state.join(BACKGROUND_NAME), Kind::Background)?,
-        Output::open(state.join(THEME_CSS_NAME), Kind::Text)?,
+        Output::open(state.join(THEME_CSS_NAME), Kind::ThemeCss)?,
         Output::open(state.join(AVATAR_NAME), Kind::Avatar)?,
         Output::open(variables_path(), Kind::Variables)?,
     ];
@@ -796,6 +813,32 @@ mod tests {
     }
 
     #[test]
+    fn the_published_theme_css_is_the_parents_sanitised_copy() {
+        let dir = std::env::temp_dir().join(format!("mlogind-css-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let tmp = dir.join("theme.css.tmp");
+        fs::write(
+            &tmp,
+            ":root {\n  --primary: #102030;\n  --phish: #000;\n}\n",
+        )
+        .unwrap();
+        assert!(rewrite_sanitized_theme_css(&tmp));
+        assert_eq!(
+            fs::read_to_string(&tmp).unwrap(),
+            ":root {\n    --primary: #102030;\n}\n"
+        );
+
+        // Anything beyond the palette: nothing is published.
+        fs::write(
+            &tmp,
+            "label { background-image: url(\"file:///var/lib/mgreet/avatar\"); }",
+        )
+        .unwrap();
+        assert!(!rewrite_sanitized_theme_css(&tmp));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn reader_args_carry_the_home_and_one_fd_per_output() {
         use std::ffi::OsString;
         let args: Vec<OsString> = ["/home/u", "7", "8", "9", "10"]
@@ -827,7 +870,11 @@ mod tests {
         fs::create_dir_all(home.join(".cache/mshell")).unwrap();
         fs::create_dir_all(home.join(".config/margo")).unwrap();
         fs::write(home.join(".cache/mshell/wallpaper.raw"), raw(4, 2, 9)).unwrap();
-        fs::write(home.join(".cache/mshell/last_theme.css"), "a { }").unwrap();
+        fs::write(
+            home.join(".cache/mshell/last_theme.css"),
+            ":root { --primary: #abcdef; }",
+        )
+        .unwrap();
         // `.face` is not an image, `.face.icon` is: the second one wins.
         fs::write(home.join(".face"), "-----BEGIN OPENSSH PRIVATE KEY-----").unwrap();
         fs::write(home.join(".face.icon"), [0xff, 0xd8, 0xff, 0xe0]).unwrap();
@@ -855,7 +902,7 @@ mod tests {
 
         let read = |name: &str| fs::read(base.join(name)).unwrap();
         assert_eq!(parse_header(&read("bg")), Some((4, 2)));
-        assert_eq!(read("css"), b"a { }");
+        assert_eq!(read("css"), b":root { --primary: #abcdef; }");
         assert_eq!(read("avatar"), [0xff, 0xd8, 0xff, 0xe0]);
         assert_eq!(read("vars"), b"bg = \"#123456\"\n");
         fs::remove_dir_all(base).unwrap();
@@ -894,6 +941,7 @@ mod tests {
         assert!(Kind::Avatar.accepts(&[0xff, 0xd8, 0xff]));
         assert!(Kind::Background.accepts(&raw(2, 2, 0)));
         assert!(!Kind::Background.accepts(b"short"));
-        assert!(Kind::Text.accepts(b"anything at all"));
+        assert!(Kind::ThemeCss.accepts(b":root { --primary: #fff; }"));
+        assert!(!Kind::ThemeCss.accepts(b"label { opacity: 0; }"));
     }
 }

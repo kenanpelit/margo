@@ -53,40 +53,9 @@ mod tests {
     use super::STYLE_CSS;
 
     /// Exactly the custom properties `mshell-matugen::css_mapping::to_css`
-    /// emits. The overlay sets these and nothing else.
-    const MATUGEN_TOKENS: &[&str] = &[
-        "surface",
-        "on-surface",
-        "surface-variant",
-        "on-surface-variant",
-        "surface-container-highest",
-        "surface-container-high",
-        "surface-container",
-        "surface-container-low",
-        "surface-container-lowest",
-        "inverse-surface",
-        "inverse-on-surface",
-        "surface-tint",
-        "surface-tint-color",
-        "primary",
-        "on-primary",
-        "primary-container",
-        "on-primary-container",
-        "secondary",
-        "on-secondary",
-        "secondary-container",
-        "on-secondary-container",
-        "tertiary",
-        "on-tertiary",
-        "tertiary-container",
-        "on-tertiary-container",
-        "error",
-        "on-error",
-        "error-container",
-        "on-error-container",
-        "outline",
-        "outline-variant",
-    ];
+    /// emits. The overlay sets these and nothing else: both mlogind (before it
+    /// publishes) and `matugen_css` (when it loads) keep only these.
+    const MATUGEN_TOKENS: &[&str] = mlogind_proto::theme_css::TOKENS;
 
     /// Geometry. Ours alone; matugen has no opinion about a corner radius.
     const OURS: &[&str] = &["radius-lg", "radius-md", "radius-pill"];

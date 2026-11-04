@@ -16,7 +16,11 @@ fn the_reader_entry_point_fills_the_inherited_fds() {
     let _ = fs::remove_dir_all(&base);
     let home = base.join("home");
     fs::create_dir_all(home.join(".cache/mshell")).unwrap();
-    fs::write(home.join(".cache/mshell/last_theme.css"), "b { }").unwrap();
+    fs::write(
+        home.join(".cache/mshell/last_theme.css"),
+        ":root { --surface: #010203; }",
+    )
+    .unwrap();
 
     let open = |name: &str| -> File {
         OpenOptions::new()
@@ -50,7 +54,10 @@ fn the_reader_entry_point_fills_the_inherited_fds() {
     let status = cmd.status().unwrap();
     assert!(status.success(), "reader exited {status}");
 
-    assert_eq!(fs::read(base.join("css")).unwrap(), b"b { }");
+    assert_eq!(
+        fs::read(base.join("css")).unwrap(),
+        b":root { --surface: #010203; }"
+    );
     // Sources the home does not have leave their output empty.
     assert!(fs::read(base.join("bg")).unwrap().is_empty());
     assert!(fs::read(base.join("vars")).unwrap().is_empty());
