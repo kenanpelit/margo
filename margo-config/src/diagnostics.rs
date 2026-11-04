@@ -188,3 +188,103 @@ impl DiagnosticReport {
         self.diagnostics.extend(iter);
     }
 }
+
+/// What a config reload does with the validator's report on the new file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReloadGate {
+    /// Swap in the new config.
+    Apply {
+        /// Record it as a known-good generation (the boot fallback's
+        /// source). Only for a config without errors: a forced reload of a
+        /// config with errors must not become the fallback.
+        save_generation: bool,
+        /// Show the config-error banner (the config still has errors).
+        banner: bool,
+    },
+    /// Keep the running config; the message says why.
+    Refuse(String),
+}
+
+/// Decide a reload. A config with errors is refused unless `force`, in
+/// which case it is applied (margo's permissive parser loads what it can)
+/// but neither saved as last-good nor left unflagged. A file that can't be
+/// read or parsed at all is refused by the parse step regardless of `force`.
+pub fn reload_gate(report: &DiagnosticReport, force: bool) -> ReloadGate {
+    let errors = report.errors().count();
+    if errors == 0 {
+        ReloadGate::Apply {
+            save_generation: true,
+            banner: false,
+        }
+    } else if force {
+        ReloadGate::Apply {
+            save_generation: false,
+            banner: true,
+        }
+    } else {
+        ReloadGate::Refuse(format!(
+            "config has {errors} error(s) — run `mctl check-config` for details, \
+             or `mctl reload --force` to apply it anyway"
+        ))
+    }
+}
+
+/// Whether a `reload` dispatch argument asks for a forced reload
+/// (`mctl reload --force` sends `reload_config force`; a bind can too).
+pub fn reload_force_requested(arg: Option<&str>) -> bool {
+    arg.is_some_and(|a| a.trim().eq_ignore_ascii_case("force"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn diag(severity: Severity) -> ConfigDiagnostic {
+        ConfigDiagnostic {
+            path: PathBuf::from("/c.conf"),
+            line: 1,
+            col: 1,
+            end_col: 2,
+            severity,
+            code: "X".into(),
+            message: String::new(),
+            line_text: String::new(),
+        }
+    }
+
+    #[test]
+    fn clean_or_warning_only_config_applies_and_is_saved() {
+        let mut r = DiagnosticReport::default();
+        let ok = ReloadGate::Apply {
+            save_generation: true,
+            banner: false,
+        };
+        assert_eq!(reload_gate(&r, false), ok);
+        r.push(diag(Severity::Warning));
+        assert_eq!(reload_gate(&r, false), ok);
+        assert_eq!(reload_gate(&r, true), ok);
+    }
+
+    #[test]
+    fn errors_refuse_unless_forced_and_forced_is_never_last_good() {
+        let mut r = DiagnosticReport::default();
+        r.push(diag(Severity::Error));
+        assert!(matches!(reload_gate(&r, false), ReloadGate::Refuse(m) if m.contains("--force")));
+        assert_eq!(
+            reload_gate(&r, true),
+            ReloadGate::Apply {
+                save_generation: false,
+                banner: true,
+            }
+        );
+    }
+
+    #[test]
+    fn force_argument() {
+        assert!(reload_force_requested(Some("force")));
+        assert!(reload_force_requested(Some(" FORCE ")));
+        assert!(!reload_force_requested(None));
+        assert!(!reload_force_requested(Some("")));
+        assert!(!reload_force_requested(Some("1")));
+    }
+}

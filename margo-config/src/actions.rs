@@ -927,10 +927,10 @@ pub const ACTIONS: &[Action] = &[
     Action {
         name: "reload",
         aliases: &["reload_config"],
-        args: "",
+        args: "[force]",
         group: Group::System,
         summary: "Reload `~/.config/margo/config.conf`.",
-        detail: "Re-reads keybinds, animation params, window rules, layer rules. Also invalidates the runtime theme baseline so `theme default` resets to the freshly-parsed values.",
+        detail: "Re-reads keybinds, animation params, window rules, layer rules. Also invalidates the runtime theme baseline so `theme default` resets to the freshly-parsed values. A config with errors (`mctl check-config`) is refused and the running one kept; `force` applies it anyway (not saved as the last-good generation, banner stays up). A file that can't be read is always refused.",
     },
     Action {
         name: "theme",

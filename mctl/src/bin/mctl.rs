@@ -250,15 +250,15 @@ enum Command {
 
     /// Reload `~/.config/margo/config.conf`
     ///
-    /// By default runs `check-config` first; refuses to reload when
-    /// the file has errors (so the compositor doesn't try to apply a
-    /// broken config). Pass `--force` to skip the pre-check.
+    /// By default runs `check-config` first and refuses to reload when
+    /// the file has errors; margo checks again and keeps the running
+    /// config too. `--force` applies it anyway.
     #[command(display_order = 30)]
     Reload {
-        /// Skip the pre-reload validation pass and dispatch the IPC
-        /// reload unconditionally. Useful if the validator is wrong
-        /// or the user wants to test the parser's recovery behaviour
-        /// directly.
+        /// Apply the config even when it has errors: skip mctl's pre-check
+        /// and ask margo to load what it can. margo still refuses a file
+        /// it can't read, keeps the error banner up, and doesn't save the
+        /// config as the last-good generation (the boot fallback).
         #[arg(long)]
         force: bool,
     },
@@ -1122,7 +1122,7 @@ fn main() -> Result<()> {
                     );
                 }
             }
-            send_dispatch("reload_config", &[])?;
+            send_dispatch("reload_config", if force { &["force"] } else { &[] })?;
         }
         Command::Twilight { action } => {
             // Status is handled higher up (no IPC needed). The

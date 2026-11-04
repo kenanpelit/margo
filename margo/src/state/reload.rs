@@ -57,7 +57,16 @@ impl MargoState {
 
     /// Explicit reload (`mctl reload`, the reload keybind).
     pub fn reload_config(&mut self) -> Result<()> {
-        self.reload_config_inner(false)
+        self.reload_config_inner(false, false)
+    }
+
+    /// The `reload` dispatch: `force` as its argument (`mctl reload
+    /// --force`) applies a config even when the validator reports errors.
+    /// A file that can't be read still fails, and the forced config is not
+    /// saved as last-good.
+    pub fn reload_config_requested(&mut self, arg: Option<&str>) -> Result<()> {
+        let force = margo_config::diagnostics::reload_force_requested(arg);
+        self.reload_config_inner(false, force)
     }
 
     /// Reload requested by the `auto_reload_config` watcher. Skipped when
@@ -69,7 +78,7 @@ impl MargoState {
             tracing::debug!("config auto-reload: content unchanged, skipping");
             return Ok(());
         }
-        self.reload_config_inner(true)
+        self.reload_config_inner(true, false)
     }
 
     /// Put every client back on the global `focused_opacity` /
@@ -85,26 +94,35 @@ impl MargoState {
         }
     }
 
-    fn reload_config_inner(&mut self, auto: bool) -> Result<()> {
+    fn reload_config_inner(&mut self, auto: bool, force: bool) -> Result<()> {
         // Validate first. The parser is permissive (silent defaults
         // on malformed values), so a "successful" parse can still mean
         // the user's intent was misread. Run the structured validator
         // and bail before swapping config if it found errors —
-        // compositor stays on the previous good config.
+        // compositor stays on the previous good config — unless forced
+        // (see `margo_config::diagnostics::reload_gate`).
+        let mut save_generation = true;
+        let mut banner = false;
         match margo_config::validator::validate_config(self.config_path.as_deref()) {
             Ok(report) => {
                 self.last_reload_diagnostics = report.diagnostics.clone();
-                if report.has_errors() {
-                    // Trigger the C2 on-screen banner. 10 s ought to be
-                    // long enough to read "your config is broken, run
-                    // mctl check-config" without being a pest.
-                    self.config_error_overlay_until =
-                        Some(std::time::Instant::now() + std::time::Duration::from_secs(10));
-                    self.request_repaint();
-                    let err_count = report.errors().count();
-                    return Err(anyhow::anyhow!(
-                        "config has {err_count} error(s) — run `mctl check-config` for details"
-                    ));
+                match margo_config::diagnostics::reload_gate(&report, force) {
+                    margo_config::diagnostics::ReloadGate::Refuse(message) => {
+                        // Trigger the C2 on-screen banner. 10 s ought to be
+                        // long enough to read "your config is broken, run
+                        // mctl check-config" without being a pest.
+                        self.config_error_overlay_until =
+                            Some(std::time::Instant::now() + std::time::Duration::from_secs(10));
+                        self.request_repaint();
+                        return Err(anyhow::anyhow!(message));
+                    }
+                    margo_config::diagnostics::ReloadGate::Apply {
+                        save_generation: save,
+                        banner: show,
+                    } => {
+                        save_generation = save;
+                        banner = show;
+                    }
                 }
             }
             Err(e) => {
@@ -144,18 +162,20 @@ impl MargoState {
         self.config_sources = sources;
 
         // Save this generation now that it's confirmed to parse (the
-        // validator above already confirmed it has no errors). Mirrors
-        // the boot-path save in main.rs — see
+        // validator above already confirmed it has no errors — a forced
+        // reload of a config with errors is not saved, so it never becomes
+        // the boot fallback). Mirrors the boot-path save in main.rs — see
         // docs/superpowers/specs/2026-09-01-config-generations-rollback-design.md.
-        if let Some(path) = self
-            .config_path
-            .as_deref()
-            .map(std::path::PathBuf::from)
-            .or_else(|| {
-                std::env::var("HOME")
-                    .ok()
-                    .map(|h| std::path::PathBuf::from(h).join(".config/margo/config.conf"))
-            })
+        if save_generation
+            && let Some(path) = self
+                .config_path
+                .as_deref()
+                .map(std::path::PathBuf::from)
+                .or_else(|| {
+                    std::env::var("HOME")
+                        .ok()
+                        .map(|h| std::path::PathBuf::from(h).join(".config/margo/config.conf"))
+                })
             && let Ok(raw) = std::fs::read_to_string(&path)
         {
             if auto {
@@ -173,8 +193,10 @@ impl MargoState {
         // Successful reload — clear any stale diagnostics + overlay
         // (warnings from the validation pass above are still in
         // last_reload_diagnostics, intentionally; the user can still
-        // query them via mctl config-errors).
-        self.config_error_overlay_until = None;
+        // query them via mctl config-errors). A forced reload of a config
+        // with errors keeps the banner up instead.
+        self.config_error_overlay_until =
+            banner.then(|| std::time::Instant::now() + std::time::Duration::from_secs(10));
         // A reload re-parses the rulebook from scratch — a `windowrule-once`
         // the user is actively iterating on should be able to fire again.
         self.rule_once_consumed.clear();

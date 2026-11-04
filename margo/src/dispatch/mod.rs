@@ -262,7 +262,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
                 None => tracing::warn!("logenabled: log handle not initialised"),
             }
         }
-        "reload" | "reload_config" => match state.reload_config() {
+        "reload" | "reload_config" => match state.reload_config_requested(arg.v.as_deref()) {
             Ok(()) => {
                 // Reload succeeded — but warnings from the validator
                 // pass survive into `last_reload_diagnostics` (the

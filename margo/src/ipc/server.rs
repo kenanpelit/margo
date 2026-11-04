@@ -854,6 +854,15 @@ mod tests {
     }
 
     #[test]
+    fn reload_force_reaches_the_reload_gate() {
+        // `mctl reload --force` sends `dispatch reload_config force`.
+        let a = args_to_dispatch_arg("reload_config", &args(&["force"]));
+        assert!(margo_config::diagnostics::reload_force_requested(
+            a.v.as_deref()
+        ));
+    }
+
+    #[test]
     fn positional_string_slots_for_numeric_action() {
         // numeric-first action that also carries string slots 4/5
         let a = args_to_dispatch_arg("some_action", &args(&["1", "2", "3", "slot4", "slot5"]));
