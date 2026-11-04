@@ -196,6 +196,10 @@ impl Component for ScreenshareMenuWidgetModel {
                         }
                         Err(e) => {
                             eprintln!("Selection failed: {e}");
+                            // A cancelled pick still answers, or the portal
+                            // call waits until the chooser is next opened.
+                            sender_clone
+                                .input(ScreenshareMenuWidgetInput::SendReply(String::new()));
                         }
                     },
                 );
