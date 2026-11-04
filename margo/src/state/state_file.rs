@@ -32,6 +32,46 @@ impl MargoState {
         self.ipc_push_watches();
     }
 
+    /// The scroller strip of monitor `mon_idx` as the shell's ribbon reads
+    /// it: one entry per tiled column in strip order, each column's *target*
+    /// rect (an in-flight move animation reports where it is heading, not
+    /// where it is mid-flight) with `x` relative to the work area, plus the
+    /// viewport width. `null` outside the scroller layout and in overview.
+    fn scroller_viewport(&self, mon_idx: usize, focused_idx: Option<usize>) -> serde_json::Value {
+        use serde_json::json;
+        let Some(mon) = self.monitors.get(mon_idx) else {
+            return serde_json::Value::Null;
+        };
+        if mon.is_overview || mon.current_layout() != crate::layout::LayoutId::Scroller {
+            return serde_json::Value::Null;
+        }
+        let tagset = mon.current_tagset();
+        let wa = mon.work_area;
+        let columns: Vec<_> = self
+            .clients
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| {
+                !c.is_initial_map_pending && c.is_visible_on(mon_idx, tagset) && c.is_tiled()
+            })
+            .map(|(idx, c)| {
+                let rect = if c.animation.running {
+                    c.animation.current
+                } else {
+                    c.geom
+                };
+                json!({
+                    "id": c.id,
+                    "app_id": c.app_id,
+                    "x": rect.x - wa.x,
+                    "width": rect.width,
+                    "focused": Some(idx) == focused_idx,
+                })
+            })
+            .collect();
+        json!({ "viewport_width": wa.width, "columns": columns })
+    }
+
     pub(crate) fn build_state_snapshot(&self) -> serde_json::Value {
         use serde_json::json;
 
@@ -174,6 +214,9 @@ impl MargoState {
                     "focus_history_v2": focus_history.iter()
                         .map(|c| json!({ "id": c.id, "app_id": c.app_id }))
                         .collect::<Vec<_>>(),
+                    // The scroller strip's columns and viewport (null in
+                    // any other layout) — the shell's scroller ribbon.
+                    "scroller": self.scroller_viewport(i, focused_idx),
                 })
             })
             .collect();

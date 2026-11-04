@@ -44,6 +44,7 @@ pub(crate) mod privacy;
 pub(crate) mod reboot;
 pub(crate) mod recording_indicator;
 pub(crate) mod screenshot;
+pub(crate) mod scroller_ribbon;
 pub(crate) mod setup;
 pub(crate) mod shutdown;
 pub(crate) mod ssh_sessions;

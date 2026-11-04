@@ -42,6 +42,7 @@ use crate::bars::bar_widgets::recording_indicator::{
     RecordingIndicatorInit, RecordingIndicatorModel,
 };
 use crate::bars::bar_widgets::screenshot::{ScreenshotInit, ScreenshotModel, ScreenshotOutput};
+use crate::bars::bar_widgets::scroller_ribbon::{ScrollerRibbonInit, ScrollerRibbonModel};
 use crate::bars::bar_widgets::setup::{SetupInit, SetupModel, SetupOutput};
 use crate::bars::bar_widgets::shutdown::{ShutdownInit, ShutdownModel};
 use crate::bars::bar_widgets::ssh_sessions::{SshSessionsInit, SshSessionsModel};
@@ -1182,6 +1183,11 @@ impl BarModel {
             BarWidget::MargoTags => Box::new(
                 MargoTagsModel::builder()
                     .launch(MargoTagsInit { orientation })
+                    .detach(),
+            ),
+            BarWidget::ScrollerRibbon => Box::new(
+                ScrollerRibbonModel::builder()
+                    .launch(ScrollerRibbonInit { orientation })
                     .detach(),
             ),
             BarWidget::ColorPicker => Box::new(

@@ -40,6 +40,12 @@ file — both removed.
 | `config-errors` | — | `{"config_errors":[…]}` |
 | `layers` | — | `{"layers":[{"monitor","layer","name"},…]}` — every layer-shell surface (`layer` = background/bottom/top/overlay, `name` = its namespace). `get` only. |
 
+Each `outputs[]` entry carries `scroller`: `null` unless the output is in
+the scroller layout, else `{"viewport_width", "columns":[{"id","app_id",
+"x","width","focused"}]}` — the strip's tiled columns in order, each
+column's target rect with `x` relative to the work area (negative = off
+the left edge, `x >= viewport_width` = off the right).
+
 Error frames are `{"error":"<message>"}`. Unknown verb/topic returns an
 error frame; the connection stays open.
 

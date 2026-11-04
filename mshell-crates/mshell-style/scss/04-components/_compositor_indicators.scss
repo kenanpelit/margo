@@ -1,0 +1,42 @@
+// Compositor-state bar indicators (scroller ribbon, scratchpad chips,
+// XWayland badge, tag window icons). DESIGN.md §4: plain bar-pill
+// surfaces, tokens only; the selected/focused element carries the one
+// accent (--primary), everything else stays on the outline tiers.
+
+// ── Scroller ribbon ─────────────────────────────────────────
+// One capsule per scroller column. Off-viewport columns sit on the dim
+// --outline-variant tier, in-view columns on --outline, the focused
+// column on --primary (the single accent region, §13.2).
+.scroller-ribbon-segment {
+  all: unset;
+  min-width: 14px;
+  min-height: 6px;
+  border-radius: var(--radius-pill);
+  background-color: var(--outline-variant);
+  transition: background-color var(--motion-medium) var(--ease-standard);
+}
+
+.scroller-ribbon-segment.in-view {
+  background-color: var(--outline);
+}
+
+.scroller-ribbon-segment.focused {
+  background-color: var(--primary);
+}
+
+.scroller-ribbon-segment:not(.focused):hover {
+  background-color: unquote("color-mix(in srgb, var(--primary) 50%, var(--outline))");
+}
+
+.bar-left  .scroller-ribbon-segment,
+.bar-right .scroller-ribbon-segment {
+  min-width: 6px;
+  min-height: 14px;
+}
+
+.scroller-ribbon-count {
+  font-size: var(--font-bar);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface-variant);
+}

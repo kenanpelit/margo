@@ -299,6 +299,12 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
             label: "Margo Tags",
             icon: "square-symbolic",
         },
+        WidgetEntry::Pill {
+            kind: BarPillKind::ScrollerRibbon,
+            stack_name: "pill_scroller_ribbon",
+            label: "Scroller Ribbon",
+            icon: "view-list-symbolic",
+        },
         WidgetEntry::Privacy,
         WidgetEntry::Pill {
             kind: BarPillKind::Reboot,

@@ -28,6 +28,7 @@ pub(crate) enum BarPillKind {
     // `lock_settings.rs` — so it's not a generic bar-pill info page.
     Logout,
     MargoTags,
+    ScrollerRibbon,
     Reboot,
     RecordingIndicator,
     Shutdown,
@@ -45,6 +46,7 @@ impl BarPillKind {
             Self::ColorPicker => "ColorPicker",
             Self::Logout => "Logout",
             Self::MargoTags => "Margo Tags",
+            Self::ScrollerRibbon => "Scroller Ribbon",
             Self::Reboot => "Reboot",
             Self::RecordingIndicator => "Recording Indicator",
             Self::Shutdown => "Shutdown",
@@ -79,6 +81,9 @@ impl BarPillKind {
             Self::Logout => "Logs out of the session. Confirms with a dialog.",
             Self::MargoTags => {
                 "1–9 tag pills with focus / occupied / urgent states. Click to switch tags, scroll to cycle."
+            }
+            Self::ScrollerRibbon => {
+                "One small segment per column of the focused output's scroller strip: lit inside the viewport, accented for the focused column, dim when scrolled off, with ‹N / N› counts of the columns hidden on each side. Click a segment to focus that column; scroll over the pill to move focus left / right. Hidden outside the scroller layout."
             }
             Self::Reboot => "Reboots the system. Confirms with a dialog.",
             Self::RecordingIndicator => {

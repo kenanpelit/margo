@@ -237,6 +237,16 @@ fn apply(service: &MargoService, state: &StateJson) {
         service.fullscreen_outputs.set(fullscreen_outputs);
     }
 
+    // Mirror the focused output's scroller strip (change-only).
+    let scroller = state
+        .outputs
+        .iter()
+        .find(|o| o.name == state.active_output)
+        .and_then(|o| o.scroller.clone());
+    if service.scroller.get() != scroller {
+        service.scroller.set(scroller);
+    }
+
     // Mirror the focused output's layout (change-only).
     let layout = active_layout(state);
     if service.active_layout.get() != layout {
@@ -943,6 +953,7 @@ mod tests {
             mode: None,
             wallpaper: String::new(),
             wallpapers_by_tag: Vec::new(),
+            scroller: None,
         }
     }
 
@@ -1085,6 +1096,7 @@ mod apply_tests {
             session_locked: Reactive::new(None),
             lock_keys: Reactive::new(None),
             keymode: Reactive::new(None),
+            scroller: Reactive::new(None),
             config_errors: Reactive::new(Vec::new()),
             active_layout: Reactive::new(None),
             fullscreen_outputs: Reactive::new(Vec::new()),
@@ -1122,6 +1134,7 @@ mod apply_tests {
             mode: None,
             wallpaper: String::new(),
             wallpapers_by_tag: Vec::new(),
+            scroller: None,
         }
     }
 
@@ -1577,6 +1590,42 @@ mod apply_tests {
         )
         .expect("frame parses");
         assert_eq!(parsed.keymode.as_deref(), Some("default"));
+    }
+
+    #[test]
+    fn scroller_strip_of_the_focused_output_is_mirrored() {
+        use crate::state_json::{RawScroller, RawScrollerColumn};
+        let svc = service();
+        let mut f = frame();
+        apply(&svc, &f);
+        assert_eq!(svc.scroller.get(), None, "not in the scroller layout");
+        let strip = RawScroller {
+            viewport_width: 1920,
+            columns: vec![RawScrollerColumn {
+                id: 1,
+                app_id: "kitty".into(),
+                x: -900,
+                width: 1500,
+                focused: false,
+            }],
+        };
+        // Another output's strip is not the bar's (focused-output) strip.
+        f.outputs[1].scroller = Some(strip.clone());
+        apply(&svc, &f);
+        assert_eq!(svc.scroller.get(), None);
+        f.outputs[0].scroller = Some(strip.clone());
+        apply(&svc, &f);
+        assert_eq!(svc.scroller.get(), Some(strip));
+        let parsed: StateJson = serde_json::from_str(
+            r#"{"active_output":"DP-1","layouts":[],"clients":[],"tag_count":9,
+                "outputs":[{"name":"DP-1","active":true,"active_tag_mask":1,
+                "occupied_tag_mask":1,"layout_idx":1,"width":1920,"height":1080,
+                "x":0,"y":0,"scale":1.0,"scroller":{"viewport_width":1920,
+                "columns":[{"id":7,"app_id":"foot","x":12,"width":1500,"focused":true}]}}]}"#,
+        )
+        .expect("frame with a scroller strip parses");
+        let s = parsed.outputs[0].scroller.as_ref().expect("strip");
+        assert_eq!((s.columns[0].id, s.columns[0].x), (7, 12));
     }
 
     /// A frame as margo serialises it (extra fields included), parsed and

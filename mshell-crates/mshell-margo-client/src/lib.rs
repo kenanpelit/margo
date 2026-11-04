@@ -499,6 +499,10 @@ pub struct MargoService {
     /// snapshot or when the running margo predates the field. The keymode
     /// pill and the keymode toast read this.
     pub keymode: Reactive<Option<String>>,
+    /// The focused output's scroller strip (columns + viewport), `None`
+    /// outside the scroller layout or on a margo that predates the field.
+    /// The scroller ribbon pill reads this.
+    pub scroller: Reactive<Option<crate::state_json::RawScroller>>,
     /// The focused output's tiling layout. `None` until the first
     /// snapshot, or while the output's `layout_idx` is past the
     /// layouts list (transient during a config reload). The layout
@@ -549,6 +553,7 @@ impl MargoService {
             session_locked: Reactive::new(None),
             lock_keys: Reactive::new(None),
             keymode: Reactive::new(None),
+            scroller: Reactive::new(None),
             active_layout: Reactive::new(None),
             config_errors: Reactive::new(Vec::new()),
             fullscreen_outputs: Reactive::new(Vec::new()),

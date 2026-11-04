@@ -138,6 +138,30 @@ pub struct RawOutput {
     pub wallpaper: String,
     #[serde(default)]
     pub wallpapers_by_tag: Vec<String>,
+    /// The scroller strip (columns + viewport) while the output is in the
+    /// scroller layout; `None` in any other layout and on older margo.
+    #[serde(default)]
+    pub scroller: Option<RawScroller>,
+}
+
+/// margo's per-output `scroller` object: the strip's tiled columns in
+/// order, each column's target rect with `x` relative to the work area.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct RawScroller {
+    pub viewport_width: i32,
+    #[serde(default)]
+    pub columns: Vec<RawScrollerColumn>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct RawScrollerColumn {
+    pub id: u64,
+    #[serde(default)]
+    pub app_id: String,
+    pub x: i32,
+    pub width: i32,
+    #[serde(default)]
+    pub focused: bool,
 }
 
 impl RawOutput {
