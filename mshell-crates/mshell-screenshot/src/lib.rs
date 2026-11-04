@@ -14,7 +14,7 @@ pub use selectors::area_selector::select_region;
 pub use utils::query_outputs;
 
 use crate::common::*;
-use crate::record::{RecordHandle, RecordResult, WfRecorderArgs, start_recording};
+use crate::record::{RecordBackend, RecordHandle, RecordResult, WfRecorderArgs, start_recording};
 use crate::utils::default_screenshot_path;
 use gtk4::glib;
 use image::ImageEncoder;
@@ -86,7 +86,11 @@ pub struct ScreenshotRequest {
 #[derive(Debug, Clone)]
 pub struct ScreenRecordRequest {
     pub area: CaptureArea,
+    /// Audio spec: a source name, `default_output` / `default_input` /
+    /// `both`, or several joined with `|` (mixed into one track). `None`
+    /// records silently. See [`record::parse_audio`].
     pub audio: Option<String>,
+    pub backend: RecordBackend,
 }
 
 #[derive(Debug, Clone)]
@@ -194,7 +198,12 @@ pub fn record_screen<S, D>(
                         width: region.width,
                         height: region.height,
                     };
-                    on_started(Ok(start_recording(request.audio, args, on_done)));
+                    on_started(Ok(start_recording(
+                        request.backend,
+                        request.audio,
+                        args,
+                        on_done,
+                    )));
                 }
                 Err(e) => on_started(Err(e.into())),
             });
@@ -209,7 +218,12 @@ pub fn record_screen<S, D>(
                 move |monitor_result| match monitor_result {
                     Ok(name) => {
                         let args = WfRecorderArgs::Monitor { name };
-                        on_started(Ok(start_recording(request.audio, args, on_done)));
+                        on_started(Ok(start_recording(
+                            request.backend,
+                            request.audio,
+                            args,
+                            on_done,
+                        )));
                     }
                     Err(e) => on_started(Err(e.into())),
                 },
@@ -228,7 +242,12 @@ pub fn record_screen<S, D>(
                         width: win.width,
                         height: win.height,
                     };
-                    on_started(Ok(start_recording(request.audio, args, on_done)));
+                    on_started(Ok(start_recording(
+                        request.backend,
+                        request.audio,
+                        args,
+                        on_done,
+                    )));
                 }
                 Err(e) => on_started(Err(e.into())),
             });
@@ -243,13 +262,19 @@ pub fn record_screen<S, D>(
                     match monitor_result {
                         Ok(name) => {
                             let args = WfRecorderArgs::Monitor { name };
-                            on_started(Ok(start_recording(request.audio, args, on_done)));
+                            on_started(Ok(start_recording(
+                                request.backend,
+                                request.audio,
+                                args,
+                                on_done,
+                            )));
                         }
                         Err(e) => on_started(Err(e.into())),
                     }
                 });
             } else {
                 on_started(Ok(start_recording(
+                    request.backend,
                     request.audio,
                     WfRecorderArgs::All,
                     on_done,

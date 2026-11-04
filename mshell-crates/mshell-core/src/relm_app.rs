@@ -176,8 +176,9 @@ pub(crate) enum ShellInput {
     /// output/full, target ∈ default/copy/save/edit.
     CaptureScreenshot(String),
     /// Headless screen recording from `mshellctl screenrecord …`.
-    /// Spec is `"<action> <area> <audio>"` — action ∈ start/stop/toggle,
-    /// area ∈ region/window/output/full, audio = "-" (none) or a source.
+    /// Spec is `"<action> <area> <audio> [<backend>]"` — action ∈
+    /// start/stop/toggle, area ∈ region/window/output/full, audio = "-"
+    /// (none) or an audio spec, backend = wf / gsr / "-" (menu choice).
     ScreenRecord(String),
     ToggleWallpaperMenu(Option<String>),
     CycleWallpaper(mshell_cache::wallpaper::CycleDirection),
@@ -734,7 +735,10 @@ impl Component for Shell {
                     Some(a) if a != "-" && !a.is_empty() => Some(a.to_string()),
                     _ => None,
                 };
-                mshell_frame::screen_record(&action, area, audio);
+                let backend = parts
+                    .next()
+                    .and_then(mshell_screenshot::record::RecordBackend::parse);
+                mshell_frame::screen_record(&action, area, audio, backend);
             }
             ShellInput::ToggleNotifications(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {

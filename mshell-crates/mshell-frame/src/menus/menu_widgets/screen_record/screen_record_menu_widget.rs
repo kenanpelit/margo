@@ -8,17 +8,22 @@ use crate::common_widgets::revealer_row::revealer_row_label::{
     RevealerRowLabelInit, RevealerRowLabelModel,
 };
 use crate::menus::menu_widgets::screen_record::audio_option::{
-    AudioOption, AudioOptionsList, get_audio_option_icon_name, get_audio_option_label,
+    AudioChoice, AudioOption, AudioOptionsList, get_audio_option_icon_name, get_audio_option_label,
+};
+use crate::menus::menu_widgets::screen_record::backend_option::{
+    BackendOption, BackendOptionsList, backend_icon_name,
 };
 use crate::menus::menu_widgets::screen_record::recording_service::{
-    RecordingState, RecordingStateStoreFields, recording_state,
+    RecordingState, RecordingStateStoreFields, effective_backend, gsr_installed, preferred_backend,
+    recording_state, set_preferred_backend,
 };
 use mshell_common::scoped_effects::EffectScope;
 use mshell_common::watch;
-use mshell_screenshot::record::{RecordHandle, RecordResult};
+use mshell_screenshot::record::{RecordBackend, RecordHandle, RecordResult};
 use mshell_screenshot::{CaptureArea, ScreenRecordRequest};
 use mshell_services::audio_service;
 use mshell_utils::notifications::show_file_saved_notification;
+use notify_rust::Notification;
 use reactive_graph::traits::{Get, GetUntracked};
 use reactive_stores::Patch;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, EventControllerExt, OrientableExt, WidgetExt};
@@ -30,6 +35,9 @@ use wayle_audio::core::device::input::InputDevice;
 pub(crate) struct ScreenRecordMenuWidgetModel {
     audio_row: Controller<RevealerRowModel<RevealerRowLabelModel, AudioOptionsList>>,
     selected_audio_option: AudioOption,
+    backend_row: Controller<RevealerRowModel<RevealerRowLabelModel, BackendOptionsList>>,
+    /// gpu-screen-recorder on PATH; the backend row is hidden without it.
+    gsr_available: bool,
     recording_handle: Option<RecordHandle>,
     _effects: EffectScope,
 }
@@ -37,13 +45,13 @@ pub(crate) struct ScreenRecordMenuWidgetModel {
 #[derive(Debug)]
 pub(crate) enum ScreenRecordMenuWidgetInput {
     AudioOptionSelected(AudioOption),
+    BackendSelected(BackendOption),
     AllClicked,
     MonitorClicked,
     WindowClicked,
     AreaClicked,
     StopClicked,
     RecordingHandleChanged(Option<RecordHandle>),
-    RecordingStopped(RecordResult),
 }
 
 #[derive(Debug)]
@@ -93,6 +101,9 @@ impl Component for ScreenRecordMenuWidgetModel {
             },
 
             model.audio_row.widget().clone() {},
+            model.backend_row.widget().clone() {
+                set_visible: model.gsr_available,
+            },
 
             gtk::Box {
                 set_margin_top: 8,
@@ -246,7 +257,7 @@ impl Component for ScreenRecordMenuWidgetModel {
             .detach();
 
         let revealed_content = AudioOptionsList::builder()
-            .launch(vec![AudioOption { value: None }])
+            .launch(fixed_audio_options())
             .forward(sender.input_sender(), |msg| match msg {
                 OptionsListOutput::Selected(opt) => {
                     ScreenRecordMenuWidgetInput::AudioOptionSelected(opt)
@@ -259,6 +270,33 @@ impl Component for ScreenRecordMenuWidgetModel {
                 action_button_sensitive: false,
                 content,
                 revealed_content,
+            })
+            .detach();
+
+        let backend = preferred_backend();
+        let backend_content = RevealerRowLabelModel::builder()
+            .launch(RevealerRowLabelInit {
+                label: backend.label().to_string(),
+            })
+            .detach();
+        let backend_options = BackendOptionsList::builder()
+            .launch(
+                RecordBackend::ALL
+                    .iter()
+                    .map(|b| BackendOption { value: *b })
+                    .collect(),
+            )
+            .forward(sender.input_sender(), |msg| match msg {
+                OptionsListOutput::Selected(opt) => {
+                    ScreenRecordMenuWidgetInput::BackendSelected(opt)
+                }
+            });
+        let backend_row = RevealerRowModel::<RevealerRowLabelModel, BackendOptionsList>::builder()
+            .launch(RevealerRowInit {
+                icon_name: backend_icon_name(backend).into(),
+                action_button_sensitive: false,
+                content: backend_content,
+                revealed_content: backend_options,
             })
             .detach();
 
@@ -277,7 +315,11 @@ impl Component for ScreenRecordMenuWidgetModel {
 
         let model = ScreenRecordMenuWidgetModel {
             audio_row,
-            selected_audio_option: AudioOption { value: None },
+            selected_audio_option: AudioOption {
+                value: AudioChoice::None,
+            },
+            backend_row,
+            gsr_available: gsr_installed(),
             recording_handle,
             _effects: effects,
         };
@@ -347,6 +389,18 @@ impl Component for ScreenRecordMenuWidgetModel {
                 ));
                 self.audio_row.emit(RevealerRowInput::SetRevealed(false));
             }
+            ScreenRecordMenuWidgetInput::BackendSelected(opt) => {
+                set_preferred_backend(opt.value);
+                self.backend_row
+                    .model()
+                    .content
+                    .emit(SetLabel(opt.value.label().to_string()));
+                self.backend_row
+                    .emit(RevealerRowInput::UpdateActionIconName(
+                        backend_icon_name(opt.value).to_string(),
+                    ));
+                self.backend_row.emit(RevealerRowInput::SetRevealed(false));
+            }
             ScreenRecordMenuWidgetInput::AllClicked => self.start_record(CaptureArea::All, sender),
             ScreenRecordMenuWidgetInput::WindowClicked => {
                 self.start_record(CaptureArea::SelectWindow, sender)
@@ -365,12 +419,6 @@ impl Component for ScreenRecordMenuWidgetModel {
             ScreenRecordMenuWidgetInput::RecordingHandleChanged(handle) => {
                 self.recording_handle = handle;
             }
-            ScreenRecordMenuWidgetInput::RecordingStopped(result) => {
-                recording_state().patch(RecordingState { handle: None });
-                if let Some(path) = result.saved_path {
-                    show_file_saved_notification("Screenshot saved & copied".to_string(), path);
-                }
-            }
         }
 
         self.update_view(widgets, sender_clone);
@@ -384,14 +432,11 @@ impl Component for ScreenRecordMenuWidgetModel {
     ) {
         match message {
             ScreenRecordMenuWidgetCommandOutput::AudioDevicesChanges(devices) => {
-                let mut devices: Vec<AudioOption> = devices
-                    .iter()
-                    .map(|d| AudioOption {
-                        value: Some(d.clone()),
-                    })
-                    .collect();
-
-                devices.insert(0, AudioOption { value: None });
+                let mut options = fixed_audio_options();
+                options.extend(devices.iter().map(|d| AudioOption {
+                    value: AudioChoice::Device(d.clone()),
+                }));
+                let devices = options;
 
                 self.audio_row
                     .model()
@@ -422,30 +467,42 @@ impl ScreenRecordMenuWidgetModel {
             return;
         }
         let _ = sender.output(ScreenRecordMenuWidgetOutput::CloseMenu);
-        let audio: Option<String> = self
-            .selected_audio_option
-            .value
-            .as_ref()
-            .map(|v| v.name.get());
-        let sender_clone = sender.clone();
-        mshell_screenshot::record_screen(
-            ScreenRecordRequest { area, audio },
-            Duration::ZERO,
-            move |handle_result| match handle_result {
-                Ok(handle) => {
-                    recording_state().patch(RecordingState {
-                        handle: Some(handle),
-                    });
-                }
-                Err(e) => eprintln!("Failed to start recording: {e}"),
-            },
-            move |done_result| match done_result {
-                Ok(result) => {
-                    sender_clone.input(ScreenRecordMenuWidgetInput::RecordingStopped(result))
-                }
-                Err(e) => eprintln!("Recording failed: {e}"),
-            },
-        );
+        record_start(area, self.selected_audio_option.spec(), None);
+    }
+}
+
+/// Audio choices that exist regardless of the device list: silent, and
+/// desktop + microphone mixed.
+fn fixed_audio_options() -> Vec<AudioOption> {
+    vec![
+        AudioOption {
+            value: AudioChoice::None,
+        },
+        AudioOption {
+            value: AudioChoice::DesktopAndMic,
+        },
+    ]
+}
+
+/// End of a clip, success or not: clear the shared recording state (so
+/// the menu and the bar pill leave "recording" even when the recorder
+/// died) and tell the user where the file is or why it failed.
+fn finish_recording<E: std::fmt::Display>(result: Result<RecordResult, E>) {
+    recording_state().patch(RecordingState { handle: None });
+    match result {
+        Ok(RecordResult {
+            saved_path: Some(path),
+        }) => show_file_saved_notification("Screen recording saved".to_string(), path),
+        Ok(_) => {}
+        Err(e) => {
+            tracing::warn!(error = %e, "screen recording failed");
+            Notification::new()
+                .summary("Screen recording failed")
+                .body(&format!("{e:#}"))
+                .appname("mshell")
+                .show()
+                .ok();
+        }
     }
 }
 
@@ -456,26 +513,35 @@ pub(crate) fn is_recording() -> bool {
     recording_state().clone().handle().get_untracked().is_some()
 }
 
-pub(crate) fn record_start(area: CaptureArea, audio: Option<String>) {
+/// Start a clip. `backend` = an explicit choice (`mshellctl screenrecord
+/// --backend`), `None` = the menu's current choice.
+pub(crate) fn record_start(
+    area: CaptureArea,
+    audio: Option<String>,
+    backend: Option<RecordBackend>,
+) {
     if is_recording() {
         return;
     }
+    let backend = effective_backend(backend, preferred_backend(), gsr_installed());
     mshell_screenshot::record_screen(
-        ScreenRecordRequest { area, audio },
+        ScreenRecordRequest {
+            area,
+            audio,
+            backend,
+        },
         Duration::ZERO,
         |handle_result| match handle_result {
             Ok(handle) => recording_state().patch(RecordingState {
                 handle: Some(handle),
             }),
-            Err(e) => eprintln!("Failed to start recording: {e}"),
+            // Selection cancelled or no outputs: nothing started.
+            Err(e) => tracing::debug!(error = %e, "screen recording not started"),
         },
+        // The recorder thread calls this off the GTK thread; the store
+        // patch and the notification must run on it.
         |done_result| {
-            recording_state().patch(RecordingState { handle: None });
-            if let Ok(result) = done_result
-                && let Some(path) = result.saved_path
-            {
-                show_file_saved_notification("Screen recording saved".to_string(), path);
-            }
+            relm4::gtk::glib::MainContext::default().invoke(move || finish_recording(done_result))
         },
     );
 }
@@ -488,10 +554,14 @@ pub(crate) fn record_stop() {
     // finished flushing the file.
 }
 
-pub(crate) fn record_toggle(area: CaptureArea, audio: Option<String>) {
+pub(crate) fn record_toggle(
+    area: CaptureArea,
+    audio: Option<String>,
+    backend: Option<RecordBackend>,
+) {
     if is_recording() {
         record_stop();
     } else {
-        record_start(area, audio);
+        record_start(area, audio, backend);
     }
 }

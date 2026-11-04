@@ -5,7 +5,7 @@
 //! pill) headlessly over IPC. One engine, one tool.
 //!
 //! ```text
-//! mshellctl screenrecord start|toggle [region|window|output|full] [--audio SRC]
+//! mshellctl screenrecord start|toggle [region|window|output|full] [--audio SRC] [--backend wf|gsr]
 //! mshellctl screenrecord stop
 //! ```
 
@@ -28,9 +28,21 @@ pub struct RecordArgs {
     /// a monitor pick; full grabs the whole layout.
     #[arg(value_enum, default_value_t = Area::Full)]
     area: Area,
-    /// Mix in an audio source (PipeWire source name). Omit for silent.
+    /// Audio: a PipeWire source name, `desktop`, `mic`, `both` (desktop +
+    /// microphone mixed), or several sources joined with `|`. Omit for
+    /// silent.
     #[arg(long)]
     audio: Option<String>,
+    /// Recorder: `wf` (wf-recorder, CPU x264) or `gsr`
+    /// (gpu-screen-recorder, VAAPI/NVENC). Omit to use the menu's choice.
+    #[arg(long, value_enum)]
+    backend: Option<Backend>,
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug)]
+enum Backend {
+    Wf,
+    Gsr,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug, Default)]
@@ -55,9 +67,17 @@ impl Area {
 
 async fn send(action: &str, args: &RecordArgs) -> anyhow::Result<()> {
     let spec = format!(
-        "{action} {} {}",
+        "{action} {} {} {}",
         args.area.as_str(),
-        args.audio.as_deref().unwrap_or("-")
+        args.audio
+            .as_deref()
+            .filter(|a| !a.is_empty())
+            .unwrap_or("-"),
+        match args.backend {
+            Some(Backend::Wf) => "wf",
+            Some(Backend::Gsr) => "gsr",
+            None => "-",
+        }
     );
     shell().await?.screen_record(&spec).await?;
     Ok(())

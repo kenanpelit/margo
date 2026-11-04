@@ -115,10 +115,25 @@ mshellctl screenshot palette -n 6    # region → 6 dominant colours (hex) → c
 
 mshellctl screenrecord start full    # start recording (region|window|output|full)
 mshellctl screenrecord toggle region --audio <pw-source>
+mshellctl screenrecord start full --audio both           # desktop + mic mixed
+mshellctl screenrecord start output --backend gsr        # gpu-screen-recorder (VAAPI)
 mshellctl screenrecord stop
 ```
 
 Bind them however you like, e.g. `bind = NONE,Print,spawn,mshellctl screenshot region`. The recording-indicator bar pill shows an active recording and stops it on click.
+
+Recording audio (`--audio`, or the Screen Record menu's audio row): a
+single PipeWire source, `desktop`, `mic`, or `both` / *Desktop +
+microphone* — desktop audio and the default microphone mixed into one
+track. Two recorders: **wf-recorder** (default, CPU x264) and
+**gpu-screen-recorder** (hardware encoding: VAAPI on Intel/AMD, NVENC on
+NVIDIA; `-fallback-cpu-encoding` keeps it recording without a usable
+encoder). The menu's recorder row appears when `gpu-screen-recorder` is
+installed; `--backend wf|gsr` overrides it per run. gpu-screen-recorder
+mixes the sources itself; for wf-recorder (one source only) mshell loads a
+private PipeWire null sink plus one loopback per source with `pactl`,
+records its monitor and unloads the modules when the clip ends (leftovers
+from a crash are swept at the next mixed recording).
 
 ### Region tools
 
