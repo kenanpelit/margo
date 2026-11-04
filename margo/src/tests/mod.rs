@@ -66,6 +66,7 @@ mod pointer_constraints;
 mod pointer_gestures;
 mod preferred_scale;
 mod reload;
+mod present_timer;
 mod repaint;
 mod screencopy;
 mod scripting;

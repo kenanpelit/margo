@@ -305,6 +305,13 @@ impl MargoState {
         }
     }
 
+    /// Install the backend's repaint body (what the repaint-ping source
+    /// runs), so a present timer can render the due outputs itself instead
+    /// of pinging that source for one more event-loop wake-up.
+    pub fn set_repaint_hook(&mut self, hook: Rc<dyn Fn(&mut MargoState)>) {
+        self.repaint_hook = Some(hook);
+    }
+
     /// Clone of the repaint-ping handle, for the per-output frame clock
     /// to wake the redraw scheduler from a present-timer callback
     /// without going through `request_repaint` (which would re-dirty

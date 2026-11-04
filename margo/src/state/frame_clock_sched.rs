@@ -295,10 +295,12 @@ impl MargoState {
         }
     }
 
-    /// Present timer for `name` fired: the output may now be due. We
-    /// don't render here (the timer callback has no backend handle) —
-    /// instead wake the repaint source, whose callback owns the backend
-    /// and renders exactly the due outputs via [`Self::take_due_outputs`].
+    /// Present timer for `name` fired: the output may now be due. Run the
+    /// backend's repaint body right here ([`Self::set_repaint_hook`]), which
+    /// renders exactly the due outputs via [`Self::take_due_outputs`].
+    /// Pinging the repaint source instead cost one more event-loop wake-up
+    /// per frame (vblank → timer → ping → render). Backends without a hook
+    /// still get the ping.
     pub fn present_timer_fired(&mut self, name: &str) {
         if !self.per_output_frame_clock_enabled() {
             return;
@@ -314,7 +316,9 @@ impl MargoState {
         // state lives on each `OutputClock`, and `take_due_outputs`
         // re-checks it, so a fast output isn't held back by a slow
         // output's pending flip.
-        if let Some(ping) = self.repaint_ping_handle() {
+        if let Some(hook) = self.repaint_hook.clone() {
+            hook(self);
+        } else if let Some(ping) = self.repaint_ping_handle() {
             ping.ping();
         }
     }

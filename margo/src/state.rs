@@ -482,6 +482,11 @@ pub struct MargoState {
     /// ticks, IPC dispatch). Idle = no pings = loop stays asleep instead
     /// of waking 60 Hz from a polling timer.
     repaint_ping: Option<Ping>,
+    /// The backend's repaint body (udev: the repaint-ping source's
+    /// callback), run directly by a firing present timer so a due output
+    /// renders in that wake-up instead of after one more ping round trip.
+    /// `None` on backends without one (winit), which keep the ping.
+    repaint_hook: Option<Rc<dyn Fn(&mut MargoState)>>,
     /// Number of `queue_frame()` calls awaiting their matching
     /// `DrmEvent::VBlank`. Acts as a rate limiter for the redraw
     /// scheduler: while >0, [`request_repaint`] still flags the scene
@@ -809,6 +814,7 @@ impl MargoState {
             should_quit: false,
             repaint_requested: true,
             repaint_ping: None,
+            repaint_hook: None,
             pending_vblanks: 0,
             config_path,
             generations_dir: margo_config::generations::generations_dir(),
