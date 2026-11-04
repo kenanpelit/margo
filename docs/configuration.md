@@ -21,8 +21,7 @@ tagrule = id:7, layout_name:scroller, monitor_name:eDP-1
 
 # Pin Helium to tag 1; float password prompts
 windowrule = tags:1, appid:^Kenp$
-windowrule = isfloating:1, width:640, height:260, \
-             title:^(Authentication Required|Unlock Keyring)$
+windowrule = isfloating:1, width:640, height:260, title:^(Authentication Required|Unlock Keyring)$
 
 # Animations — niri-style
 animation_clock_move = spring     # mid-flight velocity preserved
@@ -225,7 +224,7 @@ windowrule = isfloating:1, width:800, height:560, appid:^org\.keepassxc\.KeePass
 
 # Pin browsers to tag 1, audio apps to tag 8
 windowrule = tags:1,   appid:^firefox$
-windowrule = tags:128, appid:^spotify$
+windowrule = tags:8,   appid:^spotify$     # tags:N is the tag number, not a bitmask
 
 # CSD only for one app, server-side everywhere else (default)
 windowrule = allow_csd:1, appid:^firefox$
@@ -256,17 +255,21 @@ tagrule = id:5, wallpaper:/home/kenan/wall/lake.jpg
 
 ## Layer rules
 
-Match the layer-shell `namespace` string (regex) — used by bars, OSDs, launchers.
+Match the layer-shell namespace with `layer_name:` (regex) — used by bars, OSDs, launchers.
+Options: `layer_name`, `noanim`, `noblur`, `noshadow`, `animation_type_open`, `animation_type_close`.
+A rule is one line; there are no continuation lines.
 
 ```ini
 # Disable open/close animations on the bar — slide-in jitters
-layerrule = noanim:1, namespace:^waybar$
+layerrule = noanim:1, layer_name:^waybar$
 
 # Custom open animation for the launcher
-layerrule = animation_type_open:slide_left,
-            animation_type_close:slide_left,
-            namespace:^rofi$
+layerrule = animation_type_open:slide_left, animation_type_close:slide_left, layer_name:^rofi$
 ```
+
+An option margo doesn't know is reported by `mctl check-config` (W008). A window or
+layer rule whose selector is misspelled (`class:`, `namespace:`) and so has no
+recognised selector is ignored (W009) — it is not applied to every window.
 
 ## Animations
 

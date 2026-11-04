@@ -1054,14 +1054,171 @@ fn parse_touchgesturebind(cfg: &mut Config, val: &str) -> Result<()> {
 }
 
 // ── Rule parsing ─────────────────────────────────────────────────────────────
+//
+// Every option each rule kind accepts, mirrored from the match arms below
+// (`rule_key_tables_match_parser_arms` keeps them in sync). The validator
+// checks rule lines against these, so an option the parser would only log
+// is reported to the user as W008.
+
+/// Options `windowrule` / `windowrule-once` accept.
+pub const WINDOWRULE_KEYS: &[&str] = &[
+    "appid",
+    "app_id",
+    "title",
+    "exclude_appid",
+    "exclude_app_id",
+    "not_appid",
+    "exclude_title",
+    "not_title",
+    "min_width",
+    "min_height",
+    "max_width",
+    "max_height",
+    "open_focused",
+    "block_out_from_screencast",
+    "blockout",
+    "tags",
+    "monitor",
+    "monitor_name",
+    "offsetx",
+    "offset_x",
+    "offsety",
+    "offset_y",
+    "width",
+    "height",
+    "isfloating",
+    "floating",
+    "is_floating",
+    "isfullscreen",
+    "fullscreen",
+    "is_fullscreen",
+    "isfakefullscreen",
+    "fakefullscreen",
+    "is_fake_fullscreen",
+    "scroller_proportion",
+    "scroller_proportion_single",
+    "animation_type_open",
+    "animation_type_close",
+    "layer_animation_type_open",
+    "layer_animation_type_close",
+    "isnoborder",
+    "isnoshadow",
+    "isnoradius",
+    "isnoanimation",
+    "borderpx",
+    "border_width",
+    "isopensilent",
+    "istagsilent",
+    "isnamedscratchpad",
+    "isunglobal",
+    "isglobal",
+    "isoverlay",
+    "is_overlay",
+    "overlay",
+    "allow_shortcuts_inhibit",
+    "ignore_maximize",
+    "ignore_minimize",
+    "isnosizehint",
+    "idle_inhibit_when_focus",
+    "indleinhibit_when_focus",
+    "nofocus",
+    "focus_on_xdg_activate",
+    "nofadein",
+    "nofadeout",
+    "no_force_center",
+    "isterm",
+    "allow_csd",
+    "force_fakemaximize",
+    "force_tiled_state",
+    "force_tearing",
+    "noswallow",
+    "confine_pointer",
+    "noblur",
+    "group",
+    "isgroup",
+    "focused_opacity",
+    "unfocused_opacity",
+];
+
+/// The `windowrule` options that select windows. A rule with none of them
+/// applies to every window.
+pub const WINDOWRULE_MATCHERS: &[&str] = &[
+    "appid",
+    "app_id",
+    "title",
+    "exclude_appid",
+    "exclude_app_id",
+    "not_appid",
+    "exclude_title",
+    "not_title",
+];
+
+/// Options `monitorrule` accepts.
+pub const MONITORRULE_KEYS: &[&str] = &[
+    "name", "make", "model", "serial", "rr", "scale", "x", "y", "width", "height", "refresh",
+    "vrr", "custom",
+];
+
+/// Options `tagrule` accepts.
+pub const TAGRULE_KEYS: &[&str] = &[
+    "id",
+    "layout_name",
+    "monitor_name",
+    "monitor_make",
+    "monitor_model",
+    "monitor_serial",
+    "mfact",
+    "nmaster",
+    "no_render_border",
+    "open_as_floating",
+    "no_hide",
+    "wallpaper",
+];
+
+/// Options `layerrule` accepts.
+pub const LAYERRULE_KEYS: &[&str] = &[
+    "layer_name",
+    "animation_type_open",
+    "animation_type_close",
+    "noblur",
+    "noanim",
+    "noshadow",
+];
+
+/// The `layerrule` options that select layer surfaces.
+pub const LAYERRULE_MATCHERS: &[&str] = &["layer_name"];
+
+/// A rule that names no selector but carried an unknown option almost always
+/// had its selector misspelled (`class:` for `appid:`, `namespace:` for
+/// `layer_name:`). Applying it would hit every window or layer surface, so
+/// the rule is dropped instead. A rule with no selector and no unknown option
+/// is a deliberate catch-all and is kept.
+fn check_rule_selector(kind: &str, has_matcher: bool, unknown: &[String]) -> Result<()> {
+    if has_matcher || unknown.is_empty() {
+        return Ok(());
+    }
+    bail!(
+        "{kind} has no recognised selector (unknown option{} {}) — ignored instead of \
+         applying to everything",
+        if unknown.len() == 1 { "" } else { "s" },
+        unknown
+            .iter()
+            .map(|k| format!("`{k}`"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+}
 
 fn parse_windowrule(cfg: &mut Config, val: &str, once: bool) -> Result<()> {
     let mut rule = WindowRule {
         once,
         ..WindowRule::default()
     };
+    let mut has_matcher = false;
+    let mut unknown = Vec::new();
     for part in split_csv_colon(val) {
         let (k, v) = part;
+        has_matcher |= WINDOWRULE_MATCHERS.contains(&k.as_str());
         match k.as_str() {
             "appid" | "app_id" => rule.id = Some(v),
             "title" => rule.title = Some(v),
@@ -1163,9 +1320,15 @@ fn parse_windowrule(cfg: &mut Config, val: &str, once: bool) -> Result<()> {
             "group" | "isgroup" => rule.group = Some(parse_bool_s(&v)),
             "focused_opacity" => rule.focused_opacity = Some(parse_f32_s(&v)),
             "unfocused_opacity" => rule.unfocused_opacity = Some(parse_f32_s(&v)),
-            other => warn!("unknown windowrule option: {}", other),
+            other => {
+                warn!("unknown windowrule option: {}", other);
+                if !other.is_empty() {
+                    unknown.push(other.to_string());
+                }
+            }
         }
     }
+    check_rule_selector("windowrule", has_matcher, &unknown)?;
     cfg.window_rules.push(rule);
     Ok(())
 }
@@ -1229,7 +1392,10 @@ fn parse_tagrule(cfg: &mut Config, val: &str) -> Result<()> {
 
 fn parse_layerrule(cfg: &mut Config, val: &str) -> Result<()> {
     let mut rule = LayerRule::default();
+    let mut has_matcher = false;
+    let mut unknown = Vec::new();
     for (k, v) in split_csv_colon(val) {
+        has_matcher |= LAYERRULE_MATCHERS.contains(&k.as_str());
         match k.as_str() {
             "layer_name" => rule.layer_name = Some(v),
             "animation_type_open" => rule.animation_type_open = Some(v),
@@ -1237,9 +1403,15 @@ fn parse_layerrule(cfg: &mut Config, val: &str) -> Result<()> {
             "noblur" => rule.no_blur = parse_bool_s(&v),
             "noanim" => rule.no_anim = parse_bool_s(&v),
             "noshadow" => rule.no_shadow = parse_bool_s(&v),
-            other => warn!("unknown layerrule option: {}", other),
+            other => {
+                warn!("unknown layerrule option: {}", other);
+                if !other.is_empty() {
+                    unknown.push(other.to_string());
+                }
+            }
         }
     }
+    check_rule_selector("layerrule", has_matcher, &unknown)?;
     cfg.layer_rules.push(rule);
     Ok(())
 }
@@ -2873,5 +3045,73 @@ mod build_arg_tests {
         assert_eq!(find("spawn").v.as_deref(), Some("foot"));
         assert_eq!(find("view").ui, 1);
         assert_eq!(find("setmfact").f, -0.05);
+    }
+
+    /// A rule whose only selector was misspelled must not widen to every
+    /// window/layer: margo drops it. A rule that never had a selector and
+    /// has no unknown key is a deliberate catch-all and stays.
+    #[test]
+    fn rule_without_a_recognised_matcher_but_an_unknown_key_is_dropped() {
+        let cfg = super::parse_config_str(
+            "windowrule = isfloating:1, class:^pavucontrol$\n\
+             windowrule = opacity:1.0\n\
+             layerrule = noanim:1, namespace:^waybar$\n\
+             windowrule = isfloating:1\n\
+             windowrule = isfloating:1, appid:^a$, bogus:1\n\
+             layerrule = noblur:1\n",
+            None,
+        )
+        .unwrap();
+        assert_eq!(cfg.window_rules.len(), 2, "{:?}", cfg.window_rules);
+        assert!(cfg.window_rules[0].id.is_none());
+        assert_eq!(cfg.window_rules[1].id.as_deref(), Some("^a$"));
+        assert_eq!(cfg.layer_rules.len(), 1);
+        assert!(cfg.layer_rules[0].no_blur);
+    }
+
+    /// Drift guard for the rule-option tables the validator checks against:
+    /// scrape each rule parser's match arms and compare both ways.
+    #[test]
+    fn rule_key_tables_match_parser_arms() {
+        let src = include_str!("parser.rs");
+        let lines: Vec<&str> = src.lines().collect();
+        for (fn_name, table) in [
+            ("fn parse_windowrule", super::WINDOWRULE_KEYS),
+            ("fn parse_monitorrule", super::MONITORRULE_KEYS),
+            ("fn parse_tagrule", super::TAGRULE_KEYS),
+            ("fn parse_layerrule", super::LAYERRULE_KEYS),
+        ] {
+            let start = lines
+                .iter()
+                .position(|l| l.trim_start().starts_with(fn_name))
+                .expect(fn_name);
+            let end = (start..lines.len())
+                .find(|&i| lines[i].trim_start().starts_with("other =>"))
+                .expect("catch-all arm");
+            let mut arms = std::collections::BTreeSet::new();
+            for &l in &lines[start..end] {
+                let t = l.trim_start();
+                if !t.starts_with('"') {
+                    continue;
+                }
+                let pat = t.split("=>").next().unwrap_or(t);
+                let mut rest = pat;
+                while let Some(a) = rest.find('"') {
+                    let after = &rest[a + 1..];
+                    let Some(b) = after.find('"') else { break };
+                    arms.insert(after[..b].to_string());
+                    rest = &after[b + 1..];
+                }
+            }
+            let table: std::collections::BTreeSet<String> =
+                table.iter().map(|s| s.to_string()).collect();
+            assert_eq!(arms, table, "{fn_name}: match arms and key table differ");
+        }
+        for m in super::WINDOWRULE_MATCHERS {
+            assert!(super::WINDOWRULE_KEYS.contains(m), "{m}");
+        }
+        for m in super::LAYERRULE_MATCHERS {
+            assert!(super::LAYERRULE_KEYS.contains(m), "{m}");
+        }
     }
 }

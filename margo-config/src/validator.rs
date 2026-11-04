@@ -39,6 +39,13 @@
 //!     flagged, not the live one. Suppressed when BOTH the earlier and
 //!     later bind use the `c` suffix (`bindc`) — an explicit "I know
 //!     these share a combo" opt-in, e.g. submap/mode disambiguation.
+//!   * W008 — an option a `windowrule` / `layerrule` / `tagrule` /
+//!     `monitorrule` doesn't know (the parser only logs it), with a
+//!     "did you mean".
+//!   * W009 — a window/layer rule with no recognised selector that also
+//!     carries an unknown option: almost always a misspelled selector
+//!     (`class:`, `namespace:`). margo drops such a rule instead of
+//!     applying it to every window or layer surface.
 //!
 //! New rules slot into `validate_text` as more conditions show up.
 
@@ -242,6 +249,12 @@ fn validate_text(
                 message: msg.to_string(),
                 line_text: raw.to_string(),
             });
+        }
+
+        // W008 / W009: rule options the parser doesn't know.
+        if let Some(table) = rule_table(key) {
+            let val_start = eq_pos + 1 + val_trim_offset + 1;
+            check_rule_options(path, lineno, raw, val_start, key, &val, &table, report);
         }
 
         // `bind` arity: needs at least MODS,KEY,ACTION. A 1- or 2-field
@@ -468,6 +481,123 @@ fn validate_text(
         }
     }
     Ok(())
+}
+
+/// The option table (and selector subset) for a rule key.
+struct RuleTable {
+    kind: &'static str,
+    keys: &'static [&'static str],
+    matchers: &'static [&'static str],
+}
+
+fn rule_table(key: &str) -> Option<RuleTable> {
+    use crate::parser::{
+        LAYERRULE_KEYS, LAYERRULE_MATCHERS, MONITORRULE_KEYS, TAGRULE_KEYS, WINDOWRULE_KEYS,
+        WINDOWRULE_MATCHERS,
+    };
+    let (kind, keys, matchers): (_, &'static [&'static str], &'static [&'static str]) = match key {
+        "windowrule" | "windowrule-once" => ("windowrule", WINDOWRULE_KEYS, WINDOWRULE_MATCHERS),
+        "layerrule" => ("layerrule", LAYERRULE_KEYS, LAYERRULE_MATCHERS),
+        "tagrule" => ("tagrule", TAGRULE_KEYS, &[]),
+        "monitorrule" => ("monitorrule", MONITORRULE_KEYS, &[]),
+        _ => return None,
+    };
+    Some(RuleTable {
+        kind,
+        keys,
+        matchers,
+    })
+}
+
+/// Spellings from other compositors (and margo's own docs, once) that
+/// edit distance can't map to the margo option.
+const RULE_KEY_HINTS: &[(&str, &str, &str)] = &[
+    ("windowrule", "class", "appid"),
+    ("windowrule", "initialclass", "appid"),
+    ("windowrule", "initial_class", "appid"),
+    ("windowrule", "initialtitle", "title"),
+    ("windowrule", "initial_title", "title"),
+    (
+        "windowrule",
+        "opacity",
+        "focused_opacity` / `unfocused_opacity",
+    ),
+    ("windowrule", "workspace", "tags"),
+    ("windowrule", "float", "isfloating"),
+    ("layerrule", "namespace", "layer_name"),
+    ("layerrule", "layer", "layer_name"),
+];
+
+/// W008 for every option a rule doesn't know; W009 when the rule also has
+/// no selector — margo drops such a rule rather than apply it everywhere
+/// (see `parser::check_rule_selector`).
+#[allow(clippy::too_many_arguments)]
+fn check_rule_options(
+    path: &Path,
+    lineno: usize,
+    raw: &str,
+    val_start: usize,
+    key: &str,
+    val: &str,
+    table: &RuleTable,
+    report: &mut DiagnosticReport,
+) {
+    let mut has_matcher = false;
+    let mut unknown = Vec::new();
+    let mut off = 0usize;
+    for part in val.split(',') {
+        let k_raw = part.split(':').next().unwrap_or("");
+        let k = k_raw.trim();
+        let lead = k_raw.len() - k_raw.trim_start().len();
+        let col = val_start + off + lead;
+        off += part.len() + 1;
+        if k.is_empty() {
+            // An empty slot is E001's business.
+            continue;
+        }
+        if table.matchers.contains(&k) {
+            has_matcher = true;
+        }
+        if table.keys.contains(&k) {
+            continue;
+        }
+        let hint = RULE_KEY_HINTS
+            .iter()
+            .find(|(kind, wrong, _)| *kind == table.kind && wrong.eq_ignore_ascii_case(k))
+            .map(|(_, _, right)| *right)
+            .or_else(|| closest(&k.to_ascii_lowercase(), table.keys.iter().copied()));
+        let hint = match hint {
+            Some(s) => format!(" — did you mean `{s}`?"),
+            None => String::new(),
+        };
+        report.push(ConfigDiagnostic {
+            path: path.to_path_buf(),
+            line: lineno,
+            col,
+            end_col: col + k.len(),
+            severity: Severity::Warning,
+            code: "W008".into(),
+            message: format!("unknown {} option `{k}`{hint} (ignored)", table.kind),
+            line_text: raw.to_string(),
+        });
+        unknown.push(k);
+    }
+    if !table.matchers.is_empty() && !has_matcher && !unknown.is_empty() {
+        report.push(ConfigDiagnostic {
+            path: path.to_path_buf(),
+            line: lineno,
+            col: val_start,
+            end_col: val_start + val.len().max(1),
+            severity: Severity::Warning,
+            code: "W009".into(),
+            message: format!(
+                "`{key}` has no recognised selector ({}) — margo ignores this rule \
+                 instead of applying it to everything",
+                table.matchers.join(", ")
+            ),
+            line_text: raw.to_string(),
+        });
+    }
 }
 
 /// The first monitorrule field combination the compositor can't honour.
@@ -1457,5 +1587,88 @@ mod tests {
             "{:?}",
             r.diagnostics
         );
+    }
+
+    // ── Rule options (W008 / W009) ───────────────────────────────────────
+
+    fn codes(r: &DiagnosticReport) -> Vec<&str> {
+        r.diagnostics.iter().map(|d| d.code.as_str()).collect()
+    }
+
+    #[test]
+    fn unknown_windowrule_matcher_warns_with_hint_and_no_matcher() {
+        let r = validate_str("windowrule = isfloating:1, class:^pavucontrol$\n");
+        let w = r
+            .diagnostics
+            .iter()
+            .find(|d| d.code == "W008")
+            .expect("W008");
+        assert!(w.message.contains("`class`"), "{}", w.message);
+        assert!(w.message.contains("appid"), "hint missing: {}", w.message);
+        // Caret on the bad key, not the whole line.
+        assert_eq!(&w.line_text[w.col - 1..w.end_col - 1], "class");
+        assert!(codes(&r).contains(&"W009"), "{:?}", codes(&r));
+        assert!(!r.has_errors());
+    }
+
+    #[test]
+    fn layerrule_namespace_suggests_layer_name() {
+        let r = validate_str("layerrule = noanim:1, namespace:^waybar$\n");
+        let w = r
+            .diagnostics
+            .iter()
+            .find(|d| d.code == "W008")
+            .expect("W008");
+        assert!(w.message.contains("layer_name"), "{}", w.message);
+        assert!(codes(&r).contains(&"W009"), "{:?}", codes(&r));
+    }
+
+    #[test]
+    fn owners_opacity_rule_is_reported() {
+        let r = validate_str("windowrule = opacity:1.0\n");
+        let w = r
+            .diagnostics
+            .iter()
+            .find(|d| d.code == "W008")
+            .expect("W008");
+        assert!(w.message.contains("focused_opacity"), "{}", w.message);
+        assert!(codes(&r).contains(&"W009"), "{:?}", codes(&r));
+    }
+
+    #[test]
+    fn matcherless_rule_without_unknown_keys_is_a_deliberate_catch_all() {
+        let r = validate_str("windowrule = isfloating:1\nlayerrule = noblur:1\n");
+        assert!(r.diagnostics.is_empty(), "{:?}", r.diagnostics);
+    }
+
+    #[test]
+    fn every_rule_key_in_the_parser_tables_is_accepted() {
+        use crate::parser::{LAYERRULE_KEYS, MONITORRULE_KEYS, TAGRULE_KEYS, WINDOWRULE_KEYS};
+        for (rule, keys, base) in [
+            ("windowrule", WINDOWRULE_KEYS, "appid:^x$"),
+            ("windowrule-once", WINDOWRULE_KEYS, "appid:^x$"),
+            ("layerrule", LAYERRULE_KEYS, "layer_name:^x$"),
+            ("tagrule", TAGRULE_KEYS, "id:1"),
+            ("monitorrule", MONITORRULE_KEYS, "name:DP-1"),
+        ] {
+            for k in keys {
+                let r = validate_str(&format!("{rule} = {base}, {k}:1\n"));
+                assert!(
+                    !r.diagnostics
+                        .iter()
+                        .any(|d| d.code == "W008" || d.code == "W009"),
+                    "{rule} `{k}` flagged: {:?}",
+                    r.diagnostics
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn unknown_tagrule_and_monitorrule_options_warn() {
+        let r = validate_str("tagrule = id:1, layout:tile\nmonitorrule = name:DP-1, scal:2\n");
+        let w008: Vec<_> = r.diagnostics.iter().filter(|d| d.code == "W008").collect();
+        assert_eq!(w008.len(), 2, "{:?}", r.diagnostics);
+        assert!(w008[1].message.contains("scale"), "{}", w008[1].message);
     }
 }

@@ -248,8 +248,8 @@ windowrules targeting `tags:N` inherit that monitor.
 Match the layer-shell `namespace` (regex) — bars, OSDs, launchers.
 
 ```ini
-layerrule = noanim:1, namespace:^waybar$
-layerrule = animation_type_open:slide_left, animation_type_close:slide_left, namespace:^rofi$
+layerrule = noanim:1, layer_name:^waybar$
+layerrule = animation_type_open:slide_left, animation_type_close:slide_left, layer_name:^rofi$
 ```
 
 ## See also
