@@ -132,9 +132,11 @@ struct Preset {
 }
 
 const PRESETS: &[Preset] = &[
+    // The owner's tuned default; its values are unchanged so an applied
+    // config keeps matching (and highlighting) this card.
     Preset {
-        name: "Smooth",
-        desc: "Balanced, niri-flavoured motion — a spring glide for moves, gentle zoom-in, snappy fade-out. The refined default.",
+        name: "Silk",
+        desc: "Calm, fluid default, close to niri: moves ride a soft spring, windows zoom in gently and fade out quickly. No overshoot.",
         keys: &[
             ("animations", "1"),
             ("layer_animations", "1"),
@@ -144,15 +146,14 @@ const PRESETS: &[Preset] = &[
             ("layer_animation_type_close", "slide_out"),
             ("animation_fade_in", "1"),
             ("animation_fade_out", "1"),
-            ("zoom_initial_ratio", "0.94"),
-            ("zoom_end_ratio", "0.94"),
-            ("fadein_begin_opacity", "0.72"),
-            ("animation_duration_move", "220"),
-            ("animation_duration_open", "180"),
-            // Close a touch faster than open — dismissing should feel instant.
-            ("animation_duration_close", "130"),
-            ("animation_duration_tag", "280"),
-            ("animation_duration_focus", "120"),
+            ("zoom_initial_ratio", "0.92"),
+            ("zoom_end_ratio", "0.92"),
+            ("fadein_begin_opacity", "0.60"),
+            ("animation_duration_move", "190"),
+            ("animation_duration_open", "200"),
+            ("animation_duration_close", "160"),
+            ("animation_duration_tag", "220"),
+            ("animation_duration_focus", "110"),
             ("animation_clock_move", "spring"),
             ("animation_clock_open", "bezier"),
             ("animation_clock_close", "bezier"),
@@ -163,12 +164,16 @@ const PRESETS: &[Preset] = &[
             ("animation_curve_open", "0.16, 1.00, 0.30, 1.00"),
             ("animation_curve_close", "0.25, 0.46, 0.45, 0.94"),
             ("animation_curve_tag", "0.16, 1.00, 0.30, 1.00"),
-            ("animation_curve_focus", "0.33, 1.00, 0.68, 1.00"),
+            ("animation_curve_focus", "0.25, 1.00, 0.50, 1.00"),
+            ("animation_spring_stiffness", "520.0"),
+            ("animation_spring_damping_ratio", "1.0"),
+            ("animation_spring_mass", "1.0"),
         ],
     },
+    // GNOME / Windows 11 speed: every transition well under 200 ms.
     Preset {
-        name: "Snappy",
-        desc: "Fast and sharp — short durations with a crisp ease-out. Keeps the desktop feeling instant without going fully static.",
+        name: "Swift",
+        desc: "Quick and crisp, like GNOME or Windows 11: short ease-outs and a stiff spring, so the desktop feels instant but never jumps.",
         keys: &[
             ("animations", "1"),
             ("layer_animations", "1"),
@@ -178,13 +183,13 @@ const PRESETS: &[Preset] = &[
             ("layer_animation_type_close", "slide_out"),
             ("animation_fade_in", "1"),
             ("animation_fade_out", "1"),
-            ("zoom_initial_ratio", "0.96"),
-            ("zoom_end_ratio", "0.96"),
-            ("fadein_begin_opacity", "0.80"),
-            ("animation_duration_move", "140"),
-            ("animation_duration_open", "110"),
-            ("animation_duration_close", "100"),
-            ("animation_duration_tag", "160"),
+            ("zoom_initial_ratio", "0.95"),
+            ("zoom_end_ratio", "0.95"),
+            ("fadein_begin_opacity", "0.75"),
+            ("animation_duration_move", "150"),
+            ("animation_duration_open", "150"),
+            ("animation_duration_close", "110"),
+            ("animation_duration_tag", "170"),
             ("animation_duration_focus", "80"),
             ("animation_clock_move", "spring"),
             ("animation_clock_open", "bezier"),
@@ -192,16 +197,22 @@ const PRESETS: &[Preset] = &[
             ("animation_clock_tag", "bezier"),
             ("animation_clock_focus", "bezier"),
             ("animation_clock_layer", "bezier"),
-            ("animation_curve_move", "0.22, 1.00, 0.36, 1.00"),
-            ("animation_curve_open", "0.22, 1.00, 0.36, 1.00"),
+            ("animation_curve_move", "0.20, 1.00, 0.30, 1.00"),
+            ("animation_curve_open", "0.20, 1.00, 0.30, 1.00"),
             ("animation_curve_close", "0.30, 0.00, 0.50, 1.00"),
-            ("animation_curve_tag", "0.22, 1.00, 0.36, 1.00"),
+            ("animation_curve_tag", "0.20, 1.00, 0.30, 1.00"),
             ("animation_curve_focus", "0.30, 1.00, 0.50, 1.00"),
+            ("animation_spring_stiffness", "760.0"),
+            ("animation_spring_damping_ratio", "1.0"),
+            ("animation_spring_mass", "1.0"),
         ],
     },
+    // macOS: windows scale up from noticeably smaller and fade in, close by
+    // accelerating away, and Spaces-style tag switches ride a critically
+    // damped spring (~0.35 s response) with no overshoot.
     Preset {
-        name: "Bouncy",
-        desc: "Playful spring physics with a little overshoot — windows pop in and kick out. Springs everywhere, pronounced zoom.",
+        name: "Aqua",
+        desc: "macOS-like: windows grow in from smaller with a fade, shrink away when closed, and workspaces slide on a soft, non-bouncing spring.",
         keys: &[
             ("animations", "1"),
             ("layer_animations", "1"),
@@ -211,30 +222,76 @@ const PRESETS: &[Preset] = &[
             ("layer_animation_type_close", "slide_out"),
             ("animation_fade_in", "1"),
             ("animation_fade_out", "1"),
-            ("zoom_initial_ratio", "0.85"),
-            ("zoom_end_ratio", "0.85"),
-            ("fadein_begin_opacity", "0.60"),
-            ("animation_duration_move", "300"),
-            ("animation_duration_open", "260"),
-            ("animation_duration_close", "240"),
-            ("animation_duration_tag", "340"),
-            ("animation_duration_focus", "150"),
+            ("zoom_initial_ratio", "0.86"),
+            ("zoom_end_ratio", "0.86"),
+            ("fadein_begin_opacity", "0.20"),
+            ("animation_duration_move", "260"),
+            ("animation_duration_open", "250"),
+            ("animation_duration_close", "190"),
+            ("animation_duration_tag", "380"),
+            ("animation_duration_focus", "140"),
             ("animation_clock_move", "spring"),
-            ("animation_clock_open", "spring"),
-            ("animation_clock_close", "spring"),
+            ("animation_clock_open", "bezier"),
+            ("animation_clock_close", "bezier"),
             ("animation_clock_tag", "spring"),
-            ("animation_clock_focus", "spring"),
-            ("animation_clock_layer", "spring"),
+            ("animation_clock_focus", "bezier"),
+            ("animation_clock_layer", "bezier"),
+            ("animation_curve_move", "0.25, 0.10, 0.25, 1.00"),
+            ("animation_curve_open", "0.22, 1.00, 0.36, 1.00"),
+            ("animation_curve_close", "0.32, 0.00, 0.67, 0.00"),
+            ("animation_curve_tag", "0.25, 0.10, 0.25, 1.00"),
+            ("animation_curve_focus", "0.25, 0.10, 0.25, 1.00"),
+            ("animation_spring_stiffness", "320.0"),
+            ("animation_spring_damping_ratio", "1.0"),
+            ("animation_spring_mass", "1.0"),
+        ],
+    },
+    // Compiz's elastic feel. Open / close / tag / layers overshoot through
+    // bezier curves (bezier output is not clamped, so the pop is real); moves
+    // and resizes run the continuous spring under-damped so windows settle
+    // with a visible wobble. Compiz's mesh effects (wobbly deformation,
+    // magic lamp) are not something margo renders.
+    Preset {
+        name: "Wobbly",
+        desc: "Compiz-like elastic motion: windows pop in past full size and settle, close with a little wind-up, and overshoot when moved or resized.",
+        keys: &[
+            ("animations", "1"),
+            ("layer_animations", "1"),
+            ("animation_type_open", "zoom"),
+            ("animation_type_close", "zoom"),
+            ("layer_animation_type_open", "slide_in"),
+            ("layer_animation_type_close", "slide_out"),
+            ("animation_fade_in", "1"),
+            ("animation_fade_out", "1"),
+            ("zoom_initial_ratio", "0.70"),
+            ("zoom_end_ratio", "0.70"),
+            ("fadein_begin_opacity", "0.40"),
+            ("animation_duration_move", "420"),
+            ("animation_duration_open", "380"),
+            ("animation_duration_close", "260"),
+            ("animation_duration_tag", "400"),
+            ("animation_duration_focus", "160"),
+            ("animation_clock_move", "spring"),
+            ("animation_clock_open", "bezier"),
+            ("animation_clock_close", "bezier"),
+            ("animation_clock_tag", "bezier"),
+            ("animation_clock_focus", "bezier"),
+            ("animation_clock_layer", "bezier"),
             ("animation_curve_move", "0.34, 1.56, 0.64, 1.00"),
             ("animation_curve_open", "0.34, 1.56, 0.64, 1.00"),
             ("animation_curve_close", "0.36, 0.00, 0.66, -0.56"),
-            ("animation_curve_tag", "0.34, 1.56, 0.64, 1.00"),
-            ("animation_curve_focus", "0.34, 1.56, 0.64, 1.00"),
+            ("animation_curve_tag", "0.34, 1.40, 0.64, 1.00"),
+            ("animation_curve_focus", "0.25, 1.00, 0.50, 1.00"),
+            ("animation_spring_stiffness", "300.0"),
+            ("animation_spring_damping_ratio", "0.55"),
+            ("animation_spring_mass", "1.0"),
         ],
     },
+    // Slow and deliberate: pure cross-fades and long symmetric ease-in-outs.
+    // Moves keep the spring (mid-flight retargeting) but soft and unhurried.
     Preset {
         name: "Cinematic",
-        desc: "Slow and elegant — long ease-in-out cross-fades. Best on a desktop where you want motion to feel deliberate.",
+        desc: "Slow and elegant: windows cross-fade in and out, workspaces glide with long ease-in-out curves. For when motion should feel deliberate.",
         keys: &[
             ("animations", "1"),
             ("layer_animations", "1"),
@@ -244,15 +301,15 @@ const PRESETS: &[Preset] = &[
             ("layer_animation_type_close", "slide_out"),
             ("animation_fade_in", "1"),
             ("animation_fade_out", "1"),
-            ("zoom_initial_ratio", "0.92"),
-            ("zoom_end_ratio", "0.92"),
+            ("zoom_initial_ratio", "0.96"),
+            ("zoom_end_ratio", "0.96"),
             ("fadein_begin_opacity", "0.00"),
             ("animation_duration_move", "420"),
             ("animation_duration_open", "380"),
-            ("animation_duration_close", "340"),
+            ("animation_duration_close", "320"),
             ("animation_duration_tag", "520"),
             ("animation_duration_focus", "240"),
-            ("animation_clock_move", "bezier"),
+            ("animation_clock_move", "spring"),
             ("animation_clock_open", "bezier"),
             ("animation_clock_close", "bezier"),
             ("animation_clock_tag", "bezier"),
@@ -263,182 +320,8 @@ const PRESETS: &[Preset] = &[
             ("animation_curve_close", "0.65, 0.00, 0.35, 1.00"),
             ("animation_curve_tag", "0.65, 0.00, 0.35, 1.00"),
             ("animation_curve_focus", "0.65, 0.00, 0.35, 1.00"),
-        ],
-    },
-    Preset {
-        name: "Glide",
-        desc: "Windows slide in and out from the right; workspaces and bars glide. Smooth, directional, low-zoom.",
-        keys: &[
-            ("animations", "1"),
-            ("layer_animations", "1"),
-            ("animation_type_open", "slide_in"),
-            ("animation_type_close", "slide_out"),
-            ("layer_animation_type_open", "slide_in"),
-            ("layer_animation_type_close", "slide_out"),
-            ("animation_fade_in", "1"),
-            ("animation_fade_out", "1"),
-            ("zoom_initial_ratio", "0.98"),
-            ("zoom_end_ratio", "0.98"),
-            ("fadein_begin_opacity", "0.70"),
-            ("animation_duration_move", "240"),
-            ("animation_duration_open", "220"),
-            ("animation_duration_close", "200"),
-            ("animation_duration_tag", "300"),
-            ("animation_duration_focus", "120"),
-            ("animation_clock_move", "spring"),
-            ("animation_clock_open", "bezier"),
-            ("animation_clock_close", "bezier"),
-            ("animation_clock_tag", "bezier"),
-            ("animation_clock_focus", "bezier"),
-            ("animation_clock_layer", "bezier"),
-            ("animation_curve_move", "0.16, 1.00, 0.30, 1.00"),
-            ("animation_curve_open", "0.16, 1.00, 0.30, 1.00"),
-            ("animation_curve_close", "0.30, 0.00, 0.40, 1.00"),
-            ("animation_curve_tag", "0.16, 1.00, 0.30, 1.00"),
-            ("animation_curve_focus", "0.33, 1.00, 0.68, 1.00"),
-        ],
-    },
-    Preset {
-        name: "Silk",
-        desc: "Fluid, silky motion — a soft spring glide with a gentle ease-out landing. The calm, smooth default.",
-        keys: &[
-            ("animations", "1"),
-            ("layer_animations", "1"),
-            ("animation_type_open", "zoom"),
-            ("animation_type_close", "fade"),
-            ("layer_animation_type_open", "slide_in"),
-            ("layer_animation_type_close", "slide_out"),
-            ("animation_fade_in", "1"),
-            ("animation_fade_out", "1"),
-            ("zoom_initial_ratio", "0.92"),
-            ("zoom_end_ratio", "0.92"),
-            ("fadein_begin_opacity", "0.60"),
-            ("animation_duration_move", "190"),
-            ("animation_duration_open", "200"),
-            ("animation_duration_close", "160"),
-            ("animation_duration_tag", "220"),
-            ("animation_duration_focus", "110"),
-            ("animation_clock_move", "spring"),
-            ("animation_clock_open", "bezier"),
-            ("animation_clock_close", "bezier"),
-            ("animation_clock_tag", "bezier"),
-            ("animation_clock_focus", "bezier"),
-            ("animation_clock_layer", "bezier"),
-            ("animation_curve_move", "0.16, 1.00, 0.30, 1.00"),
-            ("animation_curve_open", "0.16, 1.00, 0.30, 1.00"),
-            ("animation_curve_close", "0.25, 0.46, 0.45, 0.94"),
-            ("animation_curve_tag", "0.16, 1.00, 0.30, 1.00"),
-            ("animation_curve_focus", "0.25, 1.00, 0.50, 1.00"),
-            ("animation_spring_stiffness", "520.0"),
+            ("animation_spring_stiffness", "180.0"),
             ("animation_spring_damping_ratio", "1.0"),
-            ("animation_spring_mass", "1.0"),
-        ],
-    },
-    Preset {
-        name: "Swift",
-        desc: "The silky feel, tightened — a stiffer spring and shorter durations. Pick this if the smooth glide feels a touch laggy.",
-        keys: &[
-            ("animations", "1"),
-            ("layer_animations", "1"),
-            ("animation_type_open", "zoom"),
-            ("animation_type_close", "fade"),
-            ("layer_animation_type_open", "slide_in"),
-            ("layer_animation_type_close", "slide_out"),
-            ("animation_fade_in", "1"),
-            ("animation_fade_out", "1"),
-            ("zoom_initial_ratio", "0.92"),
-            ("zoom_end_ratio", "0.92"),
-            ("fadein_begin_opacity", "0.60"),
-            ("animation_duration_move", "165"),
-            ("animation_duration_open", "175"),
-            ("animation_duration_close", "135"),
-            ("animation_duration_tag", "195"),
-            ("animation_duration_focus", "90"),
-            ("animation_clock_move", "spring"),
-            ("animation_clock_open", "bezier"),
-            ("animation_clock_close", "bezier"),
-            ("animation_clock_tag", "bezier"),
-            ("animation_clock_focus", "bezier"),
-            ("animation_clock_layer", "bezier"),
-            ("animation_curve_move", "0.16, 1.00, 0.30, 1.00"),
-            ("animation_curve_open", "0.16, 1.00, 0.30, 1.00"),
-            ("animation_curve_close", "0.25, 0.46, 0.45, 0.94"),
-            ("animation_curve_tag", "0.16, 1.00, 0.30, 1.00"),
-            ("animation_curve_focus", "0.25, 1.00, 0.50, 1.00"),
-            ("animation_spring_stiffness", "650.0"),
-            ("animation_spring_damping_ratio", "1.0"),
-            ("animation_spring_mass", "1.0"),
-        ],
-    },
-    Preset {
-        name: "Satin",
-        desc: "An even softer spring — the most flowing, liquid glide. Pick this if the smooth glide doesn't feel fluid enough.",
-        keys: &[
-            ("animations", "1"),
-            ("layer_animations", "1"),
-            ("animation_type_open", "zoom"),
-            ("animation_type_close", "fade"),
-            ("layer_animation_type_open", "slide_in"),
-            ("layer_animation_type_close", "slide_out"),
-            ("animation_fade_in", "1"),
-            ("animation_fade_out", "1"),
-            ("zoom_initial_ratio", "0.92"),
-            ("zoom_end_ratio", "0.92"),
-            ("fadein_begin_opacity", "0.60"),
-            ("animation_duration_move", "190"),
-            ("animation_duration_open", "200"),
-            ("animation_duration_close", "160"),
-            ("animation_duration_tag", "220"),
-            ("animation_duration_focus", "110"),
-            ("animation_clock_move", "spring"),
-            ("animation_clock_open", "bezier"),
-            ("animation_clock_close", "bezier"),
-            ("animation_clock_tag", "bezier"),
-            ("animation_clock_focus", "bezier"),
-            ("animation_clock_layer", "bezier"),
-            ("animation_curve_move", "0.16, 1.00, 0.30, 1.00"),
-            ("animation_curve_open", "0.16, 1.00, 0.30, 1.00"),
-            ("animation_curve_close", "0.25, 0.46, 0.45, 0.94"),
-            ("animation_curve_tag", "0.16, 1.00, 0.30, 1.00"),
-            ("animation_curve_focus", "0.25, 1.00, 0.50, 1.00"),
-            ("animation_spring_stiffness", "440.0"),
-            ("animation_spring_damping_ratio", "1.0"),
-            ("animation_spring_mass", "1.0"),
-        ],
-    },
-    Preset {
-        name: "Breeze",
-        desc: "A whisper of overshoot — the spring settles with a subtle organic kick. Aliveness without the wobble.",
-        keys: &[
-            ("animations", "1"),
-            ("layer_animations", "1"),
-            ("animation_type_open", "zoom"),
-            ("animation_type_close", "fade"),
-            ("layer_animation_type_open", "slide_in"),
-            ("layer_animation_type_close", "slide_out"),
-            ("animation_fade_in", "1"),
-            ("animation_fade_out", "1"),
-            ("zoom_initial_ratio", "0.92"),
-            ("zoom_end_ratio", "0.92"),
-            ("fadein_begin_opacity", "0.60"),
-            ("animation_duration_move", "190"),
-            ("animation_duration_open", "200"),
-            ("animation_duration_close", "160"),
-            ("animation_duration_tag", "220"),
-            ("animation_duration_focus", "110"),
-            ("animation_clock_move", "spring"),
-            ("animation_clock_open", "bezier"),
-            ("animation_clock_close", "bezier"),
-            ("animation_clock_tag", "bezier"),
-            ("animation_clock_focus", "bezier"),
-            ("animation_clock_layer", "bezier"),
-            ("animation_curve_move", "0.16, 1.00, 0.30, 1.00"),
-            ("animation_curve_open", "0.16, 1.00, 0.30, 1.00"),
-            ("animation_curve_close", "0.25, 0.46, 0.45, 0.94"),
-            ("animation_curve_tag", "0.16, 1.00, 0.30, 1.00"),
-            ("animation_curve_focus", "0.25, 1.00, 0.50, 1.00"),
-            ("animation_spring_stiffness", "520.0"),
-            ("animation_spring_damping_ratio", "0.9"),
             ("animation_spring_mass", "1.0"),
         ],
     },
@@ -786,4 +669,52 @@ fn preset_card(p: &Preset) -> gtk::Button {
         .css_classes(vec!["ok-button-surface", "anim-preset-card"])
         .hexpand(true)
         .build()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every preset writes the same keys, so applying one never leaves a
+    /// value from the previous preset behind.
+    #[test]
+    fn every_preset_writes_the_same_keys() {
+        let keys = |p: &Preset| {
+            let mut k: Vec<&str> = p.keys.iter().map(|(k, _)| *k).collect();
+            k.sort_unstable();
+            k
+        };
+        let first = keys(&PRESETS[0]);
+        for p in PRESETS {
+            assert_eq!(keys(p), first, "{} differs", p.name);
+        }
+    }
+
+    /// Five distinct presets, so the active-card detection is unambiguous.
+    #[test]
+    fn presets_are_five_and_distinct() {
+        assert_eq!(PRESETS.len(), 5);
+        for (i, a) in PRESETS.iter().enumerate() {
+            for b in &PRESETS[i + 1..] {
+                assert_ne!(a.name, b.name);
+                let same = a.keys.iter().all(|(k, v)| {
+                    b.keys
+                        .iter()
+                        .any(|(bk, bv)| bk == k && norm_val(bv) == norm_val(v))
+                });
+                assert!(!same, "{} and {} are identical", a.name, b.name);
+            }
+        }
+    }
+
+    /// Every value is one margo's parser accepts.
+    #[test]
+    fn preset_values_parse() {
+        for p in PRESETS {
+            let body: String = p.keys.iter().map(|(k, v)| format!("{k} = {v}\n")).collect();
+            let cfg = margo_config::parse_config_str(&body, None).unwrap();
+            assert!(cfg.animations, "{}", p.name);
+            assert!(cfg.animation_spring_damping_ratio > 0.0, "{}", p.name);
+        }
+    }
 }
