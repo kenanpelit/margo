@@ -18,6 +18,15 @@
 //!
 //! Activation spawns `$TERMINAL -e ssh <name>` (falls back to
 //! kitty when `$TERMINAL` is unset).
+//!
+//! ## Fallback: plain `~/.ssh/config`
+//!
+//! Without assh (no `assh.yml`, or one that declares no connectable
+//! host) the provider lists the `Host` aliases of `~/.ssh/config`
+//! instead, following `Include` lines. Wildcard / negated patterns
+//! (`Host *`, `Host !foo`) and `Match` blocks are skipped; every literal
+//! alias on a multi-alias `Host` line becomes its own row. Aliases
+//! without a `HostName` are kept — ssh resolves the alias itself.
 
 use crate::{item::LauncherItem, notify::toast, provider::Provider};
 use mshell_process::SpawnReaped;
@@ -67,6 +76,8 @@ struct HostEntry {
 
 pub struct SshProvider {
     config_path: PathBuf,
+    /// OpenSSH client config read when assh yields no hosts.
+    ssh_config_path: PathBuf,
     hosts: RefCell<Vec<Host>>,
     terminal: String,
 }
@@ -81,6 +92,15 @@ impl SshProvider {
     }
 
     pub fn with_path(path: PathBuf) -> Self {
+        let ssh_config = path
+            .parent()
+            .map(|d| d.join("config"))
+            .unwrap_or_else(|| PathBuf::from("/nonexistent/config"));
+        Self::with_paths(path, ssh_config)
+    }
+
+    /// assh YAML path plus the OpenSSH config used as fallback.
+    pub fn with_paths(path: PathBuf, ssh_config_path: PathBuf) -> Self {
         let terminal = std::env::var("TERMINAL")
             .ok()
             .or_else(|| {
@@ -92,6 +112,7 @@ impl SshProvider {
             .unwrap_or_else(|| "kitty".into());
         let me = Self {
             config_path: path,
+            ssh_config_path,
             hosts: RefCell::new(Vec::new()),
             terminal,
         };
@@ -104,7 +125,11 @@ impl SshProvider {
             .ok()
             .and_then(|src| parse_assh(&src).ok())
             .unwrap_or_default();
-        *self.hosts.borrow_mut() = hosts;
+        if hosts.is_empty() {
+            *self.hosts.borrow_mut() = load_ssh_config(&self.ssh_config_path);
+        } else {
+            *self.hosts.borrow_mut() = hosts;
+        }
     }
 }
 
@@ -112,6 +137,165 @@ impl Default for SshProvider {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Read an OpenSSH client config (and its `Include`s) into hosts.
+fn load_ssh_config(path: &std::path::Path) -> Vec<Host> {
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let base = path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_default();
+    collect_ssh_config(path, &base, &mut out, &mut seen, 0);
+    let mut names = std::collections::HashSet::new();
+    out.retain(|h| names.insert(h.name.clone()));
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
+}
+
+fn collect_ssh_config(
+    path: &std::path::Path,
+    base: &std::path::Path,
+    out: &mut Vec<Host>,
+    seen: &mut std::collections::HashSet<PathBuf>,
+    depth: usize,
+) {
+    // ssh itself caps Include recursion at 16; cycles are cut by `seen`.
+    if depth > 16 || !seen.insert(path.to_path_buf()) {
+        return;
+    }
+    let Ok(src) = std::fs::read_to_string(path) else {
+        return;
+    };
+    let parsed = parse_ssh_config(&src);
+    out.extend(parsed.hosts);
+    for pattern in parsed.includes {
+        for file in expand_include(&pattern, base) {
+            collect_ssh_config(&file, base, out, seen, depth + 1);
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct SshConfig {
+    hosts: Vec<Host>,
+    includes: Vec<String>,
+}
+
+/// Split a config line into lowercase keyword + value (`Key value`,
+/// `Key=value`, `Key = value`).
+fn split_kv(line: &str) -> Option<(String, &str)> {
+    let idx = line.find(|c: char| c.is_whitespace() || c == '=')?;
+    let (key, rest) = line.split_at(idx);
+    let value = rest
+        .trim_start_matches(|c: char| c.is_whitespace() || c == '=')
+        .trim();
+    (!key.is_empty()).then(|| (key.to_ascii_lowercase(), value))
+}
+
+/// Parse one OpenSSH config file. Keys inside a `Host` block apply to
+/// every literal alias of that block; `Match` ends the block.
+fn parse_ssh_config(src: &str) -> SshConfig {
+    let mut cfg = SshConfig::default();
+    // Indices into cfg.hosts of the current block's aliases.
+    let mut current: Vec<usize> = Vec::new();
+    for line in src.lines() {
+        let t = line.trim();
+        if t.is_empty() || t.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = split_kv(t) else {
+            continue;
+        };
+        match key.as_str() {
+            "host" => {
+                current.clear();
+                for alias in value.split_whitespace().map(|a| a.trim_matches('"')) {
+                    if alias.is_empty() || alias.contains(['*', '?', '!']) {
+                        continue;
+                    }
+                    current.push(cfg.hosts.len());
+                    cfg.hosts.push(Host {
+                        name: alias.to_string(),
+                        hostname: String::new(),
+                        user: String::new(),
+                        port: String::new(),
+                    });
+                }
+            }
+            "match" => current.clear(),
+            "include" => cfg
+                .includes
+                .extend(value.split_whitespace().map(str::to_string)),
+            "hostname" | "user" | "port" => {
+                // First value wins in ssh_config.
+                for &i in &current {
+                    let h = &mut cfg.hosts[i];
+                    let slot = match key.as_str() {
+                        "hostname" => &mut h.hostname,
+                        "user" => &mut h.user,
+                        _ => &mut h.port,
+                    };
+                    if slot.is_empty() {
+                        *slot = value.to_string();
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    cfg
+}
+
+/// Resolve an `Include` argument: `~/` expands to home, relative paths
+/// are relative to `~/.ssh` (`base`), and a `*` / `?` glob in the final
+/// component is matched against that directory.
+fn expand_include(pattern: &str, base: &std::path::Path) -> Vec<PathBuf> {
+    let path = if let Some(rest) = pattern.strip_prefix("~/") {
+        match dirs::home_dir() {
+            Some(h) => h.join(rest),
+            None => return Vec::new(),
+        }
+    } else if pattern.starts_with('/') {
+        PathBuf::from(pattern)
+    } else {
+        base.join(pattern)
+    };
+    let Some(name) = path.file_name().map(|n| n.to_string_lossy().into_owned()) else {
+        return Vec::new();
+    };
+    if !name.contains(['*', '?']) {
+        return vec![path];
+    }
+    let Some(dir) = path.parent() else {
+        return Vec::new();
+    };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut files: Vec<PathBuf> = rd
+        .flatten()
+        .filter(|e| glob_match(&name, &e.file_name().to_string_lossy()))
+        .map(|e| e.path())
+        .collect();
+    files.sort();
+    files
+}
+
+/// Minimal `*` / `?` glob over one path component.
+fn glob_match(pattern: &str, text: &str) -> bool {
+    fn go(p: &[char], t: &[char]) -> bool {
+        match p.split_first() {
+            None => t.is_empty(),
+            Some(('*', rest)) => (0..=t.len()).any(|i| go(rest, &t[i..])),
+            Some(('?', rest)) => !t.is_empty() && go(rest, &t[1..]),
+            Some((c, rest)) => t.first() == Some(c) && go(rest, &t[1..]),
+        }
+    }
+    let p: Vec<char> = pattern.chars().collect();
+    let t: Vec<char> = text.chars().collect();
+    go(&p, &t)
 }
 
 fn which_exists(bin: &str) -> bool {
@@ -182,7 +366,7 @@ impl Provider for SshProvider {
         vec![LauncherItem {
             id: "ssh:palette".into(),
             name: "ssh".into(),
-            description: "Connect to a host defined in ~/.ssh/assh.yml".into(),
+            description: "Connect to a host from ~/.ssh/assh.yml or ~/.ssh/config".into(),
             icon: "network-server-symbolic".into(),
             icon_is_path: false,
             score: 0.0,
@@ -205,8 +389,9 @@ impl Provider for SshProvider {
                 id: "ssh:none".into(),
                 name: "No SSH hosts found".into(),
                 description: format!(
-                    "Expected hosts: <name>: ... in {}",
-                    self.config_path.display()
+                    "Expected hosts in {} or Host entries in {}",
+                    self.config_path.display(),
+                    self.ssh_config_path.display()
                 ),
                 icon: "dialog-warning-symbolic".into(),
                 icon_is_path: false,
@@ -231,10 +416,17 @@ impl Provider for SshProvider {
             .enumerate()
             .map(|(idx, h)| {
                 let name = h.name.clone();
-                let label_host = if h.user.is_empty() {
-                    h.hostname.clone()
+                // ~/.ssh/config aliases may have no HostName: ssh then
+                // connects to the alias itself.
+                let target = if h.hostname.is_empty() {
+                    h.name.clone()
                 } else {
-                    format!("{}@{}", h.user, h.hostname)
+                    h.hostname.clone()
+                };
+                let label_host = if h.user.is_empty() {
+                    target
+                } else {
+                    format!("{}@{target}", h.user)
                 };
                 let description = if h.port.is_empty() {
                     label_host.clone()
@@ -350,6 +542,70 @@ hosts:
                 .iter()
                 .any(|i| i.name == "No SSH hosts found")
         );
+    }
+
+    // Shape of the owner's assh-generated ~/.ssh/config (values changed).
+    const SSH_CONFIG: &str = "# generated by assh\n\nHost agu_admin\n  User root\n  # HostName 10.0.0.1\n\nHost agu_draco draco\n  Port 45652\n  User root\n  HostName draco.example\n  HostName ignored.example\n\nHost *.lan !bad\n  User nobody\n\nMatch host foo\n  User matchuser\n\nHost=vhay\n  Hostname = localhost\n  Port=2288\n\nHost *\n  ServerAliveInterval 30\n  Include extra.conf\n";
+
+    #[test]
+    fn parses_ssh_config_host_blocks() {
+        let cfg = parse_ssh_config(SSH_CONFIG);
+        let names: Vec<&str> = cfg.hosts.iter().map(|h| h.name.as_str()).collect();
+        assert_eq!(names, vec!["agu_admin", "agu_draco", "draco", "vhay"]);
+        let admin = &cfg.hosts[0];
+        assert_eq!((admin.user.as_str(), admin.hostname.as_str()), ("root", ""));
+        let draco = &cfg.hosts[2];
+        assert_eq!(draco.hostname, "draco.example", "first HostName wins");
+        assert_eq!(draco.port, "45652");
+        let vhay = &cfg.hosts[3];
+        assert_eq!(
+            (vhay.hostname.as_str(), vhay.port.as_str()),
+            ("localhost", "2288")
+        );
+        assert_eq!(cfg.includes, vec!["extra.conf"]);
+    }
+
+    #[test]
+    fn falls_back_to_ssh_config_with_includes() {
+        let dir = std::env::temp_dir().join(format!("mshell-ssh-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("conf.d")).unwrap();
+        std::fs::write(
+            dir.join("config"),
+            "Include conf.d/*.conf\nHost main\n  HostName m.example\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("conf.d/a.conf"),
+            "Host inc_a\n  User u\nInclude ../config\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("conf.d/b.txt"), "Host not_included\n").unwrap();
+        let p = SshProvider::with_paths(dir.join("assh.yml"), dir.join("config"));
+        let names: Vec<String> = p.search("ssh").into_iter().map(|i| i.name).collect();
+        assert_eq!(names, vec!["ssh inc_a", "ssh main"]);
+        let a = p.search("ssh inc_a");
+        assert_eq!(
+            a[0].description, "u@inc_a",
+            "alias stands in for missing HostName"
+        );
+        // assh hosts take precedence when present.
+        std::fs::write(
+            dir.join("assh.yml"),
+            "hosts:\n  yhost:\n    Hostname: y.example\n",
+        )
+        .unwrap();
+        let p = SshProvider::with_paths(dir.join("assh.yml"), dir.join("config"));
+        let names: Vec<String> = p.search("ssh").into_iter().map(|i| i.name).collect();
+        assert_eq!(names, vec!["ssh yhost"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn glob_matches_single_component() {
+        assert!(glob_match("*.conf", "a.conf"));
+        assert!(!glob_match("*.conf", "a.txt"));
+        assert!(glob_match("h?st", "host"));
     }
 
     #[test]

@@ -139,7 +139,7 @@ const ENTRIES: &[Entry] = &[
     Entry {
         prefix: "ssh <host>",
         example: "ssh vhay",
-        description: "Open a terminal SSH connection to an assh.yml host",
+        description: "Open a terminal SSH connection (assh.yml or ~/.ssh/config host)",
         icon: "network-server-symbolic",
     },
     Entry {
