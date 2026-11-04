@@ -134,10 +134,11 @@ fn apply_mode_change(
     // this, the wl_output protocol never advertises the
     // change, and clients keep believing the old mode is
     // active.
+    // The preferred mode stays the panel's own (set at hotplug from the
+    // connector's PREFERRED flag); a mode switch only moves `current`.
     let new_wl_mode = OutputMode::from(drm_mode);
     od.output
         .change_current_state(Some(new_wl_mode), None, None, None);
-    od.output.set_preferred(new_wl_mode);
 
     tracing::info!(
         "output_management: applied mode {}x{}@{}.{:03}Hz on {}",
@@ -153,9 +154,49 @@ fn apply_mode_change(
     true
 }
 
+/// Every distinct mode `modes` holds as a wl_output mode, plus the mode to
+/// advertise as preferred: the connector's PREFERRED one, else `current`.
+/// wl_output can't tell flag variants (interlace, aspect) apart, so modes
+/// that convert to the same size + refresh are listed once.
+pub(super) fn advertised_modes(
+    modes: &[DrmMode],
+    current: OutputMode,
+) -> (Vec<OutputMode>, OutputMode) {
+    let mut list: Vec<OutputMode> = Vec::with_capacity(modes.len());
+    for m in modes {
+        let wl = OutputMode::from(*m);
+        if !list.contains(&wl) {
+            list.push(wl);
+        }
+    }
+    let preferred = modes
+        .iter()
+        .find(|m| m.mode_type().contains(ModeTypeFlags::PREFERRED))
+        .map(|m| OutputMode::from(*m))
+        .unwrap_or(current);
+    (list, preferred)
+}
+
+/// Advertise every mode of the connector on `output` (wl_output,
+/// wlr-output-management heads), so clients can offer — and
+/// `set_mode` can pick — any of them, not only the one margo chose.
+/// `current` must already be set via `change_current_state`.
+pub(super) fn advertise_connector_modes(
+    output: &smithay::output::Output,
+    modes: &[DrmMode],
+    current: OutputMode,
+) {
+    let (list, preferred) = advertised_modes(modes, current);
+    for m in list {
+        output.add_mode(m);
+    }
+    output.set_preferred(preferred);
+}
+
 /// Find a `drm::control::Mode` matching `(w, h, refresh_mhz)`.
 ///
-/// drm-rs's `Mode::vrefresh()` is the integer Hz approximation of
+/// A mode whose exact wl_output refresh equals `refresh_mhz` (what a
+/// client picking an advertised mode sends) wins. Otherwise drm-rs's `Mode::vrefresh()` is the integer Hz approximation of
 /// the actual refresh rate (e.g. 60 for both 59.940 and 60.000 Hz);
 /// the protocol delivers refresh in mHz so we tolerate ±500 mHz
 /// rounding on top of an exact `(w, h)` match. If multiple modes
@@ -169,6 +210,13 @@ fn find_matching_drm_mode(
     let target_w = width as u16;
     let target_h = height as u16;
     let target_hz = (refresh_mhz as f64) / 1000.0;
+
+    if let Some(exact) = modes.iter().find(|m| {
+        let wl = OutputMode::from(**m);
+        wl.size.w == width && wl.size.h == height && wl.refresh == refresh_mhz
+    }) {
+        return Some(*exact);
+    }
 
     let mut candidates: Vec<&DrmMode> = modes
         .iter()
@@ -362,6 +410,68 @@ pub(super) fn cvt_mode(width: i32, height: i32, refresh_hz: f32) -> Option<DrmMo
         *dst = b as core::ffi::c_char;
     }
     Some(DrmMode::from(raw))
+}
+
+#[cfg(test)]
+mod advertise_tests {
+    use super::{DrmMode, OutputMode, advertised_modes, find_matching_drm_mode};
+
+    /// A DRM mode with `clock` kHz over a `htotal`×`vtotal` raster.
+    fn drm(w: u16, h: u16, clock: u32, htotal: u16, vtotal: u16, preferred: bool) -> DrmMode {
+        let raw = drm_ffi::drm_mode_modeinfo {
+            clock,
+            hdisplay: w,
+            hsync_start: w + 8,
+            hsync_end: w + 16,
+            htotal,
+            vdisplay: h,
+            vsync_start: h + 3,
+            vsync_end: h + 6,
+            vtotal,
+            vrefresh: ((u64::from(clock) * 1000) / (u64::from(htotal) * u64::from(vtotal))) as u32,
+            type_: if preferred {
+                drm_ffi::DRM_MODE_TYPE_PREFERRED | drm_ffi::DRM_MODE_TYPE_DRIVER
+            } else {
+                drm_ffi::DRM_MODE_TYPE_DRIVER
+            },
+            ..Default::default()
+        };
+        DrmMode::from(raw)
+    }
+
+    #[test]
+    fn every_connector_mode_is_advertised_once_with_the_connector_preference() {
+        let p1440 = drm(2560, 1440, 241_500, 2720, 1481, true);
+        let p1080 = drm(1920, 1080, 148_500, 2200, 1125, false);
+        let p1080_50 = drm(1920, 1080, 148_500, 2640, 1125, false);
+        // The same timing twice (e.g. a flag variant): one wl_output mode.
+        let modes = [p1440, p1080, p1080_50, p1080];
+        let current = OutputMode::from(p1080);
+        let (list, preferred) = advertised_modes(&modes, current);
+        assert_eq!(list.len(), 3, "{list:?}");
+        assert!(list.contains(&OutputMode::from(p1080_50)));
+        // The panel's preferred mode stays preferred even when another is current.
+        assert_eq!(preferred, OutputMode::from(p1440));
+    }
+
+    #[test]
+    fn without_a_preferred_flag_the_current_mode_is_preferred() {
+        let a = drm(1920, 1080, 148_500, 2200, 1125, false);
+        let b = drm(1280, 720, 74_250, 1650, 750, false);
+        let (_, preferred) = advertised_modes(&[a, b], OutputMode::from(b));
+        assert_eq!(preferred, OutputMode::from(b));
+    }
+
+    #[test]
+    fn an_advertised_mode_is_matched_by_its_exact_refresh() {
+        // 59.94 and 60 Hz share the integer `vrefresh` 60: the requested
+        // advertised refresh must pick the right one, not the first.
+        let hz60 = drm(1920, 1080, 148_500, 2200, 1125, true);
+        let hz5994 = drm(1920, 1080, 148_352, 2200, 1125, false);
+        let want = OutputMode::from(hz5994);
+        let got = find_matching_drm_mode(&[hz60, hz5994], 1920, 1080, want.refresh).unwrap();
+        assert_eq!(OutputMode::from(got), want);
+    }
 }
 
 #[cfg(test)]

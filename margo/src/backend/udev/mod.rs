@@ -589,7 +589,7 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
             Some(smithay::output::Scale::Fractional(scale as f64)),
             Some(position.into()),
         );
-        output.set_preferred(wl_mode);
+        mode::advertise_connector_modes(&output, conn_info.modes(), wl_mode);
         state.space.map_output(&output, position);
 
         // Create DRM surface for this output
@@ -605,7 +605,6 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                 let surface = drm.create_surface(crtc, fallback, &[*conn_handle])?;
                 wl_mode = OutputMode::from(fallback);
                 output.change_current_state(Some(wl_mode), None, None, None);
-                output.set_preferred(wl_mode);
                 Ok(surface)
             });
         let drm_surface = match created {

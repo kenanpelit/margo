@@ -297,7 +297,7 @@ pub(super) fn setup_connector(
         Some(smithay::output::Scale::Fractional(scale as f64)),
         Some(position.into()),
     );
-    output.set_preferred(wl_mode);
+    super::mode::advertise_connector_modes(&output, conn_info.modes(), wl_mode);
     state.space.map_output(&output, position);
 
     let created = drm
@@ -312,7 +312,6 @@ pub(super) fn setup_connector(
             let surface = drm.create_surface(crtc_h, fallback, &[conn_handle])?;
             wl_mode = OutputMode::from(fallback);
             output.change_current_state(Some(wl_mode), None, None, None);
-            output.set_preferred(wl_mode);
             Ok(surface)
         });
     let drm_surface = match created {
