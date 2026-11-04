@@ -670,7 +670,7 @@ fn countdown_row(
     let delete = gtk::Button::from_icon_name("user-trash-symbolic");
     delete.add_css_class("alarm-row-delete");
     delete.set_valign(gtk::Align::Center);
-    delete.set_tooltip_text(Some("Delete countdown"));
+    mshell_common::a11y::name(&delete, "Delete countdown");
     {
         let sender = sender.clone();
         delete.connect_clicked(move |_| {
@@ -727,7 +727,7 @@ fn alarm_row(
     let delete = gtk::Button::from_icon_name("user-trash-symbolic");
     delete.add_css_class("alarm-row-delete");
     delete.set_valign(gtk::Align::Center);
-    delete.set_tooltip_text(Some("Delete alarm"));
+    mshell_common::a11y::name(&delete, "Delete alarm");
     {
         let sender = sender.clone();
         delete.connect_clicked(move |_| {

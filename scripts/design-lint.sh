@@ -143,10 +143,7 @@ report "L11" "hand-rolled XDG lookup (use margo_fs::xdg)" "$hits"
 # accessible name (DESIGN.md §13.8): `mshell_common::a11y::name(&btn, …)`
 # within the next 8 lines. Bar pills are named centrally in bar.rs. Marker
 # `design-lint: allow-unnamed <why>` on the line skips it.
-#   menus/menu_widgets/alarm_clock: review3/shellperf has it open; name its
-#   two trash buttons after that merge.
 hits=$(find mshell-crates/mshell-frame/src -name '*.rs' 2>/dev/null \
-    | grep -v 'menus/menu_widgets/alarm_clock/' \
     | xargs awk '
         FNR == 1 { if (pending > 0) print where; in_test = 0; pending = 0 }
         /#\[cfg\(test\)\]/ { in_test = 1 }
@@ -163,7 +160,7 @@ report "L12" "icon-only button without an accessible name (use a11y::name)" "$hi
 # view with no text child, tooltip or accessible property in it. Bar pills
 # (bars/bar_widgets) are named centrally in bar.rs.
 hits=$(find mshell-crates/mshell-frame/src -name '*.rs' 2>/dev/null \
-    | grep -v -e 'menus/menu_widgets/alarm_clock/' -e 'bars/bar_widgets/' \
+    | grep -v 'bars/bar_widgets/' \
     | xargs awk '
         FNR == 1 { inb = 0 }
         !inb && /gtk::Button \{/ && !/design-lint: allow-unnamed/ {
