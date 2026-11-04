@@ -786,12 +786,10 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                     let keysym = handle.modified_sym();
                     let mods = smithay_mods_to_margo(modifiers);
                     let mode = state.input_keyboard.mode.clone();
-                    debug!(
-                        "key pressed: keysym={:#x} mods={:?} mode={}",
-                        keysym.raw(),
-                        mods,
-                        mode
-                    );
+                    // Never log WHICH key (no keysym / keycode / utf8):
+                    // with `log_to_file` at debug every typed character,
+                    // passwords included, would land in the log file. A
+                    // matched bind is logged below.
 
                     let mut matched = find_keybinding(
                         &state.config.key_bindings,
@@ -2221,5 +2219,63 @@ mod gesture_tests {
         // code path lands on DOWN (1) — we just lock in that the
         // function is total over (0, 0).
         assert_eq!(derive_motion_code(0.0, 0.0), 1);
+    }
+}
+
+#[cfg(test)]
+mod key_log_tests {
+    /// Every tracing call in the keyboard paths, with its arguments.
+    fn log_calls(src: &str) -> Vec<String> {
+        let mut calls = Vec::new();
+        for mac in ["trace!(", "debug!(", "info!(", "warn!(", "error!("] {
+            let mut from = 0;
+            while let Some(at) = src[from..].find(mac) {
+                let start = from + at;
+                let mut depth = 0usize;
+                let mut end = start;
+                for (i, ch) in src[start..].char_indices() {
+                    match ch {
+                        '(' => depth += 1,
+                        ')' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                end = start + i;
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                calls.push(src[start..=end].to_string());
+                from = end.max(start + 1);
+            }
+        }
+        calls
+    }
+
+    /// With `log_to_file` and debug level on (typical when filing a bug),
+    /// a log line per key press put every typed character, passwords
+    /// included, into a world-readable log. Only modifiers, the key mode
+    /// and matched binds may be logged.
+    #[test]
+    fn key_presses_never_log_which_key() {
+        let src = include_str!("input_handler.rs");
+        let body = &src[..src.find("#[cfg(test)]").unwrap_or(src.len())];
+        let leaks: Vec<String> = log_calls(body)
+            .into_iter()
+            .filter(|call| {
+                [
+                    "keysym",
+                    "keycode",
+                    "key_code",
+                    "utf8",
+                    "modified_sym",
+                    "raw_syms",
+                ]
+                .iter()
+                .any(|word| call.contains(word))
+            })
+            .collect();
+        assert!(leaks.is_empty(), "key identity in logs: {leaks:#?}");
     }
 }
