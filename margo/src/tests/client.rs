@@ -484,11 +484,21 @@ impl Client {
         namespace: &str,
         layer: zwlr_layer_shell_v1::Layer,
     ) -> (ZwlrLayerSurfaceV1, WlSurface) {
+        self.create_layer_surface_on(namespace, layer, None)
+    }
+
+    /// [`Self::create_layer_surface`] on an explicit output.
+    pub fn create_layer_surface_on(
+        &mut self,
+        namespace: &str,
+        layer: zwlr_layer_shell_v1::Layer,
+        output: Option<&WlOutput>,
+    ) -> (ZwlrLayerSurfaceV1, WlSurface) {
         let (_compositor, wl_surface) = self.create_surface();
         let layer_shell: ZwlrLayerShellV1 = self.bind_global(5);
         let layer_surface = layer_shell.get_layer_surface(
             &wl_surface,
-            None,
+            output,
             layer,
             namespace.to_string(),
             &self.qh,

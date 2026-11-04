@@ -161,7 +161,23 @@ impl WlrLayerShellHandler for MargoState {
         }
 
         let Some(mon_idx) = found_mon else {
-            tracing::info!("layer surface destroyed (not found)");
+            // Its output is gone (`remove_output` already unmapped it and
+            // dropped its bookkeeping). Still drop any id-keyed state and
+            // make sure keyboard focus doesn't stay on the dead surface.
+            let id = surface.wl_surface().id();
+            self.layer_layout_hashes.remove(&id);
+            self.layer_kb_interactivity_hashes.remove(&id);
+            self.layer_buffer_mapped.remove(&id);
+            let focused_here = self
+                .seat
+                .get_keyboard()
+                .and_then(|kb| kb.current_focus())
+                .is_some_and(|f| matches!(f, FocusTarget::LayerSurface(s) if s == surface));
+            if focused_here {
+                self.refresh_keyboard_focus();
+            }
+            self.refresh_pointer_focus();
+            tracing::info!("layer surface destroyed (output already gone)");
             return;
         };
 

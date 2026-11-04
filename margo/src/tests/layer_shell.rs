@@ -172,3 +172,74 @@ fn layer_destroyed_unmaps_from_output() {
         "destroying the layer surface must clear the output's layer_map slot",
     );
 }
+
+/// An exclusive-keyboard layer (launcher) open on the external monitor
+/// when its cable is pulled: the client only gets `closed` and destroys
+/// the surface after the monitor is gone. `layer_destroyed` searched only
+/// the live monitors, so it skipped the focus restore and leaked the
+/// per-surface bookkeeping; keys went to the dead surface.
+#[test]
+fn a_layer_destroyed_after_its_output_was_unplugged_gives_focus_back() {
+    use crate::state::FocusTarget;
+    use smithay::reexports::wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::KeyboardInteractivity;
+
+    let mut fx = Fixture::with_config(Config {
+        animations: false,
+        ..Config::default()
+    });
+    fx.add_keyboard();
+    fx.add_output("DP-1", (1920, 1080));
+    fx.add_output("DP-2", (1920, 1080));
+
+    let win = fx.add_client();
+    let (_toplevel, win_surface) = fx.client(win).create_toplevel();
+    win_surface.commit();
+    fx.client(win).flush();
+    fx.roundtrip(win);
+    assert_eq!(fx.server.state.clients[0].monitor, 0);
+
+    let id = fx.add_client();
+    let dp2 = fx.client(id).bind_output_nth(1);
+    fx.roundtrip(id);
+    let (layer_surface, surface) =
+        fx.client(id)
+            .create_layer_surface_on("launcher", Layer::Overlay, Some(&dp2));
+    layer_surface.set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
+    surface.commit();
+    fx.client(id).flush();
+    fx.roundtrip(id);
+    let buffer = fx.client(id).create_shm_buffer(1, 30);
+    surface.attach(Some(&buffer), 0, 0);
+    surface.commit();
+    fx.client(id).flush();
+    fx.roundtrip(id);
+
+    let focus_is_layer = |fx: &Fixture| {
+        matches!(
+            fx.server
+                .state
+                .seat
+                .get_keyboard()
+                .and_then(|k| k.current_focus()),
+            Some(FocusTarget::LayerSurface(_))
+        )
+    };
+    assert!(focus_is_layer(&fx), "the exclusive launcher holds focus");
+
+    let output = fx.server.state.monitors[1].output.clone();
+    fx.server.state.remove_output(&output);
+    layer_surface.destroy();
+    surface.destroy();
+    fx.client(id).flush();
+    fx.roundtrip(id);
+    fx.roundtrip(win);
+
+    assert!(
+        !focus_is_layer(&fx),
+        "keyboard focus must leave the dead launcher"
+    );
+    let state = &fx.server.state;
+    assert!(state.layer_layout_hashes.is_empty());
+    assert!(state.layer_kb_interactivity_hashes.is_empty());
+    assert!(state.layer_buffer_mapped.is_empty());
+}

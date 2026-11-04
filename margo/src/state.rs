@@ -967,9 +967,23 @@ impl MargoState {
     }
 
     pub fn remove_output(&mut self, output: &Output) {
-        for layer in smithay::desktop::layer_map_for_output(output).layers() {
-            layer.layer_surface().send_close();
+        // Close and unmap the output's layers now. The client destroys the
+        // surface later, when the monitor is already gone, so per-surface
+        // bookkeeping is dropped here rather than in `layer_destroyed`.
+        {
+            let mut map = smithay::desktop::layer_map_for_output(output);
+            let layers: Vec<_> = map.layers().cloned().collect();
+            for layer in &layers {
+                layer.layer_surface().send_close();
+                let id = layer.wl_surface().id();
+                self.layer_layout_hashes.remove(&id);
+                self.layer_kb_interactivity_hashes.remove(&id);
+                self.layer_buffer_mapped.remove(&id);
+                map.unmap_layer(layer);
+            }
         }
+        self.layer_animations
+            .retain(|_, anim| anim.output != *output);
 
         self.protocols.gamma_control_manager.output_removed(output);
         self.protocols.output_power_manager.output_removed(output);
@@ -989,13 +1003,14 @@ impl MargoState {
         // Hotplug-out: refresh the shared D-Bus snapshot so
         // xdp-gnome's chooser dialog drops the now-gone output.
         self.refresh_ipc_outputs();
-        // Locked, with keyboard focus on the lock surface of the monitor that
-        // just went (lid closed while docked): move focus to a remaining lock
-        // surface now. Otherwise the password prompt left on screen gets no
-        // keys until the pointer happens to move.
-        if self.session_locked {
-            self.refresh_keyboard_focus();
-        }
+        // Keyboard focus may sit on something that just went with the
+        // monitor: a lock surface (lid closed while docked) or an exclusive
+        // layer such as the launcher. Move it now, with the pointer back on
+        // a remaining output; otherwise keys go nowhere until the pointer
+        // happens to move.
+        self.clamp_pointer_to_outputs();
+        self.refresh_keyboard_focus();
+        self.refresh_pointer_focus();
         self.request_repaint();
     }
 
