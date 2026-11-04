@@ -96,10 +96,24 @@ fn streamed_status(alive: bool, cache: &mut Option<VpnStatus>) -> Option<VpnStat
 /// location-less until the next tunnel change.
 static RELAY_LOCATION: std::sync::Mutex<Option<(String, String)>> = std::sync::Mutex::new(None);
 
-/// A streamed status that is connected but has no location yet needs one
-/// full `mvpn status` query (cached per relay).
+/// A streamed status that is connected but misses its relay or location
+/// needs one full `mvpn status` query (the location is cached per relay).
 fn needs_location(status: &VpnStatus) -> bool {
-    status.connected && status.location.is_empty()
+    status.connected && (status.location.is_empty() || status.relay.is_empty())
+}
+
+/// Take the missing relay/location from a full `mvpn status` answer that
+/// describes the same tunnel (an empty streamed relay matches any).
+fn fill_from(mut status: VpnStatus, full: VpnStatus) -> VpnStatus {
+    if full.connected && (status.relay.is_empty() || full.relay == status.relay) {
+        if status.relay.is_empty() {
+            status.relay = full.relay;
+        }
+        if status.location.is_empty() {
+            status.location = full.location;
+        }
+    }
+    status
 }
 
 /// Fill `status`'s missing location from `known` (relay, location) when it
@@ -137,10 +151,7 @@ async fn probe_vpn() -> VpnProbe {
     let known = RELAY_LOCATION.lock().ok().and_then(|k| k.clone());
     status = with_known_location(status, known.as_ref());
     if needs_location(&status) {
-        let full = cli_status().await;
-        if full.connected && full.relay == status.relay && !full.location.is_empty() {
-            status.location = full.location;
-        }
+        status = fill_from(status, cli_status().await);
     }
     if status.connected
         && !status.location.is_empty()
@@ -357,6 +368,22 @@ mod tests {
         assert!(needs_location(&with_known_location(streamed, Some(&other))));
         // Disconnected never asks.
         assert!(!needs_location(&VpnStatus::default()));
+    }
+
+    /// An older mvpn streamed a reconnect's final block with neither relay
+    /// nor location; the full status fills both.
+    #[test]
+    fn a_streamed_status_without_relay_is_filled_from_the_full_status() {
+        let streamed = VpnStatus::parse(r#"{"connected":true,"relay":"","location":""}"#);
+        assert!(needs_location(&streamed));
+        let full = VpnStatus::parse(
+            r#"{"connected":true,"relay":"de-fra-wg-002","location":"Germany, Frankfurt. IPv4: 1.2.3.4"}"#,
+        );
+        let filled = fill_from(streamed, full.clone());
+        assert_eq!(filled, full);
+        // A different relay's location is never borrowed.
+        let other = VpnStatus::parse(r#"{"connected":true,"relay":"se-sto-wg-001","location":""}"#);
+        assert_eq!(fill_from(other.clone(), full).location, "");
     }
 
     #[test]

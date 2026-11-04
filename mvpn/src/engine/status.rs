@@ -36,6 +36,14 @@ pub fn query() -> Status {
 /// Note the visible location is **Country, City** (country first), and there
 /// is no "Tunnel:" line — the protocol is inferred from the interface / relay
 /// id (`wg` → WireGuard, `ovpn` → OpenVPN).
+/// The value of a `Key: value` detail line. `mullvad status listen` marks
+/// the details that changed since its previous block as `Key (new): value`.
+fn field<'a>(line: &'a str, key: &str) -> Option<&'a str> {
+    let rest = line.strip_prefix(key)?;
+    let rest = rest.strip_prefix(" (new)").unwrap_or(rest);
+    rest.strip_prefix(':')
+}
+
 pub fn parse(s: &str) -> Status {
     let mut st = Status {
         state: "Disconnected".into(),
@@ -49,11 +57,11 @@ pub fn parse(s: &str) -> Status {
             st.connected = lc.starts_with("connected");
             st.connecting = lc.starts_with("connecting");
         }
-        if let Some(r) = t.strip_prefix("Relay:") {
+        if let Some(r) = field(t, "Relay") {
             // Strip any trailing " (address:port/proto)" → bare relay id.
             st.relay = r.split_whitespace().next().unwrap_or("").to_string();
         }
-        if let Some(iface) = t.strip_prefix("Tunnel interface:") {
+        if let Some(iface) = field(t, "Tunnel interface") {
             let iface = iface.trim().to_lowercase();
             if iface.starts_with("wg") {
                 st.tunnel_type = "WireGuard".into();
@@ -61,7 +69,7 @@ pub fn parse(s: &str) -> Status {
                 st.tunnel_type = "OpenVPN".into();
             }
         }
-        if let Some(l) = t.strip_prefix("Visible location:") {
+        if let Some(l) = field(t, "Visible location") {
             st.location = l.trim().to_string();
             // "Country, City. IPv4: 1.2.3.4"
             if let Some((before_ip, after_ip)) = l.split_once("IPv4:") {
@@ -125,12 +133,39 @@ impl Follower {
         self.report(parse(&self.block))
     }
 
-    fn report(&mut self, st: Status) -> Option<Status> {
+    fn report(&mut self, mut st: Status) -> Option<Status> {
+        // A block repeats only the details that changed: a "Connected" that
+        // follows "Connecting" carries just `Visible location (new)`, so the
+        // relay and the rest come from the block before.
+        if let Some(prev) = &self.last {
+            carry_over(&mut st, prev);
+        }
         if self.last.as_ref() == Some(&st) {
             return None;
         }
         self.last = Some(st.clone());
         Some(st)
+    }
+}
+
+/// Fill the details `st` left out from `prev`, while both are the same
+/// tunnel (connecting or connected).
+fn carry_over(st: &mut Status, prev: &Status) {
+    let tunnel = |s: &Status| s.connected || s.connecting;
+    if !tunnel(st) || !tunnel(prev) {
+        return;
+    }
+    if st.relay.is_empty() {
+        st.relay = prev.relay.clone();
+    }
+    if st.tunnel_type.is_empty() {
+        st.tunnel_type = prev.tunnel_type.clone();
+    }
+    if st.location.is_empty() {
+        st.location = prev.location.clone();
+        st.ipv4 = prev.ipv4.clone();
+        st.country = prev.country.clone();
+        st.city = prev.city.clone();
     }
 }
 
@@ -322,6 +357,44 @@ mod tests {
         let full = f.on_quiet().expect("the details follow");
         assert_eq!(full.relay, "de-fra-wg-002");
         assert!(f.on_line("").is_none());
+    }
+
+    /// Captured from `mullvad status listen` across `mvpn reconnect`: the
+    /// final "Connected" block lists only what changed.
+    #[test]
+    fn follower_keeps_the_details_a_changed_block_leaves_out() {
+        let mut f = Follower::default();
+        let got = feed(
+            &mut f,
+            "Connected\n    Relay:                  de-fra-wg-002\n    Features:               LAN Sharing\n    Visible location:       Germany, Frankfurt. IPv4: 185.213.155.228\n\
+             Connecting\n    Relay:                  de-fra-wg-002\n    Features:               LAN Sharing\n    Visible location:       Germany, Frankfurt\n\
+             Connected\n",
+        );
+        assert_eq!(got.len(), 2);
+        assert!(
+            f.on_line("    Visible location (new): Germany, Frankfurt. IPv4: 185.213.155.228")
+                .is_none()
+        );
+        let st = f.on_quiet().expect("the reconnected state");
+        assert!(st.connected);
+        assert_eq!(st.relay, "de-fra-wg-002");
+        assert_eq!(st.location, "Germany, Frankfurt. IPv4: 185.213.155.228");
+        assert_eq!(st.city, "Frankfurt");
+        assert_eq!(st.ipv4, "185.213.155.228");
+        assert_eq!(st.tunnel_type, "WireGuard");
+        // Disconnecting starts a new story: nothing is carried into it.
+        assert!(feed(&mut f, "Disconnected").is_empty());
+        let st = f.on_quiet().expect("disconnected");
+        assert!(st.relay.is_empty() && st.location.is_empty());
+    }
+
+    #[test]
+    fn parses_changed_detail_lines() {
+        let st = parse(
+            "Connected\n    Relay (new): se-sto-wg-001\n    Visible location (new): Sweden, Stockholm. IPv4: 5.6.7.8",
+        );
+        assert_eq!(st.relay, "se-sto-wg-001");
+        assert_eq!(st.city, "Stockholm");
     }
 
     #[test]
