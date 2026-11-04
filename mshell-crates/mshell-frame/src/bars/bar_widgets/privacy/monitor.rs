@@ -142,9 +142,16 @@ pub fn ensure_started() {
             let cam_apps = if cfg.track_camera {
                 let action = take_cam_action();
                 if cam_cache.is_none() || !camera_watched || action == CamAction::Scan {
+                    let began = CAM_COUNTER.lock().map(|c| c.begin_scan()).unwrap_or(0);
                     let scan = camera_apps().await;
-                    if let Ok(mut c) = CAM_COUNTER.lock() {
-                        c.set_baseline(&scan.open);
+                    let stale = CAM_COUNTER
+                        .lock()
+                        .map(|mut c| c.finish_scan(&scan.open, began))
+                        .unwrap_or(false);
+                    if stale && post_cam_action(CamAction::Scan) {
+                        // Look again once this pass is done; the nodes moved
+                        // under the scan.
+                        WAKE.notify_one();
                     }
                     cam_cache = Some(scan.apps);
                 } else if action == CamAction::Clear {
@@ -629,6 +636,9 @@ struct OpenCounter {
     rescan: bool,
     /// A baseline scan has been applied.
     baselined: bool,
+    /// Node / hotplug / overflow events seen so far, so a scan can tell
+    /// whether the nodes changed while it was reading `/proc`.
+    seen: u64,
 }
 
 impl OpenCounter {
@@ -641,9 +651,11 @@ impl OpenCounter {
         for ev in events {
             if ev.mask & libc::IN_Q_OVERFLOW != 0 {
                 self.rescan = true;
+                self.seen += 1;
             } else if ev.mask & CAM_DIR_MASK != 0 {
                 if ev.name.starts_with("video") {
                     self.rescan = true;
+                    self.seen += 1;
                 }
             } else if let Some(node) = self.nodes.get(&ev.wd) {
                 let d = if ev.mask & libc::IN_OPEN != 0 {
@@ -655,6 +667,7 @@ impl OpenCounter {
                 };
                 *self.held.entry(node.clone()).or_default() += d;
                 *self.net.entry(node.clone()).or_default() += d;
+                self.seen += 1;
             }
         }
     }
@@ -682,6 +695,21 @@ impl OpenCounter {
     fn set_baseline(&mut self, open: &HashMap<PathBuf, i64>) {
         self.held = open.clone();
         self.baselined = true;
+    }
+
+    /// Mark the start of a `/proc` scan; pass the token to [`finish_scan`].
+    fn begin_scan(&self) -> u64 {
+        self.seen
+    }
+
+    /// Apply a scan's counts. `true` when a node was opened or closed while
+    /// the scan ran: the snapshot may hold a transient open (a device probe
+    /// opening and closing a node mid-scan), and that window's open+close
+    /// nets to zero, so no later decision would correct it. The caller must
+    /// scan again.
+    fn finish_scan(&mut self, open: &HashMap<PathBuf, i64>, began: u64) -> bool {
+        self.set_baseline(open);
+        self.seen != began
     }
 }
 
@@ -1361,6 +1389,21 @@ mod tests {
         // The holder closes: count back to zero, no scan needed.
         c.apply(&[wd_ev(1, libc::IN_CLOSE_WRITE)]);
         assert_eq!(c.decide(), CamAction::Clear);
+    }
+
+    #[test]
+    fn a_probe_that_opens_and_closes_during_a_scan_asks_for_another_scan() {
+        // wireplumber enumerating at login: it opens a node, the scan sees
+        // it holding the node, then it closes. The window's open+close nets
+        // to zero, so `decide` alone would keep the stale holder forever.
+        let mut c = counter_on(&[(1, "/dev/video0")]);
+        let began = c.begin_scan();
+        c.apply(&[wd_ev(1, libc::IN_OPEN), wd_ev(1, libc::IN_CLOSE_NOWRITE)]);
+        let stale = c.finish_scan(&HashMap::from([(PathBuf::from("/dev/video0"), 1)]), began);
+        assert!(stale);
+        // A scan with nothing happening during it is trusted.
+        let began = c.begin_scan();
+        assert!(!c.finish_scan(&HashMap::new(), began));
     }
 
     #[test]
