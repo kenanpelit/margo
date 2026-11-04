@@ -62,6 +62,46 @@ impl Default for FrameStyle {
     }
 }
 
+/// An axis-aligned rectangle in output (logical pixel) coordinates.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Rect {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
+impl Rect {
+    pub const fn new(x: f64, y: f64, w: f64, h: f64) -> Self {
+        Self { x, y, w, h }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.w <= 0.0 || self.h <= 0.0
+    }
+}
+
+/// Which part of the output-wide frame one surface draws.
+///
+/// The frame is one shape laid out on the whole output (bands, rounded hole,
+/// menu notches). It used to be painted by a single full-output surface. Now
+/// several surfaces (the top/bottom/side edge strips and the menu overlay)
+/// each paint the *same* output-space shape, translated by where the surface
+/// sits and clipped to the rectangles it owns. As long as the owned rectangles
+/// do not overlap and sit on whole pixels, the pieces composite to exactly the
+/// pixels the single surface painted.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Viewport {
+    /// Where this widget's (0, 0) sits on the output.
+    pub origin: (f64, f64),
+    /// Output size the frame shape is laid out on. `None` = this widget's own
+    /// size (the widget covers the whole output).
+    pub output: Option<(f64, f64)>,
+    /// Output-space rectangles this surface owns: it paints and takes pointer
+    /// input only there. `None` = everything.
+    pub owned: Option<Vec<Rect>>,
+}
+
 // ---------------------------------------------------------------------------
 // CSS custom-property helpers
 // ---------------------------------------------------------------------------
@@ -695,6 +735,279 @@ fn trace_rounded_polygon(cr: &Context, vertices: &[(f64, f64)], max_radius: f64)
     cr.close_path();
 }
 
+/// The hole rectangle and its clamped corner radius for an output of
+/// `total_width` x `total_height`.
+pub(crate) fn hole_geometry(
+    style: &FrameStyle,
+    total_width: f64,
+    total_height: f64,
+) -> (f64, f64, f64, f64, f64) {
+    let hole_x = style.left_thickness;
+    let hole_y = style.top_thickness;
+    let hole_width = (total_width - style.left_thickness - style.right_thickness).max(0.0);
+    let hole_height = (total_height - style.top_thickness - style.bottom_thickness).max(0.0);
+    let border_radius = style
+        .border_radius
+        .clamp(0.0, hole_width.min(hole_height) / 2.0);
+    (hole_x, hole_y, hole_width, hole_height, border_radius)
+}
+
+/// Paint the frame for an output of `total_width` x `total_height` into `cr`,
+/// whose origin is the widget's (0, 0). `viewport` translates the output-space
+/// shape into widget space and clips it to the owned rectangles.
+pub(crate) fn paint_frame(
+    cr: &Context,
+    style: &FrameStyle,
+    total_width: f64,
+    total_height: f64,
+    viewport: &Viewport,
+) {
+    if !style.draw_frame || total_width <= 0.0 || total_height <= 0.0 {
+        return;
+    }
+    let (hole_x, hole_y, hole_width, hole_height, border_radius) =
+        hole_geometry(style, total_width, total_height);
+    let vertices = build_hole_vertices(style, hole_x, hole_y, hole_width, hole_height);
+    if vertices.is_empty() {
+        return;
+    }
+
+    let _ = cr.save();
+    let (origin_x, origin_y) = viewport.origin;
+    cr.translate(-origin_x, -origin_y);
+    if let Some(owned) = &viewport.owned {
+        for rect in owned.iter().filter(|r| !r.is_empty()) {
+            cr.rectangle(rect.x, rect.y, rect.w, rect.h);
+        }
+        cr.clip();
+    }
+
+    // 1) Paint full background
+    cr.set_operator(Operator::Over);
+    let (bg_r, bg_g, bg_b, bg_a) = style.background_rgba;
+    cr.set_source_rgba(bg_r, bg_g, bg_b, bg_a);
+    cr.rectangle(0.0, 0.0, total_width, total_height);
+    let _ = cr.fill();
+
+    // 2) Clear the hole
+    cr.set_operator(Operator::Clear);
+    trace_rounded_polygon(cr, &vertices, border_radius);
+    let _ = cr.fill();
+
+    // 3) Border, stroked inside the hole (clipped to it).
+    let (border_r, border_g, border_b, border_a) = style.border_rgba;
+    if style.border_width > 0.0 && border_a > 0.0 {
+        let _ = cr.save();
+        cr.set_operator(Operator::Over);
+        trace_rounded_polygon(cr, &vertices, border_radius);
+        cr.clip();
+        trace_rounded_polygon(cr, &vertices, border_radius);
+        cr.set_source_rgba(border_r, border_g, border_b, border_a);
+        cr.set_line_width(style.border_width * 2.0);
+        cr.set_line_join(LineJoin::Round);
+        cr.set_line_cap(LineCap::Round);
+        let _ = cr.stroke();
+        let _ = cr.restore();
+    }
+    let _ = cr.restore();
+}
+
+fn subtract_rect(region: &Region, x: i32, y: i32, width: i32, height: i32) {
+    if width > 0 && height > 0 {
+        let _ = region.subtract_rectangle(&RectangleInt::new(x, y, width, height));
+    }
+}
+
+fn union_inward_notch(region: &Region, x: f64, y: f64, width: f64, height: f64) {
+    if width > 0.0 && height > 0.0 {
+        let _ = region.union_rectangle(&RectangleInt::new(
+            x.floor() as i32,
+            y.floor() as i32,
+            width.ceil() as i32,
+            height.ceil() as i32,
+        ));
+    }
+}
+
+/// The frame's pointer-input region in output space: the bands, a
+/// `border_width` ring inside the hole, and the menu notches. Everything else
+/// (the hole) passes clicks through to the windows below.
+pub(crate) fn output_input_region(
+    style: &FrameStyle,
+    total_width: f64,
+    total_height: f64,
+) -> Region {
+    let (hole_x, hole_y, hole_width, hole_height, _) =
+        hole_geometry(style, total_width, total_height);
+    let window_width = total_width as i32;
+    let window_height = total_height as i32;
+
+    let hole_left = hole_x.floor().max(0.0) as i32;
+    let hole_top = hole_y.floor().max(0.0) as i32;
+    let hole_right = (hole_x + hole_width).ceil().min(window_width as f64) as i32;
+    let hole_bottom = (hole_y + hole_height).ceil().min(window_height as f64) as i32;
+
+    let region = Region::create();
+    let _ = region.union_rectangle(&RectangleInt::new(0, 0, window_width, window_height));
+
+    let border_width = style.border_width.ceil() as i32;
+    let border_width_f = style.border_width;
+
+    // Subtract main hole (inset by border_width so the border stays in the input region)
+    subtract_rect(
+        &region,
+        hole_left + border_width,
+        hole_top + border_width,
+        (hole_right - hole_left - border_width * 2).max(0),
+        (hole_bottom - hole_top - border_width * 2).max(0),
+    );
+
+    let left_expander_width = style.left_expander_width.ceil() as i32;
+    let right_expander_width = style.right_expander_width.ceil() as i32;
+
+    // Subtract side expander negative-space areas (inset by border_width)
+    // Left top expander: shrink width from the right (hole edge) by border_width
+    subtract_rect(
+        &region,
+        hole_left - left_expander_width,
+        hole_top,
+        (left_expander_width - border_width).max(0),
+        style.left_top_expander_height.ceil() as i32,
+    );
+    // Left bottom expander
+    subtract_rect(
+        &region,
+        hole_left - left_expander_width,
+        hole_bottom - style.left_bottom_expander_height.ceil() as i32,
+        (left_expander_width - border_width).max(0),
+        style.left_bottom_expander_height.ceil() as i32,
+    );
+    // Right top expander: shift x rightward by border_width, shrink width
+    subtract_rect(
+        &region,
+        hole_right + border_width,
+        hole_top,
+        (right_expander_width - border_width).max(0),
+        style.right_top_expander_height.ceil() as i32,
+    );
+    // Right bottom expander
+    subtract_rect(
+        &region,
+        hole_right + border_width,
+        hole_bottom - style.right_bottom_expander_height.ceil() as i32,
+        (right_expander_width - border_width).max(0),
+        style.right_bottom_expander_height.ceil() as i32,
+    );
+
+    // Union back inward revealer notches so frame captures input there.
+    // Expand each notch by border_width on sides that touch the hole edge
+    // so the border strip is also covered.
+    let (top_revealer_width, top_revealer_height) = style.top_revealer_size;
+    let (bottom_revealer_width, bottom_revealer_height) = style.bottom_revealer_size;
+    let (top_left_revealer_width, top_left_revealer_height) = style.top_left_revealer_size;
+    let (top_right_revealer_width, top_right_revealer_height) = style.top_right_revealer_size;
+    let (bottom_left_revealer_width, bottom_left_revealer_height) = style.bottom_left_revealer_size;
+    let (bottom_right_revealer_width, bottom_right_revealer_height) =
+        style.bottom_right_revealer_size;
+
+    // Center top revealer: touches top hole edge, expand upward
+    union_inward_notch(
+        &region,
+        hole_x + hole_width / 2.0 - top_revealer_width / 2.0,
+        hole_y - border_width_f,
+        top_revealer_width,
+        top_revealer_height + border_width_f,
+    );
+
+    // Center bottom revealer: touches bottom hole edge, expand downward
+    union_inward_notch(
+        &region,
+        hole_x + hole_width / 2.0 - bottom_revealer_width / 2.0,
+        hole_y + hole_height - bottom_revealer_height,
+        bottom_revealer_width,
+        bottom_revealer_height + border_width_f,
+    );
+
+    // Top-left corner revealer: touches top and left hole edges
+    union_inward_notch(
+        &region,
+        hole_x - border_width_f,
+        hole_y - border_width_f,
+        top_left_revealer_width + border_width_f,
+        top_left_revealer_height + border_width_f,
+    );
+
+    // Top-right corner revealer: touches top and right hole edges
+    union_inward_notch(
+        &region,
+        hole_x + hole_width - top_right_revealer_width,
+        hole_y - border_width_f,
+        top_right_revealer_width + border_width_f,
+        top_right_revealer_height + border_width_f,
+    );
+
+    // Bottom-left corner revealer: touches bottom and left hole edges
+    union_inward_notch(
+        &region,
+        hole_x - border_width_f,
+        hole_y + hole_height - bottom_left_revealer_height,
+        bottom_left_revealer_width + border_width_f,
+        bottom_left_revealer_height + border_width_f,
+    );
+
+    // Bottom-right corner revealer: touches bottom and right hole edges
+    union_inward_notch(
+        &region,
+        hole_x + hole_width - bottom_right_revealer_width,
+        hole_y + hole_height - bottom_right_revealer_height,
+        bottom_right_revealer_width + border_width_f,
+        bottom_right_revealer_height + border_width_f,
+    );
+
+    region
+}
+
+/// The input region of one surface, in its own (widget) coordinates: the
+/// output-space region limited to the rectangles `viewport` owns, moved to the
+/// widget's origin and cut to the widget's `widget_width` x `widget_height`.
+pub(crate) fn surface_input_region(
+    style: &FrameStyle,
+    total_width: f64,
+    total_height: f64,
+    viewport: &Viewport,
+    widget_width: i32,
+    widget_height: i32,
+) -> Region {
+    let region = output_input_region(style, total_width, total_height);
+    if let Some(owned) = &viewport.owned {
+        let mask = Region::create();
+        for rect in owned.iter().filter(|r| !r.is_empty()) {
+            let _ = mask.union_rectangle(&RectangleInt::new(
+                rect.x.floor() as i32,
+                rect.y.floor() as i32,
+                rect.w.ceil() as i32,
+                rect.h.ceil() as i32,
+            ));
+        }
+        let _ = region.intersect(&mask);
+    }
+    let (origin_x, origin_y) = viewport.origin;
+    region.translate(-(origin_x.round() as i32), -(origin_y.round() as i32));
+    let _ = region.intersect_rectangle(&RectangleInt::new(0, 0, widget_width, widget_height));
+    region
+}
+
+/// Stable hash of a region's rectangles, to skip resubmitting an unchanged
+/// input region.
+fn region_hash(region: &Region) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for i in 0..region.num_rectangles() {
+        let r = region.rectangle(i);
+        (r.x(), r.y(), r.width(), r.height()).hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
 // --- Subclass internals ---
 
 mod imp {
@@ -705,6 +1018,8 @@ mod imp {
         pub(super) style: RefCell<FrameStyle>,
         pub(super) resolved_style: RefCell<Option<FrameStyle>>,
         pub(super) css_hash: Cell<u64>,
+        /// Which part of the output-wide frame this widget draws.
+        pub(super) viewport: RefCell<Viewport>,
         /// Hash of the rectangles last submitted to
         /// `surface.set_input_region`. We re-compute the region on every
         /// snapshot (the cheap part), but the actual wayland call is
@@ -730,12 +1045,11 @@ mod imp {
     #[derive(Clone, Debug)]
     pub(super) struct RegionArgs {
         pub style: FrameStyle,
-        pub window_width: i32,
-        pub window_height: i32,
-        pub hole_x: f64,
-        pub hole_y: f64,
-        pub hole_width: f64,
-        pub hole_height: f64,
+        pub total_width: f64,
+        pub total_height: f64,
+        pub viewport: Viewport,
+        pub widget_width: i32,
+        pub widget_height: i32,
     }
 
     #[object_subclass]
@@ -790,72 +1104,32 @@ mod imp {
     impl WidgetImpl for FrameDrawWidget {
         fn snapshot(&self, snapshot: &gtk::Snapshot) {
             let widget = self.obj();
-            let total_width = widget.width() as f64;
-            let total_height = widget.height() as f64;
+            let widget_width = widget.width() as f64;
+            let widget_height = widget.height() as f64;
 
-            if total_width <= 0.0 || total_height <= 0.0 {
+            if widget_width <= 0.0 || widget_height <= 0.0 {
                 return;
             }
 
             let style = self.get_resolved_style();
+            let viewport = self.viewport.borrow().clone();
+            let (total_width, total_height) =
+                viewport.output.unwrap_or((widget_width, widget_height));
 
-            let total_top_thickness = style.top_thickness;
-            let total_bottom_thickness = style.bottom_thickness;
-            let total_left_thickness = style.left_thickness;
-            let total_right_thickness = style.right_thickness;
-
-            let hole_x = total_left_thickness;
-            let hole_y = total_top_thickness;
-            let hole_width = (total_width - total_left_thickness - total_right_thickness).max(0.0);
-            let hole_height =
-                (total_height - total_top_thickness - total_bottom_thickness).max(0.0);
-            let border_radius = style
-                .border_radius
-                .clamp(0.0, hole_width.min(hole_height) / 2.0);
-
-            let vertices = build_hole_vertices(&style, hole_x, hole_y, hole_width, hole_height);
-
-            if style.draw_frame && !vertices.is_empty() {
+            if style.draw_frame {
                 let bounds =
-                    gtk::graphene::Rect::new(0.0, 0.0, total_width as f32, total_height as f32);
+                    gtk::graphene::Rect::new(0.0, 0.0, widget_width as f32, widget_height as f32);
                 let cr = snapshot.append_cairo(&bounds);
-
-                // 1) Paint full background
-                cr.set_operator(Operator::Over);
-                let (bg_r, bg_g, bg_b, bg_a) = style.background_rgba;
-                cr.set_source_rgba(bg_r, bg_g, bg_b, bg_a);
-                cr.rectangle(0.0, 0.0, total_width, total_height);
-                let _ = cr.fill();
-
-                // 2) Clear the hole
-                cr.set_operator(Operator::Clear);
-                trace_rounded_polygon(&cr, &vertices, border_radius);
-                let _ = cr.fill();
-
-                // 3) Border
-                let (border_r, border_g, border_b, border_a) = style.border_rgba;
-                if style.border_width > 0.0 && border_a > 0.0 {
-                    cr.set_operator(Operator::Over);
-                    trace_rounded_polygon(&cr, &vertices, border_radius);
-                    cr.clip();
-                    trace_rounded_polygon(&cr, &vertices, border_radius);
-                    cr.set_source_rgba(border_r, border_g, border_b, border_a);
-                    cr.set_line_width(style.border_width * 2.0);
-                    cr.set_line_join(LineJoin::Round);
-                    cr.set_line_cap(LineCap::Round);
-                    let _ = cr.stroke();
-                    cr.reset_clip();
-                }
+                paint_frame(&cr, &style, total_width, total_height, &viewport);
             }
 
             self.schedule_input_region_update(RegionArgs {
-                style: style.clone(),
-                window_width: total_width as i32,
-                window_height: total_height as i32,
-                hole_x,
-                hole_y,
-                hole_width,
-                hole_height,
+                style,
+                total_width,
+                total_height,
+                viewport,
+                widget_width: widget_width as i32,
+                widget_height: widget_height as i32,
             });
         }
     }
@@ -907,29 +1181,12 @@ mod imp {
                     let Some(args) = imp.pending_region_args.borrow_mut().take() else {
                         return;
                     };
-                    imp.update_input_region(
-                        &args.style,
-                        args.window_width,
-                        args.window_height,
-                        args.hole_x,
-                        args.hole_y,
-                        args.hole_width,
-                        args.hole_height,
-                    );
+                    imp.update_input_region(&args);
                 });
             self.pending_region_timeout.replace(Some(id));
         }
 
-        fn update_input_region(
-            &self,
-            style: &FrameStyle,
-            window_width: i32,
-            window_height: i32,
-            hole_x: f64,
-            hole_y: f64,
-            hole_width: f64,
-            hole_height: f64,
-        ) {
+        fn update_input_region(&self, args: &RegionArgs) {
             let widget = self.obj();
 
             let Some(native) = widget.native() else {
@@ -939,190 +1196,23 @@ mod imp {
                 return;
             };
 
-            // Cheap dedup before doing any of the cairo region work:
-            // hash the inputs that determine the final region. If the
-            // result would be identical to the last call we made, skip
-            // it — wayland's set_input_region produces pointer-leave /
-            // -enter events even when the region is unchanged, and that
-            // shows up as bar flicker during menu reveal animations.
-            use std::collections::hash_map::DefaultHasher;
-            use std::hash::{Hash, Hasher};
-            let mut hasher = DefaultHasher::new();
-            window_width.hash(&mut hasher);
-            window_height.hash(&mut hasher);
-            (hole_x.to_bits()).hash(&mut hasher);
-            (hole_y.to_bits()).hash(&mut hasher);
-            (hole_width.to_bits()).hash(&mut hasher);
-            (hole_height.to_bits()).hash(&mut hasher);
-            (style.border_width.to_bits()).hash(&mut hasher);
-            (style.left_expander_width.to_bits()).hash(&mut hasher);
-            (style.right_expander_width.to_bits()).hash(&mut hasher);
-            (style.left_top_expander_height.to_bits()).hash(&mut hasher);
-            (style.left_bottom_expander_height.to_bits()).hash(&mut hasher);
-            (style.right_top_expander_height.to_bits()).hash(&mut hasher);
-            (style.right_bottom_expander_height.to_bits()).hash(&mut hasher);
-            for (w, h) in [
-                style.top_revealer_size,
-                style.bottom_revealer_size,
-                style.top_left_revealer_size,
-                style.top_right_revealer_size,
-                style.bottom_left_revealer_size,
-                style.bottom_right_revealer_size,
-            ] {
-                w.to_bits().hash(&mut hasher);
-                h.to_bits().hash(&mut hasher);
-            }
-            let hash = hasher.finish();
+            let region = surface_input_region(
+                &args.style,
+                args.total_width,
+                args.total_height,
+                &args.viewport,
+                args.widget_width,
+                args.widget_height,
+            );
+            // Wayland's set_input_region produces pointer-leave / -enter
+            // events even when the region is unchanged, and that shows up as
+            // bar flicker during menu reveal animations: skip identical ones.
+            let hash = region_hash(&region);
             if hash == self.last_region_hash.get() {
                 return;
             }
             self.last_region_hash.set(hash);
-
-            let hole_left = hole_x.floor().max(0.0) as i32;
-            let hole_top = hole_y.floor().max(0.0) as i32;
-            let hole_right = (hole_x + hole_width).ceil().min(window_width as f64) as i32;
-            let hole_bottom = (hole_y + hole_height).ceil().min(window_height as f64) as i32;
-
-            let region = Region::create();
-            region
-                .union_rectangle(&RectangleInt::new(0, 0, window_width, window_height))
-                .expect("region union");
-
-            let border_width = style.border_width.ceil() as i32;
-            let border_width_f = style.border_width;
-
-            // Subtract main hole (inset by border_width so the border stays in the input region)
-            region
-                .subtract_rectangle(&RectangleInt::new(
-                    hole_left + border_width,
-                    hole_top + border_width,
-                    (hole_right - hole_left - border_width * 2).max(0),
-                    (hole_bottom - hole_top - border_width * 2).max(0),
-                ))
-                .expect("region subtract hole");
-
-            let left_expander_width = style.left_expander_width.ceil() as i32;
-            let right_expander_width = style.right_expander_width.ceil() as i32;
-
-            // Subtract side expander negative-space areas (inset by border_width)
-            // Left top expander: shrink width from the right (hole edge) by border_width
-            subtract_rect(
-                &region,
-                hole_left - left_expander_width,
-                hole_top,
-                (left_expander_width - border_width).max(0),
-                style.left_top_expander_height.ceil() as i32,
-            );
-            // Left bottom expander
-            subtract_rect(
-                &region,
-                hole_left - left_expander_width,
-                hole_bottom - style.left_bottom_expander_height.ceil() as i32,
-                (left_expander_width - border_width).max(0),
-                style.left_bottom_expander_height.ceil() as i32,
-            );
-            // Right top expander: shift x rightward by border_width, shrink width
-            subtract_rect(
-                &region,
-                hole_right + border_width,
-                hole_top,
-                (right_expander_width - border_width).max(0),
-                style.right_top_expander_height.ceil() as i32,
-            );
-            // Right bottom expander
-            subtract_rect(
-                &region,
-                hole_right + border_width,
-                hole_bottom - style.right_bottom_expander_height.ceil() as i32,
-                (right_expander_width - border_width).max(0),
-                style.right_bottom_expander_height.ceil() as i32,
-            );
-
-            // Union back inward revealer notches so frame captures input there.
-            // Expand each notch by border_width on sides that touch the hole edge
-            // so the border strip is also covered.
-            let (top_revealer_width, top_revealer_height) = style.top_revealer_size;
-            let (bottom_revealer_width, bottom_revealer_height) = style.bottom_revealer_size;
-            let (top_left_revealer_width, top_left_revealer_height) = style.top_left_revealer_size;
-            let (top_right_revealer_width, top_right_revealer_height) =
-                style.top_right_revealer_size;
-            let (bottom_left_revealer_width, bottom_left_revealer_height) =
-                style.bottom_left_revealer_size;
-            let (bottom_right_revealer_width, bottom_right_revealer_height) =
-                style.bottom_right_revealer_size;
-
-            // Center top revealer: touches top hole edge, expand upward
-            union_inward_notch(
-                &region,
-                hole_x + hole_width / 2.0 - top_revealer_width / 2.0,
-                hole_y - border_width_f,
-                top_revealer_width,
-                top_revealer_height + border_width_f,
-            );
-
-            // Center bottom revealer: touches bottom hole edge, expand downward
-            union_inward_notch(
-                &region,
-                hole_x + hole_width / 2.0 - bottom_revealer_width / 2.0,
-                hole_y + hole_height - bottom_revealer_height,
-                bottom_revealer_width,
-                bottom_revealer_height + border_width_f,
-            );
-
-            // Top-left corner revealer: touches top and left hole edges
-            union_inward_notch(
-                &region,
-                hole_x - border_width_f,
-                hole_y - border_width_f,
-                top_left_revealer_width + border_width_f,
-                top_left_revealer_height + border_width_f,
-            );
-
-            // Top-right corner revealer: touches top and right hole edges
-            union_inward_notch(
-                &region,
-                hole_x + hole_width - top_right_revealer_width,
-                hole_y - border_width_f,
-                top_right_revealer_width + border_width_f,
-                top_right_revealer_height + border_width_f,
-            );
-
-            // Bottom-left corner revealer: touches bottom and left hole edges
-            union_inward_notch(
-                &region,
-                hole_x - border_width_f,
-                hole_y + hole_height - bottom_left_revealer_height,
-                bottom_left_revealer_width + border_width_f,
-                bottom_left_revealer_height + border_width_f,
-            );
-
-            // Bottom-right corner revealer: touches bottom and right hole edges
-            union_inward_notch(
-                &region,
-                hole_x + hole_width - bottom_right_revealer_width,
-                hole_y + hole_height - bottom_right_revealer_height,
-                bottom_right_revealer_width + border_width_f,
-                bottom_right_revealer_height + border_width_f,
-            );
-
             surface.set_input_region(Some(&region));
-        }
-    }
-
-    fn subtract_rect(region: &Region, x: i32, y: i32, width: i32, height: i32) {
-        if width > 0 && height > 0 {
-            let _ = region.subtract_rectangle(&RectangleInt::new(x, y, width, height));
-        }
-    }
-
-    fn union_inward_notch(region: &Region, x: f64, y: f64, width: f64, height: f64) {
-        if width > 0.0 && height > 0.0 {
-            let _ = region.union_rectangle(&RectangleInt::new(
-                x.floor() as i32,
-                y.floor() as i32,
-                width.ceil() as i32,
-                height.ceil() as i32,
-            ));
         }
     }
 }
@@ -1143,6 +1233,15 @@ impl FrameDrawWidget {
     pub fn update_style(&self, f: impl FnOnce(&mut FrameStyle)) {
         f(&mut self.imp().style.borrow_mut());
         self.imp().invalidate_css_cache();
+        self.queue_draw();
+    }
+
+    /// Set which part of the output-wide frame this widget draws.
+    pub fn set_viewport(&self, viewport: Viewport) {
+        if *self.imp().viewport.borrow() == viewport {
+            return;
+        }
+        *self.imp().viewport.borrow_mut() = viewport;
         self.queue_draw();
     }
 
@@ -1182,5 +1281,198 @@ impl FrameDrawWidget {
 impl Default for FrameDrawWidget {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+    use relm4::gtk::cairo::{Format, ImageSurface};
+
+    /// The owner's look: 36 px top bar, 30 px bottom bar, 12 px radius,
+    /// 2 px border, opaque frame colours.
+    pub(crate) fn owner_style() -> FrameStyle {
+        FrameStyle {
+            border_radius: 12.0,
+            background_rgba: (31.0 / 255.0, 31.0 / 255.0, 46.0 / 255.0, 1.0),
+            border_rgba: (48.0 / 255.0, 51.0 / 255.0, 69.0 / 255.0, 1.0),
+            border_width: 2.0,
+            left_thickness: 0.0,
+            right_thickness: 0.0,
+            top_thickness: 36.0,
+            bottom_thickness: 30.0,
+            ..FrameStyle::default()
+        }
+    }
+
+    /// The same style with a top-right menu (and its notch) open.
+    pub(crate) fn with_menus(mut style: FrameStyle) -> FrameStyle {
+        style.top_right_revealer_size = (120.0, 90.0);
+        style.top_revealer_size = (80.0, 40.5);
+        style.right_thickness = 60.0;
+        style.right_expander_width = 60.0;
+        style.right_top_expander_height = 20.0;
+        style.right_bottom_expander_height = 30.0;
+        style
+    }
+
+    /// Paint one surface of `width` x `height` and return its pixels.
+    pub(crate) fn render(
+        style: &FrameStyle,
+        total: (f64, f64),
+        viewport: &Viewport,
+        width: i32,
+        height: i32,
+    ) -> ImageSurface {
+        let surface = ImageSurface::create(Format::ARgb32, width, height).expect("surface");
+        {
+            let cr = Context::new(&surface).expect("context");
+            paint_frame(&cr, style, total.0, total.1, viewport);
+        }
+        surface.flush();
+        surface
+    }
+
+    /// Composite surface pieces (each placed at its viewport origin) the way
+    /// the compositor does, and return the output-sized result.
+    pub(crate) fn composite(total: (i32, i32), pieces: &[(ImageSurface, (f64, f64))]) -> Vec<u8> {
+        let out = ImageSurface::create(Format::ARgb32, total.0, total.1).expect("surface");
+        {
+            let cr = Context::new(&out).expect("context");
+            for (piece, origin) in pieces {
+                cr.set_source_surface(piece, origin.0, origin.1)
+                    .expect("source");
+                cr.paint().expect("paint");
+            }
+        }
+        out.flush();
+        pixels(out)
+    }
+
+    pub(crate) fn pixels(mut surface: ImageSurface) -> Vec<u8> {
+        surface.data().expect("data").to_vec()
+    }
+
+    /// Assert two output-sized pixel buffers match, naming the first pixel
+    /// that differs instead of dumping megabytes. Cairo flattens arcs at the
+    /// translated coordinates, so an antialiased arc pixel may round one
+    /// step (1/255) differently; anything more is a real difference.
+    pub(crate) fn assert_same_pixels(got: &[u8], want: &[u8], width: usize, what: &str) {
+        assert_eq!(got.len(), want.len(), "{what}: size");
+        let differs = |i: usize| {
+            got[i * 4..i * 4 + 4]
+                .iter()
+                .zip(&want[i * 4..i * 4 + 4])
+                .any(|(a, b)| a.abs_diff(*b) > 1)
+        };
+        if let Some(i) = (0..got.len() / 4).find(|&i| differs(i)) {
+            let n = (0..got.len() / 4).filter(|&i| differs(i)).count();
+            panic!(
+                "{what}: pixel ({}, {}) is {:?}, want {:?} ({n} pixels differ)",
+                i % width,
+                i / width,
+                &got[i * 4..i * 4 + 4],
+                &want[i * 4..i * 4 + 4]
+            );
+        }
+    }
+
+    #[test]
+    fn full_viewport_paints_like_before() {
+        // The default viewport is the old single full-output surface.
+        let style = with_menus(owner_style());
+        let a = pixels(render(
+            &style,
+            (400.0, 300.0),
+            &Viewport::default(),
+            400,
+            300,
+        ));
+        let b = pixels(render(
+            &style,
+            (400.0, 300.0),
+            &Viewport {
+                origin: (0.0, 0.0),
+                output: Some((400.0, 300.0)),
+                owned: Some(vec![Rect::new(0.0, 0.0, 400.0, 300.0)]),
+            },
+            400,
+            300,
+        ));
+        assert_eq!(a, b);
+        // Sanity: something was painted, and the hole centre is clear.
+        assert!(a.iter().any(|&p| p != 0));
+        let stride = 400 * 4;
+        assert_eq!(
+            &a[150 * stride + 200 * 4..150 * stride + 200 * 4 + 4],
+            &[0, 0, 0, 0]
+        );
+    }
+
+    #[test]
+    fn disjoint_pieces_composite_to_the_full_frame() {
+        let (w, h) = (400.0, 300.0);
+        for style in [owner_style(), with_menus(owner_style())] {
+            let full = pixels(render(&style, (w, h), &Viewport::default(), 400, 300));
+            // An arbitrary split: a top strip, a bottom strip, two side strips
+            // and the middle, each its own surface at its own origin.
+            let parts = [
+                Rect::new(0.0, 0.0, w, 50.0),
+                Rect::new(0.0, 255.0, w, 45.0),
+                Rect::new(0.0, 50.0, 3.0, 205.0),
+                Rect::new(397.0, 50.0, 3.0, 205.0),
+                Rect::new(3.0, 50.0, 394.0, 205.0),
+            ];
+            let pieces: Vec<_> = parts
+                .iter()
+                .map(|r| {
+                    let vp = Viewport {
+                        origin: (r.x, r.y),
+                        output: Some((w, h)),
+                        owned: Some(vec![*r]),
+                    };
+                    (
+                        render(&style, (w, h), &vp, r.w as i32, r.h as i32),
+                        (r.x, r.y),
+                    )
+                })
+                .collect();
+            assert_same_pixels(&composite((400, 300), &pieces), &full, 400, "pieces");
+        }
+    }
+
+    fn region_rects(region: &Region) -> Vec<(i32, i32, i32, i32)> {
+        (0..region.num_rectangles())
+            .map(|i| {
+                let r = region.rectangle(i);
+                (r.x(), r.y(), r.width(), r.height())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn surface_input_regions_partition_the_output_region() {
+        let (w, h) = (400.0, 300.0);
+        let style = with_menus(owner_style());
+        let whole = output_input_region(&style, w, h);
+        // The zero-size corner notches add bw x bw squares just outside the
+        // output (harmless, the surface ignores them); compare on-output.
+        let _ = whole.intersect_rectangle(&RectangleInt::new(0, 0, w as i32, h as i32));
+        let parts = [Rect::new(0.0, 0.0, w, 50.0), Rect::new(0.0, 50.0, w, 250.0)];
+        let union = Region::create();
+        for r in parts {
+            let vp = Viewport {
+                origin: (r.x, r.y),
+                output: Some((w, h)),
+                owned: Some(vec![r]),
+            };
+            let local = surface_input_region(&style, w, h, &vp, r.w as i32, r.h as i32);
+            local.translate(r.x as i32, r.y as i32);
+            let _ = union.union(&local);
+        }
+        assert_eq!(region_rects(&union), region_rects(&whole));
+        // The hole centre passes clicks through; the top band takes them.
+        assert!(!whole.contains_point(200, 150));
+        assert!(whole.contains_point(5, 5));
     }
 }
