@@ -40,6 +40,9 @@ pub struct Twilight {
     /// config reload and on every `mctl twilight` command (both invalidation
     /// points users actually change presets through).
     pub schedule_cache: Option<(String, crate::twilight::preset::ScheduleData)>,
+    /// The twilight ramp last queued per output; an unchanged sample is not
+    /// queued again (see [`crate::twilight::gamma_lut::RampMemo`]).
+    pub applied: crate::twilight::gamma_lut::RampMemo<Output>,
 }
 
 impl Twilight {
@@ -49,6 +52,7 @@ impl Twilight {
             timer_token: None,
             ramp_active: true,
             schedule_cache: None,
+            applied: Default::default(),
         }
     }
 }
@@ -179,11 +183,16 @@ impl MargoState {
 
     /// Build a ramp per output (each CRTC may declare a different
     /// `GAMMA_LUT_SIZE` — Intel Arc reports 1024, older AMD parts
-    /// often 256, virtio sometimes 4096) and push them to
-    /// `output_pending.gamma`. The udev frame handler picks each one up
-    /// on the very next render and hands it to `g.set_gamma`,
-    /// which validates the length against the kernel's declared
-    /// size and rejects mismatches.
+    /// often 256, virtio sometimes 4096) and push the ones that changed
+    /// since the last tick to `output_pending.gamma`. The udev repaint
+    /// source applies each one through `g.set_gamma`, which validates the
+    /// length against the kernel's declared size and rejects mismatches.
+    ///
+    /// A GAMMA_LUT write is a blocking KMS commit, and the schedule ticks
+    /// every 5 s while the sampled temperature changes far less often, so
+    /// an unchanged ramp is skipped. GAMMA_LUT is a CRTC property: it needs
+    /// no new frame, so this only wakes the backend instead of dirtying
+    /// every output.
     fn apply_twilight_ramp(&mut self, temp_k: u32, gamma_pct: u32) {
         // Memo: most outputs share the same gamma_size, so cache
         // the last build so we don't pay the LUT compute again for
@@ -198,7 +207,13 @@ impl MargoState {
             .iter()
             .map(|m| (m.output.clone(), m.gamma_size))
             .collect();
+        // Outputs that went away: a replugged one is a new `Output` and
+        // must get its ramp again.
+        self.twilight
+            .applied
+            .retain(|o| targets.iter().any(|(t, _)| t == o));
 
+        let mut queued = false;
         for (output, size) in targets {
             // gamma_size == 0 means the output's CRTC doesn't expose
             // GAMMA_LUT at all (winit backend, headless, certain
@@ -211,21 +226,27 @@ impl MargoState {
                 cached = crate::twilight::gamma_lut::build_ramp(temp_k, gamma_pct, size as usize);
                 last_size = size;
             }
+            if !self.twilight.applied.update(&output, &cached) {
+                continue;
+            }
             // Drop any pending entry for this output first so we
             // never queue stale ramps behind the latest one.
             self.output_pending.gamma.retain(|(o, _)| o != &output);
             self.output_pending
                 .gamma
                 .push((output, Some(cached.clone())));
+            queued = true;
         }
         self.twilight.ramp_active = true;
-        self.request_repaint();
+        if queued {
+            self.wake_repaint_backend();
+        }
     }
 
     /// Restore the kernel's default identity ramp on every output.
     /// Used when twilight is disabled mid-session. No-ops while already
     /// cleared so a disabled-twilight session doesn't re-push identity
-    /// gamma + repaint every tick — the disabled branch of
+    /// gamma every tick — the disabled branch of
     /// `tick_twilight` calls this once per minute otherwise.
     fn clear_twilight_ramp(&mut self) {
         if !self.twilight.ramp_active {
@@ -236,6 +257,7 @@ impl MargoState {
             self.output_pending.gamma.push((mon.output.clone(), None));
         }
         self.twilight.ramp_active = false;
-        self.request_repaint();
+        self.twilight.applied.clear();
+        self.wake_repaint_backend();
     }
 }

@@ -260,6 +260,41 @@ pub(super) fn flush_presentation_feedback(
     );
 }
 
+/// What to do with one queued gamma ramp on this device's render pass.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GammaStep {
+    /// Commit it now.
+    Apply,
+    /// Keep it queued: the output lives on another device, or its page
+    /// flip is still in flight (a GAMMA_LUT write is a blocking atomic
+    /// commit that would first wait for that flip). The vblank handler wakes
+    /// the repaint source once the flip lands.
+    Defer,
+    /// Drop it: the CRTC has no GAMMA_LUT, or the output is gone.
+    Drop,
+}
+
+fn gamma_step(
+    on_this_device: bool,
+    has_gamma_lut: bool,
+    flip_in_flight: bool,
+    output_alive: bool,
+) -> GammaStep {
+    if !on_this_device {
+        if output_alive {
+            GammaStep::Defer
+        } else {
+            GammaStep::Drop
+        }
+    } else if !has_gamma_lut {
+        GammaStep::Drop
+    } else if flip_in_flight {
+        GammaStep::Defer
+    } else {
+        GammaStep::Apply
+    }
+}
+
 /// Apply any gamma ramp updates queued by wlr_gamma_control clients
 /// (and the built-in twilight scheduler). Multi-GPU care: this runs
 /// once per `BackendData` (= once per DRM device), and
@@ -268,7 +303,13 @@ pub(super) fn flush_presentation_feedback(
 /// device's render pass and silently drop them — so we only consume
 /// entries whose output we can see in this device's `outputs` map, and
 /// re-park the rest for the next render call.
-fn apply_pending_gamma(
+///
+/// A ramp for an output whose page flip is still in flight is re-parked
+/// too: the GAMMA_LUT write is a blocking atomic commit that would sit on
+/// the main thread until that flip (and then its own) completes. The
+/// VBlank handler wakes the repaint source when the flip lands, and the
+/// repaint source calls this before it renders anything.
+pub(super) fn apply_pending_gamma(
     outputs: &mut HashMap<crtc::Handle, OutputDevice>,
     drm: &DrmDevice,
     state: &mut MargoState,
@@ -279,37 +320,47 @@ fn apply_pending_gamma(
     let pending = std::mem::take(&mut state.output_pending.gamma);
     let mut deferred: Vec<(smithay::output::Output, Option<Vec<u16>>)> = Vec::new();
     for (output, ramp) in pending {
-        let target = outputs.values_mut().find(|od| od.output == output);
-        let Some(od) = target else {
-            // This output lives on another device — keep it queued so
-            // the next render call sees it.
-            deferred.push((output, ramp));
-            continue;
+        let od = outputs.values_mut().find(|od| od.output == output);
+        let alive = state.monitors.iter().any(|m| m.output == output);
+        let step = match &od {
+            Some(od) => gamma_step(true, od.gamma.is_some(), od.flip_in_flight, alive),
+            None => gamma_step(false, false, false, alive),
         };
-        let Some(g) = od.gamma.as_mut() else {
-            tracing::debug!("gamma: skip {} (no GAMMA_LUT)", od.output.name());
-            continue;
-        };
-        match g.set_gamma(drm, ramp.as_deref()) {
-            Ok(()) => tracing::debug!(
-                "gamma applied output={} ramp={}",
-                od.output.name(),
-                if ramp.is_some() { "client" } else { "default" }
-            ),
-            Err(e) => warn!(
-                output = %od.output.name(),
-                error = ?e,
-                "gamma set failed"
-            ),
+        match (step, od) {
+            (GammaStep::Apply, Some(od)) => {
+                let Some(g) = od.gamma.as_mut() else {
+                    continue;
+                };
+                match g.set_gamma(drm, ramp.as_deref()) {
+                    Ok(true) => tracing::debug!(
+                        "gamma applied output={} ramp={}",
+                        od.output.name(),
+                        if ramp.is_some() { "client" } else { "default" }
+                    ),
+                    Ok(false) => {
+                        tracing::trace!("gamma unchanged output={}", od.output.name());
+                    }
+                    Err(e) => {
+                        // Let twilight queue its ramp again on the next tick
+                        // instead of treating it as applied.
+                        state.twilight.applied.forget(&output);
+                        warn!(
+                            output = %od.output.name(),
+                            error = ?e,
+                            "gamma set failed"
+                        );
+                    }
+                }
+            }
+            (GammaStep::Defer, _) => deferred.push((output, ramp)),
+            (GammaStep::Drop, Some(od)) if od.gamma.is_none() => {
+                tracing::debug!("gamma: skip {} (no GAMMA_LUT)", od.output.name());
+            }
+            _ => {}
         }
     }
     if !deferred.is_empty() {
         state.output_pending.gamma = deferred;
-        // Kick another repaint so the deferred device picks up its
-        // ramps on the next frame instead of sitting idle until
-        // something else schedules it.
-        state.request_repaint();
-        state.wake_repaint_backend();
     }
 }
 
@@ -343,6 +394,8 @@ fn apply_pending_dpms(outputs: &mut HashMap<crtc::Handle, OutputDevice>, state: 
             match od.compositor.clear() {
                 Ok(()) => {
                     od.dpms_off = true;
+                    // `clear()` drops the queued frame; no vblank follows.
+                    od.flip_in_flight = false;
                     tracing::info!(output = %od.output.name(), "dpms: off (panel cleared)");
                 }
                 Err(e) => warn!(output = %od.output.name(), error = ?e, "dpms: clear failed"),
@@ -612,6 +665,7 @@ fn render_output(
             match od.compositor.queue_frame(()) {
                 Ok(()) => {
                     od.render_failure_streak = 0;
+                    od.flip_in_flight = true;
                     state.clear_output_render_retry(&od.output);
                     od.queued_count += 1;
                     // Global gate only — the per-output path tracks its
@@ -747,4 +801,32 @@ fn publish_output_perf(od: &OutputDevice, state: &mut MargoState) {
     perf.empties = od.empty_count;
     perf.queue_errors = od.queue_error_count;
     perf.render_errors = od.render_error_count;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{GammaStep, gamma_step};
+
+    #[test]
+    fn a_ramp_for_an_idle_output_is_applied() {
+        assert_eq!(gamma_step(true, true, false, true), GammaStep::Apply);
+    }
+
+    #[test]
+    fn a_ramp_waits_while_the_output_has_a_flip_in_flight() {
+        assert_eq!(gamma_step(true, true, true, true), GammaStep::Defer);
+    }
+
+    #[test]
+    fn a_ramp_for_an_output_without_gamma_lut_is_dropped() {
+        assert_eq!(gamma_step(true, false, false, true), GammaStep::Drop);
+        assert_eq!(gamma_step(true, false, true, true), GammaStep::Drop);
+    }
+
+    #[test]
+    fn a_ramp_for_another_device_waits_unless_the_output_is_gone() {
+        assert_eq!(gamma_step(false, false, false, true), GammaStep::Defer);
+        // Re-parking it forever would keep re-queueing a dead entry.
+        assert_eq!(gamma_step(false, false, false, false), GammaStep::Drop);
+    }
 }

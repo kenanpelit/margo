@@ -35,9 +35,10 @@
 //!      sunsetr does in f64; we use f32 because the difference is
 //!      below 1 LSB at u16 quantisation in the ramp's mid-band).
 //!
-//! The output `Vec<u16>` is fed straight to
-//! `MargoState::output_pending.gamma`, picked up by the udev frame
-//! handler, written to the CRTC's `GAMMA_LUT` blob.
+//! The output `Vec<u16>` is queued on `MargoState::output_pending.gamma`
+//! (only when it differs from the last one queued, see [`RampMemo`]),
+//! picked up by the udev repaint source and written to the CRTC's
+//! `GAMMA_LUT` blob.
 
 /// Build the planar LUT for one output. Length = `3 * n` u16.
 /// `temp_k` is clamped to `[1000, 25000]`; `gamma_pct` to
@@ -104,9 +105,86 @@ fn temp_to_rgb_weights(temp: f32) -> (f32, f32, f32) {
     (r / 255.0, g / 255.0, b / 255.0)
 }
 
+/// The ramp last queued per output. Twilight samples every 5 s (every
+/// 250 ms in a transition) but the integer temperature it lands on changes
+/// far less often; each queued ramp costs a blocking KMS commit, so an
+/// unchanged one is not queued again.
+#[derive(Debug, Clone)]
+pub struct RampMemo<K> {
+    entries: Vec<(K, Vec<u16>)>,
+}
+
+impl<K> Default for RampMemo<K> {
+    fn default() -> Self {
+        Self {
+            entries: Vec::new(),
+        }
+    }
+}
+
+impl<K: PartialEq + Clone> RampMemo<K> {
+    /// Record `ramp` for `key`. `true` when it differs from the ramp recorded
+    /// for `key` before (or there was none), i.e. when it must be applied.
+    pub fn update(&mut self, key: &K, ramp: &[u16]) -> bool {
+        match self.entries.iter_mut().find(|(k, _)| k == key) {
+            Some((_, last)) if last.as_slice() == ramp => false,
+            Some((_, last)) => {
+                last.clear();
+                last.extend_from_slice(ramp);
+                true
+            }
+            None => {
+                self.entries.push((key.clone(), ramp.to_vec()));
+                true
+            }
+        }
+    }
+
+    /// Forget `key`, so its next ramp is applied even if unchanged
+    /// (something else, e.g. a gamma-control client, wrote the LUT).
+    pub fn forget(&mut self, key: &K) {
+        self.entries.retain(|(k, _)| k != key);
+    }
+
+    /// Drop the entries `keep` rejects (outputs that went away).
+    pub fn retain(&mut self, mut keep: impl FnMut(&K) -> bool) {
+        self.entries.retain(|(k, _)| keep(k));
+    }
+
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ramp_memo_applies_only_changes() {
+        let mut memo = RampMemo::default();
+        assert!(memo.update(&"DP-1", &[1, 2, 3]), "first ramp");
+        assert!(!memo.update(&"DP-1", &[1, 2, 3]), "same ramp again");
+        assert!(memo.update(&"DP-2", &[1, 2, 3]), "another output");
+        assert!(memo.update(&"DP-1", &[1, 2, 4]), "changed ramp");
+        assert!(!memo.update(&"DP-1", &[1, 2, 4]));
+        // A different LUT size is a different ramp.
+        assert!(memo.update(&"DP-1", &[1, 2, 4, 5, 6, 7]));
+    }
+
+    #[test]
+    fn ramp_memo_forget_retain_and_clear_force_a_reapply() {
+        let mut memo = RampMemo::default();
+        memo.update(&"DP-1", &[1]);
+        memo.update(&"DP-2", &[1]);
+        memo.forget(&"DP-1");
+        assert!(memo.update(&"DP-1", &[1]));
+        memo.retain(|k| *k != "DP-2");
+        assert!(memo.update(&"DP-2", &[1]));
+        memo.clear();
+        assert!(memo.update(&"DP-1", &[1]));
+        assert!(memo.update(&"DP-2", &[1]));
+    }
 
     /// Planar layout: indices 0..N → R, N..2N → G, 2N..3N → B.
     fn plane(ramp: &[u16], n: usize, ch: usize) -> &[u16] {

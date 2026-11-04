@@ -26,7 +26,7 @@ pub mod interpolation;
 pub mod preset;
 pub mod schedule;
 
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Instant, SystemTime};
 
 use interpolation::{Settings, Target};
 pub use preset::ScheduleData;
@@ -267,11 +267,6 @@ pub fn settings_from_config(cfg: &margo_config::Config) -> Settings {
         static_gamma: cfg.twilight_static_gamma,
     }
 }
-
-/// 1 s — minimum gap between gamma pushes when the target didn't
-/// change. Stops the tick loop from spamming `output_pending.gamma`
-/// every minute with a byte-identical ramp.
-pub const _SKIP_REWRITE_GRACE: Duration = Duration::from_secs(1);
 
 #[cfg(test)]
 mod tests {

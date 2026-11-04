@@ -64,7 +64,9 @@ mod render_elements;
 // them into the udev-module namespace so `run` / `serve_screencopies` (here)
 // and the sibling `frame` module (`use super::build_render_elements`, a child
 // reaching an ancestor's private item) resolve unchanged.
-use frame::{flush_presentation_feedback, render_all_outputs, render_due_outputs};
+use frame::{
+    apply_pending_gamma, flush_presentation_feedback, render_all_outputs, render_due_outputs,
+};
 use helpers::{connector_is_non_desktop, find_crtc, monotonic_now, smithay_transform};
 use hotplug::rescan_outputs;
 use mode::{apply_pending_mode_changes, select_drm_mode};
@@ -143,6 +145,9 @@ pub struct OutputDevice {
     /// `DrmCompositor::clear()`). The render loop skips it until woken; a
     /// `output_pending.dpms (output, true)` re-renders + re-enables it.
     pub(super) dpms_off: bool,
+    /// A page flip was queued and its vblank hasn't arrived yet. Gamma
+    /// changes wait for it (see `apply_pending_gamma`).
+    pub(super) flip_in_flight: bool,
     /// `wp_presentation_feedback` builders that have been collected at
     /// submit time but not yet signalled. We hold them here until the
     /// matching `DrmEvent::VBlank` fires, then call `.presented(time,
@@ -176,6 +181,9 @@ pub(super) struct GammaProps {
     gamma_lut_size: property::Handle,
     /// Currently-active LUT blob id, so we can free it when replacing.
     previous_blob: Option<NonZeroU64>,
+    /// The ramp last committed (`Some(None)` = identity), `None` while
+    /// unknown. Lets `set_gamma` skip a commit that would change nothing.
+    applied: Option<Option<Vec<u16>>>,
 }
 
 impl GammaProps {
@@ -209,6 +217,7 @@ impl GammaProps {
             gamma_lut: gamma_lut?,
             gamma_lut_size: gamma_lut_size?,
             previous_blob: None,
+            applied: None,
         })
     }
 
@@ -223,9 +232,25 @@ impl GammaProps {
         None
     }
 
+    /// Forget what was committed and return it, so the next `set_gamma`
+    /// commits even an unchanged ramp. Used when another DRM master may
+    /// have changed the LUT (a VT switch).
+    pub(super) fn forget_applied(&mut self) -> Option<Option<Vec<u16>>> {
+        self.applied.take()
+    }
+
     /// Apply a gamma ramp (R, G, B planes concatenated, each `gamma_size`
     /// u16 entries). Pass `None` to clear/restore the default identity LUT.
-    pub(super) fn set_gamma(&mut self, device: &DrmDevice, gamma: Option<&[u16]>) -> Result<()> {
+    ///
+    /// On an atomic driver the property write is a blocking commit that
+    /// waits for the CRTC's flip, so a ramp equal to the one last committed
+    /// is skipped (`Ok(false)`); `Ok(true)` means it was committed.
+    pub(super) fn set_gamma(&mut self, device: &DrmDevice, gamma: Option<&[u16]>) -> Result<bool> {
+        if gamma_unchanged(self.applied.as_ref(), gamma) {
+            return Ok(false);
+        }
+        // Unknown until the commit below succeeds.
+        self.applied = None;
         #[allow(non_camel_case_types)]
         #[repr(C)]
         #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -277,8 +302,15 @@ impl GammaProps {
         if let Some(old) = std::mem::replace(&mut self.previous_blob, blob_id) {
             let _ = device.destroy_property_blob(old.get());
         }
-        Ok(())
+        self.applied = Some(gamma.map(<[u16]>::to_vec));
+        Ok(true)
     }
+}
+
+/// Whether committing `new` would leave GAMMA_LUT as it is. `applied` is the
+/// last ramp committed (`Some(None)` = the identity), `None` when unknown.
+fn gamma_unchanged(applied: Option<&Option<Vec<u16>>>, new: Option<&[u16]>) -> bool {
+    applied.is_some_and(|applied| applied.as_deref() == new)
 }
 
 pub(crate) struct BackendData {
@@ -711,6 +743,7 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                 gamma: gamma_props,
                 connector: *conn_handle,
                 dpms_off: false,
+                flip_in_flight: false,
                 pending_presentation: Vec::new(),
                 vblank_seq: 0,
             },
@@ -819,6 +852,7 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                         u64,
                     )> = Vec::new();
                     let mut flipped_output: Option<Output> = None;
+                    let mut gamma_waiting = false;
                     {
                         let mut bd = backend_data.borrow_mut();
                         if let Some(od) = bd.outputs.get_mut(&crtc) {
@@ -834,6 +868,14 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                             if let Err(e) = od.compositor.frame_submitted() {
                                 warn!("frame_submitted: {e:?}");
                             }
+                            od.flip_in_flight = false;
+                            // A gamma ramp parked behind this flip can go
+                            // in now.
+                            gamma_waiting = state
+                                .output_pending
+                                .gamma
+                                .iter()
+                                .any(|(o, _)| *o == od.output);
                             let seq = od.vblank_seq;
                             for feedback in od.pending_presentation.drain(..) {
                                 to_flush.push((od.output.clone(), feedback, seq));
@@ -858,6 +900,9 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                     // the redraw scheduler ping itself for the next frame.
                     // Also bumps the per-output frame_callback_sequence
                     // + sends frame callbacks — see `state::note_vblank`.
+                    if gamma_waiting {
+                        state.wake_repaint_backend();
+                    }
                     if let Some(out) = flipped_output {
                         // Select by the gate that queued this specific frame,
                         // not by the current config value: config reload may
@@ -904,6 +949,14 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                 if !state.output_pending.mode_changes.is_empty() {
                     let mut bd = backend_data.borrow_mut();
                     apply_pending_mode_changes(&mut bd, state);
+                }
+                // Gamma ramps (twilight, wlr-gamma-control) are CRTC
+                // properties, not frames: their producers only wake this
+                // source, so apply them whether or not anything renders.
+                if !state.output_pending.gamma.is_empty() {
+                    let mut bd = backend_data.borrow_mut();
+                    let BackendData { outputs, drm, .. } = &mut *bd;
+                    apply_pending_gamma(outputs, drm, state);
                 }
                 // DPMS changes MUST go through the all-outputs path: a
                 // DPMS-off output stops producing vblanks, so its per-output
@@ -996,9 +1049,9 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
     // (libinput will be inserted into state below; the closure reads it from state)
     event_loop
         .handle()
-        .insert_source(
-            session_notifier,
-            |event, _, state: &mut MargoState| match event {
+        .insert_source(session_notifier, {
+            let backend_data = backend_data.clone();
+            move |event, _, state: &mut MargoState| match event {
                 SessionEvent::PauseSession => {
                     info!("session paused");
                     if let Some(li) = state.libinput.as_mut() {
@@ -1024,9 +1077,31 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                     // every panel, so a stuck DPMS-off can never survive a
                     // Ctrl+Alt+F-key round-trip. Harmless when nothing is off.
                     state.request_dpms(Some(true), None);
+                    // Another DRM master may have changed the LUTs while we
+                    // were away, and a flip queued before the switch never
+                    // got its vblank: re-commit every output's last ramp
+                    // (unless a newer one is already queued).
+                    let mut bd = backend_data.borrow_mut();
+                    for od in bd.outputs.values_mut() {
+                        od.flip_in_flight = false;
+                        let Some(ramp) = od.gamma.as_mut().and_then(GammaProps::forget_applied)
+                        else {
+                            continue;
+                        };
+                        if !state
+                            .output_pending
+                            .gamma
+                            .iter()
+                            .any(|(o, _)| *o == od.output)
+                        {
+                            state.output_pending.gamma.push((od.output.clone(), ramp));
+                        }
+                    }
+                    drop(bd);
+                    state.wake_repaint_backend();
                 }
-            },
-        )
+            }
+        })
         .map_err(|e| anyhow::anyhow!("session event source: {e}"))?;
 
     // ── 9. libinput ───────────────────────────────────────────────────────────
@@ -1901,3 +1976,29 @@ impl DrmLeaseHandler for MargoState {
 }
 // Dispatch wiring arrives through the blanket `delegate_dispatch2!`
 // in state.rs — this smithay revision has no per-protocol macro.
+
+#[cfg(test)]
+mod tests {
+    use super::gamma_unchanged;
+
+    #[test]
+    fn the_same_ramp_is_not_committed_twice() {
+        let ramp = vec![1u16, 2, 3];
+        assert!(gamma_unchanged(Some(&Some(ramp.clone())), Some(&ramp)));
+        assert!(gamma_unchanged(Some(&None), None));
+    }
+
+    #[test]
+    fn a_different_or_unknown_ramp_is_committed() {
+        let ramp = vec![1u16, 2, 3];
+        assert!(!gamma_unchanged(
+            Some(&Some(ramp.clone())),
+            Some(&[1, 2, 4])
+        ));
+        assert!(!gamma_unchanged(Some(&Some(ramp.clone())), None));
+        assert!(!gamma_unchanged(Some(&None), Some(&ramp)));
+        // Nothing known about the CRTC (startup, after a VT switch).
+        assert!(!gamma_unchanged(None, None));
+        assert!(!gamma_unchanged(None, Some(&ramp)));
+    }
+}

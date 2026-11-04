@@ -420,6 +420,7 @@ pub(super) fn setup_connector(
             gamma: gamma_props,
             connector: conn_handle,
             dpms_off: false,
+            flip_in_flight: false,
             pending_presentation: Vec::new(),
             vblank_seq: 0,
         },

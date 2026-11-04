@@ -42,7 +42,12 @@ impl GammaControlHandler for MargoState {
         } else {
             self.output_pending.gamma.push((output.clone(), ramp));
         }
-        self.request_repaint();
+        // The client overwrote whatever twilight applied here: let twilight's
+        // next tick queue its ramp again instead of skipping it as unchanged.
+        self.twilight.applied.forget(output);
+        // GAMMA_LUT is a CRTC property, not a frame: wake the backend to
+        // apply it without dirtying any output.
+        self.wake_repaint_backend();
         Some(())
     }
 }

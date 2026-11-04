@@ -77,6 +77,7 @@ mod tag_mask;
 mod tag_mon;
 mod tag_transition_anim;
 mod theme;
+mod twilight;
 mod virtual_pointer;
 mod window_rules;
 mod x11;
