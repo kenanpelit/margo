@@ -89,6 +89,28 @@ fn xauth_invocation(
     Some((program, args, format!("add {display} . {cookie}\n")))
 }
 
+/// The X server's program and argv: the configured command, the display, the
+/// VT and `-auth <xauth_file>`.
+///
+/// Without `-auth` Xorg has no authorization records and falls back to its
+/// host list, which lets every local account connect: the cookie xauth just
+/// wrote was never checked. startx passes the same flag. A `-auth` already in
+/// the configured command wins.
+fn xserver_invocation(
+    configured: &str,
+    display: &str,
+    doubledigit_vtnr: &str,
+    xauth_file: &str,
+) -> Option<(String, Vec<String>)> {
+    let (program, mut args) = split_command(configured)?;
+    let has_auth = args.iter().any(|a| a == "-auth");
+    args.extend([display.to_string(), format!("vt{doubledigit_vtnr}")]);
+    if !has_auth {
+        args.extend(["-auth".to_string(), xauth_file.to_string()]);
+    }
+    Some((program, args))
+}
+
 static X_HAS_STARTED: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
 
 fn handle_sigusr1(_: i32) {
@@ -172,9 +194,13 @@ pub fn setup_x(user_info: &UserInfo, config: &Config) -> Result<SessionChild, XS
         libc::signal(SIGUSR1, SIG_IGN);
     }
 
-    let (xserver, mut xserver_args) =
-        split_command(&config.x11.xserver_path).ok_or(XSetupError::XServerStart)?;
-    xserver_args.extend([display_value, format!("vt{doubledigit_vtnr}")]);
+    let (xserver, xserver_args) = xserver_invocation(
+        &config.x11.xserver_path,
+        &display_value,
+        &doubledigit_vtnr,
+        xauth_path,
+    )
+    .ok_or(XSetupError::XServerStart)?;
     let mut child = Command::new(xserver);
     child.args(&xserver_args);
 
@@ -244,7 +270,37 @@ pub fn setup_x(user_info: &UserInfo, config: &Config) -> Result<SessionChild, XS
 
 #[cfg(test)]
 mod tests {
-    use super::{split_command, xauth_invocation};
+    use super::{split_command, xauth_invocation, xserver_invocation};
+
+    #[test]
+    fn the_x_server_is_told_to_check_the_cookie() {
+        let (program, args) = xserver_invocation(
+            "/usr/bin/X -nolisten tcp",
+            ":1",
+            "02",
+            "/home/u/.Xauthority",
+        )
+        .unwrap();
+        assert_eq!(program, "/usr/bin/X");
+        assert_eq!(
+            args,
+            [
+                "-nolisten",
+                "tcp",
+                ":1",
+                "vt02",
+                "-auth",
+                "/home/u/.Xauthority"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_configured_auth_file_is_left_alone() {
+        let (_, args) =
+            xserver_invocation("/usr/bin/X -auth /etc/x.auth", ":0", "01", "/h").unwrap();
+        assert_eq!(args, ["-auth", "/etc/x.auth", ":0", "vt01"]);
+    }
 
     #[test]
     fn the_cookie_goes_to_xauth_on_stdin_never_in_argv() {
