@@ -237,6 +237,27 @@ pub async fn connect_by_mac(mac: &str) -> bool {
     true
 }
 
+/// Bluetooth audio handoff from the output picker: connect `mac` (adapter
+/// powered on first) and make its sink the default output once PipeWire
+/// creates it — regardless of the auto-connect `route_audio_output`
+/// setting, because the user explicitly picked this device *as an
+/// output*. Input routing still follows the config.
+pub async fn connect_for_output(mac: &str) -> bool {
+    if !ensure_adapter_on().await {
+        return false;
+    }
+    let Some(dev) = find_device(mac) else {
+        return false;
+    };
+    if !dev.connected.get() && !connect_device(&dev).await {
+        return false;
+    }
+    let mut cfg = config();
+    cfg.route_audio_output = true;
+    route_audio(&cfg, mac).await;
+    true
+}
+
 /// Disconnect every currently-connected configured device.
 pub async fn disconnect_configured() -> bool {
     let cfg = config();
