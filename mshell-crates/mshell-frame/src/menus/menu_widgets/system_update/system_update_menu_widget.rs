@@ -52,6 +52,8 @@ pub(crate) struct SystemUpdateMenuWidgetModel {
     config_busy: bool,
     /// Last config action error.
     config_error: Option<String>,
+    /// `IgnorePkg` from pacman.conf (shown read-only under Hidden).
+    pacman_ignored: Vec<String>,
 }
 
 /// What the review view's buttons do.
@@ -99,6 +101,8 @@ pub(crate) enum SystemUpdateMenuWidgetInput {
     OpenReview(usize),
     CloseReview,
     ConfigAction(ConfigAction),
+    /// Hide a package from the count / show it again.
+    ToggleHidden(String),
 }
 
 #[derive(Debug)]
@@ -122,6 +126,7 @@ pub(crate) enum SystemUpdateMenuWidgetCommandOutput {
     Configs(Vec<ConfigFile>),
     Reviewed(ConfigFile, Review),
     ConfigDone(Result<(), String>),
+    PacmanIgnored(Vec<String>),
 }
 
 #[relm4::component(pub(crate))]
@@ -564,6 +569,7 @@ impl Component for SystemUpdateMenuWidgetModel {
             review: None,
             config_busy: false,
             config_error: None,
+            pacman_ignored: Vec::new(),
         };
         let widgets = view_output!();
 
@@ -616,6 +622,13 @@ impl Component for SystemUpdateMenuWidgetModel {
                 if visible {
                     sender.input(SystemUpdateMenuWidgetInput::Refresh);
                     sender.input(SystemUpdateMenuWidgetInput::ScanConfigs);
+                    sender.oneshot_command(async {
+                        SystemUpdateMenuWidgetCommandOutput::PacmanIgnored(
+                            tokio::task::spawn_blocking(system_update::ignore::pacman_ignored)
+                                .await
+                                .unwrap_or_default(),
+                        )
+                    });
                     if news_enabled() {
                         sender.oneshot_command(async {
                             SystemUpdateMenuWidgetCommandOutput::News(
@@ -689,6 +702,30 @@ impl Component for SystemUpdateMenuWidgetModel {
                         self.armed_rollback.as_deref(),
                         &sender,
                     );
+                }
+            }
+            SystemUpdateMenuWidgetInput::ToggleHidden(name) => {
+                if system_update::ignore::valid_pkg_name(&name) {
+                    let hidden = config_manager()
+                        .config()
+                        .bars()
+                        .widgets()
+                        .system_update()
+                        .hidden_packages()
+                        .get_untracked();
+                    let next = system_update::ignore::toggled(&hidden, &name);
+                    let for_config = next.clone();
+                    config_manager().update_config(move |c| {
+                        c.bars.widgets.system_update.hidden_packages = for_config
+                    });
+                    if let Some(report) = self.report.as_mut() {
+                        // Re-split locally (no re-probe) and push the
+                        // new count to every pill.
+                        report.entries.append(&mut report.hidden);
+                        system_update::ignore::apply_hidden(report, &next);
+                        rebuild_list(&widgets.list, report, &self.pacman_ignored, &sender);
+                        system_update::publish_report(report.clone());
+                    }
                 }
             }
             SystemUpdateMenuWidgetInput::ScanConfigs => {
@@ -810,11 +847,17 @@ impl Component for SystemUpdateMenuWidgetModel {
         match message {
             SystemUpdateMenuWidgetCommandOutput::Loaded(report) => {
                 self.refreshing = false;
-                rebuild_list(&widgets.list, &report);
+                rebuild_list(&widgets.list, &report, &self.pacman_ignored, &sender);
                 self.report = Some(report);
             }
             SystemUpdateMenuWidgetCommandOutput::Run(status) => self.run = status,
             SystemUpdateMenuWidgetCommandOutput::LaunchFailed(e) => self.run_error = Some(e),
+            SystemUpdateMenuWidgetCommandOutput::PacmanIgnored(names) => {
+                self.pacman_ignored = names;
+                if let Some(report) = &self.report {
+                    rebuild_list(&widgets.list, report, &self.pacman_ignored, &sender);
+                }
+            }
             SystemUpdateMenuWidgetCommandOutput::Configs(found) => {
                 rebuild_configs(&widgets.config_list, &found, &sender);
                 let title = if found.is_empty() {
@@ -1007,7 +1050,12 @@ fn summary_line(report: Option<&UpdateReport>) -> String {
 
 /// Rebuild the grouped update table: a section header per source
 /// followed by `name  old → new` rows.
-fn rebuild_list(list: &gtk::Box, report: &UpdateReport) {
+fn rebuild_list(
+    list: &gtk::Box,
+    report: &UpdateReport,
+    pacman_ignored: &[String],
+    sender: &ComponentSender<SystemUpdateMenuWidgetModel>,
+) {
     while let Some(child) = list.first_child() {
         list.remove(&child);
     }
@@ -1018,6 +1066,9 @@ fn rebuild_list(list: &gtk::Box, report: &UpdateReport) {
     }
     if report.is_empty() {
         list.append(&info_label("Everything is up to date."));
+    }
+    append_hidden_section(list, report, pacman_ignored, sender);
+    if report.is_empty() {
         return;
     }
 
@@ -1069,6 +1120,7 @@ fn rebuild_list(list: &gtk::Box, report: &UpdateReport) {
                 ver_label.add_css_class("system-update-version");
                 row.append(&ver_label);
             }
+            row.append(&hide_button(&e.name, true, sender));
 
             list.append(&row);
         }
@@ -1312,6 +1364,93 @@ fn delete_label(r: Option<&(ConfigFile, Review)>) -> &'static str {
         Some(Kind::Pacsave) => "Delete .pacsave",
         _ => "Delete .pacorig",
     }
+}
+
+/// Icon-only hide / show toggle on a package row.
+fn hide_button(
+    name: &str,
+    hide: bool,
+    sender: &ComponentSender<SystemUpdateMenuWidgetModel>,
+) -> gtk::Button {
+    let (icon, tip) = if hide {
+        (
+            "view-conceal-symbolic",
+            format!("Hide {name} from the count"),
+        )
+    } else {
+        ("view-reveal-symbolic", format!("Count {name} again"))
+    };
+    let btn = gtk::Button::from_icon_name(icon);
+    btn.add_css_class("ok-button-flat");
+    btn.set_valign(gtk::Align::Center);
+    btn.set_tooltip_text(Some(&tip));
+    mshell_common::a11y::name(&btn, &tip);
+    let s = sender.clone();
+    let name = name.to_string();
+    btn.connect_clicked(move |_| s.input(SystemUpdateMenuWidgetInput::ToggleHidden(name.clone())));
+    btn
+}
+
+/// "Hidden" group at the end of the Updates page: packages the user
+/// hid (with a show-again button) and pacman.conf's IgnorePkg (tagged,
+/// read-only — pacman.conf is never edited from here).
+fn append_hidden_section(
+    list: &gtk::Box,
+    report: &UpdateReport,
+    pacman_ignored: &[String],
+    sender: &ComponentSender<SystemUpdateMenuWidgetModel>,
+) {
+    if report.hidden.is_empty() && pacman_ignored.is_empty() {
+        return;
+    }
+    let header = gtk::Label::builder()
+        .label(format!(
+            "Hidden ({})",
+            report.hidden.len() + pacman_ignored.len()
+        ))
+        .halign(gtk::Align::Start)
+        .xalign(0.0)
+        .build();
+    header.add_css_class("system-update-section-label");
+    let group = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .build();
+    group.add_css_class("ok-boxed-list");
+    group.add_css_class("compact");
+    let row = |name: &str, tag: &str| {
+        let r = gtk::Box::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .spacing(8)
+            .build();
+        let n = gtk::Label::builder()
+            .label(name)
+            .xalign(0.0)
+            .hexpand(true)
+            .build();
+        n.add_css_class("system-update-name");
+        r.append(&n);
+        let t = gtk::Label::new(Some(tag));
+        t.add_css_class("system-update-version");
+        r.append(&t);
+        r
+    };
+    for e in &report.hidden {
+        let tag = match (&e.old_version, &e.new_version) {
+            (Some(o), Some(n)) => format!("{o} → {n}"),
+            (None, Some(n)) => n.clone(),
+            _ => String::new(),
+        };
+        let r = row(&e.name, &tag);
+        r.append(&hide_button(&e.name, false, sender));
+        group.append(&r);
+    }
+    for name in pacman_ignored {
+        let r = row(name, "IgnorePkg");
+        r.set_tooltip_text(Some("Held back by IgnorePkg in /etc/pacman.conf"));
+        group.append(&r);
+    }
+    list.append(&header);
+    list.append(&group);
 }
 
 fn info_label(text: &str) -> gtk::Label {

@@ -8,6 +8,7 @@
 //! count-only probe via dnf / apt (no per-package versions).
 
 pub(crate) mod history;
+pub(crate) mod ignore;
 pub(crate) mod news;
 pub(crate) mod pacnew;
 pub(crate) mod run;
@@ -72,6 +73,9 @@ pub(crate) struct UpdateReport {
     /// (already-cached packages excluded). `None` = unknown.
     #[serde(default)]
     pub(crate) download_bytes: Option<u64>,
+    /// Pending updates the user hid from the count (still upgraded).
+    #[serde(default)]
+    pub(crate) hidden: Vec<UpdateEntry>,
 }
 
 impl UpdateReport {
@@ -203,6 +207,14 @@ pub(crate) async fn probe(cfg: ProbeConfig) -> UpdateReport {
         report.entries.append(&mut entries);
     }
 
+    let hidden = config_manager()
+        .config()
+        .bars()
+        .widgets()
+        .system_update()
+        .hidden_packages()
+        .get_untracked();
+    ignore::apply_hidden(&mut report, &hidden);
     report
 }
 
@@ -698,6 +710,7 @@ mod tests {
                 entries: vec![entry(Source::Flatpak, "x", Some("1"), None)],
                 error: Some("boom".into()),
                 download_bytes: Some(7),
+                hidden: vec![entry(Source::Repo, "h", None, None)],
             },
         };
         let back: UpdateCache =

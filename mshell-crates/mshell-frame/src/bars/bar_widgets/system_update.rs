@@ -357,6 +357,9 @@ fn tooltip(report: Option<&UpdateReport>) -> String {
             lines.push(format!("  {}: {c}", src.label()));
         }
     }
+    if !r.hidden.is_empty() {
+        lines.push(format!("  ({} hidden)", r.hidden.len()));
+    }
     if let Some(bytes) = r.download_bytes.filter(|b| *b > 0) {
         lines.push(format!(
             "  ~{} to download",

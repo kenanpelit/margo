@@ -436,6 +436,10 @@ pub struct SystemUpdateBarWidget {
     /// (interactive, the default) or in the background through polkit
     /// with a live log + result notification.
     pub update_mode: SystemUpdateMode,
+    /// Package names hidden from the pending count in the panel. They
+    /// still upgrade (holding a package back is pacman.conf's
+    /// `IgnorePkg`, which the panel shows but never edits).
+    pub hidden_packages: Vec<String>,
 }
 
 /// How [`SystemUpdateBarWidget`] runs an upgrade.
@@ -475,6 +479,7 @@ impl Default for SystemUpdateBarWidget {
             check_flatpak: true,
             check_news: true,
             update_mode: SystemUpdateMode::default(),
+            hidden_packages: Vec::new(),
         }
     }
 }
