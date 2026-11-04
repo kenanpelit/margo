@@ -17,10 +17,16 @@
 //! declined dialog is RESPONSE_CANCELLED; no dialog at all is an error,
 //! never a silent capture.
 //!
-//! The shim only takes full-frame shots, so the dialog says "your whole
-//! screen". An in-shell region selector is still the follow-up.
+//! What gets captured. A non-interactive request gets the whole screen,
+//! which the dialog says. An interactive one, after the dialog, opens
+//! mshell's chooser (the same one the ScreenCast backend uses: Monitor /
+//! Area / a window) and captures exactly the pick through the shim's
+//! margo extensions (`ScreenshotOutput` / `ScreenshotToplevel` /
+//! `ScreenshotRegion`). Closing the chooser is RESPONSE_CANCELLED; a
+//! chooser or capture failure is RESPONSE_ERROR, never a wider shot.
 
 use crate::mutter::ShellScreenshotProxy;
+use crate::picker::{self, Selection};
 use std::collections::HashMap;
 use tracing::{info, warn};
 use zbus::zvariant::{ObjectPath, OwnedObjectPath, OwnedValue, Value};
@@ -64,6 +70,70 @@ fn needs_consent(options: &HashMap<String, OwnedValue>) -> bool {
         || !bool_option(options, "permission_store_checked").unwrap_or(false)
 }
 
+/// How a request is served.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RequestPlan {
+    /// Show the Access dialog first (see [`needs_consent`]).
+    ask_consent: bool,
+    /// Let the user choose the output, window or area (interactive);
+    /// otherwise capture the whole screen.
+    choose: bool,
+}
+
+fn request_plan(options: &HashMap<String, OwnedValue>) -> RequestPlan {
+    RequestPlan {
+        ask_consent: needs_consent(options),
+        choose: bool_option(options, "interactive").unwrap_or(false),
+    }
+}
+
+/// What the chooser's answer means: the target to capture, or the response
+/// to return without capturing. An empty region is an error: it must never
+/// turn into a bigger capture.
+fn capture_target(choice: anyhow::Result<Option<Selection>>) -> Result<Selection, u32> {
+    match choice {
+        Ok(None) => Err(RESPONSE_CANCELLED),
+        Err(e) => {
+            warn!(error = %e, "screenshot: chooser failed");
+            Err(RESPONSE_ERROR)
+        }
+        Ok(Some(Selection::Region { width, height, .. })) if width <= 0 || height <= 0 => {
+            warn!(width, height, "screenshot: empty region picked");
+            Err(RESPONSE_ERROR)
+        }
+        Ok(Some(selection)) => Ok(selection),
+    }
+}
+
+/// The dialog body: what the app will get.
+fn consent_body(interactive: bool) -> &'static str {
+    if interactive {
+        "You will choose a screen, a window or an area next. Only that is shared."
+    } else {
+        "It will get a picture of your whole screen, every window included."
+    }
+}
+
+/// The portal response for a shim call's result.
+fn shot_outcome(result: zbus::Result<(bool, String)>) -> (u32, HashMap<String, OwnedValue>) {
+    match result {
+        Ok((true, used)) => {
+            let mut results = HashMap::new();
+            results.insert("uri".into(), owned_str(format!("file://{used}")));
+            info!(%used, "screenshot: captured");
+            (RESPONSE_SUCCESS, results)
+        }
+        Ok((false, _)) => {
+            warn!("screenshot: shim reported failure");
+            (RESPONSE_ERROR, HashMap::new())
+        }
+        Err(e) => {
+            warn!(error = %e, "screenshot: shim call failed");
+            (RESPONSE_ERROR, HashMap::new())
+        }
+    }
+}
+
 /// What the Access dialog's answer means: `None` to go ahead, else the
 /// response to return without capturing. Only an explicit grant (0)
 /// proceeds; a failed dialog is an error, not a yes.
@@ -101,6 +171,7 @@ impl ScreenshotBackend {
         app_id: &str,
         parent_window: &str,
         modal: bool,
+        interactive: bool,
     ) -> Result<u32, ()> {
         let access = AccessProxy::new(&self.conn).await.map_err(|e| {
             warn!(error = %e, "screenshot: Access proxy failed; refusing");
@@ -117,7 +188,7 @@ impl ScreenshotBackend {
                 app_id,
                 parent_window,
                 &consent_title(app_id),
-                "It will get a picture of your whole screen, every window included.",
+                consent_body(interactive),
                 "",
                 options,
             )
@@ -141,16 +212,28 @@ impl ScreenshotBackend {
         parent_window: String,
         options: HashMap<String, OwnedValue>,
     ) -> (u32, HashMap<String, OwnedValue>) {
-        if needs_consent(&options) {
+        let plan = request_plan(&options);
+        if plan.ask_consent {
             let modal = bool_option(&options, "modal").unwrap_or(true);
             let answer = self
-                .ask_consent(&handle, &app_id, &parent_window, modal)
+                .ask_consent(&handle, &app_id, &parent_window, modal, plan.choose)
                 .await;
             if let Some(response) = consent_outcome(answer) {
                 info!(%app_id, response, "screenshot: not taken (no consent)");
                 return (response, HashMap::new());
             }
         }
+        let target = if plan.choose {
+            match capture_target(picker::choose(&self.conn).await) {
+                Ok(target) => Some(target),
+                Err(response) => {
+                    info!(%app_id, response, "screenshot: nothing chosen");
+                    return (response, HashMap::new());
+                }
+            }
+        } else {
+            None
+        };
         let shim = match ShellScreenshotProxy::new(&self.conn).await {
             Ok(s) => s,
             Err(e) => {
@@ -160,24 +243,28 @@ impl ScreenshotBackend {
         };
         // The compositor picks the output path; the passed filename is a
         // hint and the used path is what comes back.
-        let runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into());
-        let hint = format!("{runtime}/margo-portal-shot.png");
-        match shim.screenshot(false, false, &hint).await {
-            Ok((true, used)) => {
-                let mut results = HashMap::new();
-                results.insert("uri".into(), owned_str(format!("file://{used}")));
-                info!(%used, "screenshot: captured");
-                (RESPONSE_SUCCESS, results)
+        let result = match target {
+            None => {
+                let runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into());
+                let hint = format!("{runtime}/margo-portal-shot.png");
+                shim.screenshot(false, false, &hint).await
             }
-            Ok((false, _)) => {
-                warn!("screenshot: shim reported failure");
-                (RESPONSE_ERROR, HashMap::new())
+            Some(Selection::Monitor { connector }) => {
+                shim.screenshot_output(&connector, false).await
             }
-            Err(e) => {
-                warn!(error = %e, "screenshot: shim call failed");
-                (RESPONSE_ERROR, HashMap::new())
+            Some(Selection::Window { id }) => shim.screenshot_toplevel(id, false).await,
+            Some(Selection::Region {
+                output,
+                x,
+                y,
+                width,
+                height,
+            }) => {
+                shim.screenshot_region(&output, x, y, width, height, false)
+                    .await
             }
-        }
+        };
+        shot_outcome(result)
     }
 
     async fn pick_color(
@@ -265,5 +352,82 @@ mod tests {
     fn the_dialog_names_the_app_or_says_an_app() {
         assert!(consent_title("org.example.Chat").contains("org.example.Chat"));
         assert!(consent_title("").contains("An app"));
+    }
+    #[test]
+    fn an_interactive_request_lets_the_user_choose_after_consent() {
+        let plan = request_plan(&opts(&[("interactive", true)]));
+        assert!(plan.ask_consent && plan.choose);
+        let plan = request_plan(&opts(&[
+            ("interactive", true),
+            ("permission_store_checked", true),
+        ]));
+        assert!(plan.ask_consent && plan.choose);
+    }
+
+    #[test]
+    fn a_non_interactive_request_takes_the_whole_screen_without_a_chooser() {
+        let plan = request_plan(&opts(&[("permission_store_checked", true)]));
+        assert!(!plan.ask_consent && !plan.choose);
+        // Unchecked: still asked, still whole screen.
+        let plan = request_plan(&opts(&[]));
+        assert!(plan.ask_consent && !plan.choose);
+    }
+
+    #[test]
+    fn closing_the_chooser_cancels_and_a_broken_chooser_is_an_error() {
+        assert_eq!(capture_target(Ok(None)), Err(RESPONSE_CANCELLED));
+        assert_eq!(
+            capture_target(Err(anyhow::anyhow!("shell gone"))),
+            Err(RESPONSE_ERROR)
+        );
+    }
+
+    #[test]
+    fn a_picked_target_is_captured_exactly() {
+        let region = Selection::Region {
+            output: "DP-1".into(),
+            x: 5,
+            y: 6,
+            width: 70,
+            height: 80,
+        };
+        assert_eq!(capture_target(Ok(Some(region.clone()))), Ok(region));
+        let win = Selection::Window { id: 9 };
+        assert_eq!(capture_target(Ok(Some(win.clone()))), Ok(win));
+    }
+
+    #[test]
+    fn an_empty_region_is_an_error_never_a_wider_shot() {
+        for (w, h) in [(0, 10), (10, 0), (-3, 10)] {
+            let region = Selection::Region {
+                output: "DP-1".into(),
+                x: 0,
+                y: 0,
+                width: w,
+                height: h,
+            };
+            assert_eq!(capture_target(Ok(Some(region))), Err(RESPONSE_ERROR));
+        }
+    }
+
+    #[test]
+    fn the_dialog_says_what_will_be_shared() {
+        assert!(consent_body(false).contains("whole screen"));
+        assert!(!consent_body(true).contains("whole screen"));
+        assert!(consent_body(true).contains("choose"));
+    }
+
+    #[test]
+    fn only_a_successful_shot_returns_a_uri() {
+        let (code, res) = shot_outcome(Ok((true, "/run/user/1/a.png".into())));
+        assert_eq!(code, RESPONSE_SUCCESS);
+        assert_eq!(
+            res.get("uri").and_then(|v| <&str>::try_from(v).ok()),
+            Some("file:///run/user/1/a.png")
+        );
+        let (code, res) = shot_outcome(Ok((false, String::new())));
+        assert_eq!((code, res.is_empty()), (RESPONSE_ERROR, true));
+        let (code, res) = shot_outcome(Err(zbus::Error::Failure("x".into())));
+        assert_eq!((code, res.is_empty()), (RESPONSE_ERROR, true));
     }
 }

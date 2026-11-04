@@ -6,6 +6,10 @@
 //! also offers Screen / Region tabs). The chooser blocks until the user
 //! picks and echoes the window-id back, so it round-trips straight into
 //! the Mutter shim's `RecordWindow`.
+//!
+//! The Screenshot portal reuses the same chooser through [`choose`], which
+//! also keeps the Area pick (`region:<output>@x,y,w,h`); a ScreenCast has no
+//! region stream, so [`pick`] still treats that as a cancel.
 
 use crate::mutter::{IntrospectProxy, ShellProxy};
 use std::collections::HashMap;
@@ -29,8 +33,34 @@ impl Source {
     }
 }
 
+/// What the user picked in the mshell chooser.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Selection {
+    Window {
+        id: u64,
+    },
+    Monitor {
+        connector: String,
+    },
+    /// A rectangle on one output, in that output's logical coordinates
+    /// (what mshell's area selector reports).
+    Region {
+        output: String,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+    },
+}
+
 /// Show the picker and return the chosen source (`Ok(None)` = cancel).
 pub async fn pick(conn: &Connection, _types: u32) -> anyhow::Result<Option<Source>> {
+    Ok(choose(conn).await?.and_then(screencast_source))
+}
+
+/// Show the picker and return whatever the user chose, region included
+/// (`Ok(None)` = cancel).
+pub async fn choose(conn: &Connection) -> anyhow::Result<Option<Selection>> {
     // Build the window list payload from Introspect (best-effort: if it
     // fails the picker still offers Screen / Region).
     let payload = match IntrospectProxy::new(conn).await {
@@ -50,7 +80,7 @@ pub async fn pick(conn: &Connection, _types: u32) -> anyhow::Result<Option<Sourc
     let shell = ShellProxy::new(conn).await?;
     let reply = shell.screenshare(&payload).await?;
     debug!(reply = %reply, "picker: shell reply");
-    parse_reply(&reply)
+    parse_selection(&reply)
 }
 
 /// xdph `XDPH_WINDOW_SHARING_LIST` format: per window
@@ -91,25 +121,64 @@ fn inert_field(s: &str) -> String {
         .replace("[H", "[\u{200b}H")
 }
 
+/// The ScreenCast source for a selection: a region is not expressible
+/// through the Mutter shim's window/monitor record verbs, so it cancels.
+fn screencast_source(selection: Selection) -> Option<Source> {
+    match selection {
+        Selection::Window { id } => Some(Source::Window { id }),
+        Selection::Monitor { connector } => Some(Source::Monitor { connector }),
+        Selection::Region { .. } => {
+            warn!("picker: a region cannot be screencast; treating as cancel");
+            None
+        }
+    }
+}
+
+#[cfg(test)]
 fn parse_reply(reply: &str) -> anyhow::Result<Option<Source>> {
+    Ok(parse_selection(reply)?.and_then(screencast_source))
+}
+
+/// The chooser's reply: `[SELECTION]/window:<id>`, `/screen:<connector>`,
+/// `/region:<output>@x,y,w,h`, or empty for cancel. Anything else is a
+/// cancel; a malformed id or region is an error.
+fn parse_selection(reply: &str) -> anyhow::Result<Option<Selection>> {
     let sel = reply.trim();
     let sel = sel.strip_prefix("[SELECTION]/").unwrap_or(sel);
     if sel.is_empty() {
         return Ok(None);
     }
     if let Some(id) = sel.strip_prefix("window:") {
-        return Ok(Some(Source::Window {
+        return Ok(Some(Selection::Window {
             id: id.trim().parse()?,
         }));
     }
     if let Some(name) = sel.strip_prefix("screen:") {
-        return Ok(Some(Source::Monitor {
+        return Ok(Some(Selection::Monitor {
             connector: name.trim().to_string(),
         }));
     }
-    // `region:…` isn't expressible through the Mutter shim's
-    // window/monitor record verbs — treat as cancel for now.
-    warn!(%reply, "picker: unsupported selection (region?)");
+    if let Some(region) = sel.strip_prefix("region:") {
+        let (output, rect) = region
+            .rsplit_once('@')
+            .ok_or_else(|| anyhow::anyhow!("region without an output: {region}"))?;
+        anyhow::ensure!(!output.is_empty(), "region without an output: {region}");
+        let nums = rect
+            .split(',')
+            .map(|n| n.trim().parse::<i32>())
+            .collect::<Result<Vec<_>, _>>()?;
+        let [x, y, width, height] = nums[..] else {
+            anyhow::bail!("region needs x,y,w,h: {region}");
+        };
+        return Ok(Some(Selection::Region {
+            output: output.to_string(),
+            x,
+            y,
+            width,
+            height,
+        }));
+    }
+    warn!(%reply, "picker: unsupported selection");
     Ok(None)
 }
 
@@ -123,7 +192,7 @@ fn str_prop(props: &HashMap<String, OwnedValue>, key: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Source, parse_reply, payload_entry};
+    use super::{Selection, Source, parse_reply, parse_selection, payload_entry};
 
     #[test]
     fn a_title_cannot_forge_a_second_picker_entry() {
@@ -180,7 +249,7 @@ mod tests {
     #[test]
     fn region_and_unknown_are_treated_as_cancel() {
         assert!(
-            parse_reply("[SELECTION]/region:0,0,100,100")
+            parse_reply("[SELECTION]/region:DP-1@0,0,100,100")
                 .unwrap()
                 .is_none()
         );
@@ -190,5 +259,58 @@ mod tests {
     #[test]
     fn non_numeric_window_id_is_an_error() {
         assert!(parse_reply("window:notanumber").is_err());
+    }
+
+    #[test]
+    fn parses_a_region_on_one_output() {
+        assert_eq!(
+            parse_selection("[SELECTION]/region:DP-1@10,20,300,200").unwrap(),
+            Some(Selection::Region {
+                output: "DP-1".into(),
+                x: 10,
+                y: 20,
+                width: 300,
+                height: 200
+            })
+        );
+        // A connector name never contains '@', but split on the last one
+        // anyway so the numbers are always the tail.
+        assert_eq!(
+            parse_selection("region:odd@name@-5,0,1,1").unwrap(),
+            Some(Selection::Region {
+                output: "odd@name".into(),
+                x: -5,
+                y: 0,
+                width: 1,
+                height: 1
+            })
+        );
+    }
+
+    #[test]
+    fn a_malformed_region_is_an_error_not_a_cancel_or_a_full_shot() {
+        for bad in [
+            "region:DP-1@1,2,3",
+            "region:DP-1@a,b,c,d",
+            "region:1,2,3,4",
+            "region:@1,2,3,4",
+        ] {
+            assert!(parse_selection(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn selection_keeps_windows_and_monitors() {
+        assert_eq!(
+            parse_selection("[SELECTION]/window:42").unwrap(),
+            Some(Selection::Window { id: 42 })
+        );
+        assert_eq!(
+            parse_selection("screen:HDMI-A-1").unwrap(),
+            Some(Selection::Monitor {
+                connector: "HDMI-A-1".into()
+            })
+        );
+        assert_eq!(parse_selection("[SELECTION]/").unwrap(), None);
     }
 }

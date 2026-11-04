@@ -101,6 +101,36 @@ pub trait ShellScreenshot {
         filename: &str,
     ) -> zbus::Result<(bool, String)>;
 
+    /// margo extension: capture one output (`grim -o`).
+    fn screenshot_output(
+        &self,
+        connector: &str,
+        include_cursor: bool,
+    ) -> zbus::Result<(bool, String)>;
+
+    /// margo extension: capture one window by its Introspect id, through
+    /// the toplevel capture source (`grim -T`), so overlapping windows are
+    /// not included.
+    fn screenshot_toplevel(
+        &self,
+        window_id: u64,
+        include_cursor: bool,
+    ) -> zbus::Result<(bool, String)>;
+
+    /// margo extension: capture a rectangle given in `output`'s logical
+    /// coordinates. The compositor clips it to that output and fails
+    /// rather than capture anything wider.
+    #[allow(clippy::too_many_arguments)]
+    fn screenshot_region(
+        &self,
+        output: &str,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+        include_cursor: bool,
+    ) -> zbus::Result<(bool, String)>;
+
     /// Returns `{ "color": (ddd) }`.
     fn pick_color(&self) -> zbus::Result<HashMap<String, OwnedValue>>;
 }
