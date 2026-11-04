@@ -94,7 +94,7 @@ fn load() -> MtuneToml {
 }
 
 fn load_from(path: &Path) -> MtuneToml {
-    let loaded = side_file::load(path, toml::from_str::<MtuneToml>);
+    let loaded = side_file::load(path, |raw| toml::from_str::<MtuneToml>(raw));
     if let SideLoad::Broken { error, backup } = &loaded {
         tracing::warn!(
             path = %path.display(),

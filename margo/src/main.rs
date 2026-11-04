@@ -1815,17 +1815,6 @@ fn resolve_boot_config(
 mod boot_fallback_tests {
     use super::*;
 
-    /// `err_with_fallback_content_that_fails_to_resolve_falls_back_to_default`
-    /// below temporarily unsets the process-global `HOME` var;
-    /// `err_with_parseable_generation_restores_it` depends on `HOME`
-    /// staying set for its own real `resolve_config_path` call to
-    /// succeed. `cargo test -p margo` (no `--test-threads=1`, e.g. CI's
-    /// `cargo test --workspace --locked`) runs both concurrently by
-    /// default, so without serializing on this lock the two race and
-    /// the latter fails intermittently — not a `resolve_boot_config`
-    /// bug, purely test-process isolation.
-    static HOME_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
     #[test]
     fn ok_parse_is_used_as_is_no_fallback_consulted() {
         let cfg = margo_config::Config::default();
@@ -1836,7 +1825,6 @@ mod boot_fallback_tests {
 
     #[test]
     fn err_with_parseable_generation_restores_it() {
-        let _guard = HOME_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let fallback = Some((
             margo_config::generations::Generation {
                 id: "20260901T000000Z".to_string(),
@@ -1875,25 +1863,24 @@ mod boot_fallback_tests {
     }
 
     #[test]
-    fn err_with_fallback_content_that_fails_to_resolve_falls_back_to_default() {
-        // `resolve_boot_config` never touches the filesystem itself — the
-        // one way to make the composed `parse_config_str_with_defaults`
-        // call fail without a real file is to make `resolve_config_path`
-        // fail, which only happens when `path` is `None` and `HOME` is
-        // unset. The line-level parser is otherwise permissive (bad
-        // `key = value` lines are logged and skipped, never bail), so
-        // there is no in-memory content that makes it return `Err` —
-        // this is the one genuine way to exercise the
-        // fallback-generation-exists-but-still-degrades-to-default
-        // branch. `--test-threads=1` is required for this test file
-        // because it mutates the process-global `HOME` var; the
-        // `HOME_ENV_LOCK` guard below is what keeps it safe under the
-        // default multi-threaded runner too (see the lock's doc comment).
-        // SAFETY: test-local mutation, restored before the function returns.
-        let _guard = HOME_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let prev = std::env::var_os("HOME");
-        // SAFETY: serialised by HOME_ENV_LOCK; restored before returning.
-        unsafe { std::env::remove_var("HOME") };
+    fn parseable_generation_restores_without_home() {
+        // The shared XDG helper can resolve a config path without HOME.
+        // Isolate the environment in a subprocess, not the parallel test runner.
+        const CHILD: &str = "MARGO_TEST_BOOT_WITHOUT_HOME";
+        if std::env::var_os(CHILD).is_none() {
+            let status = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "boot_fallback_tests::parseable_generation_restores_without_home",
+                ])
+                .env(CHILD, "1")
+                .env_remove("HOME")
+                .env_remove("XDG_CONFIG_HOME")
+                .status()
+                .unwrap();
+            assert!(status.success());
+            return;
+        }
         let fallback = Some((
             margo_config::generations::Generation {
                 id: "20260901T000000Z".to_string(),
@@ -1903,15 +1890,11 @@ mod boot_fallback_tests {
             "borderpx = 9\n".to_string(),
         ));
         let resolution = resolve_boot_config(Err(anyhow::anyhow!("boom")), fallback, None);
-        if let Some(home) = prev {
-            // SAFETY: serialised by HOME_ENV_LOCK; restores the value saved above.
-            unsafe { std::env::set_var("HOME", home) };
-        }
-        assert!(resolution.restored_generation.is_none());
         assert_eq!(
-            resolution.config.borderpx,
-            margo_config::Config::default().borderpx
+            resolution.restored_generation.as_deref(),
+            Some("20260901T000000Z")
         );
+        assert_eq!(resolution.config.borderpx, 9);
         assert_eq!(resolution.parse_error.as_deref(), Some("boom"));
     }
 }
