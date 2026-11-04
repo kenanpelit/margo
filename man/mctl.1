@@ -1,7 +1,7 @@
 .\" mctl(1) — margo compositor IPC client
 .\" Command list mirrors `mctl --help`; the exhaustive flag surface
 .\" lives in `mctl <CMD> --help` and `mctl actions`.
-.TH MCTL 1 "2026-06-01" "margo 0.9.1" "Margo Manual"
+.TH MCTL 1 "2026-11-04" "margo 4.6.1" "Margo Manual"
 .SH NAME
 mctl \- query and control the margo Wayland compositor
 .SH SYNOPSIS
@@ -56,7 +56,22 @@ List connected outputs with mode, position, scale, and layout.
 Print the focused window's app_id + title (terse, scriptable).
 .TP
 .B config-errors
-Show config diagnostics from the last reload (niri-style).
+Show the running compositor's config diagnostics (niri-style): from the
+check margo runs at startup, then from the last reload. Exits 1 when any is
+an error.
+.TP
+.B get \fITOPIC\fR.\|.\|.
+Raw IPC query: print one JSON reply and exit.
+.TP
+.B perf \fR[\fB\-\-json\fR] [\fB\-\-watch\fR]
+Per-output render performance from the compositor's
+.I perf
+IPC topic: windowed frame rate, empty (no-damage) ratio, render latency
+p50/p95/p99, direct-scanout share, damage area, queue errors.
+.B \-\-watch
+refreshes every second;
+.B \-\-json
+adds lifetime totals and every window.
 .TP
 .B doctor
 One-shot health check: socket reachability, on-disk config validation,
@@ -84,9 +99,15 @@ Set the layout by 0-based index (matches the compositor's layout list).
 .B client-tags \fIBITMASK\fR
 Mutate the focused client's tag bitmask (advanced).
 .TP
-.B reload
+.B reload \fR[\fB\-\-force\fR]
 Reload
 .IR ~/.config/margo/config.conf .
+Checks the config first and refuses one with errors (margo checks again
+and keeps the running config).
+.B \-\-force
+applies it anyway: margo loads what it can, keeps the error banner up,
+and does not save it as the last-good generation. A file margo can't read
+is refused either way.
 .TP
 .B theme \fIPRESET\fR
 Live-swap the visual theme preset.
@@ -96,6 +117,24 @@ Control the built-in blue-light filter (toggle / temperature / mode).
 .TP
 .B quit
 Quit the compositor cleanly.
+.SS "Logging and plugins"
+.TP
+.B log \fR{ \fBlevel\fR \fILEVEL\fR | \fBenable\fR | \fBdisable\fR | \fBpath\fR | \fBopen\fR }
+File-logging controls for
+.IR ~/.local/state/margo/logs/margo\-*.log :
+set the level or turn logging on/off live, print the paths, open the
+directory.
+.TP
+.B plugin \fR{ \fBlist\fR | \fBenable\fR \fINAME\fR | \fBdisable\fR \fINAME\fR }
+Inspect and toggle compositor plugins under
+.IR ~/.config/margo/plugins/<name>/plugin.toml .
+.B enable
+and
+.B disable
+flip the manifest's
+.I enabled
+key; the change takes effect on the next margo start. (Shell WASM plugins
+are separate: Settings \(-> Plugins.)
 .SS "Session"
 .TP
 .B session-save
@@ -117,8 +156,15 @@ List every dispatch action margo accepts (for binds and
 .B rules \fIAPP_ID\fR \fITITLE\fR
 Dry-run window rules against an app_id / title pair.
 .TP
-.B check-config " " [\fIFILE\fR]
-Validate a config file (niri-style diagnostics) without applying it.
+.B check-config \fR[\fB\-\-config\fR \fIPATH\fR] [\fB\-\-strict\fR]
+Validate a config file and everything it
+.BR source s
+(niri-style diagnostics) without applying it: unknown keys and rule
+options, bad values, stray commas, missing includes, rule regexes, shadowed
+binds. Exits 0 when clean or only warnings, 1 on errors, 2 when the file
+can't be read.
+.B \-\-strict
+makes warnings fail too (exit 1), for CI.
 .TP
 .B config " " { list " | " diff " " [\fIN\fR] " | " rollback " " [\fIN\fR] [\fB\-\-yes\fR] }
 Config generation history. A timestamped copy of

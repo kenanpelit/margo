@@ -245,7 +245,7 @@ _arguments "${_arguments_options[@]}" : \
 ;;
 (reload)
 _arguments "${_arguments_options[@]}" : \
-'--force[Skip the pre-reload validation pass and dispatch the IPC reload unconditionally. Useful if the validator is wrong or the user wants to test the parser'\''s recovery behaviour directly]' \
+'--force[Apply the config even when it has errors\: skip mctl'\''s pre-check and ask margo to load what it can. margo still refuses a file it can'\''t read, keeps the error banner up, and doesn'\''t save the config as the last-good generation (the boot fallback)]' \
 '-h[Print help (see more with '\''--help'\'')]' \
 '--help[Print help (see more with '\''--help'\'')]' \
 && ret=0
@@ -1104,7 +1104,7 @@ _mctl_commands() {
 'actions:List every dispatch action margo accepts (for binds and \`mctl dispatch\`)' \
 'twilight:Twilight (built-in blue-light filter) control' \
 'config:Config generation history — list, diff, or roll back \`~/.config/margo/config.conf\`' \
-'config-errors:Show config diagnostics from the last reload (niri-style)' \
+'config-errors:Show the running compositor'\''s config diagnostics (niri-style)' \
 'check-config:Validate the user'\''s config (niri-style diagnostics)' \
 'rules:Dry-run windowrules against an app_id / title pair' \
 'completions:Generate a shell-completion script (bash / zsh / fish / elvish / powershell)' \
@@ -1244,7 +1244,7 @@ _mctl__subcmd__help_commands() {
 'actions:List every dispatch action margo accepts (for binds and \`mctl dispatch\`)' \
 'twilight:Twilight (built-in blue-light filter) control' \
 'config:Config generation history — list, diff, or roll back \`~/.config/margo/config.conf\`' \
-'config-errors:Show config diagnostics from the last reload (niri-style)' \
+'config-errors:Show the running compositor'\''s config diagnostics (niri-style)' \
 'check-config:Validate the user'\''s config (niri-style diagnostics)' \
 'rules:Dry-run windowrules against an app_id / title pair' \
 'completions:Generate a shell-completion script (bash / zsh / fish / elvish / powershell)' \
