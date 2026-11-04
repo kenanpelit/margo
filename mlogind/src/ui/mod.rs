@@ -22,7 +22,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 use ratatui::{Frame, Terminal, backend::Backend};
 
-use chrono::{Local, Timelike};
+use chrono::{DateTime, Local, Timelike};
 
 use crate::config::get_color;
 
@@ -404,6 +404,7 @@ impl LoginForm {
             let layout = Chunks::new(f);
             login_form_render(
                 f,
+                Local::now(),
                 layout,
                 theme,
                 background.clone(),
@@ -681,6 +682,7 @@ impl LoginForm {
                         let layout = Chunks::new(f);
                         login_form_render(
                             f,
+                            Local::now(),
                             layout,
                             theme,
                             background.clone(),
@@ -887,6 +889,7 @@ fn fit(s: &str, max: usize) -> String {
 #[allow(clippy::too_many_arguments)]
 fn login_form_render<B: Backend>(
     frame: &mut Frame<B>,
+    now: DateTime<Local>,
     chunks: Chunks,
     theme: Theme,
     background: BackgroundWidget,
@@ -899,7 +902,6 @@ fn login_form_render<B: Backend>(
 ) {
     background.render(frame);
 
-    let now = Local::now();
     let muted = Style::default().fg(theme.muted);
     let label_style =
         |focused: bool| Style::default().fg(if focused { theme.accent } else { theme.muted });
@@ -1048,6 +1050,7 @@ mod render_tests {
             let chunks = Chunks::new(f);
             login_form_render(
                 f,
+                Local::now(),
                 chunks,
                 theme,
                 form.widgets.background.clone(),
@@ -1104,5 +1107,216 @@ mod render_tests {
                 "session name missing at {w}x{h}\n{out}"
             );
         }
+    }
+}
+
+/// Golden buffer snapshots of the main greeter screens: every cell's symbol,
+/// colours and modifiers, plus where the cursor sits. They pin the exact
+/// output across ratatui/crossterm upgrades; a diff here is a visible change
+/// on the login screen. Regenerate with `MLOGIND_UPDATE_SNAPSHOTS=1` only
+/// when the change is intended.
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+    use crate::config::Config;
+    use chrono::TimeZone;
+    use ratatui::backend::TestBackend;
+    use ratatui::buffer::Buffer;
+
+    struct Screen {
+        name: &'static str,
+        size: (u16, u16),
+        mode: InputMode,
+        username: &'static str,
+        password: &'static str,
+        status: Option<StatusMessage>,
+        hour: u32,
+    }
+
+    fn modifiers(m: Modifier) -> String {
+        let names = [
+            (Modifier::BOLD, "B"),
+            (Modifier::DIM, "D"),
+            (Modifier::ITALIC, "I"),
+            (Modifier::UNDERLINED, "U"),
+            (Modifier::SLOW_BLINK, "b"),
+            (Modifier::RAPID_BLINK, "r"),
+            (Modifier::REVERSED, "R"),
+            (Modifier::HIDDEN, "H"),
+            (Modifier::CROSSED_OUT, "X"),
+        ];
+        names
+            .iter()
+            .filter(|(flag, _)| m.contains(*flag))
+            .map(|(_, n)| *n)
+            .collect()
+    }
+
+    /// Text grid, then one line per run of identically styled cells.
+    fn dump(buf: &Buffer, cursor: (u16, u16)) -> String {
+        let area = buf.area;
+        let mut text = String::new();
+        let mut styles = String::new();
+        for y in 0..area.height {
+            let mut run: Option<(u16, String)> = None;
+            for x in 0..area.width {
+                let cell = buf.get(x, y);
+                text.push_str(&cell.symbol);
+                let style = format!(
+                    "fg={:?} bg={:?} mod={}",
+                    cell.fg,
+                    cell.bg,
+                    modifiers(cell.modifier)
+                );
+                match &run {
+                    Some((_, s)) if *s == style => {}
+                    _ => {
+                        if let Some((start, s)) = run.take() {
+                            styles.push_str(&format!("{y}:{start}-{} {s}\n", x - 1));
+                        }
+                        run = Some((x, style));
+                    }
+                }
+            }
+            if let Some((start, s)) = run {
+                styles.push_str(&format!("{y}:{start}-{} {s}\n", area.width - 1));
+            }
+            text.push('\n');
+        }
+        format!("cursor={cursor:?}\n{text}--\n{styles}")
+    }
+
+    fn render(screen: &Screen) -> String {
+        crate::console_palette::init(true); // pass-through colours, no VT escapes
+        let form = LoginForm::new(Config::default(), true);
+        {
+            let mut env = form.widgets.environment.lock().unwrap();
+            *env = SwitcherWidget::new(
+                vec![
+                    SwitcherItem::new("Margo (UWSM)", PostLoginEnvironment::Shell),
+                    SwitcherItem::new("Hyprland", PostLoginEnvironment::Shell),
+                ],
+                form.config.environment_switcher.clone(),
+            );
+        }
+        form.widgets
+            .username
+            .lock()
+            .unwrap()
+            .set_content(screen.username);
+        form.widgets
+            .password
+            .lock()
+            .unwrap()
+            .set_content(screen.password);
+        let theme = Theme::from_config(&form.config);
+        let now = Local
+            .with_ymd_and_hms(2026, 3, 14, screen.hour, 7, 0)
+            .single()
+            .expect("unambiguous local time");
+        let (w, h) = screen.size;
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| {
+            let chunks = Chunks::new(f);
+            login_form_render(
+                f,
+                now,
+                chunks,
+                theme,
+                form.widgets.background.clone(),
+                form.widgets.key_menu.clone(),
+                form.widgets.environment.clone(),
+                form.widgets.username.clone(),
+                form.widgets.password.clone(),
+                screen.mode,
+                screen.status.clone(),
+            );
+        })
+        .unwrap();
+        let cursor = term.get_cursor().unwrap();
+        dump(term.backend().buffer(), cursor)
+    }
+
+    fn screens() -> Vec<Screen> {
+        vec![
+            Screen {
+                name: "username_empty_80x24",
+                size: (80, 24),
+                mode: InputMode::Username,
+                username: "",
+                password: "",
+                status: None,
+                hour: 9,
+            },
+            Screen {
+                name: "password_error_80x24",
+                size: (80, 24),
+                mode: InputMode::Password,
+                username: "kenan",
+                password: "hunter2",
+                status: Some(
+                    ErrorStatusMessage::FromRunner("Authentication failure".into()).into(),
+                ),
+                hour: 14,
+            },
+            Screen {
+                name: "switcher_info_100x30",
+                size: (100, 30),
+                mode: InputMode::Switcher,
+                username: "kenan",
+                password: "",
+                status: Some(InfoStatusMessage::Authenticating.into()),
+                hour: 19,
+            },
+            Screen {
+                name: "long_password_45x22",
+                size: (45, 22),
+                mode: InputMode::Password,
+                username: "a-rather-long-user-name",
+                password: "correct horse battery staple and more",
+                status: Some(StatusMessage::FromRunner("Touch your security key".into())),
+                hour: 23,
+            },
+            Screen {
+                name: "normal_40x12",
+                size: (40, 12),
+                mode: InputMode::Normal,
+                username: "kenan",
+                password: "pw",
+                status: Some(ErrorStatusMessage::RunnerGone.into()),
+                hour: 3,
+            },
+        ]
+    }
+
+    #[test]
+    fn main_screens_match_snapshots() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots");
+        let update = std::env::var_os("MLOGIND_UPDATE_SNAPSHOTS").is_some();
+        let mut mismatched = Vec::new();
+        for screen in screens() {
+            let got = render(&screen);
+            // The password itself must never reach the screen.
+            if !screen.password.is_empty() {
+                assert!(
+                    !got.contains(screen.password),
+                    "{}: password echoed",
+                    screen.name
+                );
+            }
+            let path = dir.join(format!("{}.txt", screen.name));
+            if update {
+                std::fs::create_dir_all(&dir).unwrap();
+                std::fs::write(&path, &got).unwrap();
+                continue;
+            }
+            let want = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            if got != want {
+                eprintln!("===== {} =====\n{got}", screen.name);
+                mismatched.push(screen.name);
+            }
+        }
+        assert!(mismatched.is_empty(), "snapshots differ: {mismatched:?}");
     }
 }

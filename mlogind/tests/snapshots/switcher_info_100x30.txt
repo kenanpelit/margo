@@ -1,0 +1,184 @@
+cursor=(0, 0)
+┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                           Good evening                                           │
+│                                                                                                  │
+│                                         █  ████   ████ ████                                      │
+│                                        ██  █  █ █ █  █    █                                      │
+│                                         █  ████   █  █   █                                       │
+│                                         █     █ █ █  █  █                                        │
+│                                        ███ ████   ████  █                                        │
+│                                                                                                  │
+│                                      Saturday, 14 March 2026                                     │
+│                                                                                                  │
+│             ┌──────────────────────────────────────────────────────────────────────┐             │
+│             │                                                                      │             │
+│             │ Session     Margo (UWSM) ›                                           │             │
+│             │ User        kenan                                                    │             │
+│             │ Password                                                             │             │
+│             │                                                                      │             │
+│             └──────────────────────────────────────────────────────────────────────┘             │
+│                                                                                                  │
+│                    [Ctrl+F1] Shutdown    [Ctrl+F2] Reboot    [Ctrl+F3] Suspend                   │
+│                                                                                                  │
+│                                       Verifying credentials                                      │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+--
+0:0-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+1:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+1:1-13 fg=Reset bg=Rgb(27, 30, 43) mod=
+1:14-85 fg=Rgb(166, 172, 201) bg=Rgb(27, 30, 43) mod=
+1:86-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+1:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+2:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+2:1-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+2:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+3:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+3:1-13 fg=Reset bg=Rgb(27, 30, 43) mod=
+3:14-85 fg=Rgb(217, 222, 240) bg=Rgb(27, 30, 43) mod=B
+3:86-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+3:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+4:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+4:1-13 fg=Reset bg=Rgb(27, 30, 43) mod=
+4:14-85 fg=Rgb(217, 222, 240) bg=Rgb(27, 30, 43) mod=B
+4:86-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+4:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+5:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+5:1-13 fg=Reset bg=Rgb(27, 30, 43) mod=
+5:14-85 fg=Rgb(217, 222, 240) bg=Rgb(27, 30, 43) mod=B
+5:86-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+5:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+6:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+6:1-13 fg=Reset bg=Rgb(27, 30, 43) mod=
+6:14-85 fg=Rgb(217, 222, 240) bg=Rgb(27, 30, 43) mod=B
+6:86-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+6:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+7:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+7:1-13 fg=Reset bg=Rgb(27, 30, 43) mod=
+7:14-85 fg=Rgb(217, 222, 240) bg=Rgb(27, 30, 43) mod=B
+7:86-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+7:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+8:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+8:1-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+8:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+9:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+9:1-13 fg=Reset bg=Rgb(27, 30, 43) mod=
+9:14-85 fg=Rgb(166, 172, 201) bg=Rgb(27, 30, 43) mod=
+9:86-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+9:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+10:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+10:1-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+10:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+11:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+11:1-13 fg=Reset bg=Rgb(27, 30, 43) mod=
+11:14-85 fg=Rgb(94, 200, 197) bg=Rgb(27, 30, 43) mod=
+11:86-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+11:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+12:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+12:1-13 fg=Reset bg=Rgb(27, 30, 43) mod=
+12:14-14 fg=Rgb(94, 200, 197) bg=Rgb(27, 30, 43) mod=
+12:15-84 fg=Reset bg=Rgb(27, 30, 43) mod=
+12:85-85 fg=Rgb(94, 200, 197) bg=Rgb(27, 30, 43) mod=
+12:86-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+12:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+13:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+13:1-13 fg=Reset bg=Rgb(27, 30, 43) mod=
+13:14-14 fg=Rgb(94, 200, 197) bg=Rgb(27, 30, 43) mod=
+13:15-15 fg=Reset bg=Rgb(27, 30, 43) mod=
+13:16-83 fg=Rgb(94, 200, 197) bg=Rgb(27, 30, 43) mod=
+13:84-84 fg=Reset bg=Rgb(27, 30, 43) mod=
+13:85-85 fg=Rgb(94, 200, 197) bg=Rgb(27, 30, 43) mod=
+13:86-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+13:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+14:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+14:1-13 fg=Reset bg=Rgb(27, 30, 43) mod=
+14:14-14 fg=Rgb(94, 200, 197) bg=Rgb(27, 30, 43) mod=
+14:15-15 fg=Reset bg=Rgb(27, 30, 43) mod=
+14:16-27 fg=Rgb(166, 172, 201) bg=Rgb(27, 30, 43) mod=
+14:28-83 fg=Rgb(217, 222, 240) bg=Rgb(27, 30, 43) mod=
+14:84-84 fg=Reset bg=Rgb(27, 30, 43) mod=
+14:85-85 fg=Rgb(94, 200, 197) bg=Rgb(27, 30, 43) mod=
+14:86-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+14:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+15:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+15:1-13 fg=Reset bg=Rgb(27, 30, 43) mod=
+15:14-14 fg=Rgb(94, 200, 197) bg=Rgb(27, 30, 43) mod=
+15:15-15 fg=Reset bg=Rgb(27, 30, 43) mod=
+15:16-27 fg=Rgb(166, 172, 201) bg=Rgb(27, 30, 43) mod=
+15:28-83 fg=Rgb(217, 222, 240) bg=Rgb(27, 30, 43) mod=
+15:84-84 fg=Reset bg=Rgb(27, 30, 43) mod=
+15:85-85 fg=Rgb(94, 200, 197) bg=Rgb(27, 30, 43) mod=
+15:86-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+15:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+16:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+16:1-13 fg=Reset bg=Rgb(27, 30, 43) mod=
+16:14-14 fg=Rgb(94, 200, 197) bg=Rgb(27, 30, 43) mod=
+16:15-84 fg=Reset bg=Rgb(27, 30, 43) mod=
+16:85-85 fg=Rgb(94, 200, 197) bg=Rgb(27, 30, 43) mod=
+16:86-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+16:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+17:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+17:1-13 fg=Reset bg=Rgb(27, 30, 43) mod=
+17:14-85 fg=Rgb(94, 200, 197) bg=Rgb(27, 30, 43) mod=
+17:86-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+17:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+18:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+18:1-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+18:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+19:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+19:1-20 fg=Reset bg=Rgb(27, 30, 43) mod=
+19:21-21 fg=Rgb(94, 200, 197) bg=Rgb(27, 30, 43) mod=
+19:22-28 fg=Rgb(94, 200, 197) bg=Rgb(27, 30, 43) mod=BU
+19:29-29 fg=Rgb(94, 200, 197) bg=Rgb(27, 30, 43) mod=
+19:30-30 fg=Reset bg=Rgb(27, 30, 43) mod=
+19:31-38 fg=Rgb(166, 172, 201) bg=Rgb(27, 30, 43) mod=
+19:39-42 fg=Reset bg=Rgb(27, 30, 43) mod=
+19:43-43 fg=Rgb(94, 200, 197) bg=Rgb(27, 30, 43) mod=
+19:44-50 fg=Rgb(94, 200, 197) bg=Rgb(27, 30, 43) mod=BU
+19:51-51 fg=Rgb(94, 200, 197) bg=Rgb(27, 30, 43) mod=
+19:52-52 fg=Reset bg=Rgb(27, 30, 43) mod=
+19:53-58 fg=Rgb(166, 172, 201) bg=Rgb(27, 30, 43) mod=
+19:59-62 fg=Reset bg=Rgb(27, 30, 43) mod=
+19:63-63 fg=Rgb(94, 200, 197) bg=Rgb(27, 30, 43) mod=
+19:64-70 fg=Rgb(94, 200, 197) bg=Rgb(27, 30, 43) mod=BU
+19:71-71 fg=Rgb(94, 200, 197) bg=Rgb(27, 30, 43) mod=
+19:72-72 fg=Reset bg=Rgb(27, 30, 43) mod=
+19:73-79 fg=Rgb(166, 172, 201) bg=Rgb(27, 30, 43) mod=
+19:80-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+19:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+20:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+20:1-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+20:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+21:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+21:1-13 fg=Reset bg=Rgb(27, 30, 43) mod=
+21:14-85 fg=Rgb(166, 172, 201) bg=Rgb(27, 30, 43) mod=
+21:86-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+21:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+22:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+22:1-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+22:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+23:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+23:1-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+23:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+24:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+24:1-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+24:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+25:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+25:1-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+25:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+26:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+26:1-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+26:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+27:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+27:1-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+27:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+28:0-0 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+28:1-98 fg=Reset bg=Rgb(27, 30, 43) mod=
+28:99-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
+29:0-99 fg=Rgb(47, 51, 70) bg=Rgb(27, 30, 43) mod=
