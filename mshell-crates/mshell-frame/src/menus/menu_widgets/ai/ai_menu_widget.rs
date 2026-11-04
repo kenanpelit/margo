@@ -4,16 +4,20 @@
 //! A send spawns the blocking-but-streaming `chat_stream` on a worker thread;
 //! every token is marshalled back to the GTK loop as a `Token` command output
 //! and appended to the in-progress assistant bubble. Stop flips a shared
-//! cancel flag. History is persisted (when enabled) to the state dir.
+//! cancel flag. The conversation lives in one process-wide store shared by
+//! every monitor's AI menu (so one menu never saves its older copy over
+//! another's), persisted (when enabled) to the state dir by the store's
+//! single writer.
 
 use mshell_ai::{Message, Provider, Role, config};
+use mshell_config::doc_store::DocStore;
 use relm4::gtk::prelude::{
     AdjustmentExt, BoxExt, ButtonExt, EditableExt, EntryExt, OrientableExt, WidgetExt,
 };
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock};
 
 pub(crate) struct AiMenuWidgetModel {
     /// The conversation (engine messages). The trailing assistant message is
@@ -71,6 +75,18 @@ pub(crate) struct AiMenuWidgetInit {}
 pub(crate) enum AiMenuWidgetCommandOutput {
     Token(String),
     Done(Option<String>),
+    /// The shared conversation changed (another monitor's menu).
+    HistoryChanged(Arc<History>),
+}
+
+/// The on-disk chat history: `(role, text)` pairs, role `"user"` or `"ai"`.
+type History = Vec<(String, String)>;
+
+/// The one conversation every monitor's AI menu shares.
+fn history_store() -> &'static Arc<DocStore<History>> {
+    static STORE: LazyLock<Arc<DocStore<History>>> =
+        LazyLock::new(|| DocStore::new("AI chat history", history_path()));
+    &STORE
 }
 
 #[relm4::component(pub(crate))]
@@ -218,6 +234,27 @@ impl Component for AiMenuWidgetModel {
             );
         }
         apply_chat_font(&model.font_provider);
+        // Follow the shared conversation (edits from other monitors' menus).
+        sender.command(|out, shutdown| async move {
+            let mut changes = history_store().subscribe();
+            changes.mark_unchanged();
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            loop {
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    changed = changes.changed() => {
+                        if changed.is_err() {
+                            break;
+                        }
+                        let h = changes.borrow_and_update().value.clone();
+                        if out.send(AiMenuWidgetCommandOutput::HistoryChanged(h)).is_err() {
+                            break;
+                        }
+                    }
+                }
+            }
+        });
         ComponentParts { model, widgets }
     }
 
@@ -350,6 +387,15 @@ impl Component for AiMenuWidgetModel {
                 self.current_ai = None;
                 self.persist();
             }
+            AiMenuWidgetCommandOutput::HistoryChanged(history) => {
+                // Mid-stream this menu owns the tail; its `Done` persists.
+                if self.streaming || !self.loaded || *history == self.dump() {
+                    return;
+                }
+                self.messages = from_history(&history);
+                self.rebuild_transcript();
+                self.scroll_to_bottom();
+            }
         }
     }
 }
@@ -452,51 +498,51 @@ impl AiMenuWidgetModel {
         adj.set_value(adj.upper());
     }
 
-    fn persist(&self) {
-        let s = config::load();
-        if !s.persist_history {
-            return;
-        }
-        let dump: Vec<(&str, &str)> = self
-            .messages
+    fn dump(&self) -> History {
+        self.messages
             .iter()
             .map(|m| {
-                (
-                    if m.role == Role::User { "user" } else { "ai" },
-                    m.text.as_str(),
-                )
+                let role = if m.role == Role::User { "user" } else { "ai" };
+                (role.to_string(), m.text.clone())
             })
-            .collect();
-        if let Ok(json) = serde_json::to_string(&dump) {
-            let p = history_path();
-            if let Some(dir) = p.parent() {
-                let _ = std::fs::create_dir_all(dir);
-            }
-            let _ = std::fs::write(p, json);
+            .collect()
+    }
+
+    /// Publish this conversation to the shared store (saved when history
+    /// persistence is on, shared in memory either way).
+    fn persist(&self) {
+        let dump = self.dump();
+        if config::load().persist_history {
+            // Err = the file does not parse; the store keeps it and toasts.
+            let _ = history_store().update(|h| *h = dump);
+        } else {
+            history_store().update_in_memory(|h| *h = dump);
         }
     }
 
     fn restore_history(&mut self) {
-        if !config::load().persist_history {
-            return;
+        if config::load().persist_history {
+            history_store().ensure_loaded();
         }
-        let Ok(raw) = std::fs::read_to_string(history_path()) else {
-            return;
-        };
-        let Ok(dump) = serde_json::from_str::<Vec<(String, String)>>(&raw) else {
-            return;
-        };
-        for (role, text) in dump {
-            let r = if role == "user" {
+        let history = history_store().snapshot().value;
+        self.messages = from_history(&history);
+        self.rebuild_transcript();
+        self.scroll_to_bottom();
+    }
+}
+
+fn from_history(history: &History) -> Vec<Message> {
+    history
+        .iter()
+        .map(|(role, text)| Message {
+            role: if role == "user" {
                 Role::User
             } else {
                 Role::Assistant
-            };
-            self.push_bubble(r, &text);
-            self.messages.push(Message { role: r, text });
-        }
-        self.scroll_to_bottom();
-    }
+            },
+            text: text.clone(),
+        })
+        .collect()
 }
 
 fn history_path() -> PathBuf {

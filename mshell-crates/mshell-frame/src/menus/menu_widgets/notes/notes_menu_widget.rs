@@ -13,11 +13,13 @@
 //!     - Todos: scrollable check-row list. Each row: checkbox
 //!       + editable text + delete. Inline "+ Add todo" entry.
 //!
-//! All mutations go through the same write path
-//! (`save_notes`), which writes-and-renames a sibling `.tmp`
-//! file so a crash can't corrupt the document.
+//! Every menu (one per monitor) works on the one shared
+//! [`notes_store`]: an edit is applied to the shared document, which
+//! notifies the other menus and the bar pills and is written by the
+//! store's single writer (atomic write, last edit wins). A notes.json
+//! that fails to parse is never saved over.
 
-use crate::bars::bar_widgets::notes::{Note, NotesState, Todo, load_notes, new_id, save_notes};
+use crate::bars::bar_widgets::notes::{Note, NotesState, Todo, new_id, notes_store};
 use relm4::gtk::glib;
 use relm4::gtk::prelude::{
     BoxExt, ButtonExt, CheckButtonExt, EditableExt, EntryExt, ListBoxRowExt, OrientableExt,
@@ -25,7 +27,6 @@ use relm4::gtk::prelude::{
 };
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::time::Duration;
-use tracing::warn;
 
 const SAVE_DEBOUNCE: Duration = Duration::from_millis(600);
 
@@ -52,7 +53,7 @@ impl std::fmt::Debug for NotesMenuWidgetModel {
 
 #[derive(Debug)]
 pub(crate) enum NotesMenuWidgetInput {
-    /// Re-read the JSON file from disk and re-sync the view.
+    /// Re-read the JSON file from disk (the shared store notifies us).
     ReloadFromDisk,
     /// Persist current scratchpad/notes/todos to disk.
     PersistNow,
@@ -83,8 +84,8 @@ pub(crate) struct NotesMenuWidgetInit {}
 
 #[derive(Debug)]
 pub(crate) enum NotesMenuWidgetCommandOutput {
+    /// The shared document changed (any menu's edit, or a reload).
     Loaded(NotesState),
-    Saved,
 }
 
 #[relm4::component(pub(crate))]
@@ -275,10 +276,22 @@ impl Component for NotesMenuWidgetModel {
             });
         }
 
-        // Initial load.
-        sender.command(|out, _shutdown| async move {
-            let s = load_notes().await;
-            let _ = out.send(NotesMenuWidgetCommandOutput::Loaded(s));
+        // Initial load, then follow the shared store for the menu's life.
+        sender.command(|out, shutdown| async move {
+            let _ = tokio::task::spawn_blocking(|| notes_store().ensure_loaded()).await;
+            let mut changes = notes_store().subscribe();
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            loop {
+                let s = (*changes.borrow_and_update().value).clone();
+                if out.send(NotesMenuWidgetCommandOutput::Loaded(s)).is_err() {
+                    break;
+                }
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    changed = changes.changed() => if changed.is_err() { break },
+                }
+            }
         });
 
         let model = NotesMenuWidgetModel {
@@ -300,73 +313,77 @@ impl Component for NotesMenuWidgetModel {
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             NotesMenuWidgetInput::ReloadFromDisk => {
-                sender.command(|out, _shutdown| async move {
-                    let s = load_notes().await;
-                    let _ = out.send(NotesMenuWidgetCommandOutput::Loaded(s));
+                sender.command(|_out, _shutdown| async move {
+                    let _ = tokio::task::spawn_blocking(|| notes_store().reload()).await;
                 });
             }
             NotesMenuWidgetInput::PersistNow => {
                 // Pull the latest scratchpad text out of the
-                // TextBuffer (the canonical edit surface) before
-                // we serialise — the in-memory `state.scratchpad`
-                // only updates on Loaded.
+                // TextBuffer (the canonical edit surface).
                 let buffer = self.scratchpad_view.buffer();
                 let start = buffer.start_iter();
                 let end = buffer.end_iter();
-                self.state.scratchpad = buffer.text(&start, &end, false).to_string();
-                persist(self.state.clone(), sender.clone());
+                let text = buffer.text(&start, &end, false).to_string();
+                self.edit(&sender, false, |s| s.scratchpad.clone_from(&text));
             }
             NotesMenuWidgetInput::AddNote => {
-                self.state.notes.push(Note {
+                let note = Note {
                     id: new_id(),
                     title: String::new(),
                     body: String::new(),
-                });
-                sync_view(self, &sender);
-                persist(self.state.clone(), sender.clone());
+                };
+                self.edit(&sender, true, |s| s.notes.push(note.clone()));
             }
             NotesMenuWidgetInput::UpdateNote { id, title, body } => {
-                if let Some(n) = self.state.notes.iter_mut().find(|n| n.id == id) {
-                    n.title = title;
-                    n.body = body;
-                }
-                persist(self.state.clone(), sender.clone());
+                self.edit(&sender, false, |s| {
+                    if let Some(n) = s.notes.iter_mut().find(|n| n.id == id) {
+                        n.title.clone_from(&title);
+                        n.body.clone_from(&body);
+                    }
+                });
             }
             NotesMenuWidgetInput::DeleteNote(id) => {
-                self.state.notes.retain(|n| n.id != id);
-                sync_view(self, &sender);
-                persist(self.state.clone(), sender.clone());
+                self.edit(&sender, true, |s| s.notes.retain(|n| n.id != id));
             }
             NotesMenuWidgetInput::AddTodo(text) => {
                 let trimmed = text.trim().to_string();
                 if trimmed.is_empty() {
                     return;
                 }
-                self.state.todos.push(Todo {
+                let todo = Todo {
                     id: new_id(),
                     text: trimmed,
                     completed: false,
-                });
-                sync_view(self, &sender);
-                persist(self.state.clone(), sender.clone());
+                };
+                self.edit(&sender, true, |s| s.todos.push(todo.clone()));
             }
             NotesMenuWidgetInput::ToggleTodo(id) => {
-                if let Some(t) = self.state.todos.iter_mut().find(|t| t.id == id) {
-                    t.completed = !t.completed;
-                }
-                sync_view(self, &sender);
-                persist(self.state.clone(), sender.clone());
+                // Set (not flip) the shared todo to this menu's new value,
+                // so a stale menu can't undo another menu's toggle.
+                let Some(done) = self
+                    .state
+                    .todos
+                    .iter()
+                    .find(|t| t.id == id)
+                    .map(|t| !t.completed)
+                else {
+                    return;
+                };
+                self.edit(&sender, true, |s| {
+                    if let Some(t) = s.todos.iter_mut().find(|t| t.id == id) {
+                        t.completed = done;
+                    }
+                });
             }
             NotesMenuWidgetInput::UpdateTodo { id, text } => {
-                if let Some(t) = self.state.todos.iter_mut().find(|t| t.id == id) {
-                    t.text = text;
-                }
-                persist(self.state.clone(), sender.clone());
+                self.edit(&sender, false, |s| {
+                    if let Some(t) = s.todos.iter_mut().find(|t| t.id == id) {
+                        t.text.clone_from(&text);
+                    }
+                });
             }
             NotesMenuWidgetInput::DeleteTodo(id) => {
-                self.state.todos.retain(|t| t.id != id);
-                sync_view(self, &sender);
-                persist(self.state.clone(), sender.clone());
+                self.edit(&sender, true, |s| s.todos.retain(|t| t.id != id));
             }
         }
     }
@@ -380,21 +397,28 @@ impl Component for NotesMenuWidgetModel {
     ) {
         match message {
             NotesMenuWidgetCommandOutput::Loaded(state) => {
-                self.state = state;
-                sync_view(self, &sender);
+                // Our own edits come back here too; the mirror already has
+                // them, so skip the rebuild (it would steal focus mid-typing).
+                if state != self.state {
+                    self.state = state;
+                    sync_view(self, &sender);
+                }
             }
-            NotesMenuWidgetCommandOutput::Saved => {}
         }
     }
 }
 
-fn persist(state: NotesState, sender: ComponentSender<NotesMenuWidgetModel>) {
-    sender.command(move |out, _shutdown| async move {
-        if let Err(e) = save_notes(&state).await {
-            warn!(error = %e, "notes save failed");
+impl NotesMenuWidgetModel {
+    /// Apply one edit to this menu's mirror and to the shared document.
+    /// The shared store saves it (or refuses, with a toast, while
+    /// notes.json does not parse) and tells the other menus.
+    fn edit(&mut self, sender: &ComponentSender<Self>, rebuild: bool, f: impl Fn(&mut NotesState)) {
+        f(&mut self.state);
+        if rebuild {
+            sync_view(self, sender);
         }
-        let _ = out.send(NotesMenuWidgetCommandOutput::Saved);
-    });
+        let _ = notes_store().update(|s| f(s));
+    }
 }
 
 fn sync_view(model: &NotesMenuWidgetModel, sender: &ComponentSender<NotesMenuWidgetModel>) {

@@ -1,21 +1,22 @@
 //! Notes Hub bar pill — port of the noctalia `notes` plugin's
 //! bar half.
 //!
-//! Render-only widget. Reads the persisted notes state (scratch-
-//! pad + notes + todos) every 30 s, draws an icon + tooltip with
-//! counts. Click emits `NotesOutput::Clicked`; frame toggles
+//! Render-only widget. Follows the shared notes store (scratch-
+//! pad + notes + todos) and re-reads the file every 30 s to pick up
+//! hand edits, draws an icon + tooltip with counts. Click emits `NotesOutput::Clicked`; frame toggles
 //! `MenuType::Notes`.
 //!
 //! Persistence lives in `$XDG_DATA_HOME/mshell/notes.json` (default
-//! `~/.local/share/mshell/notes.json`). The store is exposed
-//! `pub(crate)` so the menu widget can share the same path.
+//! `~/.local/share/mshell/notes.json`), behind the process-wide
+//! [`notes_store`] the menu widget shares.
 
+use mshell_config::doc_store::DocStore;
 use relm4::gtk::prelude::{ButtonExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
-use tracing::warn;
 
 const REFRESH_INTERVAL: Duration = Duration::from_secs(30);
 const STARTUP_DELAY: Duration = Duration::from_millis(500);
@@ -60,39 +61,14 @@ pub(crate) fn notes_path() -> PathBuf {
     base.join("mshell").join("notes.json")
 }
 
-/// Load + parse the notes JSON. Missing / unreadable / malformed
-/// → empty state (so a first-launch user gets a clean slate
-/// instead of an error banner).
-pub(crate) async fn load_notes() -> NotesState {
-    let path = notes_path();
-    match tokio::fs::read_to_string(&path).await {
-        Ok(raw) => serde_json::from_str(&raw).unwrap_or_else(|e| {
-            warn!(path = %path.display(), error = %e, "notes JSON parse failed; using empty state");
-            NotesState::default()
-        }),
-        Err(_) => NotesState::default(),
-    }
-}
-
-/// Atomic save — write to a sibling `.tmp` file and rename. The
-/// rename is atomic on common filesystems, so a crash mid-write
-/// can never leave the user with a half-written notes.json.
-pub(crate) async fn save_notes(state: &NotesState) -> Result<(), String> {
-    let path = notes_path();
-    if let Some(parent) = path.parent() {
-        tokio::fs::create_dir_all(parent)
-            .await
-            .map_err(|e| format!("create dir {}: {e}", parent.display()))?;
-    }
-    let raw = serde_json::to_string_pretty(state).map_err(|e| format!("serialize: {e}"))?;
-    // Symlink-preserving atomic write — same reasoning as
-    // `mshell-config::atomic_write`. If the user manages their
-    // notes JSON via a dotfile manager (symlinked into ~/.config),
-    // the link survives.
-    mshell_config::atomic_write::atomic_write_async(&path, raw.into_bytes())
-        .await
-        .map_err(|e| format!("atomic write {}: {e}", path.display()))?;
-    Ok(())
+/// The one notes document every bar pill and Notes menu (one per monitor)
+/// shares. Edits go through [`DocStore::update`], so a menu on another
+/// monitor sees them at once and never saves an older copy over them; a
+/// notes.json that fails to parse is kept (plus a `.bak`) and not saved over.
+pub(crate) fn notes_store() -> &'static Arc<DocStore<NotesState>> {
+    static STORE: LazyLock<Arc<DocStore<NotesState>>> =
+        LazyLock::new(|| DocStore::new("Notes", notes_path()));
+    &STORE
 }
 
 /// Fresh time-based id. JavaScript's `Date.now()` equivalent —
@@ -169,6 +145,7 @@ impl Component for NotesModel {
         sender.command(|out, shutdown| async move {
             let shutdown_fut = shutdown.wait();
             tokio::pin!(shutdown_fut);
+            let mut changes = notes_store().subscribe();
             let mut first = true;
             loop {
                 let delay = if first {
@@ -179,9 +156,18 @@ impl Component for NotesModel {
                 first = false;
                 tokio::select! {
                     () = &mut shutdown_fut => break,
-                    _ = tokio::time::sleep(delay) => {}
+                    // An edit from any Notes menu: repaint right away.
+                    changed = changes.changed() => {
+                        if changed.is_err() {
+                            break;
+                        }
+                    }
+                    _ = tokio::time::sleep(delay) => {
+                        // Pick up hand edits of notes.json.
+                        let _ = tokio::task::spawn_blocking(|| notes_store().reload()).await;
+                    }
                 }
-                let s = load_notes().await;
+                let s = (*changes.borrow_and_update().value).clone();
                 let _ = out.send(NotesCommandOutput::Refreshed(s));
             }
         });

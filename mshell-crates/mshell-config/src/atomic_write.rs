@@ -128,12 +128,20 @@ fn resolve_symlink_target(path: &Path) -> PathBuf {
 /// (required for atomicity — cross-filesystem rename falls back
 /// to copy + unlink, which loses atomicity AND breaks if the dest
 /// device is full).
+///
+/// The name is unique per call (`.mshell-tmp-<pid>-<n>`): two overlapping
+/// writes to one path must not share a tmp file, or the second `create`
+/// truncates the first writer's file and the rename can publish a newer
+/// prefix glued to an older tail.
 fn tmp_sibling(target: &Path) -> PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, Ordering::Relaxed);
     let mut file_name = target
         .file_name()
         .map(|n| n.to_os_string())
         .unwrap_or_default();
-    file_name.push(".mshell-tmp");
+    file_name.push(format!(".mshell-tmp-{}-{n}", std::process::id()));
     target.with_file_name(file_name)
 }
 
@@ -165,6 +173,50 @@ mod tests {
         std::fs::write(&path, b"old").unwrap();
         atomic_write(&path, b"new").unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), b"new");
+    }
+
+    /// Two overlapping writes to one path must never share a tmp file: with
+    /// one fixed `<file>.mshell-tmp`, the second `File::create` truncates the
+    /// first writer's inode and the rename can publish a newer prefix glued to
+    /// an older tail.
+    #[test]
+    fn tmp_names_are_unique_per_call() {
+        let target = Path::new("/x/notes.json");
+        let a = tmp_sibling(target);
+        let b = tmp_sibling(target);
+        assert_ne!(a, b, "each write gets its own tmp file");
+        assert_eq!(a.parent(), target.parent(), "same dir, so rename is atomic");
+        let name = a.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(name.starts_with("notes.json.mshell-tmp-"), "{name}");
+    }
+
+    /// Many threads writing different full documents to one path: the
+    /// result is always exactly one of them, and no tmp file is left over.
+    #[test]
+    fn concurrent_writes_publish_one_whole_document() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("doc.json");
+        let docs: Vec<Vec<u8>> = (0..8u8)
+            .map(|i| vec![b'a' + i; 4096 * (usize::from(i) + 1)])
+            .collect();
+        std::thread::scope(|s| {
+            for doc in &docs {
+                let path = path.clone();
+                s.spawn(move || {
+                    for _ in 0..20 {
+                        atomic_write(&path, doc).unwrap();
+                    }
+                });
+            }
+        });
+        let got = std::fs::read(&path).unwrap();
+        assert!(docs.contains(&got), "torn write: {} bytes", got.len());
+        let leftovers: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name() != "doc.json")
+            .collect();
+        assert!(leftovers.is_empty(), "tmp files left: {leftovers:?}");
     }
 
     #[test]
