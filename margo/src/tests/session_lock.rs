@@ -308,3 +308,33 @@ fn removing_the_focused_monitor_moves_focus_to_a_remaining_lock_surface() {
         .expect("focus must move to the lock surface on the remaining monitor");
     assert_ne!(after, before);
 }
+
+/// A locked output that changes scale (or mode / transform, e.g. kanshi
+/// reacting to a dock while locked) must re-configure its lock surface to
+/// the new logical size; before, the surface kept its first size and the
+/// rest of the output stayed black (or showed the desktop with
+/// `allow_lock_transparent`).
+#[test]
+fn a_lock_surface_follows_its_outputs_size() {
+    use crate::protocols::output_management::{OutputManagementHandler, PendingHeadConfig};
+    let (mut fx, id, _keep) = locked_by_live_client();
+    let size = |fx: &Fixture| {
+        fx.server.state.lock_surfaces[0]
+            .1
+            .with_pending_state(|s| s.size)
+            .map(|s| (s.w, s.h))
+    };
+    assert_eq!(size(&fx), Some((1920, 1080)));
+
+    let pending = [(
+        "DP-1".to_string(),
+        PendingHeadConfig::for_test(Some(2.0), None, None),
+    )]
+    .into_iter()
+    .collect();
+    let reply = crate::protocols::output_management::ModeReply::new(|_| {});
+    assert!(fx.server.state.apply_output_pending(pending, &reply));
+    fx.roundtrip(id);
+
+    assert_eq!(size(&fx), Some((960, 540)));
+}

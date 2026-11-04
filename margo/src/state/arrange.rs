@@ -1360,6 +1360,9 @@ impl MargoState {
         let monitor_area = crate::state::logical_output_rect(output, old_area.x, old_area.y);
         let area_changed = monitor_area != old_area;
         self.monitors[mon_idx].monitor_area = monitor_area;
+        if area_changed {
+            self.reconfigure_lock_surfaces(output);
+        }
 
         let work_area = {
             let mut map = layer_map_for_output(output);

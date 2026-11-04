@@ -94,20 +94,7 @@ impl SessionLockHandler for MargoState {
         // configure WITH a non-zero size before the client will attach a
         // buffer. Without this, the lock surface stays unmapped and we
         // render solid black with just the cursor on top.
-        let size = output
-            .current_mode()
-            .map(|m| {
-                // Apply the output's transform so portrait outputs get the
-                // logical (post-transform) size.
-                let transform = output.current_transform();
-                let physical = transform.transform_size(m.size);
-                let scale = output.current_scale().fractional_scale();
-                Size::<u32, smithay::utils::Logical>::from((
-                    (physical.w as f64 / scale).round().max(1.0) as u32,
-                    (physical.h as f64 / scale).round().max(1.0) as u32,
-                ))
-            })
-            .unwrap_or_else(|| Size::<u32, smithay::utils::Logical>::from((1280, 720)));
+        let size = lock_surface_size(&output);
 
         surface.with_pending_state(|state| {
             state.size = Some(size);
@@ -135,5 +122,42 @@ impl SessionLockHandler for MargoState {
         // both fixes that timing AND picks the lock surface on the
         // user's monitor instead of the first one in `lock_surfaces`.
         self.request_repaint_output(&output);
+    }
+}
+
+/// The size a lock surface on `output` must cover: the output's logical
+/// size (mode, rotated by its transform, divided by its scale).
+pub(crate) fn lock_surface_size(output: &Output) -> Size<u32, smithay::utils::Logical> {
+    output
+        .current_mode()
+        .map(|m| {
+            // Apply the output's transform so portrait outputs get the
+            // logical (post-transform) size.
+            let transform = output.current_transform();
+            let physical = transform.transform_size(m.size);
+            let scale = output.current_scale().fractional_scale();
+            Size::<u32, smithay::utils::Logical>::from((
+                (physical.w as f64 / scale).round().max(1.0) as u32,
+                (physical.h as f64 / scale).round().max(1.0) as u32,
+            ))
+        })
+        .unwrap_or_else(|| Size::<u32, smithay::utils::Logical>::from((1280, 720)))
+}
+
+impl MargoState {
+    /// Re-configure the lock surfaces on `output` after its mode, scale or
+    /// transform changed, so they keep covering the whole output. Also
+    /// re-sends the preferred buffer scale / transform.
+    pub(crate) fn reconfigure_lock_surfaces(&self, output: &Output) {
+        let size = lock_surface_size(output);
+        for (_, surface) in self.lock_surfaces.iter().filter(|(o, _)| o == output) {
+            surface.with_pending_state(|state| state.size = Some(size));
+            crate::state::handlers::compositor::send_scale_transform(
+                surface.wl_surface(),
+                output.current_scale(),
+                output.current_transform(),
+            );
+            surface.send_configure();
+        }
     }
 }
