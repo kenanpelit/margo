@@ -7,7 +7,9 @@
 # and `#` comments ignored). The gate fails when a listed file has more lines
 # than its limit. margo/src/state.rs is the reason this exists: it was split
 # from ~6800 lines once, quietly grew back to ~3000, and was split again.
-# New code belongs in the `state/*.rs` module that owns its subsystem.
+# The four biggest mshell files are gated too; new code belongs in the
+# `state/*.rs`, `ipc/*.rs`, `settings/*.rs`, `schema/config/*.rs` or
+# `frame/*.rs` module that owns its subsystem.
 #
 # Raising a limit is allowed, but only on purpose: every commit in BASE..HEAD
 # that raises a number in the limits file must carry a trailer naming why,

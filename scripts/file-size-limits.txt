@@ -19,3 +19,6 @@ mshell-crates/mshell-settings/src/settings.rs 1100
 # launcher, notifications, wallpaper, frame). Theme, bars, menus, dock and
 # system-service sections live in schema/config/*.rs.
 mshell-crates/mshell-config/src/schema/config.rs 1100
+# Frame component (view, init, update). Menu IDs/messages, menu state,
+# layout and plugin handlers live in frame/*.rs alongside the builders.
+mshell-crates/mshell-frame/src/frame.rs 1250
