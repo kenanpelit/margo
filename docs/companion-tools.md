@@ -111,6 +111,7 @@ mshellctl screenshot region satty    # force satty (positional editor ⇒ implie
 mshellctl screenshot ocr             # region → OCR (tesseract) → text on the clipboard
 mshellctl screenshot ocr --lang tur  #   override the languages for one run
 mshellctl screenshot qr              # region → decode QR / barcode → clipboard
+mshellctl screenshot palette -n 6    # region → 6 dominant colours (hex) → clipboard
 
 mshellctl screenrecord start full    # start recording (region|window|output|full)
 mshellctl screenrecord toggle region --audio <pw-source>
@@ -130,6 +131,7 @@ temporary file that is deleted as soon as the tool has read it.
 |---|---|---|---|
 | Text (OCR) | `mscreenshot ocr` · `mshellctl screenshot ocr` | `screenshot-ocr [LANGS]` | `tesseract` + `tesseract-data-<lang>` |
 | QR / barcode | `mscreenshot qr` · `mshellctl screenshot qr` | `screenshot-qr` | `zbarimg` (zbar) |
+| Palette | `mscreenshot palette [-n N]` · `mshellctl screenshot palette` | `screenshot-palette` | — (native median cut) |
 
 OCR languages: `--lang` / the action argument, else
 `MSCREENSHOT_OCR_LANG` (set it once with `env = MSCREENSHOT_OCR_LANG,eng+tur`
@@ -145,6 +147,10 @@ payloads stay intact). When exactly one code was found and it is a plain
 `http(s)://` link, the notification offers **Open link**; other schemes
 (`file:`, `javascript:`, Wi-Fi configs, …) are only copied — a code on
 screen is untrusted input.
+
+Palette: up to N (default 8, max 16) dominant colours by median cut over
+the region's opaque pixels, most common first, copied as `#RRGGBB` lines;
+the notification lists each colour's share and shows a swatch strip.
 
 ```
 bind = SUPER,Print,screenshot-ocr
@@ -166,6 +172,7 @@ mscreenshot full      # all outputs (whole layout)
 mscreenshot window    # focused window → file + clipboard
 mscreenshot ocr       # region → OCR → text on the clipboard (see Region tools)
 mscreenshot qr        # region → QR / barcode → clipboard
+mscreenshot palette   # region → dominant colours → clipboard
 mscreenshot open      # open ~/Pictures/Screenshots in the file manager
 mscreenshot dir       # print the screenshot dir
 ```

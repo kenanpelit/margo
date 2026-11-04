@@ -946,6 +946,16 @@ pub const ACTIONS: &[Action] = &[
                  button; other payloads are only copied.",
     },
     Action {
+        name: "screenshot-palette",
+        aliases: &["screenshot_palette"],
+        args: "",
+        group: Group::System,
+        summary: "Drag a region → extract its dominant colours → copy.",
+        detail: "Spawns `mscreenshot palette`: 8 colours by median cut, \
+                 copied as hex codes (one per line) with a swatch strip \
+                 in the notification.",
+    },
+    Action {
         name: "reload",
         aliases: &["reload_config"],
         args: "[force]",

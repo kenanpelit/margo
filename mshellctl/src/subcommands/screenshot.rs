@@ -9,6 +9,7 @@
 //! mshellctl screenshot region|window|output|full|repeat [EDITOR] [--copy|--save|--edit] [--delay N]
 //! mshellctl screenshot ocr [--lang eng+tur]
 //! mshellctl screenshot qr
+//! mshellctl screenshot palette [-n 8]
 //! ```
 //! Default delivery is file + clipboard. `--copy` = clipboard only,
 //! `--save` = file only, `--edit` = editor → save (no clipboard).
@@ -41,6 +42,12 @@ pub enum ScreenshotCommands {
     },
     /// Region select → decode QR codes / barcodes (zbarimg) → copy.
     Qr,
+    /// Region select → dominant colours → copy the hex codes.
+    Palette {
+        /// Number of colours (1-16, default 8).
+        #[arg(long, short = 'n')]
+        count: Option<u8>,
+    },
     /// (internal) Open the in-shell area selector and print the chosen
     /// region as "X,Y WxH" (slurp format). Used by the `mscreenshot` CLI's
     /// region bridge; not meant for direct use.
@@ -109,6 +116,13 @@ pub async fn execute(command: ScreenshotCommands) -> anyhow::Result<()> {
             run_mscreenshot(&args)?;
         }
         ScreenshotCommands::Qr => run_mscreenshot(&["qr".to_string()])?,
+        ScreenshotCommands::Palette { count } => {
+            let mut args = vec!["palette".to_string()];
+            if let Some(n) = count {
+                args.extend(["--count".to_string(), n.to_string()]);
+            }
+            run_mscreenshot(&args)?;
+        }
         ScreenshotCommands::SelectRegion => {
             let geom: String = shell().await?.select_region().await?;
             println!("{}", geom);

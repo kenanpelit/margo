@@ -501,6 +501,11 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
                 tracing::error!(error = ?e, "spawn mscreenshot failed");
             }
         }
+        "screenshot-palette" | "screenshot_palette" => {
+            if let Err(e) = crate::utils::spawn_shell("mscreenshot palette") {
+                tracing::error!(error = ?e, "spawn mscreenshot failed");
+            }
+        }
         "killclient" => state.kill_focused(),
         "smartkillclient" => state.smart_kill_client(),
         // Focus a specific window by its `state snapshot` client index, jumping

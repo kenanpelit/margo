@@ -27,6 +27,7 @@ pub(crate) struct ScreenshotMenuWidgetModel {
     /// `(sensitive, tooltip)` per region tool, probed once at build.
     ocr_tool: (bool, String),
     qr_tool: (bool, String),
+    palette_tool: (bool, String),
 }
 
 #[derive(Debug)]
@@ -217,13 +218,31 @@ impl Component for ScreenshotMenuWidgetModel {
                         set_label: "QR code",
                     },
                 },
+
+                #[template]
+                BigButton {
+                    set_sensitive: model.palette_tool.0,
+                    set_tooltip_text: Some(&model.palette_tool.1),
+                    connect_clicked[sender] => move |_| {
+                        sender.input(ScreenshotMenuWidgetInput::ToolClicked(RegionTool::Palette));
+                    },
+
+                    #[template_child]
+                    icon {
+                        set_icon_name: Some("palette-symbolic"),
+                    },
+                    #[template_child]
+                    label {
+                        set_label: "Palette",
+                    },
+                },
             },
 
             // Keyboard-shortcut hint (the keys are wired in `init`).
             gtk::Label {
                 add_css_class: "label-small",
                 add_css_class: "dim-label",
-                set_label: "A all · M monitor · W window · R area · T text · Q code · Esc close",
+                set_label: "A all · M monitor · W window · R area · T text · Q code · P palette · Esc close",
                 set_halign: gtk::Align::Center,
                 set_margin_top: 12,
             },
@@ -324,6 +343,7 @@ impl Component for ScreenshotMenuWidgetModel {
             save_row: save_option_row,
             ocr_tool: region_tools::availability(RegionTool::Ocr, region_tools::on_path),
             qr_tool: region_tools::availability(RegionTool::Qr, region_tools::on_path),
+            palette_tool: region_tools::availability(RegionTool::Palette, region_tools::on_path),
         };
 
         let widgets = view_output!();
@@ -336,6 +356,7 @@ impl Component for ScreenshotMenuWidgetModel {
             let sender = sender.clone();
             let ocr_ok = model.ocr_tool.0;
             let qr_ok = model.qr_tool.0;
+            let palette_ok = model.palette_tool.0;
             let kc = gtk::EventControllerKey::new();
             kc.set_propagation_phase(gtk::PropagationPhase::Capture);
             kc.connect_key_pressed(move |_, keyval, _, _| {
@@ -354,6 +375,9 @@ impl Component for ScreenshotMenuWidgetModel {
                     }
                     Some('q' | 'Q') if qr_ok => {
                         Some(ScreenshotMenuWidgetInput::ToolClicked(RegionTool::Qr))
+                    }
+                    Some('p' | 'P') if palette_ok => {
+                        Some(ScreenshotMenuWidgetInput::ToolClicked(RegionTool::Palette))
                     }
                     _ => None,
                 };

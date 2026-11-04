@@ -29,6 +29,7 @@
 //! instead of `margo-screenshot <mode>`.
 
 mod ocr;
+mod palette;
 mod scan;
 
 use std::path::{Path, PathBuf};
@@ -61,7 +62,8 @@ use clap::{Parser, Subcommand};
                     swappy / satty / gimp / krita\n\
                   OPTIONAL TOOLS:\n  \
                     tesseract + tesseract-data-<lang> (ocr)\n  \
-                    zbar (qr)"
+                    zbar (qr)\n\
+                  palette needs nothing extra."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -142,6 +144,13 @@ enum Cmd {
     /// Region select → decode QR codes / barcodes (zbarimg) → copy the
     /// payload. A single http(s) URL gets an "Open" notification action.
     Qr,
+    /// Region select → dominant colours (median cut) → copy the hex
+    /// codes, one per line, with a swatch strip in the notification.
+    Palette {
+        /// Number of colours (1-16, default 8).
+        #[arg(long, short = 'n')]
+        count: Option<String>,
+    },
 
     /// Open the most recently saved screenshot via xdg-open.
     Open,
@@ -211,6 +220,7 @@ fn failure_title(cmd: &Cmd) -> &'static str {
     match cmd {
         Cmd::Ocr { .. } => "Text recognition failed",
         Cmd::Qr => "Code scan failed",
+        Cmd::Palette { .. } => "Palette extraction failed",
         _ => "Screenshot failed",
     }
 }
@@ -224,6 +234,7 @@ fn run(cli: &Cli) -> Result<()> {
         }
         Cmd::NotifyUrl { title, body, url } => return run_notify_url(title, body, url),
         Cmd::Qr => return run_qr(cli),
+        Cmd::Palette { count } => return run_palette(cli, count.as_deref()),
         Cmd::Ocr { lang, psm, screen } => {
             return run_ocr(cli, lang.as_deref(), psm.as_deref(), *screen);
         }
@@ -347,6 +358,7 @@ fn capture_plan(cmd: &Cmd) -> Option<(CaptureSource, DeliveryMode)> {
         Cmd::Af => (CaptureSource::AllOutputs, DeliveryMode::SaveOnly),
         Cmd::Ocr { .. }
         | Cmd::Qr
+        | Cmd::Palette { .. }
         | Cmd::NotifyUrl { .. }
         | Cmd::Open
         | Cmd::Dir
@@ -477,6 +489,39 @@ fn run_qr(cli: &Cli) -> Result<()> {
         None => notify_tool(&title, &body),
     }
     Ok(())
+}
+
+fn run_palette(cli: &Cli, count: Option<&str>) -> Result<()> {
+    require("wl-copy")?;
+    let shot = capture_for_tool(cli, CaptureSource::Region)?;
+    let img = image::open(&shot.0)
+        .with_context(|| format!("decode {}", shot.0.display()))?
+        .to_rgba8();
+    drop(shot);
+    let swatches = palette::extract(palette::sample(img.as_raw()), palette::resolve_count(count));
+    if swatches.is_empty() {
+        notify_tool("Palette", "No opaque pixels in the selection");
+        return Ok(());
+    }
+    copy_text_to_clipboard(&palette::clipboard_text(&swatches))?;
+    let title = format!("{} colours copied", swatches.len());
+    let body = palette::summary(&swatches);
+    // The strip is the notification image; it has to outlive this process
+    // (the daemon loads it asynchronously), so it is a fixed, overwritten
+    // file next to the temp captures rather than a deleted temp.
+    match write_palette_strip(&swatches) {
+        Ok(strip) => notify_with_urgency(&title, &body, "normal", &strip.to_string_lossy()),
+        Err(_) => notify_tool(&title, &body),
+    }
+    Ok(())
+}
+
+fn write_palette_strip(swatches: &[palette::Swatch]) -> Result<PathBuf> {
+    let path = make_temp_png()?.with_file_name("palette-strip.png");
+    let (w, h, buf) = palette::strip_rgba(swatches, 32);
+    image::save_buffer(&path, &buf, w, h, image::ColorType::Rgba8)
+        .with_context(|| format!("write {}", path.display()))?;
+    Ok(path)
 }
 
 /// Detached `mscreenshot notify-url` so the scan returns at once while the
@@ -1164,6 +1209,8 @@ mod tests {
             &["notify-handle", "t", "b", "/tmp/x.png"][..],
             &["ocr"][..],
             &["qr"][..],
+            &["palette"][..],
+            &["palette", "-n", "4"][..],
             &["notify-url", "t", "b", "https://x.y"][..],
             &["ocr", "--lang", "eng+tur", "--psm", "7", "--screen"][..],
         ] {

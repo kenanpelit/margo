@@ -13,6 +13,7 @@ use std::process::{Command, Stdio};
 pub(crate) enum RegionTool {
     Ocr,
     Qr,
+    Palette,
 }
 
 impl RegionTool {
@@ -21,6 +22,7 @@ impl RegionTool {
         match self {
             RegionTool::Ocr => "ocr",
             RegionTool::Qr => "qr",
+            RegionTool::Palette => "palette",
         }
     }
 
@@ -29,6 +31,7 @@ impl RegionTool {
         match self {
             RegionTool::Ocr => &["tesseract"],
             RegionTool::Qr => &["zbarimg"],
+            RegionTool::Palette => &[],
         }
     }
 
@@ -37,6 +40,7 @@ impl RegionTool {
         match self {
             RegionTool::Ocr => "Select an area and copy its text (T)",
             RegionTool::Qr => "Select an area and decode a QR code or barcode (Q)",
+            RegionTool::Palette => "Select an area and copy its main colours (P)",
         }
     }
 
@@ -45,6 +49,7 @@ impl RegionTool {
         match self {
             RegionTool::Ocr => "tesseract tesseract-data-eng",
             RegionTool::Qr => "zbar",
+            RegionTool::Palette => "margo (mscreenshot)",
         }
     }
 }
@@ -122,5 +127,7 @@ mod tests {
         let (ok, tip) = availability(RegionTool::Qr, |b: &str| b != "zbarimg");
         assert!(!ok);
         assert_eq!(tip, "Needs zbarimg — install: zbar");
+        assert_eq!(RegionTool::Palette.mode(), "palette");
+        assert!(availability(RegionTool::Palette, |b: &str| b == "mscreenshot").0);
     }
 }
