@@ -811,7 +811,7 @@ impl Component for SystemUpdateMenuWidgetModel {
                 self.news_confirm = false;
                 self.run_error = None;
                 let expected = self.report.as_ref().map_or(0, |r| r.total());
-                let background = update_mode() == SystemUpdateMode::Background;
+                let background = system_update::configured_mode() == SystemUpdateMode::Background;
                 sender.oneshot_command(async move {
                     match system_update::launch_upgrade(ProbeConfig::from_config(), expected).await
                     {
@@ -923,16 +923,6 @@ impl Component for SystemUpdateMenuWidgetModel {
         }
         self.update_view(widgets, sender);
     }
-}
-
-fn update_mode() -> SystemUpdateMode {
-    config_manager()
-        .config()
-        .bars()
-        .widgets()
-        .system_update()
-        .update_mode()
-        .get_untracked()
 }
 
 fn run_title(run: &RunStatus, error: Option<&str>) -> String {

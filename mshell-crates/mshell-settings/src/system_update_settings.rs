@@ -10,7 +10,7 @@
 //! last check across restarts).
 
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::SystemUpdateMode;
+use mshell_config::schema::config::{SystemUpdateBackend, SystemUpdateMode};
 use mshell_config::schema::position::Position;
 use reactive_graph::traits::GetUntracked;
 use relm4::gtk::glib;
@@ -36,6 +36,7 @@ pub(crate) enum SystemUpdateSettingsInput {
     SetCheckNews(bool),
     SetUpdateMode(u32),
     SetCheckAudit(bool),
+    SetBackend(u32),
 }
 
 #[derive(Debug)]
@@ -265,6 +266,34 @@ impl Component for SystemUpdateSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/bars/widgets/system_update/upgrade_backend",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_hexpand: true,
+                            gtk::Label { set_label: "Upgrade with", set_halign: gtk::Align::Start },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                add_css_class: "dim-label",
+                                set_label: "topgrade (package topgrade) also updates cargo, pipx, firmware… per your topgrade.toml. It always runs in a terminal.",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                            },
+                        },
+                        #[name = "backend_dd"]
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&gtk::StringList::new(&["pacman / AUR / Flatpak", "topgrade"])),
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(SystemUpdateSettingsInput::SetBackend(d.selected()));
+                            },
+                        },
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
                         set_widget_name: "setting:/bars/widgets/system_update/update_mode",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
@@ -327,6 +356,10 @@ impl Component for SystemUpdateSettingsModel {
         widgets.su_flatpak.set_active(su.check_flatpak);
         widgets.su_news.set_active(su.check_news);
         widgets.su_audit.set_active(su.check_audit);
+        widgets.backend_dd.set_selected(match su.upgrade_backend {
+            SystemUpdateBackend::Native => 0,
+            SystemUpdateBackend::Topgrade => 1,
+        });
         widgets.mode_dd.set_selected(match su.update_mode {
             SystemUpdateMode::Terminal => 0,
             SystemUpdateMode::Background => 1,
@@ -374,6 +407,15 @@ impl Component for SystemUpdateSettingsModel {
                 };
                 config_manager()
                     .update_config(move |c| c.bars.widgets.system_update.update_mode = mode);
+            }
+            SystemUpdateSettingsInput::SetBackend(i) => {
+                let backend = if i == 1 {
+                    SystemUpdateBackend::Topgrade
+                } else {
+                    SystemUpdateBackend::Native
+                };
+                config_manager()
+                    .update_config(move |c| c.bars.widgets.system_update.upgrade_backend = backend);
             }
             SystemUpdateSettingsInput::SetCheckAudit(on) => {
                 config_manager().update_config(|c| c.bars.widgets.system_update.check_audit = on);

@@ -6,6 +6,14 @@
 //! Arch is the primary target (checkupdates + an AUR helper +
 //! flatpak). On non-Arch systems the repo source degrades to a
 //! count-only probe via dnf / apt (no per-package versions).
+//!
+//! Submodules add the rest of the arch-updater / arch-audit /
+//! topgrade-wrapper feature set: [`news`] (Arch news heads-up),
+//! [`size`] (download estimate), [`run`] (background pkexec upgrade
+//! with log + notification), [`history`] (update history + rollback),
+//! [`pacnew`] (.pacnew/.pacsave review), [`ignore`] (IgnorePkg +
+//! hidden packages), [`audit`] (arch-audit advisories); the topgrade
+//! backend is [`backend_steps`].
 
 pub(crate) mod audit;
 pub(crate) mod history;
@@ -488,22 +496,64 @@ pub(crate) async fn upgrade_plan(cfg: ProbeConfig) -> run::UpgradePlan {
     }
 }
 
-/// Run the upgrade the configured way. `expected` (the pending count)
-/// sizes the background progress bar.
-pub(crate) async fn launch_upgrade(cfg: ProbeConfig, expected: usize) -> Result<(), String> {
-    use mshell_config::schema::config::SystemUpdateMode;
-    let mode = config_manager()
+/// Where an upgrade runs, from the mode + backend settings. topgrade
+/// is interactive by design (its own sudo, per-step prompts), so it
+/// always gets a terminal.
+pub(crate) fn effective_mode(
+    mode: mshell_config::schema::config::SystemUpdateMode,
+    backend: mshell_config::schema::config::SystemUpdateBackend,
+) -> mshell_config::schema::config::SystemUpdateMode {
+    use mshell_config::schema::config::{SystemUpdateBackend, SystemUpdateMode};
+    match backend {
+        SystemUpdateBackend::Topgrade => SystemUpdateMode::Terminal,
+        SystemUpdateBackend::Native => mode,
+    }
+}
+
+/// The configured mode after [`effective_mode`].
+pub(crate) fn configured_mode() -> mshell_config::schema::config::SystemUpdateMode {
+    let su = || config_manager().config().bars().widgets().system_update();
+    effective_mode(
+        su().update_mode().get_untracked(),
+        su().upgrade_backend().get_untracked(),
+    )
+}
+
+fn configured_backend() -> mshell_config::schema::config::SystemUpdateBackend {
+    config_manager()
         .config()
         .bars()
         .widgets()
         .system_update()
-        .update_mode()
-        .get_untracked();
-    match mode {
-        SystemUpdateMode::Terminal => {
-            launch_terminal_upgrade(cfg).await;
-            Ok(())
+        .upgrade_backend()
+        .get_untracked()
+}
+
+/// The terminal steps for a backend: `topgrade` alone (it covers the
+/// system, AUR and Flatpak itself, per the user's topgrade.toml), or
+/// the native steps. A selected-but-missing topgrade is an error, not a
+/// silent fallback.
+pub(crate) fn backend_steps(
+    backend: mshell_config::schema::config::SystemUpdateBackend,
+    topgrade_installed: bool,
+    native: Vec<String>,
+) -> Result<Vec<String>, String> {
+    use mshell_config::schema::config::SystemUpdateBackend;
+    match backend {
+        SystemUpdateBackend::Native => Ok(native),
+        SystemUpdateBackend::Topgrade if topgrade_installed => Ok(vec!["topgrade".to_string()]),
+        SystemUpdateBackend::Topgrade => {
+            Err("topgrade isn't installed (package topgrade)".to_string())
         }
+    }
+}
+
+/// Run the upgrade the configured way. `expected` (the pending count)
+/// sizes the background progress bar.
+pub(crate) async fn launch_upgrade(cfg: ProbeConfig, expected: usize) -> Result<(), String> {
+    use mshell_config::schema::config::SystemUpdateMode;
+    match configured_mode() {
+        SystemUpdateMode::Terminal => launch_terminal_upgrade(cfg).await,
         SystemUpdateMode::Background => {
             if !which("pkexec").await {
                 return Err("pkexec (polkit) is not installed".into());
@@ -518,11 +568,12 @@ pub(crate) async fn launch_upgrade(cfg: ProbeConfig, expected: usize) -> Result<
 
 /// Spawn the user's terminal running the upgrade for every enabled
 /// source: an AUR helper (covers repo + AUR) or `sudo pacman -Syu`
-/// / dnf / apt, then `flatpak update` when flatpak is enabled.
-pub(crate) async fn launch_terminal_upgrade(cfg: ProbeConfig) {
+/// / dnf / apt, then `flatpak update` when flatpak is enabled — or
+/// `topgrade` with the topgrade backend.
+pub(crate) async fn launch_terminal_upgrade(cfg: ProbeConfig) -> Result<(), String> {
     let Some(term) = detect_terminal().await else {
         warn!("system_update: no terminal emulator on PATH; upgrade ignored");
-        return;
+        return Err("no terminal emulator found".into());
     };
 
     let mut steps: Vec<String> = Vec::new();
@@ -542,9 +593,10 @@ pub(crate) async fn launch_terminal_upgrade(cfg: ProbeConfig) {
     if cfg.flatpak && which("flatpak").await {
         steps.push("flatpak update".into());
     }
+    let steps = backend_steps(configured_backend(), which("topgrade").await, steps)?;
     if steps.is_empty() {
         warn!("system_update: nothing to upgrade (no backend / all sources off)");
-        return;
+        return Err("nothing to upgrade (no backend / all sources off)".into());
     }
 
     let script = format!(
@@ -554,7 +606,9 @@ pub(crate) async fn launch_terminal_upgrade(cfg: ProbeConfig) {
     let args = terminal_argv(term, script);
     if let Err(e) = tokio::process::Command::new(term).args(&args).spawn() {
         warn!(error = %e, term, "system_update: terminal spawn failed");
+        return Err(format!("{term}: {e}"));
     }
+    Ok(())
 }
 
 /// Arguments that make `term` run `sh -c script`.
@@ -740,6 +794,34 @@ mod tests {
             serde_json::from_str(&serde_json::to_string(&cache).unwrap()).unwrap();
         assert_eq!(back.checked_at, 42);
         assert_eq!(back.report, cache.report);
+    }
+
+    #[test]
+    fn topgrade_backend_replaces_the_native_steps() {
+        use mshell_config::schema::config::{SystemUpdateBackend, SystemUpdateMode};
+        let native = || vec!["paru -Syu".to_string(), "flatpak update".to_string()];
+        assert_eq!(
+            backend_steps(SystemUpdateBackend::Native, true, native()).unwrap(),
+            native()
+        );
+        assert_eq!(
+            backend_steps(SystemUpdateBackend::Topgrade, true, native()).unwrap(),
+            ["topgrade"]
+        );
+        assert!(
+            backend_steps(SystemUpdateBackend::Topgrade, false, native())
+                .unwrap_err()
+                .contains("package topgrade")
+        );
+        // topgrade never runs detached; native follows the mode.
+        assert_eq!(
+            effective_mode(SystemUpdateMode::Background, SystemUpdateBackend::Topgrade),
+            SystemUpdateMode::Terminal
+        );
+        assert_eq!(
+            effective_mode(SystemUpdateMode::Background, SystemUpdateBackend::Native),
+            SystemUpdateMode::Background
+        );
     }
 
     #[test]

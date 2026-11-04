@@ -444,6 +444,36 @@ pub struct SystemUpdateBarWidget {
     /// and a Security tab in the panel. Skipped quietly (with an install
     /// hint in the panel) when the `arch-audit` package is missing.
     pub check_audit: bool,
+    /// What the Update button runs: the native pacman/AUR/Flatpak steps
+    /// (default) or `topgrade` (which also updates cargo, pipx, …).
+    pub upgrade_backend: SystemUpdateBackend,
+}
+
+/// Upgrade backend for [`SystemUpdateBarWidget`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SystemUpdateBackend {
+    /// `paru`/`yay`/`pacman -Syu` + `flatpak update`.
+    #[default]
+    Native,
+    /// `topgrade` with the user's own topgrade.toml. Always runs in a
+    /// terminal: topgrade asks for sudo and prompts per step.
+    Topgrade,
+}
+
+impl PatchField for SystemUpdateBackend {
+    fn patch_field(
+        &mut self,
+        new: Self,
+        path: &StorePath,
+        notify: &mut dyn FnMut(&StorePath),
+        _keys: Option<&KeyMap>,
+    ) {
+        if *self != new {
+            *self = new;
+            notify(path);
+        }
+    }
 }
 
 /// How [`SystemUpdateBarWidget`] runs an upgrade.
@@ -485,6 +515,7 @@ impl Default for SystemUpdateBarWidget {
             update_mode: SystemUpdateMode::default(),
             hidden_packages: Vec::new(),
             check_audit: true,
+            upgrade_backend: SystemUpdateBackend::default(),
         }
     }
 }
