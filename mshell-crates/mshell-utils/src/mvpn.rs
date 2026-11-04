@@ -90,22 +90,64 @@ fn streamed_status(alive: bool, cache: &mut Option<VpnStatus>) -> Option<VpnStat
     }
 }
 
+/// Last known visible location per relay. `mullvad status listen` reports a
+/// connect before the daemon has looked up the visible location and does not
+/// report again when the lookup lands, so a streamed status can stay
+/// location-less until the next tunnel change.
+static RELAY_LOCATION: std::sync::Mutex<Option<(String, String)>> = std::sync::Mutex::new(None);
+
+/// A streamed status that is connected but has no location yet needs one
+/// full `mvpn status` query (cached per relay).
+fn needs_location(status: &VpnStatus) -> bool {
+    status.connected && status.location.is_empty()
+}
+
+/// Fill `status`'s missing location from `known` (relay, location) when it
+/// is for the same relay.
+fn with_known_location(mut status: VpnStatus, known: Option<&(String, String)>) -> VpnStatus {
+    if needs_location(&status)
+        && let Some((relay, location)) = known
+        && *relay == status.relay
+    {
+        status.location = location.clone();
+    }
+    status
+}
+
+async fn cli_status() -> VpnStatus {
+    match tokio::process::Command::new("mvpn")
+        .args(["status", "--json"])
+        .output()
+        .await
+    {
+        Ok(out) => VpnStatus::parse(&String::from_utf8_lossy(&out.stdout)),
+        Err(_) => VpnStatus::default(),
+    }
+}
+
 async fn probe_vpn() -> VpnProbe {
     let cached = STREAM_STATUS
         .lock()
         .ok()
         .and_then(|mut s| streamed_status(VPN_POLL.feed_alive(), &mut s));
-    let status = match cached {
+    let mut status = match cached {
         Some(status) => status,
-        None => match tokio::process::Command::new("mvpn")
-            .args(["status", "--json"])
-            .output()
-            .await
-        {
-            Ok(out) => VpnStatus::parse(&String::from_utf8_lossy(&out.stdout)),
-            Err(_) => VpnStatus::default(),
-        },
+        None => cli_status().await,
     };
+    let known = RELAY_LOCATION.lock().ok().and_then(|k| k.clone());
+    status = with_known_location(status, known.as_ref());
+    if needs_location(&status) {
+        let full = cli_status().await;
+        if full.connected && full.relay == status.relay && !full.location.is_empty() {
+            status.location = full.location;
+        }
+    }
+    if status.connected
+        && !status.location.is_empty()
+        && let Ok(mut k) = RELAY_LOCATION.lock()
+    {
+        *k = Some((status.relay.clone(), status.location.clone()));
+    }
     // The blocky DNS guard: a D-Bus property read on the shared system-bus
     // connection, not a `systemctl` spawn.
     let blocky = match mshell_services::systemd::system_bus().await {
@@ -209,6 +251,27 @@ mod tests {
         );
         assert!(s.connected);
         assert_eq!(s.relay, "de-fra-wg-002");
+    }
+
+    /// The daemon's change stream reports a connect before the location is
+    /// known and never again for the lookup; the last known location for the
+    /// same relay fills the gap, a different relay's never does.
+    #[test]
+    fn a_streamed_connect_without_location_takes_the_relays_known_location() {
+        let streamed =
+            VpnStatus::parse(r#"{"connected":true,"relay":"de-fra-wg-002","location":""}"#);
+        assert!(needs_location(&streamed));
+        let known = (
+            "de-fra-wg-002".to_string(),
+            "Germany, Frankfurt. IPv4: 1.2.3.4".to_string(),
+        );
+        let filled = with_known_location(streamed.clone(), Some(&known));
+        assert_eq!(filled.location, known.1);
+        assert!(!needs_location(&filled));
+        let other = ("se-sto-wg-001".to_string(), "Sweden, Stockholm".to_string());
+        assert!(needs_location(&with_known_location(streamed, Some(&other))));
+        // Disconnected never asks.
+        assert!(!needs_location(&VpnStatus::default()));
     }
 
     #[test]

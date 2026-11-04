@@ -90,7 +90,7 @@ impl Component for VpnModel {
                     gtk::Image {
                         set_valign: gtk::Align::Center,
                     },
-                    // Country label — shown only while connected (see apply_visual).
+                    // Exit-city label — shown only while connected (see apply_visual).
                     #[name="label"]
                     gtk::Label {
                         add_css_class: "vpn-bar-label",
@@ -187,10 +187,23 @@ impl Component for VpnModel {
     }
 }
 
-/// The country half of a Mullvad "Visible location" string
-/// ("Sweden, Stockholm. IPv4: …" → "Sweden").
-fn country_of(location: &str) -> &str {
-    location.split(',').next().unwrap_or("").trim()
+/// The city of a Mullvad "Visible location" string ("Sweden, Stockholm.
+/// IPv4: …" → "Stockholm"), or the country when there is no city part.
+fn city_of(location: &str) -> &str {
+    let mut parts = location.splitn(2, ',');
+    let country = parts.next().unwrap_or("").trim();
+    match parts.next() {
+        Some(rest) => {
+            let city = rest
+                .split(". ")
+                .next()
+                .unwrap_or("")
+                .trim()
+                .trim_end_matches('.');
+            if city.is_empty() { country } else { city }
+        }
+        None => country.split(". ").next().unwrap_or("").trim(),
+    }
 }
 
 fn apply_visual(image: &gtk::Image, label: &gtk::Label, root: &gtk::Box, s: &VpnState) {
@@ -201,11 +214,11 @@ fn apply_visual(image: &gtk::Image, label: &gtk::Label, root: &gtk::Box, s: &Vpn
     };
     image.set_icon_name(Some(icon));
 
-    // Beside-icon label: country while on Mullvad; "Blocky" when the DNS guard
+    // Beside-icon label: the exit city while on Mullvad; "Blocky" when the DNS guard
     // is up; the upstream resolver's short name when a known DNS is set; else
     // hidden.
     let label_text = if s.connected {
-        country_of(&s.location).to_string()
+        city_of(&s.location).to_string()
     } else if s.blocky {
         "Blocky".to_string()
     } else {
@@ -304,6 +317,18 @@ mod tests {
         assert_eq!(s.relay, "de-fra-wg-002");
         assert!(s.location.starts_with("Germany"));
         assert!(s.dns_label.is_empty(), "Mullvad owns DNS");
+    }
+
+    #[test]
+    fn the_label_is_the_exit_city() {
+        assert_eq!(
+            city_of("Germany, Frankfurt. IPv4: 185.213.155.228"),
+            "Frankfurt"
+        );
+        assert_eq!(city_of("Sweden, Stockholm"), "Stockholm");
+        assert_eq!(city_of("USA, New York, NY. IPv4: 1.2.3.4"), "New York, NY");
+        assert_eq!(city_of("Germany"), "Germany");
+        assert_eq!(city_of(""), "");
     }
 
     #[test]
