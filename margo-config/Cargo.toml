@@ -11,7 +11,7 @@ bitflags.workspace = true
 chrono.workspace = true
 serde.workspace = true
 tracing.workspace = true
-xkbcommon = { version = "0.8" }
+xkbcommon.workspace = true
 # Bench-only. Optional + gated behind the `bench` feature (with
 # `required-features` on the bench target) so a plain `cargo test` / `cargo
 # check` cold build doesn't drag in the criterion/plotters chain. Run benches

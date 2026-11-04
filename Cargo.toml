@@ -130,7 +130,11 @@ clap = { version = "4.0", features = ["derive"] }
 mimalloc = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-toml = "0.8"
+# 1.x, the version system-deps already pulls in (0.8 was a second toml +
+# toml_edit/toml_datetime/serde_spanned/winnow stack). Note: since 0.9,
+# `str::parse::<toml::Value>()` parses one *value*; parse a document as
+# `toml::Table`.
+toml = "1"
 # Calendar OAuth (mcal): PKCE S256 + base64url via the `Engine` API. 0.22 to
 # reuse the version reqwest already pulls into the tree — 0.21 was the odd one
 # out (mcal only uses the Engine API, unchanged across 0.21→0.22).
@@ -139,7 +143,13 @@ base64 = "0.22"
 tracing = "0.1"
 # WASM plugin host (mplugins WASM tier). Heavy — only pulled when the
 # `mshell-plugin-host` crate's `wasm` feature is enabled.
-wasmtime = "36.0.20"
+# wasmtime's defaults minus `cache` (the on-disk compiled-module cache,
+# which the host never configures, and which pulls in toml 0.8).
+wasmtime = { version = "36.0.20", default-features = false, features = [
+    "async", "gc", "gc-drc", "gc-null", "wat", "profiling", "parallel-compilation",
+    "cranelift", "pooling-allocator", "demangle", "addr2line", "coredump",
+    "debug-builtins", "runtime", "component-model", "threads", "stack-switching", "std",
+] }
 wasmtime-wasi = "36.0.20"
 # Blocking HTTP for the plugin host's `http` capability (W3). Pure-Rust + rustls.
 ureq = "2"
@@ -154,7 +164,7 @@ wayland-backend = "0.3"
 wayland-scanner = "0.31"
 wayland-protocols = { version = "0.32", features = ["staging", "client"] }
 wayland-protocols-wlr = { version = "0.3", features = ["client"] }
-xkbcommon = { version = "0.8", features = ["wayland"] }
+xkbcommon = { version = "0.9", features = ["wayland"] }
 xcursor = "0.3"
 
 # mshell GUI stack (gtk4 + relm4 + layer-shell + session-lock).
@@ -173,7 +183,9 @@ cairo-rs = "0.22"
 # `gio::DesktopAppInfo` / `gio::UnixInputStream` -> `gio_unix`.
 glib-unix = "0.22"
 gio-unix = "0.22"
-any_spawner = { version = "0.3", features = ["glib", "async-executor"] }
+# Not the `glib` feature: it links glib-rs 0.20 next to gtk4-rs's 0.22.
+# mshell-core spawns onto gtk4-rs's glib with a CustomExecutor instead.
+any_spawner = { version = "0.3", features = ["async-executor"] }
 reactive_graph = { version = "0.2", features = ["effects"] }
 reactive_stores = "0.4"
 
@@ -237,7 +249,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 chrono-tz = "0.10"
 # Calendar core (mcal-core): RFC 5545 ICS parse/serialize + RRULE recurrence.
 icalendar = "0.16"
-rrule = "0.13"
+rrule = "0.14"
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
 tokio-util = "0.7"

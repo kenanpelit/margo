@@ -1445,7 +1445,7 @@ pub fn parse_modifiers(s: &str) -> Result<Modifiers> {
 
 /// xkbcommon's `keysym_from_name` as a raw keysym, 0 (`NoSymbol`) when the
 /// name is unknown. Use this instead of calling xkbcommon directly on text
-/// from a config file or a client: xkbcommon 0.8 builds a CString with
+/// from a config file or a client: xkbcommon (0.8 and 0.9) builds a CString with
 /// `unwrap()`, so a name containing a NUL byte panics; here it is simply not
 /// a key name.
 pub fn keysym_raw_from_name(name: &str, case_insensitive: bool) -> u32 {

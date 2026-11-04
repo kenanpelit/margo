@@ -50,11 +50,16 @@ fn cache_path() -> PathBuf {
 }
 
 pub fn load() -> Palette {
+    match std::fs::read_to_string(cache_path()) {
+        Ok(body) => from_toml(&body),
+        Err(_) => Palette::default(),
+    }
+}
+
+/// The palette in a `mshell-colors.toml` body. Unparsable → the fallback.
+fn from_toml(body: &str) -> Palette {
     let mut p = Palette::default();
-    let Ok(body) = std::fs::read_to_string(cache_path()) else {
-        return p;
-    };
-    let Ok(v) = body.parse::<toml::Value>() else {
+    let Ok(v) = body.parse::<toml::Table>() else {
         return p;
     };
     let app = v.get("appearance");
@@ -176,4 +181,34 @@ entry.mvpn-search {{ border-radius: 9px; }}
         danger = p.danger,
         opacity = p.menu_opacity,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_the_shell_palette_cache() {
+        let p = from_toml(
+            "[appearance]\n\
+             success_color = \"#00ff00\"\n\
+             [appearance.background_color]\n\
+             base = \"#101010\"\n\
+             text = \"#eeeeee\"\n\
+             [appearance.primary_color]\n\
+             base = \"#ff0000\"\n\
+             [appearance.menu]\n\
+             opacity = 0.8\n",
+        );
+        assert_eq!(p.bg, "#101010");
+        assert_eq!(p.text, "#eeeeee");
+        assert_eq!(p.primary, "#ff0000");
+        assert_eq!(p.success, "#00ff00");
+        assert!((p.menu_opacity - 0.8).abs() < 1e-9);
+    }
+
+    #[test]
+    fn garbage_falls_back_to_the_default() {
+        assert_eq!(from_toml("not = [toml").bg, Palette::default().bg);
+    }
 }

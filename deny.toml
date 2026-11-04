@@ -29,7 +29,6 @@ yanked = "deny"
 ignore = [
     # --- Unmaintained crates, no security vuln, no safe upgrade path ---------
     { id = "RUSTSEC-2025-0057", reason = "fxhash unmaintained, no vuln; only via fxprof-processed-profile behind wasmtime's `profiling` feature, which is compiled in but only runs when a profiler is configured (mshell never does)" },
-    { id = "RUSTSEC-2025-0119", reason = "number_prefix unmaintained, no vuln; transitive via indicatif" },
     { id = "RUSTSEC-2024-0436", reason = "paste unmaintained proc-macro, no vuln; deep transitive and ubiquitous" },
     { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 unmaintained, no vuln; build-time proc-macro via reactive_stores_macro" },
     { id = "RUSTSEC-2026-0192", reason = "ttf-parser unmaintained, no vuln; via fontdue, no maintained drop-in yet" },
@@ -47,7 +46,7 @@ ignore = [
 
 [bans]
 # The workspace legitimately resolves several major versions of heavy
-# transitive deps (zbus via keyring, glib, windows-sys). Surface them as a
+# transitive deps (zbus via keyring, gtk-rs system-deps, windows-sys). Surface them as a
 # warning rather than failing — de-duplication is a separate, non-security
 # cleanup. Duplicates we cause ourselves (a member pinning its own version of
 # a workspace dependency) are avoided by using `workspace = true`.

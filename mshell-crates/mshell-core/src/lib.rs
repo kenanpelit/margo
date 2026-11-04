@@ -24,6 +24,28 @@ use std::error::Error;
 use tracing::info;
 use wayle_weather::{LocationQuery, TemperatureUnit};
 
+/// Runs reactive_graph's effects on GTK's default main context.
+///
+/// any_spawner has its own `Executor::init_glib`, but behind its `glib`
+/// feature it links glib-rs 0.20, a second copy next to the 0.22 that gtk4-rs
+/// uses (glib, glib-sys, gobject-sys, gio-sys and glib-macros, all twice).
+/// Both wrap the same C main context, so spawning through gtk4-rs's glib does
+/// the same thing as `init_glib` did, without the duplicate crates.
+struct GlibExecutor;
+
+impl any_spawner::CustomExecutor for GlibExecutor {
+    fn spawn(&self, fut: any_spawner::PinnedFuture<()>) {
+        relm4::gtk::glib::MainContext::default().spawn(fut);
+    }
+
+    fn spawn_local(&self, fut: any_spawner::PinnedLocalFuture<()>) {
+        relm4::gtk::glib::MainContext::default().spawn_local(fut);
+    }
+
+    // The GTK main loop drives the futures; there is nothing to poll.
+    fn poll_local(&self) {}
+}
+
 // The shared tokio runtime now lives in mshell-services so that
 // crates without a dependency on mshell-core can still spawn onto it.
 use mshell_services::tokio_rt;
@@ -113,7 +135,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         glib::log_writer_default(level, fields)
     });
 
-    Executor::init_glib().expect("Executor could not be initialized.");
+    Executor::init_custom_executor(GlibExecutor).expect("Executor could not be initialized.");
 
     let config_manager = mshell_config::config_manager::config_manager();
     config_manager.watch_config();
@@ -664,5 +686,41 @@ fn spawn_autostart_detached(entry: &ScriptAutostart) {
     }
     if let Err(err) = cmd.spawn_reaped() {
         tracing::warn!(script = %entry.name, ?err, "autostart: spawn failed");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GlibExecutor;
+    use any_spawner::Executor;
+    use relm4::gtk::glib;
+    use std::cell::Cell;
+    use std::rc::Rc;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    /// Futures spawned through any_spawner (what reactive_graph's effects
+    /// use) must run on GTK's main context.
+    #[test]
+    fn spawns_run_on_the_gtk_main_context() {
+        let ctx = glib::MainContext::default();
+        let _owner = ctx.acquire().expect("test thread owns the default context");
+        Executor::init_custom_executor(GlibExecutor).expect("executor set once");
+
+        let local = Rc::new(Cell::new(false));
+        let l = local.clone();
+        Executor::spawn_local(async move { l.set(true) });
+        let sent = Arc::new(AtomicBool::new(false));
+        let s = sent.clone();
+        Executor::spawn(async move { s.store(true, Ordering::SeqCst) });
+
+        for _ in 0..100 {
+            if local.get() && sent.load(Ordering::SeqCst) {
+                break;
+            }
+            ctx.iteration(false);
+        }
+        assert!(local.get(), "spawn_local ran");
+        assert!(sent.load(Ordering::SeqCst), "spawn ran");
     }
 }
