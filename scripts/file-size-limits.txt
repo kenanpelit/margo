@@ -9,7 +9,7 @@ margo/src/state.rs 1300
 
 # mshell god files (split along their seams; new code goes into the submodule
 # that owns it).
-# IPC dispatch (IPCCommand -> ShellInput). The D-Bus interface, audio/media
+# IPC dispatch (IPCCommand -> ShellInput). The command enum, D-Bus interface, audio/media
 # renderers, plugin watcher, daily wallpaper and alarms live in ipc/*.rs.
 mshell-crates/mshell-core/src/ipc.rs 1100
 # Settings panel component (view, init, update). Page registry, search,
