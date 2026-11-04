@@ -1,14 +1,15 @@
 //! Podman bar pill — port of the noctalia `podman` plugin's
 //! bar half.
 //!
-//! Render-only widget. Polls `podman ps` / `podman pod ps` /
-//! `podman images` every 60 s and draws an icon + tooltip
-//! summary. One shared poll ([`PODMAN_POLL`]) for every bar, running only
+//! Render-only widget. Streams `podman events --format json` and probes
+//! `podman ps` / `podman pod ps` / `podman images` on a change, with a 60 s
+//! polling fallback if the stream fails (ten minute safety refresh otherwise).
+//! Draws an icon + tooltip summary. One shared poll ([`PODMAN_POLL`]) for every bar, running only
 //! while a pill is mapped — not while it sits in a collapsed drawer. Click emits `PodmanOutput::Clicked`; frame toggles
 //! `MenuType::Podman`. Menu lives in
 //! `menu_widgets/podman/podman_menu_widget.rs`.
 
-use mshell_utils::shared_poll::{PollSubscription, SharedPoll};
+use mshell_utils::shared_poll::{EventFeed, PollSubscription, SharedPoll};
 use relm4::gtk::prelude::{ButtonExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::rc::Rc;
@@ -17,8 +18,57 @@ use std::time::Duration;
 
 const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 
-static PODMAN_POLL: LazyLock<SharedPoll<PodmanSummary>> =
-    LazyLock::new(|| SharedPoll::new(|| REFRESH_INTERVAL, || Box::pin(fetch_podman_summary())));
+static PODMAN_POLL: LazyLock<SharedPoll<PodmanSummary>> = LazyLock::new(|| {
+    SharedPoll::new(|| REFRESH_INTERVAL, || Box::pin(fetch_podman_summary())).with_feed(
+        EventFeed::new(
+            || {
+                let mut cmd = tokio::process::Command::new("podman");
+                cmd.args(["events", "--format", "json"]);
+                cmd
+            },
+            podman_changed,
+            || Duration::from_secs(600),
+            REFRESH_INTERVAL,
+        ),
+    )
+});
+
+/// Container/pod/image mutations affect the summary; inspect/exec/health
+/// events do not. Invalid lines (or diagnostics from an older podman) never
+/// trigger a probe.
+fn podman_changed(line: &str) -> bool {
+    let Ok(event) = serde_json::from_str::<serde_json::Value>(line) else {
+        return false;
+    };
+    let kind = event.get("Type").and_then(|v| v.as_str()).unwrap_or("");
+    let status = event.get("Status").and_then(|v| v.as_str()).unwrap_or("");
+    matches!(kind, "container" | "pod" | "image")
+        && matches!(
+            status,
+            "create"
+                | "start"
+                | "stop"
+                | "die"
+                | "died"
+                | "remove"
+                | "prune"
+                | "pull"
+                | "push"
+                | "load"
+                | "save"
+                | "tag"
+                | "untag"
+                | "build"
+                | "import"
+                | "commit"
+                | "pause"
+                | "unpause"
+                | "restart"
+                | "checkpoint"
+                | "restore"
+                | "cleanup"
+        )
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct PodmanSummary {
@@ -262,7 +312,27 @@ async fn run_capture(cmd: &str, args: &[&str]) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::is_running_state;
+    use super::{is_running_state, podman_changed};
+
+    #[test]
+    fn stream_only_refreshes_on_summary_changes() {
+        for kind in ["container", "pod", "image"] {
+            assert!(podman_changed(&format!(
+                r#"{{"Type":"{kind}","Status":"create"}}"#
+            )));
+        }
+        assert!(podman_changed(r#"{"Type":"container","Status":"died"}"#));
+        // Real `podman events --format json` line (podman 6.1).
+        assert!(podman_changed(
+            r#"{"ID":"e2ac70e7","Name":"docker.io/library/hello-world","Status":"pull","time":1793794908,"timeNano":1793794908131113390,"Type":"image","Attributes":null}"#
+        ));
+        assert!(podman_changed(
+            r#"{"Type":"container","Status":"checkpoint"}"#
+        ));
+        assert!(!podman_changed(r#"{"Type":"container","Status":"exec"}"#));
+        assert!(!podman_changed(r#"{"Type":"network","Status":"create"}"#));
+        assert!(!podman_changed("podman: not available"));
+    }
 
     #[test]
     fn running_match_is_case_insensitive() {
