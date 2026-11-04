@@ -4538,6 +4538,7 @@ dependencies = [
  "chrono",
  "criterion",
  "proptest",
+ "regex",
  "serde",
  "tempfile",
  "tracing",
@@ -4639,6 +4640,7 @@ dependencies = [
  "regex",
  "serde_json",
  "similar",
+ "tempfile",
 ]
 
 [[package]]

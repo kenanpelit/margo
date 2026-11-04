@@ -11,6 +11,7 @@
 //! The validator does NOT try to be a full re-implementation of the
 //! parser. It focuses on the failure modes a user can actually hit:
 //!
+//!   * E000 — the config file (or a sourced one) can't be read.
 //!   * E001 — an empty KEY or ACTION field in a `bind` (a stray comma):
 //!     margo drops the bind. A stray comma margo just ignores (a
 //!     trailing one, an empty rule slot) is the warning W010.
@@ -32,15 +33,19 @@
 //!     declared primitive (bool / int / uint / float). Tables are
 //!     derived from `parser::parse_option`; a drift-guard test keeps
 //!     them inside `OPTION_KEYS`.
-//!   * W004 — the same MODS+KEY combo bound more than once across the
-//!     config file tree (`config.conf` + every recursively `source`d/
-//!     `include`d file, so `binds.d/*.conf` and `binds.conf` are both
-//!     covered). margo's keypress lookup is `.iter().find()` — first
-//!     match wins (`margo/src/input/mod.rs`) — so every bind after the
-//!     first in a matching group is silently dead; only those are
-//!     flagged, not the live one. Suppressed when BOTH the earlier and
-//!     later bind use the `c` suffix (`bindc`) — an explicit "I know
-//!     these share a combo" opt-in, e.g. submap/mode disambiguation.
+//!   * W004 — the same MODS+KEY combo bound more than once in the same
+//!     `keymode` across the config file tree (`config.conf` + every
+//!     recursively `source`d/`include`d file, so `binds.d/*.conf` and
+//!     `binds.conf` are both covered). margo's keypress lookup is
+//!     `.iter().find()` — first match wins (`margo/src/input/mod.rs`) — so
+//!     every bind after the first in a matching group is silently dead; only
+//!     those are flagged, not the live one. A `common` bind fires in every
+//!     mode, so an earlier `common` bind shadows the combo in all of them.
+//!     Suppressed when BOTH the earlier and later bind use the `c` suffix
+//!     (`bindc`) — an explicit "I know these share a combo" opt-in.
+//!   * W005 — a bind ACTION that names no dispatch action (margo no-ops it).
+//!   * W006 — a key margo accepts but doesn't act on.
+//!   * W007 — `monitorrule` fields that only work together, set alone.
 //!   * W008 — an option a `windowrule` / `layerrule` / `tagrule` /
 //!     `monitorrule` doesn't know (the parser only logs it), with a
 //!     "did you mean".
@@ -49,6 +54,8 @@
 //!     (`class:`, `namespace:`). margo drops such a rule instead of
 //!     applying it to every window or layer surface.
 //!   * W010 — a leading, trailing or doubled comma margo ignores.
+//!   * W011 — a window/layer rule pattern that isn't a valid regex. margo
+//!     falls back to a plain substring match, so the rule still loads.
 //!
 //! Values are `$var`-expanded and `source` wildcards resolved exactly as in
 //! the parser (shared code), so both read the same text and the same files.
@@ -57,7 +64,6 @@
 //!
 //! New rules slot into `validate_text` as more conditions show up.
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::diagnostics::{ConfigDiagnostic, DiagnosticReport, Severity};
@@ -74,6 +80,8 @@ struct BindEntry {
     end_col: usize,
     line_text: String,
     combo: String,
+    /// The `keymode` the bind belongs to (`common` = every mode).
+    mode: String,
     /// `bindc` — see the W004 note above.
     allow_conflict: bool,
 }
@@ -93,34 +101,36 @@ pub fn validate_config(path: Option<&Path>) -> std::io::Result<DiagnosticReport>
 /// W004: flag every bind entry that is shadowed by an earlier one with
 /// the same normalised MODS+KEY combo.
 fn check_bind_conflicts(binds: &[BindEntry], report: &mut DiagnosticReport) {
-    let mut first_seen: HashMap<&str, &BindEntry> = HashMap::new();
-    for entry in binds {
-        if let Some(winner) = first_seen.get(entry.combo.as_str()) {
-            if entry.allow_conflict && winner.allow_conflict {
-                // Both sides opted in via `bindc` — intentional, don't warn.
-                // Doesn't overwrite `first_seen`: a later non-`c` bind on
-                // the same combo still compares against the ORIGINAL
-                // winner, not this one.
-                continue;
-            }
-            report.push(ConfigDiagnostic {
-                path: entry.path.clone(),
-                line: entry.line,
-                col: entry.col,
-                end_col: entry.end_col,
-                severity: Severity::Warning,
-                code: "W004".into(),
-                message: format!(
-                    "keybind `{}` is shadowed by an earlier bind at {}:{} — margo's first match wins, this one never fires",
-                    entry.combo,
-                    winner.path.display(),
-                    winner.line
-                ),
-                line_text: entry.line_text.clone(),
-            });
+    for (i, entry) in binds.iter().enumerate() {
+        // The earliest bind on this combo that fires in every mode `entry`
+        // fires in: same mode, or a `common` one. A later `common` bind is
+        // never fully dead (it still fires in modes without that combo).
+        let winner = binds[..i].iter().find(|w| {
+            w.combo == entry.combo
+                && (w.mode == entry.mode || w.mode == "common")
+                && !(entry.allow_conflict && w.allow_conflict)
+        });
+        let Some(winner) = winner else { continue };
+        let mode = if entry.mode == "default" {
+            String::new()
         } else {
-            first_seen.insert(&entry.combo, entry);
-        }
+            format!(" in keymode `{}`", entry.mode)
+        };
+        report.push(ConfigDiagnostic {
+            path: entry.path.clone(),
+            line: entry.line,
+            col: entry.col,
+            end_col: entry.end_col,
+            severity: Severity::Warning,
+            code: "W004".into(),
+            message: format!(
+                "keybind `{}`{mode} is shadowed by an earlier bind at {}:{} — margo's first match wins, this one never fires",
+                entry.combo,
+                winner.path.display(),
+                winner.line
+            ),
+            line_text: entry.line_text.clone(),
+        });
     }
 }
 
@@ -142,6 +152,15 @@ struct Walk {
     /// `var = name, value` definitions so far; a sourced file sees the
     /// variables defined before its `source` line, as in the parser.
     vars: crate::parser::Vars,
+    /// The `keymode` binds are currently added to (`None` = margo's
+    /// default, `"default"`).
+    keymode: Option<String>,
+}
+
+impl Walk {
+    fn keymode(&self) -> &str {
+        self.keymode.as_deref().unwrap_or("default")
+    }
 }
 
 fn validate_file(
@@ -257,6 +276,11 @@ fn validate_text(
                 });
             }
             continue;
+        }
+
+        if key == "keymode" {
+            // Same value the parser stores (it keeps the first 27 chars).
+            walk.keymode = Some(val.chars().take(27).collect());
         }
 
         // include/source path resolution check.
@@ -503,6 +527,7 @@ fn validate_text(
                         end_col: val_start + mods_part.len() + 1 + key_part.len(),
                         line_text: raw.to_string(),
                         combo,
+                        mode: walk.keymode().to_string(),
                         allow_conflict: key[4..].contains('c'),
                     });
                 }
@@ -696,6 +721,36 @@ fn check_rule_options(
         }
         if table.matchers.contains(&k) {
             has_matcher = true;
+            // W011: margo compiles selector patterns with the `regex`
+            // crate (`matches_rule_text`) and falls back to a substring
+            // match when that fails.
+            if let Some((_, pat_raw)) = part.split_once(':') {
+                let pat = pat_raw.trim();
+                if !pat.is_empty()
+                    && let Err(e) = regex::Regex::new(pat)
+                {
+                    let pcol = val_start
+                        + (off - part.len() - 1)
+                        + k_raw.len()
+                        + 1
+                        + (pat_raw.len() - pat_raw.trim_start().len());
+                    let first = e.to_string();
+                    let first = first.lines().last().unwrap_or("").trim();
+                    report.push(ConfigDiagnostic {
+                        path: path.to_path_buf(),
+                        line: lineno,
+                        col: pcol,
+                        end_col: pcol + pat.len(),
+                        severity: Severity::Warning,
+                        code: "W011".into(),
+                        message: format!(
+                            "`{k}:` is not a valid regex ({first}) — margo falls back to a plain \
+                             substring match"
+                        ),
+                        line_text: raw.to_string(),
+                    });
+                }
+            }
         }
         if table.keys.contains(&k) {
             continue;
@@ -1823,5 +1878,95 @@ mod tests {
         let w008: Vec<_> = r.diagnostics.iter().filter(|d| d.code == "W008").collect();
         assert_eq!(w008.len(), 2, "{:?}", r.diagnostics);
         assert!(w008[1].message.contains("scale"), "{}", w008[1].message);
+    }
+
+    // ── keymode-aware W004, regex W011 ──────────────────────────────────
+
+    #[test]
+    fn same_key_in_two_keymodes_is_not_a_conflict() {
+        let r = validate_str(
+            "keymode = resize\nbind = none,h,resizewin,-10,0\nkeymode = default\nbind = none,h,focusdir,left\n",
+        );
+        assert!(
+            !r.diagnostics.iter().any(|d| d.code == "W004"),
+            "{:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn same_key_twice_in_one_keymode_conflicts() {
+        let r = validate_str(
+            "keymode = resize\nbind = none,h,resizewin,-10,0\nbind = none,h,resizewin,10,0\n",
+        );
+        let w: Vec<_> = r.diagnostics.iter().filter(|d| d.code == "W004").collect();
+        assert_eq!(w.len(), 1, "{:?}", r.diagnostics);
+        assert_eq!(w[0].line, 3);
+        assert!(w[0].message.contains("resize"), "{}", w[0].message);
+    }
+
+    #[test]
+    fn an_earlier_common_bind_shadows_every_keymode() {
+        // `common` binds fire in every mode, and the first match wins.
+        let r = validate_str(
+            "keymode = common\nbind = super,q,killclient\nkeymode = resize\nbind = super,q,quit\n",
+        );
+        assert!(
+            r.diagnostics
+                .iter()
+                .any(|d| d.code == "W004" && d.line == 4),
+            "{:?}",
+            r.diagnostics
+        );
+        // …but a later common bind is still live in the other modes.
+        let r = validate_str(
+            "keymode = resize\nbind = super,q,quit\nkeymode = common\nbind = super,q,killclient\n",
+        );
+        assert!(
+            !r.diagnostics.iter().any(|d| d.code == "W004"),
+            "{:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn invalid_rule_regex_is_a_warning_with_its_own_code() {
+        let r = validate_str(
+            "windowrule = isfloating:1, appid:^($[\nlayerrule = noanim:1, layer_name:(\n",
+        );
+        let w: Vec<_> = r.diagnostics.iter().filter(|d| d.code == "W011").collect();
+        assert_eq!(w.len(), 2, "{:?}", r.diagnostics);
+        assert!(
+            !r.has_errors(),
+            "margo falls back to a substring match: {:?}",
+            r.diagnostics
+        );
+        assert_eq!(&w[0].line_text[w[0].col - 1..w[0].end_col - 1], "^($[");
+    }
+
+    #[test]
+    fn valid_rule_regex_is_clean() {
+        let r = validate_str("windowrule = isfloating:1, appid:^(foo|bar)$, title:(?i)x\n");
+        assert!(r.diagnostics.is_empty(), "{:?}", r.diagnostics);
+    }
+
+    #[test]
+    fn diagnostic_codes_are_unique_per_meaning() {
+        // Every code the validator can emit, with one meaning each — the
+        // list in the module docs. A new check must add a new code.
+        let src = include_str!("validator.rs");
+        let mut codes = std::collections::BTreeSet::new();
+        for (i, _) in src.match_indices("code: \"") {
+            let rest = &src[i + 7..];
+            let c = &rest[..rest.find('"').unwrap()];
+            codes.insert(c.to_string());
+        }
+        let doc: String = src.lines().take_while(|l| l.starts_with("//!")).collect();
+        for c in &codes {
+            assert!(
+                doc.contains(&format!("{c} —")),
+                "code {c} is emitted but not documented in the module docs"
+            );
+        }
     }
 }

@@ -436,8 +436,8 @@ enum Command {
                       Catches:\n  \
                         * Unknown top-level keys (not in the documented schema).\n  \
                         * Unknown windowrule / layerrule / monitorrule / tagrule fields.\n  \
-                        * Invalid regex patterns in `appid:`, `title:`, `exclude_*:` slots.\n  \
-                        * Duplicate `bind = MODS,KEY,…` lines (one bind silently shadows the other).\n  \
+                        * Invalid regex patterns in `appid:`, `title:`, `exclude_*:`, `layer_name:` slots.\n  \
+                        * Duplicate `bind = MODS,KEY,…` lines in the same keymode (the first one wins).\n  \
                         * Unresolvable `source = …` / `include = …` includes.\n  \
                         * Lone-mango option carry-overs that margo doesn't yet implement (warning).\n  \
                       \n\
@@ -2331,8 +2331,7 @@ fn cmd_config_rollback(
 }
 
 fn cmd_check_config(config_override: Option<&std::path::Path>) -> Result<()> {
-    use margo_config::diagnostics::{ConfigDiagnostic, Severity};
-    use std::collections::HashMap;
+    use margo_config::diagnostics::Severity;
 
     let cfg_path = config_override.map(|p| p.to_path_buf()).unwrap_or_else(|| {
         std::path::PathBuf::from(format!(
@@ -2353,9 +2352,9 @@ fn cmd_check_config(config_override: Option<&std::path::Path>) -> Result<()> {
         return Ok(());
     }
 
-    // Pass 1 — structured validator. Picks up trailing/leading/doubled
-    // commas in CSV-shaped values, missing `=`, unknown top-level keys,
-    // unresolved include/source paths.
+    // Pass 1 — the structured validator over the whole `source` tree:
+    // unknown keys and rule options, bad values, stray commas, unresolved
+    // includes, rule regexes, duplicate binds (keymode-aware, first wins).
     let mut report =
         margo_config::validator::validate_config(Some(&cfg_path)).unwrap_or_else(|e| {
             eprintln!("error: validator could not read config: {e}");
@@ -2367,103 +2366,11 @@ fn cmd_check_config(config_override: Option<&std::path::Path>) -> Result<()> {
     // and keep going so the rest of the diagnostic stream still prints.
     let cfg = margo_config::parse_config(Some(&cfg_path)).ok();
 
-    // Pass 3 — duplicate-bind and regex-pattern checks. These need
-    // semantic understanding the line-walker doesn't have, so we keep
-    // them here but emit structured `ConfigDiagnostic`s into the same
-    // report stream as Pass 1 so the renderer is uniform.
-    let text = std::fs::read_to_string(&cfg_path)?;
-    let mut bind_seen: HashMap<(String, String), Vec<(usize, String)>> = HashMap::new();
-
-    for (lineno_zero, raw) in text.lines().enumerate() {
-        let lineno = lineno_zero + 1;
-        let line = raw.trim_start();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        let Some(eq_pos) = raw.find('=') else {
-            continue;
-        };
-        let key = raw[..eq_pos].trim();
-        let val = raw[eq_pos + 1..].trim();
-
-        if key == "bind" {
-            let mut parts = val.splitn(3, ',');
-            let mods = parts.next().unwrap_or("").trim().to_lowercase();
-            let keysym = parts.next().unwrap_or("").trim().to_lowercase();
-            if !mods.is_empty() && !keysym.is_empty() {
-                bind_seen
-                    .entry((mods, keysym))
-                    .or_default()
-                    .push((lineno, raw.to_string()));
-            }
-        }
-
-        if key == "windowrule" || key == "layerrule" {
-            for (k_raw, v_raw) in val.split(',').filter_map(|p| p.split_once(':')) {
-                let k = k_raw.trim();
-                if matches!(
-                    k,
-                    "appid"
-                        | "app_id"
-                        | "title"
-                        | "exclude_appid"
-                        | "exclude_id"
-                        | "exclude_title"
-                        | "not_appid"
-                        | "not_title"
-                        | "layer_name"
-                ) && let Err(e) = regex::Regex::new(v_raw.trim())
-                {
-                    let pat_col = raw.find(v_raw.trim()).map(|i| i + 1).unwrap_or(eq_pos + 2);
-                    report.push(ConfigDiagnostic {
-                        path: cfg_path.clone(),
-                        line: lineno,
-                        col: pat_col,
-                        end_col: pat_col + v_raw.trim().len(),
-                        severity: Severity::Error,
-                        code: "E004".into(),
-                        message: format!("regex compile error in `{k}:{}` — {e}", v_raw.trim()),
-                        line_text: raw.to_string(),
-                    });
-                }
-            }
-        }
-    }
-
-    for (key, hits) in &bind_seen {
-        if hits.len() > 1 {
-            // Report on the *later* line(s); the first one is the one
-            // that's getting shadowed. niri-style: the diagnostic
-            // points at the line that "won" so the user knows which
-            // entry is the active one.
-            let (lineno, line_text) = hits.last().unwrap();
-            report.push(ConfigDiagnostic {
-                path: cfg_path.clone(),
-                line: *lineno,
-                col: 1,
-                end_col: line_text.len() + 1,
-                severity: Severity::Warning,
-                code: "W002".into(),
-                message: format!(
-                    "duplicate bind `{}+{}` (also defined on line{} {}; this definition wins)",
-                    key.0,
-                    key.1,
-                    if hits.len() > 2 { "s" } else { "" },
-                    hits.iter()
-                        .take(hits.len() - 1)
-                        .map(|(l, _)| l.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                ),
-                line_text: line_text.clone(),
-            });
-        }
-    }
-
-    // Stable render order: by line, then severity (errors first).
+    // Stable render order: by file, line, then severity (errors first).
     report.diagnostics.sort_by(|a, b| {
-        a.line
-            .cmp(&b.line)
+        a.path
+            .cmp(&b.path)
+            .then(a.line.cmp(&b.line))
             .then(a.col.cmp(&b.col))
             .then_with(|| match (a.severity, b.severity) {
                 (Severity::Error, Severity::Warning) => std::cmp::Ordering::Less,

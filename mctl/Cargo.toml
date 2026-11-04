@@ -28,5 +28,9 @@ similar = "2.7"
 # `mctl config list` renders each generation's saved timestamp.
 chrono.workspace = true
 
+[dev-dependencies]
+# tests/check_config.rs writes scratch configs.
+tempfile = "3"
+
 [lints]
 workspace = true

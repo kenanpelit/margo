@@ -11,6 +11,9 @@ bitflags.workspace = true
 chrono.workspace = true
 serde.workspace = true
 tracing.workspace = true
+# Rule selector patterns are checked with the same engine margo matches
+# them with (W011).
+regex = "1"
 xkbcommon.workspace = true
 # Bench-only. Optional + gated behind the `bench` feature (with
 # `required-features` on the bench target) so a plain `cargo test` / `cargo
