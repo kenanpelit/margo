@@ -162,6 +162,21 @@ type PageFactory = Rc<dyn Fn() -> BuiltPage>;
 /// replaces (and so drops) its old controllers.
 type Alive = Rc<RefCell<HashMap<String, Vec<Box<dyn std::any::Any>>>>>;
 
+/// Routes of built pages whose values may be stale: the config (or the
+/// active profile) changed since they were built. Many pages read the
+/// config once at build time, so another monitor's Settings, a profile
+/// switch, `mshellctl` or a hand edit left them showing — and, on the next
+/// spin-button step, writing back — old values. A stale page is rebuilt from
+/// the live config the next time it is navigated to or the panel is shown.
+type Stale = Rc<RefCell<std::collections::HashSet<String>>>;
+
+/// Whether navigating to `route` must (re)build its page: it was never built,
+/// or it went stale. Clears the stale mark it consumes.
+fn needs_build(exists: bool, stale: &Stale, route: &str) -> bool {
+    let was_stale = stale.borrow_mut().remove(route);
+    !exists || was_stale
+}
+
 /// Build a page into `stack` as child `name` — replacing an existing child
 /// of that name — then decorate it (`page_defaults`) and park its controllers
 /// under `route`. `show` makes it the visible child (used by rebuilds).
@@ -551,6 +566,22 @@ impl Component for SettingsWindowModel {
         // shuts its component down when dropped). See the `ensure_*` closures.
         let alive: Alive = Rc::new(RefCell::new(HashMap::new()));
 
+        // Any config / profile change marks every built page stale (see
+        // `Stale`); pages are rebuilt lazily, so this costs nothing until one
+        // is shown again.
+        let stale: Stale = Rc::new(RefCell::new(std::collections::HashSet::new()));
+        {
+            use reactive_graph::traits::Track;
+            let mut stale_effects = EffectScope::new();
+            let (alive, stale) = (alive.clone(), stale.clone());
+            stale_effects.push(move |_| {
+                config_manager().config().track();
+                config_manager().active_profile().track();
+                stale.borrow_mut().extend(alive.borrow().keys().cloned());
+            });
+            Box::leak(Box::new(stale_effects));
+        }
+
         // Built before the model so the model can hold a clone; the
         // Widgets sub-sidebar build loop (further down) fills the same map.
         let subsection_buttons: Rc<RefCell<HashMap<String, gtk::ToggleButton>>> =
@@ -596,8 +627,9 @@ impl Component for SettingsWindowModel {
         let ensure_top: Rc<dyn Fn(&str)> = {
             let stack = widgets.stack.clone();
             let alive = alive.clone();
+            let stale = stale.clone();
             Rc::new(move |route: &str| {
-                if stack.child_by_name(route).is_some() {
+                if !needs_build(stack.child_by_name(route).is_some(), &stale, route) {
                     return;
                 }
                 let owned = route.to_string();
@@ -764,8 +796,10 @@ impl Component for SettingsWindowModel {
             let sub_stack = theme_sub_stack.clone();
             let registry = theme_registry.clone();
             let alive = alive.clone();
+            let stale = stale.clone();
             Rc::new(move |name: &str| {
-                if sub_stack.child_by_name(name).is_some() {
+                let route = format!("theme/{name}");
+                if !needs_build(sub_stack.child_by_name(name).is_some(), &stale, &route) {
                     return;
                 }
                 let factory = registry.borrow().get(name).cloned();
@@ -958,8 +992,10 @@ impl Component for SettingsWindowModel {
             let sub_stack = widgets_sub_stack.clone();
             let registry = widget_registry.clone();
             let alive = alive.clone();
+            let stale = stale.clone();
             Rc::new(move |name: &str| {
-                if sub_stack.child_by_name(name).is_some() {
+                let route = format!("widgets/{name}");
+                if !needs_build(sub_stack.child_by_name(name).is_some(), &stale, &route) {
                     return;
                 }
                 let factory = registry.borrow().get(name).cloned();
@@ -1876,6 +1912,23 @@ impl Component for SettingsWindowModel {
         ensure_top("general");
         widgets.stack.set_visible_child_name("general");
 
+        // Showing the panel again (or on another monitor) rebuilds the
+        // visible top-level page if the config changed meanwhile.
+        {
+            use gtk::prelude::WidgetExt;
+            let stack = widgets.stack.clone();
+            let (ensure_top, stale) = (ensure_top.clone(), stale.clone());
+            root.connect_map(move |_| {
+                let Some(route) = stack.visible_child_name() else {
+                    return;
+                };
+                if stale.borrow().contains(route.as_str()) {
+                    ensure_top(&route);
+                    stack.set_visible_child_name(&route);
+                }
+            });
+        }
+
         ComponentParts { model, widgets }
     }
 
@@ -2206,6 +2259,22 @@ fn keywords_for(label: &str) -> &'static str {
 /// The search box's starting targets: every alias, then every sidebar page
 /// under the label it is shown with, so a page is always findable by the
 /// name the user sees (aliases win on order for "first match" submits).
+#[cfg(test)]
+mod stale_tests {
+    use super::*;
+
+    /// A page is built once, then rebuilt only after it went stale.
+    #[test]
+    fn stale_pages_rebuild_once_on_navigation() {
+        let stale: Stale = Rc::new(RefCell::new(std::collections::HashSet::new()));
+        assert!(needs_build(false, &stale, "dock"), "first visit builds");
+        assert!(!needs_build(true, &stale, "dock"), "built and fresh");
+        stale.borrow_mut().insert("dock".into());
+        assert!(needs_build(true, &stale, "dock"), "config changed: rebuild");
+        assert!(!needs_build(true, &stale, "dock"), "once");
+    }
+}
+
 fn initial_search_index() -> Vec<(String, String)> {
     let aliases = SEARCH_ALIASES
         .iter()
