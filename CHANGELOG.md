@@ -5,6 +5,18 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.8.2] – 2026-11-04
+
+**The camera indicator no longer stays on after login when nothing uses
+the camera.**
+
+### Fixed
+
+- At login wireplumber briefly opens every capture node while mshell takes
+  its first look at who holds the camera. When that look caught pipewire
+  mid-probe, the indicator stayed on ("pipewire") until mshell restarted.
+  A scan that overlaps camera opens or closes is now repeated.
+
 ## [4.8.1] – 2026-11-04
 
 **The bottom of the screen-edge frame sits on the output edge again.**
