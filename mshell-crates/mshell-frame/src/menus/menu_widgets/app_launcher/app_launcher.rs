@@ -551,7 +551,9 @@ impl Component for AppLauncherModel {
                 std::path::PathBuf::from(trimmed)
             }
         }))));
-        runtime.register(Box::new(CommandProvider::new()));
+        runtime.register(Box::new(
+            CommandProvider::new().with_search_setter(make_search_setter()),
+        ));
 
         let sender_for_rows = sender.clone();
         let factory = DynamicBoxFactory::<DisplayItem, String> {

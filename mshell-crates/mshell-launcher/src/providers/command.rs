@@ -21,15 +21,37 @@
 //! | `>run <name>` | The exact-named executable scores highest (Enter launches it directly) |
 //! | `>run <expr with spaces>` | Free-form shell line: the "Run: …" live row + history hits (no PATH completion) |
 //!
+//! | `>run ~/Doc` / `/etc/fs` / `./x` | **Path completion**: "Open …" for the typed path, then matching entries of its folder (folders first) |
+//!
+//! ## Path mode
+//!
+//! An expression starting with `~`, `/`, `./` or `../` completes like a
+//! shell: rows list the entries of the typed folder whose names start
+//! with the typed basename (hidden ones only once a `.` is typed).
+//! Enter on a folder row descends (`>run ~/Documents/`), Enter on a file
+//! opens it with `xdg-open`; the top "Open …" row opens exactly what was
+//! typed. Relative paths resolve against `$HOME` — the launcher has no
+//! working directory of its own.
+//!
+//! ## Terminal
+//!
+//! Interactive programs (`htop`, `nvim`, `ssh`, `sudo …`, REPLs, …) can't
+//! run detached, so their Run rows launch inside `$TERMINAL`
+//! automatically. Ctrl+Enter on any Run / history / executable row forces
+//! a terminal and keeps it open (drops into `$SHELL`) after the command
+//! exits so its output stays readable.
+//!
 //! Scores: an exact PATH-executable name is 250 (Enter spawns the binary by
 //! absolute path); the live "Run: …" shell row is 200; partial PATH matches
 //! are 100 (the runtime's frecency boost lifts frequently-launched binaries
 //! above the rest); history rows score 40..140 by recency.
 
+use crate::providers::tools::{default_terminal, terminal_argv, tildify};
 use crate::{history::CommandHistory, item::LauncherItem, notify::toast, provider::Provider};
 use mshell_process::SpawnReaped;
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::rc::Rc;
@@ -52,6 +74,195 @@ pub struct CommandProvider {
     /// single-token completion in [`CommandProvider::search`]
     /// (`>run fire` → `firefox`, `firejail`, …).
     entries: RefCell<Vec<ExecEntry>>,
+    /// Search-entry setter for descending into folders in path mode.
+    set_search: Option<Rc<dyn Fn(&str) + 'static>>,
+}
+
+/// Programs that need a terminal (TUIs, REPLs, prompts). Matched on the
+/// first word's basename.
+const INTERACTIVE: &[&str] = &[
+    "sudo",
+    "su",
+    "doas",
+    "ssh",
+    "mosh",
+    "top",
+    "htop",
+    "btop",
+    "atop",
+    "nvtop",
+    "vim",
+    "nvim",
+    "vi",
+    "nano",
+    "micro",
+    "hx",
+    "helix",
+    "emacs",
+    "less",
+    "more",
+    "man",
+    "mc",
+    "ranger",
+    "yazi",
+    "nnn",
+    "lf",
+    "lazygit",
+    "tig",
+    "ncdu",
+    "gdu",
+    "python",
+    "python3",
+    "ipython",
+    "node",
+    "irb",
+    "ghci",
+    "psql",
+    "mysql",
+    "sqlite3",
+    "redis-cli",
+    "tmux",
+    "screen",
+    "mtm",
+    "bash",
+    "zsh",
+    "fish",
+    "sh",
+    "watch",
+    "journalctl",
+    "nmtui",
+    "bluetoothctl",
+    "pacman",
+    "paru",
+    "yay",
+    "qalc",
+    "bc",
+    "claude",
+    "codex",
+    "k9s",
+    "iftop",
+    "nethogs",
+    "cmus",
+    "ncmpcpp",
+    "weechat",
+    "newsboat",
+];
+
+/// Does `expr` need a terminal? Skips leading `VAR=value` assignments
+/// and `env`. Pipelines/compound lines are judged by their first command.
+pub fn needs_terminal(expr: &str) -> bool {
+    let first = expr
+        .split_whitespace()
+        .find(|w| (w.starts_with('=') || !w.contains('=')) && *w != "env");
+    let Some(first) = first else {
+        return false;
+    };
+    let base = first.rsplit('/').next().unwrap_or(first);
+    INTERACTIVE.contains(&base)
+}
+
+/// Shell line run in the terminal. `hold` keeps it open afterwards in an
+/// interactive shell so the output can be read.
+pub fn terminal_command(expr: &str, hold: bool) -> Vec<String> {
+    let line = if hold {
+        format!("{expr}\nstatus=$?\nprintf '\\n[exit %s]\\n' \"$status\"\nexec \"${{SHELL:-sh}}\"")
+    } else {
+        expr.to_string()
+    };
+    vec!["sh".into(), "-c".into(), line]
+}
+
+fn spawn_in_terminal(expr: &str, hold: bool) {
+    let cmd = terminal_command(expr, hold);
+    let cmd: Vec<&str> = cmd.iter().map(String::as_str).collect();
+    let argv = terminal_argv(&default_terminal(), &cmd);
+    if let Err(err) = Command::new(&argv[0]).args(&argv[1..]).spawn_reaped() {
+        tracing::warn!(?err, terminal = %argv[0], "run in terminal failed");
+        toast("Run in terminal failed", format!("{}: {err}", argv[0]));
+    }
+}
+
+/// Is `expr` a path the user is typing?
+pub fn is_path_like(expr: &str) -> bool {
+    expr == "~" || ["~/", "/", "./", "../"].iter().any(|p| expr.starts_with(p))
+}
+
+/// Resolve a typed path: `~` → home, relative → under home.
+pub fn expand_path(expr: &str, home: &Path) -> PathBuf {
+    if expr == "~" {
+        home.to_path_buf()
+    } else if let Some(rest) = expr.strip_prefix("~/") {
+        home.join(rest)
+    } else if expr.starts_with('/') {
+        PathBuf::from(expr)
+    } else {
+        home.join(expr)
+    }
+}
+
+/// One completion candidate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PathCompletion {
+    /// Text to put back after `>run ` (keeps the user's `~/` / `./` form).
+    pub typed: String,
+    pub name: String,
+    pub path: PathBuf,
+    pub is_dir: bool,
+}
+
+/// Completions for a typed path: entries of the folder part whose names
+/// start (case-insensitively) with the basename part. Hidden entries only
+/// when the basename starts with `.`. Folders first, then by name.
+pub fn complete_path(expr: &str, home: &Path, limit: usize) -> Vec<PathCompletion> {
+    let (dir_typed, base) = match expr.rfind('/') {
+        Some(i) => (&expr[..=i], &expr[i + 1..]),
+        None => ("~/", ""), // bare `~`
+    };
+    let dir_typed = if expr == "~" { "~/" } else { dir_typed };
+    let dir = expand_path(dir_typed, home);
+    let Ok(rd) = std::fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let base_lower = base.to_lowercase();
+    let mut out: Vec<PathCompletion> = rd
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.') && !base.starts_with('.') {
+                return None;
+            }
+            if !name.to_lowercase().starts_with(&base_lower) {
+                return None;
+            }
+            let path = e.path();
+            let is_dir = path.is_dir(); // follows symlinks
+            Some(PathCompletion {
+                typed: format!("{dir_typed}{name}{}", if is_dir { "/" } else { "" }),
+                name,
+                path,
+                is_dir,
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then_with(|| a.name.cmp(&b.name)));
+    out.truncate(limit);
+    out
+}
+
+fn open_path(path: &Path) {
+    if let Err(err) = Command::new("xdg-open").arg(path).spawn_reaped() {
+        tracing::warn!(?err, path = %path.display(), "run: xdg-open failed");
+    }
+}
+
+/// Run `expr` the right way: a terminal for interactive programs, else
+/// detached `sh -c`.
+fn run_expression(expr: &str) {
+    if needs_terminal(expr) {
+        spawn_in_terminal(expr, false);
+    } else {
+        spawn_shell(expr);
+    }
 }
 
 impl CommandProvider {
@@ -68,7 +279,78 @@ impl CommandProvider {
         Self {
             history,
             entries: RefCell::new(Vec::new()),
+            set_search: None,
         }
+    }
+
+    /// Wire the search-entry setter used to descend into folders.
+    pub fn with_search_setter(mut self, set_search: Rc<dyn Fn(&str) + 'static>) -> Self {
+        self.set_search = Some(set_search);
+        self
+    }
+
+    /// Path-mode rows for `expr` (see module docs).
+    fn path_rows(&self, expr: &str) -> Vec<LauncherItem> {
+        let Some(home) = dirs::home_dir() else {
+            return Vec::new();
+        };
+        let mut rows = Vec::new();
+        let target = expand_path(expr.trim_end_matches('/'), &home);
+        if target.exists() {
+            let shown = tildify(&target, &home);
+            let open = target.clone();
+            rows.push(LauncherItem {
+                id: format!("run-path:open:{}", target.display()),
+                name: format!("Open {shown}"),
+                description: if target.is_dir() {
+                    "Open folder in the file manager".into()
+                } else {
+                    "Open with the default application".into()
+                },
+                icon: if target.is_dir() {
+                    "folder-symbolic"
+                } else {
+                    "document-open-symbolic"
+                }
+                .into(),
+                icon_is_path: false,
+                score: 260.0,
+                provider_name: "Command".into(),
+                usage_key: None,
+                on_activate: Rc::new(move || open_path(&open)),
+            });
+        }
+        // `~/Documents/` lists the folder; `~/Doc` completes the name.
+        for (idx, c) in complete_path(expr, &home, 60).into_iter().enumerate() {
+            let setter = self.set_search.clone();
+            let typed = c.typed.clone();
+            let path = c.path.clone();
+            let is_dir = c.is_dir;
+            rows.push(LauncherItem {
+                id: format!("run-path:{}", c.path.display()),
+                name: if c.is_dir {
+                    format!("{}/", c.name)
+                } else {
+                    c.name.clone()
+                },
+                description: c.typed.clone(),
+                icon: if c.is_dir {
+                    "folder-symbolic"
+                } else {
+                    "text-x-generic-symbolic"
+                }
+                .into(),
+                icon_is_path: false,
+                score: 180.0 - idx as f64,
+                provider_name: "Command".into(),
+                usage_key: None,
+                on_activate: Rc::new(move || match (&setter, is_dir) {
+                    (Some(set), true) => set(&format!(">run {typed}")),
+                    _ => open_path(&path),
+                }),
+            });
+        }
+        rows
     }
 
     /// Shared handle to the underlying history store. The UI uses
@@ -166,23 +448,32 @@ impl Provider for CommandProvider {
         let expression = trimmed.trim_start_matches(">run").trim();
         let mut results: Vec<LauncherItem> = Vec::new();
 
+        if is_path_like(expression) {
+            results.extend(self.path_rows(expression));
+        }
+
         // Live "Run: …" row first when the user actually typed
         // an expression. Score 1.5 keeps it above history (1.0+).
         if !expression.is_empty() {
+            let interactive = needs_terminal(expression);
             let payload = expression.to_string();
             let history = self.history.clone();
             let history_payload = expression.to_string();
             results.push(LauncherItem {
                 id: "cmd:run".into(),
                 name: format!("Run: {expression}"),
-                description: "Press Enter to execute".into(),
+                description: if interactive {
+                    "Interactive — runs in a terminal".into()
+                } else {
+                    "Enter: execute · Ctrl+Enter: in a terminal".into()
+                },
                 icon: "utilities-terminal-symbolic".into(),
                 icon_is_path: false,
                 score: 200.0,
                 provider_name: "Command".into(),
                 usage_key: None,
                 on_activate: Rc::new(move || {
-                    spawn_shell(&payload);
+                    run_expression(&payload);
                     history.borrow_mut().bump(&history_payload);
                     history.borrow_mut().flush();
                     toast("Command launched", format!("$ {payload}"));
@@ -233,6 +524,10 @@ impl Provider for CommandProvider {
                     provider_name: "Command".into(),
                     usage_key: Some(format!("run-bin:{name}")),
                     on_activate: Rc::new(move || {
+                        if needs_terminal(&bin_name) {
+                            spawn_in_terminal(&bin_name, false);
+                            return;
+                        }
                         if let Err(err) = Command::new(&path).spawn_reaped() {
                             tracing::warn!(?err, bin = %bin_name, "run provider spawn failed");
                         } else {
@@ -277,7 +572,7 @@ impl Provider for CommandProvider {
                 provider_name: "Command".into(),
                 usage_key: None,
                 on_activate: Rc::new(move || {
-                    spawn_shell(&payload);
+                    run_expression(&payload);
                     history_handle.borrow_mut().bump(&history_payload);
                     history_handle.borrow_mut().flush();
                     toast("Command launched", format!("$ {payload}"));
@@ -286,6 +581,24 @@ impl Provider for CommandProvider {
         }
 
         results
+    }
+
+    /// Ctrl+Enter → run in a terminal that stays open afterwards.
+    fn alt_action(&self, item: &LauncherItem) -> Option<Rc<dyn Fn() + 'static>> {
+        let expr = if item.id == "cmd:run" || item.id.starts_with("cmd:history:") {
+            item.name.strip_prefix("Run: ")?.to_string()
+        } else {
+            item.id.strip_prefix("run-bin:")?.to_string()
+        };
+        let history = self.history.clone();
+        let record = !item.id.starts_with("run-bin:");
+        Some(Rc::new(move || {
+            spawn_in_terminal(&expr, true);
+            if record {
+                history.borrow_mut().bump(&expr);
+                history.borrow_mut().flush();
+            }
+        }))
     }
 
     /// Only history rows can be deleted — the live "Run: …" row
@@ -463,5 +776,93 @@ mod tests {
                 .iter()
                 .all(|i| !i.id.starts_with("run-bin:"))
         );
+    }
+
+    #[test]
+    fn interactive_detection() {
+        for e in [
+            "htop",
+            "sudo pacman -Syu",
+            "/usr/bin/nvim foo",
+            "FOO=1 python3",
+            "env TERM=x ssh vhay",
+        ] {
+            assert!(needs_terminal(e), "{e}");
+        }
+        for e in ["firefox", "notify-send hi", "", "kitty -e htop"] {
+            assert!(!needs_terminal(e), "{e}");
+        }
+    }
+
+    #[test]
+    fn terminal_command_holds_only_on_request() {
+        assert_eq!(terminal_command("htop", false), vec!["sh", "-c", "htop"]);
+        let held = terminal_command("ls -l", true);
+        assert!(held[2].starts_with("ls -l\n"));
+        assert!(held[2].ends_with("exec \"${SHELL:-sh}\""));
+    }
+
+    #[test]
+    fn path_like_and_expansion() {
+        for e in ["~", "~/Doc", "/etc", "./x", "../y"] {
+            assert!(is_path_like(e), "{e}");
+        }
+        for e in ["ls", "~user", ".bashrc", "echo /etc"] {
+            assert!(!is_path_like(e), "{e}");
+        }
+        let home = Path::new("/home/u");
+        assert_eq!(expand_path("~", home), PathBuf::from("/home/u"));
+        assert_eq!(expand_path("~/a", home), PathBuf::from("/home/u/a"));
+        assert_eq!(expand_path("./a", home), PathBuf::from("/home/u/./a"));
+        assert_eq!(expand_path("/etc", home), PathBuf::from("/etc"));
+    }
+
+    fn temp_tree(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("mshell-run-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("Documents")).unwrap();
+        std::fs::create_dir_all(dir.join("Downloads")).unwrap();
+        std::fs::write(dir.join("doc.txt"), b"x").unwrap();
+        std::fs::write(dir.join(".dotfile"), b"x").unwrap();
+        dir
+    }
+
+    #[test]
+    fn completes_folders_first_keeping_typed_form() {
+        let home = temp_tree("complete");
+        let c = complete_path("~/do", &home, 10);
+        let typed: Vec<&str> = c.iter().map(|c| c.typed.as_str()).collect();
+        assert_eq!(typed, vec!["~/Documents/", "~/Downloads/", "~/doc.txt"]);
+        assert!(
+            complete_path("~/", &home, 10)
+                .iter()
+                .all(|c| !c.name.starts_with('.'))
+        );
+        assert_eq!(complete_path("~/.d", &home, 10)[0].name, ".dotfile");
+        assert_eq!(complete_path("./Doc", &home, 10)[0].typed, "./Documents/");
+        assert!(complete_path("~/nope/x", &home, 10).is_empty());
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn absolute_path_rows_descend_into_folders() {
+        let dir = temp_tree("rows");
+        let captured = Rc::new(RefCell::new(String::new()));
+        let cap = captured.clone();
+        let p = CommandProvider::with_history(ephemeral_history("pathrows"))
+            .with_search_setter(Rc::new(move |t| *cap.borrow_mut() = t.to_string()));
+        let rows = p.search(&format!(">run {}/Do", dir.display()));
+        let docs = rows.iter().find(|r| r.name == "Documents/").unwrap();
+        (docs.on_activate)();
+        assert_eq!(
+            *captured.borrow(),
+            format!(">run {}/Documents/", dir.display())
+        );
+        let rows = p.search(&format!(">run {}/Documents", dir.display()));
+        assert!(rows[0].name.starts_with("Open "));
+        // Ctrl+Enter on the live row → terminal action exists.
+        let run = rows.iter().find(|r| r.id == "cmd:run").unwrap();
+        assert!(p.alt_action(run).is_some());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
