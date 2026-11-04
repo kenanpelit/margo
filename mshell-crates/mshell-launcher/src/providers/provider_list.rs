@@ -155,6 +155,12 @@ const ENTRIES: &[Entry] = &[
         icon: "dialog-password-symbolic",
     },
     Entry {
+        prefix: "fs <query>",
+        example: "fs report",
+        description: "Files — fuzzy file/folder search in ~ (Ctrl+Enter reveals)",
+        icon: "system-search-symbolic",
+    },
+    Entry {
         prefix: "svc <unit>",
         example: "svc blocky",
         description: "systemd units — start / stop / restart (user + system)",
