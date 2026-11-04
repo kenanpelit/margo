@@ -76,100 +76,28 @@ pub(crate) async fn probe() -> Option<TwilightStatus> {
 }
 
 /// One schedule preset (name + temperature/brightness, optional
-/// time-of-day from `schedule.conf`).
-#[derive(Debug, Clone)]
-pub(crate) struct Preset {
-    pub name: String,
-    pub temp_k: u32,
-    pub gamma_pct: u32,
-    pub time: Option<String>,
-}
+/// time-of-day from `schedule.conf`) — margo-config's shared parser.
+pub(crate) use margo_config::twilight::Preset;
 
-/// `$XDG_CONFIG_HOME/margo/twilight` (or `~/.config/margo/twilight`)
-/// — margo's default `twilight_schedule_dir`. We don't read the
-/// compositor config here; the override is rare and the menu only
-/// needs the common case.
+/// margo's `twilight_schedule_dir` (empty = `<config_home>/margo/twilight`),
+/// read from the compositor config so a moved schedule shows up here too.
 fn schedule_dir() -> std::path::PathBuf {
-    margo_fs::xdg::margo_config_dir().join("twilight")
-}
-
-/// Parse one preset TOML's `static_temp` / `static_gamma`.
-fn read_preset(path: &std::path::Path) -> Option<(u32, u32)> {
-    let text = std::fs::read_to_string(path).ok()?;
-    let (mut temp, mut gamma) = (None, None);
-    for line in text.lines() {
-        let line = line.trim();
-        let Some((k, v)) = line.split_once('=') else {
-            continue;
-        };
-        let v = v.trim().trim_matches('"');
-        match k.trim() {
-            "static_temp" => temp = v.parse().ok().map(|n: u32| n.clamp(1000, 25000)),
-            "static_gamma" => gamma = v.parse().ok().map(|n: u32| n.clamp(10, 200)),
-            _ => {}
-        }
-    }
-    Some((temp?, gamma?))
+    let configured = margo_config::parse_config(None)
+        .map(|c| c.twilight_schedule_dir)
+        .unwrap_or_default();
+    margo_config::twilight::resolve_schedule_dir(&configured)
 }
 
 /// Load the schedule presets in time order. Falls back to listing
-/// `presets/*.toml` alphabetically when there's no `schedule.conf`.
+/// `presets/*.toml` alphabetically when there's no `schedule.conf` (or it
+/// references nothing readable).
 pub(crate) fn load_presets() -> Vec<Preset> {
     let dir = schedule_dir();
-    let presets_dir = dir.join("presets");
-    let mut out: Vec<Preset> = Vec::new();
-
-    if let Ok(schedule) = std::fs::read_to_string(dir.join("schedule.conf")) {
-        for line in schedule.lines() {
-            let t = line.trim();
-            if t.is_empty() || t.starts_with('#') {
-                continue;
-            }
-            let mut parts = t.split_whitespace();
-            let (Some(time), Some(name)) = (parts.next(), parts.next()) else {
-                continue;
-            };
-            if let Some((temp_k, gamma_pct)) =
-                read_preset(&presets_dir.join(format!("{name}.toml")))
-            {
-                out.push(Preset {
-                    name: name.to_string(),
-                    temp_k,
-                    gamma_pct,
-                    time: Some(time.to_string()),
-                });
-            }
-        }
-        out.sort_by(|a, b| a.time.cmp(&b.time));
-        if !out.is_empty() {
-            return out;
-        }
+    let scheduled = margo_config::twilight::load_schedule(&dir);
+    if !scheduled.is_empty() {
+        return scheduled;
     }
-
-    // No schedule.conf (or it referenced nothing readable) — list files.
-    if let Ok(entries) = std::fs::read_dir(&presets_dir) {
-        for e in entries.flatten() {
-            let p = e.path();
-            if p.extension().and_then(|s| s.to_str()) != Some("toml") {
-                continue;
-            }
-            let name = p
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("")
-                .to_string();
-            if let Some((temp_k, gamma_pct)) = read_preset(&p) {
-                out.push(Preset {
-                    name,
-                    temp_k,
-                    gamma_pct,
-                    time: None,
-                });
-            }
-        }
-        out.sort_by(|a, b| a.name.cmp(&b.name));
-    }
-    out
+    margo_config::twilight::list_presets(&dir)
 }
 
 /// Run an `mctl twilight …` command, fire-and-forget. Used for the menu's
@@ -186,7 +114,7 @@ pub(crate) fn run(args: Vec<String>) {
 
 #[cfg(test)]
 mod tests {
-    use super::{TwilightStatus, read_preset};
+    use super::TwilightStatus;
 
     #[test]
     fn icon_reflects_enabled() {
@@ -217,34 +145,5 @@ mod tests {
         assert_eq!(label("transition_to_night"), "\u{2192} Night");
         assert_eq!(label("idle"), "");
         assert_eq!(label(""), "");
-    }
-
-    #[test]
-    fn read_preset_parses_and_clamps() {
-        let dir = std::env::temp_dir();
-        let path = dir.join(format!("margo-twilight-preset-{}.toml", std::process::id()));
-        // Out-of-range values must be clamped: temp→[1000,25000], gamma→[10,200].
-        std::fs::write(
-            &path,
-            "name = \"Evening\"\nstatic_temp = 99999\nstatic_gamma = 5\n",
-        )
-        .unwrap();
-        assert_eq!(read_preset(&path), Some((25000, 10)));
-
-        // In-range values pass through; quotes and whitespace tolerated.
-        std::fs::write(&path, "  static_temp = \"3500\"\n  static_gamma=80\n").unwrap();
-        assert_eq!(read_preset(&path), Some((3500, 80)));
-
-        // Missing one of the two required keys → None.
-        std::fs::write(&path, "static_temp = 4000\n").unwrap();
-        assert_eq!(read_preset(&path), None);
-
-        let _ = std::fs::remove_file(&path);
-    }
-
-    #[test]
-    fn read_preset_missing_file_is_none() {
-        let path = std::path::Path::new("/nonexistent/margo/twilight/preset.toml");
-        assert_eq!(read_preset(path), None);
     }
 }

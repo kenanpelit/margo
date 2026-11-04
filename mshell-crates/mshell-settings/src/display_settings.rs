@@ -1482,14 +1482,11 @@ fn load_current_config() -> TwilightSnapshot {
     }
 }
 
+/// The `config.conf` margo reads (it has no `MARGO_CONFIG` override, so the
+/// one this used to honour sent edits to a file margo never loaded).
 fn margo_config_path() -> PathBuf {
-    if let Ok(env) = std::env::var("MARGO_CONFIG") {
-        return PathBuf::from(env);
-    }
-    if let Some(home) = dirs::config_dir() {
-        return home.join("margo").join("config.conf");
-    }
-    PathBuf::from("config.conf")
+    margo_config::resolve_config_path(None)
+        .unwrap_or_else(|_| margo_fs::xdg::margo_config_dir().join("config.conf"))
 }
 
 /// In-place rewrite of one `key = value` line in margo's
@@ -1765,84 +1762,24 @@ fn populate_schedule_editor(
 
 // ── Schedule-mode preset loader ─────────────────────────────────
 //
-// Mirrors margo's own `twilight::preset::ScheduleData::load`. We
-// reimplement instead of importing because `margo` is a binary
-// crate, not a library. The format is small and stable —
-// `schedule.conf` is line-by-line `HH:MM PRESET_NAME`, presets
-// are `presets/<name>.toml` with `static_temp` + `static_gamma`.
+// margo-config's shared twilight parser (the same rules margo's own
+// schedule loader uses), resolved through `twilight_schedule_dir`.
 
 fn twilight_schedule_dir() -> PathBuf {
-    // Mirrors margo's default. Empty `twilight_schedule_dir` =
-    // `$XDG_CONFIG_HOME/margo/twilight` (or `~/.config/margo/
-    // twilight`).
-    let raw = match margo_config::parse_config(None) {
-        Ok(cfg) => cfg.twilight_schedule_dir,
-        Err(_) => String::new(),
-    };
-    if !raw.trim().is_empty() {
-        if let Some(stripped) = raw.strip_prefix("~/")
-            && let Some(home) = dirs::home_dir()
-        {
-            return home.join(stripped);
-        }
-        return PathBuf::from(raw);
-    }
-    margo_fs::xdg::margo_config_dir().join("twilight")
+    let configured = margo_config::parse_config(None)
+        .map(|cfg| cfg.twilight_schedule_dir)
+        .unwrap_or_default();
+    margo_config::twilight::resolve_schedule_dir(&configured)
 }
 
 fn load_schedule_rows(dir: &std::path::Path) -> Vec<ScheduleRow> {
-    let schedule = match std::fs::read_to_string(dir.join("schedule.conf")) {
-        Ok(s) => s,
-        Err(_) => return Vec::new(),
-    };
-    let presets_dir = dir.join("presets");
-    let mut rows: Vec<ScheduleRow> = Vec::new();
-    for line in schedule.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-        let mut parts = trimmed.split_whitespace();
-        let Some(time_str) = parts.next() else {
-            continue;
-        };
-        let Some(name) = parts.next() else { continue };
-        if parse_hhmm(time_str).is_none() {
-            continue;
-        }
-        let p = presets_dir.join(format!("{name}.toml"));
-        if let Some((temp_k, gamma_pct)) = load_preset_file(&p) {
-            rows.push(ScheduleRow {
-                time_hhmm: time_str.to_string(),
-                preset_name: name.to_string(),
-                temp_k,
-                gamma_pct,
-            });
-        }
-    }
-    rows.sort_by(|a, b| a.time_hhmm.cmp(&b.time_hhmm));
-    rows
-}
-
-fn load_preset_file(path: &std::path::Path) -> Option<(u32, u32)> {
-    let text = std::fs::read_to_string(path).ok()?;
-    let mut temp_k: Option<u32> = None;
-    let mut gamma_pct: Option<u32> = None;
-    for line in text.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') || line.starts_with('[') {
-            continue;
-        }
-        let Some((k, v)) = line.split_once('=') else {
-            continue;
-        };
-        let key = k.trim();
-        let val = v.trim().trim_matches('"');
-        match key {
-            "static_temp" => temp_k = val.parse().ok().map(|n: u32| n.clamp(1000, 25000)),
-            "static_gamma" => gamma_pct = val.parse().ok().map(|n: u32| n.clamp(10, 200)),
-            _ => {}
-        }
-    }
-    Some((temp_k?, gamma_pct?))
+    margo_config::twilight::load_schedule(dir)
+        .into_iter()
+        .map(|p| ScheduleRow {
+            time_hhmm: p.time.unwrap_or_default(),
+            preset_name: p.name,
+            temp_k: p.temp_k,
+            gamma_pct: p.gamma_pct,
+        })
+        .collect()
 }

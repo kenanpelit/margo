@@ -9,6 +9,8 @@ license.workspace = true
 
 [dependencies]
 margo-fs.workspace = true
+# Shared twilight schedule/preset parser (also used by margo).
+margo-config = { path = "../../margo-config" }
 gio-unix.workspace = true
 futures.workspace = true
 libc.workspace = true
@@ -74,8 +76,6 @@ wasm-plugins = [
 ]
 
 [dev-dependencies]
-# Golden test: the keybind cheatsheet vs margo's own parser.
-margo-config = { path = "../../margo-config" }
 tempfile = "3"
 
 [lints]
