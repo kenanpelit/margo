@@ -1674,8 +1674,9 @@ fn main() -> Result<()> {
     // An autosave file surviving to startup means the previous session
     // died without the clean-shutdown cleanup below — load it now and
     // let the timer apply it once outputs are mapped. While running,
-    // the same timer re-captures the session every 60 s, so after a
-    // compositor crash the desktop comes back at most a minute stale.
+    // the same timer re-captures the session every 60 s (writing the file
+    // only when it changed), so after a compositor crash the desktop comes
+    // back at most a minute stale.
     {
         if let Ok(path) = session::autosave_path() {
             if path.exists() {
@@ -1693,6 +1694,9 @@ fn main() -> Result<()> {
         }
         let loop_handle = event_loop.handle();
         let timer = calloop::timer::Timer::from_duration(std::time::Duration::from_secs(5));
+        // Content hash of the last autosave written, so an unchanged
+        // session isn't rewritten every minute.
+        let mut last_autosave: Option<u64> = None;
         loop_handle
             .insert_source(timer, move |_, _, state: &mut MargoState| {
                 if let Some(snap) = state.pending_crash_restore.take() {
@@ -1713,7 +1717,7 @@ fn main() -> Result<()> {
                 match session::autosave_path() {
                     Ok(path) => {
                         let snap = session::SessionSnapshot::capture(state);
-                        if let Err(e) = session::save_to(&path, &snap) {
+                        if let Err(e) = session::autosave_to(&path, &snap, &mut last_autosave) {
                             tracing::debug!("session autosave failed: {e:?}");
                         }
                     }

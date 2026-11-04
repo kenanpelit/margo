@@ -205,6 +205,38 @@ pub fn save_to(path: &std::path::Path, snap: &SessionSnapshot) -> Result<()> {
     Ok(())
 }
 
+/// Hash of everything in `snap` except `captured_at`, which changes on
+/// every capture even when the session didn't.
+fn content_hash(snap: &SessionSnapshot) -> Result<u64> {
+    use std::hash::{Hash, Hasher};
+    let body = serde_json::to_string(&SessionSnapshot {
+        captured_at: String::new(),
+        ..snap.clone()
+    })
+    .context("serialize session")?;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    body.hash(&mut hasher);
+    Ok(hasher.finish())
+}
+
+/// Crash autosave: [`save_to`] unless the session is unchanged since the
+/// last autosave (`last` holds that one's [`content_hash`]) and the file is
+/// still there. Returns whether it wrote. Most minutes nothing changed, so
+/// this skips the serialize + write + rename on the event loop.
+pub fn autosave_to(
+    path: &std::path::Path,
+    snap: &SessionSnapshot,
+    last: &mut Option<u64>,
+) -> Result<bool> {
+    let hash = content_hash(snap)?;
+    if *last == Some(hash) && path.exists() {
+        return Ok(false);
+    }
+    save_to(path, snap)?;
+    *last = Some(hash);
+    Ok(true)
+}
+
 pub fn load_from(path: &std::path::Path) -> Result<SessionSnapshot> {
     let bytes = std::fs::read(path).with_context(|| format!("read {path:?}"))?;
     let snap: SessionSnapshot = serde_json::from_slice(&bytes).context("parse session")?;
@@ -548,6 +580,49 @@ mod tests {
         assert!(path.exists());
         assert!(!tmp.exists());
 
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The crash autosave runs every 60 s; most minutes nothing changed,
+    /// and the old code rewrote (serialize + write + rename) anyway. Only
+    /// `captured_at` differs then, so it doesn't count as a change.
+    #[test]
+    fn autosave_skips_a_snapshot_that_only_differs_in_its_timestamp() {
+        let path = std::env::temp_dir().join(format!(
+            "margo-session-autosave-skip-{}.json",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let snap = |at: &str, scratch: bool| SessionSnapshot {
+            version: CURRENT_VERSION,
+            captured_at: at.to_string(),
+            scratchpads: if scratch {
+                vec![ScratchpadEntry {
+                    app_id: "term".to_string(),
+                    visible: false,
+                    named: false,
+                }]
+            } else {
+                vec![]
+            },
+            monitors: vec![],
+        };
+        let mut last = None;
+
+        assert!(autosave_to(&path, &snap("t1", false), &mut last).unwrap());
+        assert!(
+            !autosave_to(&path, &snap("t2", false), &mut last).unwrap(),
+            "unchanged session must not be rewritten"
+        );
+        assert_eq!(load_from(&path).unwrap().captured_at, "t1");
+
+        assert!(autosave_to(&path, &snap("t3", true), &mut last).unwrap());
+        assert_eq!(load_from(&path).unwrap().captured_at, "t3");
+
+        // Deleted behind margo's back: written again even if unchanged.
+        std::fs::remove_file(&path).unwrap();
+        assert!(autosave_to(&path, &snap("t4", true), &mut last).unwrap());
+        assert!(path.exists());
         let _ = std::fs::remove_file(&path);
     }
 
