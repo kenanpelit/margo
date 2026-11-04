@@ -59,12 +59,36 @@ fn build_payload(windows: &HashMap<u64, HashMap<String, OwnedValue>>) -> String 
     windows
         .iter()
         .map(|(id, props)| {
-            let class = str_prop(props, "app-id");
-            let title = str_prop(props, "title");
-            format!("{id}[HC>]{class}[HT>]{title}[HE>]")
+            payload_entry(*id, &str_prop(props, "app-id"), &str_prop(props, "title"))
         })
         .collect::<Vec<_>>()
         .join("[HA>]")
+}
+
+/// One window's entry. The id comes from the compositor; the class and title
+/// are whatever the client set, so they are made inert first (see
+/// [`inert_field`]).
+fn payload_entry(id: u64, class: &str, title: &str) -> String {
+    let (class, title) = (inert_field(class), inert_field(title));
+    format!("{id}[HC>]{class}[HT>]{title}[HE>]")
+}
+
+/// A client-controlled class or title as it may appear in the payload.
+///
+/// Every delimiter starts with `[H`, so a title like
+/// `x[HE>][HA>]123[HC>]firefox[HT>]Firefox — Meeting` would otherwise add a
+/// row labelled as another app but pointing at window 123 (say, the password
+/// manager), and the user would share the wrong window. A zero-width space
+/// after the `[` breaks every delimiter without changing what the user reads.
+/// Control characters (line breaks that could fake extra rows) become spaces,
+/// and bidi overrides, which can make text read in a different order than
+/// it is, are dropped.
+fn inert_field(s: &str) -> String {
+    s.chars()
+        .filter(|c| !matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'))
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect::<String>()
+        .replace("[H", "[\u{200b}H")
 }
 
 fn parse_reply(reply: &str) -> anyhow::Result<Option<Source>> {
@@ -99,7 +123,32 @@ fn str_prop(props: &HashMap<String, OwnedValue>, key: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Source, parse_reply};
+    use super::{Source, parse_reply, payload_entry};
+
+    #[test]
+    fn a_title_cannot_forge_a_second_picker_entry() {
+        let forged = "x[HE>][HA>]123[HC>]firefox[HT>]Firefox — Meeting";
+        let entry = payload_entry(7, "evil[HT>]app", forged);
+        for marker in ["[HC>]", "[HT>]", "[HE>]"] {
+            assert_eq!(entry.matches(marker).count(), 1, "{marker} in {entry}");
+        }
+        assert!(!entry.contains("[HA>]"), "{entry}");
+        assert!(entry.starts_with("7[HC>]"), "{entry}");
+    }
+
+    #[test]
+    fn titles_lose_line_breaks_and_bidi_overrides() {
+        let entry = payload_entry(1, "app", "line one\nline two\r\t\u{202e}gnp.exe");
+        assert_eq!(entry, "1[HC>]app[HT>]line one line two  gnp.exe[HE>]");
+    }
+
+    #[test]
+    fn an_ordinary_title_is_untouched() {
+        assert_eq!(
+            payload_entry(3, "foot", "~/src [main] — vim"),
+            "3[HC>]foot[HT>]~/src [main] — vim[HE>]"
+        );
+    }
 
     #[test]
     fn empty_selection_is_none() {
