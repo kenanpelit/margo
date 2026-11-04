@@ -44,5 +44,5 @@ ratatui = { version = "0.30", default-features = false, features = [
 ] }
 crossterm = "0.29"
 tempfile = "3.8"
-mlua = { version = "0.10", features = ["lua54", "vendored", "serialize"] }
+mlua = { version = "0.10", features = ["lua54", "vendored"] }
 dirs = "6"
