@@ -355,6 +355,16 @@ pub const ACTIONS: &[Action] = &[
         detail: "Floating-point delta — clamped to [0.05, 0.95].",
     },
     Action {
+        name: "resetmfact",
+        aliases: &["reset_mfact", "resetsplit", "reset_split"],
+        args: "[MONITOR]",
+        group: Group::Layout,
+        summary: "Reset the current tag's master factor (split ratio) to its configured value.",
+        detail: "Restores the tag rule's `mfact` for this tag, else `default_mfact`. \
+                 An optional output name targets that monitor instead of the \
+                 focused one (what the shell's layout menu sends).",
+    },
+    Action {
         name: "togglegaps",
         aliases: &[],
         args: "",

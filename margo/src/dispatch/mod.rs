@@ -763,6 +763,17 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
         }
         "incnmaster" => state.inc_nmaster(arg.i),
         "setmfact" => state.set_mfact(arg.f),
+        // Put the master/stack split back to its configured value. An
+        // optional monitor name (a lone non-numeric dispatch arg fills
+        // `v`) targets that output — the shell's per-bar layout menu.
+        "resetmfact" | "reset_mfact" | "resetsplit" | "reset_split" => {
+            let mon_idx = arg
+                .v
+                .as_deref()
+                .and_then(|name| state.monitors.iter().position(|m| m.name == name))
+                .unwrap_or_else(|| state.focused_monitor());
+            state.reset_mfact(mon_idx);
+        }
         "togglegaps" => state.toggle_gaps(),
         "incgaps" => state.inc_gaps(arg.i),
         "set_proportion" => state.set_focused_proportion(float_arg(arg)),

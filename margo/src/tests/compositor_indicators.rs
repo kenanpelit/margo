@@ -2,7 +2,7 @@
 //! Each field must be in the snapshot and a change must push a frame
 //! (mark the state dirty).
 
-use margo_config::Arg;
+use margo_config::{Arg, Config};
 
 use super::fixture::Fixture;
 use crate::dispatch::dispatch_action;
@@ -177,4 +177,55 @@ fn wayland_clients_are_not_reported_as_xwayland() {
     fx.add_output("DP-1", (1920, 1080));
     let id = map_window(&mut fx, "kitty");
     assert_eq!(snapshot_client(&fx, id)["xwayland"], false);
+}
+
+#[test]
+fn resetmfact_restores_the_configured_split_on_the_named_monitor() {
+    let config = Config {
+        default_mfact: 0.6,
+        ..Config::default()
+    };
+    let mut fx = Fixture::with_config(config);
+    fx.add_output("DP-1", (1920, 1080));
+    fx.add_output("DP-2", (1920, 1080));
+    fx.add_keyboard();
+    let focused = fx.server.state.focused_monitor();
+    let other = 1 - focused;
+    for m in [focused, other] {
+        let tag = fx.server.state.monitors[m].pertag.curtag;
+        fx.server.state.monitors[m].pertag.mfacts[tag] = 0.8;
+    }
+
+    // No monitor argument -> the focused monitor.
+    dispatch_action(&mut fx.server.state, "resetmfact", &Arg::default());
+    let mfact = |fx: &Fixture, m: usize| fx.server.state.monitors[m].current_mfact();
+    assert!((mfact(&fx, focused) - 0.6).abs() < 1e-6);
+    assert!(
+        (mfact(&fx, other) - 0.8).abs() < 1e-6,
+        "other monitor untouched"
+    );
+
+    // A monitor name targets that monitor (the bar's own output).
+    let name = fx.server.state.monitors[other].name.clone();
+    dispatch_action(&mut fx.server.state, "resetmfact", &arg_v(&name));
+    assert!((mfact(&fx, other) - 0.6).abs() < 1e-6);
+}
+
+#[test]
+fn resetmfact_prefers_the_tag_rule_mfact() {
+    let mut fx = Fixture::new();
+    fx.add_output("DP-1", (1920, 1080));
+    let tag = fx.server.state.monitors[0].pertag.curtag;
+    fx.server
+        .state
+        .config
+        .tag_rules
+        .push(margo_config::TagRule {
+            id: tag as i32,
+            mfact: 0.7,
+            ..Default::default()
+        });
+    fx.server.state.monitors[0].pertag.mfacts[tag] = 0.3;
+    dispatch_action(&mut fx.server.state, "resetmfact", &Arg::default());
+    assert!((fx.server.state.monitors[0].current_mfact() - 0.7).abs() < 1e-6);
 }

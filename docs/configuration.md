@@ -416,6 +416,7 @@ Every action below can be bound to a key (`bind`), a mouse button (`mousebind`),
 | `switch_layout` | | Cycle through the `circle_layout` list. |
 | `incnmaster` | `<DELTA>` | Change the master-slot count (`+1` / `-1`). |
 | `setmfact` | `<DELTA>` | Adjust the master factor (e.g. `0.05` / `-0.05`); clamped to 0.05–0.95. |
+| `resetmfact`, `reset_mfact`, `resetsplit`, `reset_split` | `[MONITOR]` | Put the current tag's master factor back to its configured value (tag rule `mfact`, else `default_mfact`); optional output name, else the focused monitor. |
 | `togglegaps` | | Toggle layout gaps on/off. |
 | `incgaps` | `<DELTA>` | Resize gaps by `delta` px (positive widens). |
 

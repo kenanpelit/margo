@@ -1260,6 +1260,33 @@ impl MargoState {
         self.arrange_monitor(mon_idx);
     }
 
+    /// Reset the current tag's master factor on `mon_idx` to its configured
+    /// value — the tag rule's `mfact` when one applies to this tag on this
+    /// monitor, else `default_mfact` — the same precedence a fresh tag gets
+    /// (`reset_pertag_slot` → `apply_tag_rules_to_monitor`).
+    pub fn reset_mfact(&mut self, mon_idx: usize) {
+        let Some(mon) = self.monitors.get(mon_idx) else {
+            return;
+        };
+        let curtag = mon.pertag.curtag;
+        let rule_mfact = self
+            .config
+            .tag_rules
+            .iter()
+            .filter(|r| r.id > 0 && r.id as usize == curtag && r.mfact > 0.0)
+            .filter(|r| r.monitor_name.as_ref().is_none_or(|n| *n == mon.name))
+            .map(|r| r.mfact)
+            // Later rules override earlier ones, as in
+            // `apply_tag_rules_to_monitor`.
+            .next_back();
+        let target = rule_mfact.unwrap_or(self.config.default_mfact);
+        if !target.is_finite() {
+            return;
+        }
+        self.monitors[mon_idx].pertag.mfacts[curtag] = target.clamp(0.05, 0.95);
+        self.arrange_monitor(mon_idx);
+    }
+
     pub fn toggle_gaps(&mut self) {
         self.enable_gaps = !self.enable_gaps;
         for mon_idx in 0..self.monitors.len() {

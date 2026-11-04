@@ -116,6 +116,19 @@ impl Component for MargoLayoutMenuWidgetModel {
                     set_hexpand: true,
                     set_valign: gtk::Align::Center,
                 },
+                // Circular header action (§12): put the master/stack split
+                // back to its configured value (`resetmfact`). Stays open so
+                // the result is visible behind the menu.
+                #[name = "reset_split"]
+                gtk::Button {
+                    add_css_class: "panel-action-btn",
+                    set_valign: gtk::Align::Center,
+                    set_icon_name: "view-refresh-symbolic",
+                    set_tooltip_text: Some("Reset split ratio (master factor back to its configured value)"),
+                    connect_clicked => move |_| {
+                        mshell_margo_client::ctl::dispatch_detached("resetmfact", &[]);
+                    },
+                },
             },
 
             #[name = "row_box"]
@@ -147,6 +160,7 @@ impl Component for MargoLayoutMenuWidgetModel {
         let ordered = ordered_layouts(&layout_names, &circle);
 
         let widgets = view_output!();
+        mshell_common::a11y::name(&widgets.reset_split, "Reset split ratio");
 
         let mut button_vec: Vec<gtk::Button> = Vec::with_capacity(ordered.len());
         let mut row_canonical: Vec<usize> = Vec::with_capacity(ordered.len());
