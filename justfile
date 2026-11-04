@@ -117,7 +117,7 @@ check:
     ./scripts/mtune-debrand-gate.sh
     cargo build --locked -p mctl -p mshellctl -p mdots
     ./contrib/completions/generate.sh --check
-    cargo run --locked -q -p mctl -- check-config --config margo/src/config.example.conf
+    if cargo run --locked -q -p mctl -- check-config --help | grep -q -- --strict; then s=--strict; fi; cargo run --locked -q -p mctl -- check-config $s --config margo/src/config.example.conf
     cargo test --workspace --locked
 
 # Format the whole workspace.

@@ -181,9 +181,11 @@ jobs:
         run: ./scripts/mtune-debrand-gate.sh
 
       - name: mctl check-config (bundled example)
-        # Validates that an example user config parses without unknown
-        # fields, regex compile errors, or duplicate binds. Falls back to
-        # a minimal stub if no example is checked in.
+        # Validates that an example user config has no diagnostics: errors,
+        # and with --strict also warnings (unknown keys/rule options,
+        # duplicate binds, bad values). --strict is feature-detected so this
+        # step works with an mctl that predates it (then only errors fail).
+        # Falls back to a minimal stub if no example is checked in.
         run: |
           if [ -f assets/example/config.conf ]; then
             CFG=assets/example/config.conf
@@ -197,7 +199,11 @@ jobs:
           bind = super,Return,spawn,kitty
           EOF
           fi
-          ./target/debug/mctl check-config --config "$CFG"
+          STRICT=
+          if ./target/debug/mctl check-config --help | grep -q -- '--strict'; then
+            STRICT=--strict
+          fi
+          ./target/debug/mctl check-config $STRICT --config "$CFG"
 
   # install.sh's Debian path on a current Debian: its apt list must carry
   # every -dev package the build needs (pkg-config probes and the -sys build
