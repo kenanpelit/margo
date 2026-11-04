@@ -36,7 +36,7 @@ parameter and use YAML tag syntax:
 | --- | --- | --- |
 | `Clock` | Clock | Date/time pill. Cycles through a list of strftime formats (`[tempo]`) on right-click; left-click opens the clock/calendar menu. |
 | `Mdash` | Mdash | The dashboard opener — same clock label as `Clock`, but a click opens **mdash**: greeting hero + calendar + weather + media player + a quick-settings tile stack + a menu-shortcut grid. |
-| `ControlCenter` | Control Center | System-preferences glyph that opens the Control Center menu (header + sliders + a grid of quick toggles). |
+| `ControlCenter` | Control Center | System-preferences glyph that opens the Control Center menu (header + sliders + a grid of quick toggles). The optional **Mirror** tile (off by default — tick it in the grid's edit mode) toggles margo's output mirroring, laptop panel onto the external display, and shows the running `source → target`. |
 
 ## System monitors
 

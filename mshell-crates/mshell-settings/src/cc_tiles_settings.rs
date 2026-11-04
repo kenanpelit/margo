@@ -36,6 +36,7 @@ const ALL_TILE_IDS: &[&str] = &[
     "disk",
     "ufw",
     "podman",
+    "mirror",
 ];
 
 fn tile_display_name(id: &str) -> &'static str {
@@ -56,6 +57,7 @@ fn tile_display_name(id: &str) -> &'static str {
         "valent" => "Valent",
         "ufw" => "Firewall (UFW)",
         "podman" => "Podman",
+        "mirror" => "Mirror Display",
         _ => "Unknown",
     }
 }
@@ -80,6 +82,7 @@ fn tile_visible(id: &str) -> bool {
         "valent" => cc.valent().get_untracked(),
         "ufw" => cc.ufw().get_untracked(),
         "podman" => cc.podman().get_untracked(),
+        "mirror" => cc.mirror().get_untracked(),
         _ => true,
     }
 }
@@ -129,6 +132,7 @@ fn set_tile_visible(id: &str, visible: bool) {
         "valent" => c.control_center.valent = visible,
         "ufw" => c.control_center.ufw = visible,
         "podman" => c.control_center.podman = visible,
+        "mirror" => c.control_center.mirror = visible,
         _ => {}
     });
 }

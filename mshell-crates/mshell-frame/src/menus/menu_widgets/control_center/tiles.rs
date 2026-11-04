@@ -19,7 +19,9 @@
 //! flips on/off — UFW enable/disable via pkexec, Podman stops the running
 //! machine(s)).
 //!
-//! Dark Mode is a full labeled toggle tile.
+//! Dark Mode is a full labeled toggle tile. Mirror toggles margo's output
+//! mirroring (laptop panel onto the external display) and shows the
+//! running `source → target` pair.
 //! Do Not Disturb is `.wide` (spans 2 columns).
 //! Battery tile is hidden when no battery is present.
 //!
@@ -111,6 +113,9 @@ pub(crate) struct ControlCenterTilesModel {
     // Podman subtitle (active machine names / container summary) + active
     podman_subtitle: String,
     podman_active: bool,
+    // Output mirroring subtitle (`eDP-1 → DP-3` / Off) + active state
+    mirror_subtitle: String,
+    mirror_active: bool,
     // Lazy-start guard — watchers only start on first reveal
     watchers_started: bool,
     // Shared with the subprocess pollers (twilight / ufw / podman): they
@@ -194,6 +199,8 @@ pub(crate) enum ControlCenterTilesInput {
     ClickDarkMode,
     ClickColorPicker,
     ClickAirplaneMode,
+    /// Toggle output mirroring (`toggle_mirror`: laptop → external).
+    ClickMirror,
     /// Secondary-click quick toggles on the expandable tiles (left-click
     /// opens the detail page, right-click flips the state).
     ToggleTwilight,
@@ -240,6 +247,7 @@ pub(crate) enum TileId {
     Valent,
     Ufw,
     Podman,
+    Mirror,
 }
 
 impl TileId {
@@ -262,6 +270,7 @@ impl TileId {
             TileId::Valent => "valent",
             TileId::Ufw => "ufw",
             TileId::Podman => "podman",
+            TileId::Mirror => "mirror",
         }
     }
 
@@ -284,6 +293,7 @@ impl TileId {
             "valent" => Some(TileId::Valent),
             "ufw" => Some(TileId::Ufw),
             "podman" => Some(TileId::Podman),
+            "mirror" => Some(TileId::Mirror),
             _ => None,
         }
     }
@@ -307,6 +317,7 @@ impl TileId {
             TileId::Disk,
             TileId::Ufw,
             TileId::Podman,
+            TileId::Mirror,
         ]
     }
 }
@@ -359,6 +370,8 @@ pub(crate) enum ControlCenterTilesCommandOutput {
     UfwRefreshed(String, bool),
     /// Async Podman probe finished — (subtitle, is_active).
     PodmanRefreshed(String, bool),
+    /// Mirror probe finished — (subtitle, is_active).
+    MirrorRefreshed(String, bool),
 }
 
 // ── Widgets struct (manual — we hold the tile handles) ────────────────────────
@@ -384,6 +397,7 @@ pub(crate) struct ControlCenterTilesWidgets {
     tile_disk: TileWidget,
     tile_battery: TileWidget,
     tile_airplane_mode: TileWidget,
+    tile_mirror: TileWidget,
     // Edit-mode overlay wrappers (gtk::Overlay containing the tile button +
     // a corner CheckButton). One per tile — wrapped after the tile buttons
     // are attached to the grid.
@@ -403,6 +417,7 @@ pub(crate) struct ControlCenterTilesWidgets {
     overlay_valent: gtk::Overlay,
     overlay_ufw: gtk::Overlay,
     overlay_podman: gtk::Overlay,
+    overlay_mirror: gtk::Overlay,
     // The CheckButton references — needed to update their state in apply_visuals.
     check_wifi: gtk::CheckButton,
     check_bluetooth: gtk::CheckButton,
@@ -420,6 +435,7 @@ pub(crate) struct ControlCenterTilesWidgets {
     check_valent: gtk::CheckButton,
     check_ufw: gtk::CheckButton,
     check_podman: gtk::CheckButton,
+    check_mirror: gtk::CheckButton,
 }
 
 impl ControlCenterTilesWidgets {
@@ -442,6 +458,7 @@ impl ControlCenterTilesWidgets {
             TileId::Valent => &self.overlay_valent,
             TileId::Ufw => &self.overlay_ufw,
             TileId::Podman => &self.overlay_podman,
+            TileId::Mirror => &self.overlay_mirror,
         }
     }
 
@@ -552,6 +569,7 @@ impl Component for ControlCenterTilesModel {
         // Battery also has a detail sub-page → expandable with chevron
         let tile_battery = build_expand_tile("battery-level-50-symbolic", "Battery", "");
         let tile_airplane_mode = build_tile("airplane-mode-symbolic", "Airplane Mode", "Off");
+        let tile_mirror = build_tile("video-display-symbolic", "Mirror", "Off");
 
         // Wire expandable tile clicks → outputs
         {
@@ -675,6 +693,12 @@ impl Component for ControlCenterTilesModel {
                 .button
                 .connect_clicked(move |_| s.input(ControlCenterTilesInput::ClickAirplaneMode));
         }
+        {
+            let s = sender.clone();
+            tile_mirror
+                .button
+                .connect_clicked(move |_| s.input(ControlCenterTilesInput::ClickMirror));
+        }
         // Disk tile is info-only; no click handler needed.
 
         // ── Edit-mode overlays ───────────────────────────────────────────────
@@ -706,6 +730,8 @@ impl Component for ControlCenterTilesModel {
         let (overlay_ufw, check_ufw) = build_edit_overlay(&tile_ufw.button, &sender, TileId::Ufw);
         let (overlay_podman, check_podman) =
             build_edit_overlay(&tile_podman.button, &sender, TileId::Podman);
+        let (overlay_mirror, check_mirror) =
+            build_edit_overlay(&tile_mirror.button, &sender, TileId::Mirror);
 
         // Wide tile CSS class is applied dynamically by rebuild_grid based on
         // the `wide_tiles` config — no hardcoded wide classes here.
@@ -748,6 +774,7 @@ impl Component for ControlCenterTilesModel {
                 let _ = cm.config().control_center().valent().get();
                 let _ = cm.config().control_center().ufw().get();
                 let _ = cm.config().control_center().podman().get();
+                let _ = cm.config().control_center().mirror().get();
                 let order = cm.config().control_center().tile_order().get();
                 let wide = cm.config().control_center().wide_tiles().get();
                 s.input(ControlCenterTilesInput::RebuildGrid(order, wide));
@@ -814,6 +841,8 @@ impl Component for ControlCenterTilesModel {
             ufw_active: false,
             podman_subtitle: String::from("…"),
             podman_active: false,
+            mirror_subtitle: String::from("…"),
+            mirror_active: false,
             revealed: Arc::new(AtomicBool::new(false)),
             watchers_started: false,
             edit_mode: false,
@@ -839,6 +868,7 @@ impl Component for ControlCenterTilesModel {
             tile_disk,
             tile_battery,
             tile_airplane_mode,
+            tile_mirror,
             overlay_wifi,
             overlay_bluetooth,
             overlay_audio_out,
@@ -855,6 +885,7 @@ impl Component for ControlCenterTilesModel {
             overlay_valent,
             overlay_ufw,
             overlay_podman,
+            overlay_mirror,
             check_wifi,
             check_bluetooth,
             check_audio_out,
@@ -871,6 +902,7 @@ impl Component for ControlCenterTilesModel {
             check_valent,
             check_ufw,
             check_podman,
+            check_mirror,
         };
 
         // Attach all overlays to the grid in config order with correct spans.
@@ -937,6 +969,12 @@ impl Component for ControlCenterTilesModel {
                                     subtitle,
                                 ));
                             }
+                            // Mirror rides the same cadence: one cheap IPC
+                            // `get`, and it can end on its own (unplug).
+                            let (sub, active) = read_mirror_tile_state().await;
+                            let _ = out.send(ControlCenterTilesCommandOutput::MirrorRefreshed(
+                                sub, active,
+                            ));
                         }
                     });
 
@@ -1127,6 +1165,17 @@ impl Component for ControlCenterTilesModel {
                 }
             }
 
+            ControlCenterTilesInput::ClickMirror => {
+                // Toggle, then re-probe so the tile shows the new pair (or
+                // why margo refused, e.g. no second display).
+                sender.command(|out, _shutdown| async move {
+                    let (subtitle, active) = toggle_mirror_and_probe().await;
+                    let _ = out.send(ControlCenterTilesCommandOutput::MirrorRefreshed(
+                        subtitle, active,
+                    ));
+                });
+            }
+
             ControlCenterTilesInput::ToggleTwilight => {
                 // Right-click quick toggle: flip the filter, then re-probe
                 // so the subtitle (active profile) updates promptly.
@@ -1212,6 +1261,7 @@ impl Component for ControlCenterTilesModel {
                     TileId::Valent => c.control_center.valent = visible,
                     TileId::Ufw => c.control_center.ufw = visible,
                     TileId::Podman => c.control_center.podman = visible,
+                    TileId::Mirror => c.control_center.mirror = visible,
                 });
                 // The RebuildGrid effect will fire automatically from the config
                 // store change. No explicit rebuild needed here.
@@ -1269,6 +1319,10 @@ impl Component for ControlCenterTilesModel {
             ControlCenterTilesCommandOutput::PodmanRefreshed(subtitle, active) => {
                 self.podman_subtitle = subtitle;
                 self.podman_active = active;
+            }
+            ControlCenterTilesCommandOutput::MirrorRefreshed(subtitle, active) => {
+                self.mirror_subtitle = subtitle;
+                self.mirror_active = active;
             }
         }
 
@@ -1360,6 +1414,11 @@ fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets)
         .config()
         .control_center()
         .podman()
+        .get_untracked();
+    let cfg_mirror = config_manager()
+        .config()
+        .control_center()
+        .mirror()
         .get_untracked();
 
     let edit = model.edit_mode;
@@ -1459,6 +1518,12 @@ fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets)
         &w.check_podman,
         cfg_podman,
     );
+    update_tile_visibility(
+        &w.overlay_mirror,
+        &w.tile_mirror.button,
+        &w.check_mirror,
+        cfg_mirror,
+    );
 
     // Battery tile: additionally hidden when no battery present (normal mode)
     let bat = &model.battery;
@@ -1514,6 +1579,10 @@ fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets)
     // Podman — active (accent) when a machine is running / containers up.
     w.tile_podman.set_subtitle(&model.podman_subtitle);
     w.tile_podman.set_active(model.podman_active);
+
+    // Mirror — active (accent) while an output is being mirrored.
+    w.tile_mirror.set_subtitle(&model.mirror_subtitle);
+    w.tile_mirror.set_active(model.mirror_active);
 
     // Keep Awake
     w.tile_keep_awake.set_active(model.keep_awake);
@@ -1653,7 +1722,9 @@ use tile_probes::*;
 
 #[cfg(test)]
 mod tests {
-    use super::tile_probes::{twilight_mode_label, twilight_subtitle, valent_state_from_report};
+    use super::tile_probes::{
+        mirror_tile_state, twilight_mode_label, twilight_subtitle, valent_state_from_report,
+    };
     use super::{TileId, ordered_tile_ids};
     use crate::twilight::TwilightStatus;
     use crate::valent::{Device, ValentReport};
@@ -1702,6 +1773,44 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(twilight_subtitle(&s2), "Auto");
+    }
+
+    #[test]
+    fn mirror_tile_shows_the_pair_the_refusal_or_off() {
+        use mshell_margo_client::ctl::MirrorStatus;
+        let on = MirrorStatus {
+            active: Some(("eDP-1".into(), "DP-3".into())),
+            error: None,
+            supported: true,
+        };
+        assert_eq!(
+            mirror_tile_state(&on),
+            ("eDP-1 \u{2192} DP-3".to_string(), true)
+        );
+        let refused = MirrorStatus {
+            active: None,
+            error: Some("mirroring needs two enabled outputs".into()),
+            supported: true,
+        };
+        assert_eq!(
+            mirror_tile_state(&refused),
+            ("Needs a second display".to_string(), false)
+        );
+        let idle = MirrorStatus {
+            supported: true,
+            ..Default::default()
+        };
+        assert_eq!(mirror_tile_state(&idle), ("Off".to_string(), false));
+        assert_eq!(
+            mirror_tile_state(&MirrorStatus::default()),
+            ("Unavailable".to_string(), false)
+        );
+    }
+
+    #[test]
+    fn mirror_tile_id_round_trips() {
+        assert_eq!(TileId::from_str("mirror"), Some(TileId::Mirror));
+        assert_eq!(TileId::Mirror.as_str(), "mirror");
     }
 
     #[test]

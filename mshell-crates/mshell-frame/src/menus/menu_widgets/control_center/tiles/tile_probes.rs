@@ -53,6 +53,47 @@ pub(super) fn bytes_to_gib(bytes: u64) -> f64 {
     bytes as f64 / (1024.0 * 1024.0 * 1024.0)
 }
 
+// ── Mirror helpers ─────────────────────────────────────────────────────────
+
+/// The Mirror tile's `(subtitle, is_active)`: the running `source → target`
+/// pair, else why margo refused the last request, else "Off".
+pub(super) fn mirror_tile_state(s: &mshell_margo_client::ctl::MirrorStatus) -> (String, bool) {
+    if !s.supported {
+        return ("Unavailable".to_string(), false);
+    }
+    if let Some((source, target)) = &s.active {
+        return (format!("{source} \u{2192} {target}"), true);
+    }
+    match s.error.as_deref() {
+        Some("mirroring needs two enabled outputs") => {
+            ("Needs a second display".to_string(), false)
+        }
+        Some(_) => ("Couldn't mirror".to_string(), false),
+        None => ("Off".to_string(), false),
+    }
+}
+
+pub(super) async fn read_mirror_tile_state() -> (String, bool) {
+    let status = tokio::task::spawn_blocking(mshell_margo_client::ctl::mirror_status)
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .unwrap_or_default();
+    mirror_tile_state(&status)
+}
+
+/// Toggle mirroring (laptop panel onto the external display), settle
+/// briefly, then re-probe.
+pub(super) async fn toggle_mirror_and_probe() -> (String, bool) {
+    if let Err(e) =
+        mshell_margo_client::ctl::dispatch_async("toggle_mirror".into(), Vec::new()).await
+    {
+        tracing::warn!(error = %e, "mirror toggle failed");
+    }
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    read_mirror_tile_state().await
+}
+
 // ── Twilight helpers ───────────────────────────────────────────────────────
 
 /// Flip the twilight filter (right-click quick toggle), settle briefly,

@@ -318,6 +318,9 @@ pub struct ControlCenterConfig {
     pub valent: bool,
     pub ufw: bool,
     pub podman: bool,
+    /// Output-mirroring toggle (margo `toggle_mirror`). Off by default so
+    /// an existing grid is unchanged; enable it in edit mode / Settings.
+    pub mirror: bool,
     /// Display order of tiles in the grid. Each entry is a tile-id string
     /// (e.g. `"wifi"`, `"bluetooth"`, …). Unknown ids are skipped; ids
     /// not listed here are appended at the end in canonical order.
@@ -360,6 +363,7 @@ pub(super) fn default_cc_tile_order() -> Vec<String> {
         "disk".to_string(),
         "ufw".to_string(),
         "podman".to_string(),
+        "mirror".to_string(),
     ]
 }
 
@@ -382,6 +386,7 @@ impl Default for ControlCenterConfig {
             valent: true,
             ufw: true,
             podman: true,
+            mirror: false,
             tile_order: default_cc_tile_order(),
             wide_tiles: Vec::new(),
             show_battery_chip: true,

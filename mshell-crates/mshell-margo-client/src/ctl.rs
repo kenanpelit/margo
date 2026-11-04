@@ -185,6 +185,44 @@ pub fn twilight_status() -> io::Result<serde_json::Value> {
         .unwrap_or(serde_json::Value::Null))
 }
 
+/// margo's output-mirroring state (the `mirror` IPC topic).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MirrorStatus {
+    /// `(source, target)` of the running mirror.
+    pub active: Option<(String, String)>,
+    /// Why margo refused the last mirror request.
+    pub error: Option<String>,
+    /// The running margo knows the topic (`false` on older builds).
+    pub supported: bool,
+}
+
+impl MirrorStatus {
+    /// Parse a `get mirror` reply. An `{"error": "unknown topic…"}` frame
+    /// (older margo) reads as unsupported.
+    pub fn from_json(v: &serde_json::Value) -> Self {
+        if v.get("active").is_none() {
+            return Self::default();
+        }
+        let active = match (
+            v["active"]["source"].as_str(),
+            v["active"]["target"].as_str(),
+        ) {
+            (Some(s), Some(t)) => Some((s.to_string(), t.to_string())),
+            _ => None,
+        };
+        Self {
+            active,
+            error: v["error"].as_str().map(str::to_string),
+            supported: true,
+        }
+    }
+}
+
+/// Read margo's mirror state. Blocking and bounded, like [`twilight_status`].
+pub fn mirror_status() -> io::Result<MirrorStatus> {
+    request_at(&socket_path(), "get mirror").map(|v| MirrorStatus::from_json(&v))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -297,5 +335,30 @@ mod tests {
             dispatch_frame("focuswindowid", &["", "7"]),
             "dispatch focuswindowid 7"
         );
+    }
+
+    #[test]
+    fn mirror_status_parses_active_refused_and_unsupported() {
+        use serde_json::json;
+        let on = MirrorStatus::from_json(&json!({
+            "active": { "source": "eDP-1", "target": "DP-3" },
+            "error": null,
+        }));
+        assert_eq!(on.active, Some(("eDP-1".into(), "DP-3".into())));
+        assert!(on.supported && on.error.is_none());
+
+        let refused = MirrorStatus::from_json(&json!({
+            "active": null,
+            "error": "mirroring needs two enabled outputs",
+        }));
+        assert_eq!(refused.active, None);
+        assert_eq!(
+            refused.error.as_deref(),
+            Some("mirroring needs two enabled outputs")
+        );
+        assert!(refused.supported);
+
+        let old = MirrorStatus::from_json(&json!({ "error": "unknown topic: mirror" }));
+        assert!(!old.supported);
     }
 }
