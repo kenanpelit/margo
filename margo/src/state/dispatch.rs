@@ -27,6 +27,16 @@ use crate::layout::LayoutId;
 /// reuses it as "small enough that this remembered geometry can't be
 /// trusted" — see its doc comment.
 const MIN_FLOAT_SIZE: i32 = 50;
+/// Bound for floating positions and sizes moved/resized by `movewin` /
+/// `resizewin` (same ±2^20 as output positions): IPC and Rhai deltas are
+/// arbitrary i32s, and layout/render math adds `x + width` in i32.
+const MAX_FLOAT_COORD: i32 = crate::protocols::output_management::MAX_POSITION;
+/// Upper bound for `incgaps`; far beyond any output, small enough that gap
+/// sums in the layouts can't overflow.
+const MAX_GAP: i32 = 10_000;
+/// Upper bound for `incnmaster`; a master count above the window count
+/// already means "all masters".
+const MAX_NMASTER: u32 = 1_000;
 
 impl MargoState {
     // ── Actions ───────────────────────────────────────────────────────────────
@@ -1033,6 +1043,9 @@ impl MargoState {
     }
 
     pub fn set_focused_proportion(&mut self, proportion: f32) {
+        if !proportion.is_finite() {
+            return;
+        }
         if let Some(idx) = self.focused_client_idx() {
             self.clients[idx].scroller_proportion = proportion.clamp(0.1, 1.0);
             let mon_idx = self.clients[idx].monitor;
@@ -1219,8 +1232,9 @@ impl MargoState {
             return;
         }
         let curtag = self.monitors[mon_idx].pertag.curtag;
-        let current = self.monitors[mon_idx].pertag.nmasters[curtag] as i32;
-        self.monitors[mon_idx].pertag.nmasters[curtag] = (current + delta).max(0) as u32;
+        let current = self.monitors[mon_idx].pertag.nmasters[curtag];
+        self.monitors[mon_idx].pertag.nmasters[curtag] =
+            current.saturating_add_signed(delta).min(MAX_NMASTER);
         self.arrange_monitor(mon_idx);
     }
 
@@ -1231,7 +1245,11 @@ impl MargoState {
         }
         let curtag = self.monitors[mon_idx].pertag.curtag;
         let current = self.monitors[mon_idx].pertag.mfacts[curtag];
-        self.monitors[mon_idx].pertag.mfacts[curtag] = (current + delta).clamp(0.05, 0.95);
+        let next = current + delta;
+        if !next.is_finite() {
+            return;
+        }
+        self.monitors[mon_idx].pertag.mfacts[curtag] = next.clamp(0.05, 0.95);
         self.arrange_monitor(mon_idx);
     }
 
@@ -1246,10 +1264,11 @@ impl MargoState {
     pub fn inc_gaps(&mut self, delta: i32) {
         let mon_idx = self.focused_monitor();
         if let Some(mon) = self.monitors.get_mut(mon_idx) {
-            mon.gappih = (mon.gappih + delta).max(0);
-            mon.gappiv = (mon.gappiv + delta).max(0);
-            mon.gappoh = (mon.gappoh + delta).max(0);
-            mon.gappov = (mon.gappov + delta).max(0);
+            let step = |gap: i32| gap.saturating_add(delta).clamp(0, MAX_GAP);
+            mon.gappih = step(mon.gappih);
+            mon.gappiv = step(mon.gappiv);
+            mon.gappoh = step(mon.gappoh);
+            mon.gappov = step(mon.gappov);
             self.arrange_monitor(mon_idx);
         }
     }
@@ -1258,8 +1277,13 @@ impl MargoState {
         if let Some(idx) = self.focused_client_idx() {
             self.reseed_float_geom_if_stale(idx);
             self.clients[idx].is_floating = true;
-            self.clients[idx].float_geom.x += dx;
-            self.clients[idx].float_geom.y += dy;
+            let g = &mut self.clients[idx].float_geom;
+            g.x =
+                g.x.saturating_add(dx)
+                    .clamp(-MAX_FLOAT_COORD, MAX_FLOAT_COORD);
+            g.y =
+                g.y.saturating_add(dy)
+                    .clamp(-MAX_FLOAT_COORD, MAX_FLOAT_COORD);
             let mon_idx = self.clients[idx].monitor;
             self.arrange_monitor(mon_idx);
         }
@@ -1269,10 +1293,15 @@ impl MargoState {
         if let Some(idx) = self.focused_client_idx() {
             self.reseed_float_geom_if_stale(idx);
             self.clients[idx].is_floating = true;
-            self.clients[idx].float_geom.width =
-                (self.clients[idx].float_geom.width + dw).max(MIN_FLOAT_SIZE);
-            self.clients[idx].float_geom.height =
-                (self.clients[idx].float_geom.height + dh).max(MIN_FLOAT_SIZE);
+            let g = &mut self.clients[idx].float_geom;
+            g.width = g
+                .width
+                .saturating_add(dw)
+                .clamp(MIN_FLOAT_SIZE, MAX_FLOAT_COORD);
+            g.height = g
+                .height
+                .saturating_add(dh)
+                .clamp(MIN_FLOAT_SIZE, MAX_FLOAT_COORD);
             let mon_idx = self.clients[idx].monitor;
             self.arrange_monitor(mon_idx);
         }

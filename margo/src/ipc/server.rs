@@ -238,13 +238,13 @@ pub fn args_to_dispatch_arg(action: &str, args: &[String]) -> Arg {
     let mut arg = Arg::default();
 
     if args.first().is_some_and(|s| s.parse::<i64>().is_ok()) {
-        if let Some(a) = args.first().and_then(|s| s.parse::<i32>().ok()) {
+        if let Some(a) = args.first().and_then(|s| parse_saturating_i32(s)) {
             arg.i = a;
         }
-        if let Some(a) = args.get(1).and_then(|s| s.parse::<i32>().ok()) {
+        if let Some(a) = args.get(1).and_then(|s| parse_saturating_i32(s)) {
             arg.i2 = a;
         }
-        if let Some(a) = args.get(2).and_then(|s| s.parse::<f32>().ok()) {
+        if let Some(a) = args.get(2).and_then(|s| parse_finite_f32(s)) {
             arg.f = a;
         }
         if let Some(s) = args.get(3) {
@@ -267,10 +267,23 @@ pub fn args_to_dispatch_arg(action: &str, args: &[String]) -> Arg {
 
     arg.v = args.first().cloned();
     arg.v2 = args.get(1).cloned();
-    if let Some(x) = args.first().and_then(|s| s.parse::<f32>().ok()) {
+    if let Some(x) = args.first().and_then(|s| parse_finite_f32(s)) {
         arg.f = x;
     }
     arg
+}
+
+/// An integer argument, saturated into i32 instead of dropped or wrapped:
+/// every handler bounds its own range, but must never see a wrapped sign.
+fn parse_saturating_i32(s: &str) -> Option<i32> {
+    let v = s.parse::<i64>().ok()?;
+    Some(v.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32)
+}
+
+/// A float argument, or `None` for NaN / ±inf (`"nan".parse::<f32>()` is
+/// Ok, and NaN passes straight through `f32::clamp` into the layouts).
+fn parse_finite_f32(s: &str) -> Option<f32> {
+    s.parse::<f32>().ok().filter(|f| f.is_finite())
 }
 
 impl MargoState {
@@ -747,6 +760,24 @@ mod tests {
         assert_eq!(a.i, 1);
         assert_eq!(a.i2, 2);
         assert_eq!(a.f, 0.5);
+    }
+
+    #[test]
+    fn non_finite_floats_are_rejected() {
+        // `"nan".parse::<f32>()` is Ok; NaN survives f32::clamp and
+        // reached the layouts through setmfact.
+        for bad in ["nan", "NaN", "inf", "-inf", "infinity"] {
+            let a = args_to_dispatch_arg("setmfact", &args(&[bad]));
+            assert_eq!(a.f, 0.0, "{bad}");
+            let a = args_to_dispatch_arg("twilight_preview", &args(&["1", "2", bad]));
+            assert_eq!(a.f, 0.0, "{bad}");
+        }
+    }
+
+    #[test]
+    fn integers_beyond_i32_saturate() {
+        let a = args_to_dispatch_arg("movewin", &args(&["99999999999", "-99999999999"]));
+        assert_eq!((a.i, a.i2), (i32::MAX, i32::MIN));
     }
 
     #[test]

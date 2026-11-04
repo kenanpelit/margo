@@ -255,3 +255,55 @@ fn move_focused_preserves_an_already_floating_windows_real_geometry() {
     assert_eq!((c.float_geom.width, c.float_geom.height), (640, 480));
     assert_eq!((c.float_geom.x, c.float_geom.y), (310, 270));
 }
+
+/// `mctl dispatch movewin 2147483647 0` (or the Rhai equivalent) used to
+/// overflow `float_geom.x += dx` — a compositor panic, since release builds
+/// keep overflow checks — and NaN from `setmfact nan` reached the layouts.
+#[test]
+fn numeric_actions_survive_extreme_arguments() {
+    const LIMIT: i32 = 1 << 20;
+    let mut fx = tiled_two_window_fixture();
+    let state = &mut fx.server.state;
+    let int = |i: i32, i2: i32| Arg {
+        i,
+        i2,
+        ..Default::default()
+    };
+    let float = |f: f32| Arg {
+        f,
+        ..Default::default()
+    };
+
+    for _ in 0..2 {
+        dispatch_action(state, "movewin", &int(i32::MAX, i32::MAX));
+        dispatch_action(state, "resizewin", &int(i32::MAX, i32::MAX));
+        dispatch_action(state, "incnmaster", &int(i32::MAX, 0));
+        dispatch_action(state, "incgaps", &int(i32::MAX, 0));
+    }
+    let g = state.clients[0].float_geom;
+    assert!(g.x <= LIMIT && g.y <= LIMIT, "{g:?}");
+    assert!(g.width <= LIMIT && g.height <= LIMIT, "{g:?}");
+    assert!(state.monitors[0].gappih <= LIMIT);
+    let curtag = state.monitors[0].pertag.curtag;
+    assert!(state.monitors[0].pertag.nmasters[curtag] <= LIMIT as u32);
+
+    for _ in 0..2 {
+        dispatch_action(state, "movewin", &int(i32::MIN, i32::MIN));
+        dispatch_action(state, "resizewin", &int(i32::MIN, i32::MIN));
+        dispatch_action(state, "incnmaster", &int(i32::MIN, 0));
+        dispatch_action(state, "incgaps", &int(i32::MIN, 0));
+    }
+    let g = state.clients[0].float_geom;
+    assert!(g.x >= -LIMIT && g.y >= -LIMIT, "{g:?}");
+    assert!(g.width >= 1 && g.height >= 1, "{g:?}");
+    assert_eq!(state.monitors[0].gappih, 0);
+    assert_eq!(state.monitors[0].pertag.nmasters[curtag], 0);
+
+    let before = state.monitors[0].pertag.mfacts[curtag];
+    for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        dispatch_action(state, "setmfact", &float(bad));
+        dispatch_action(state, "set_proportion", &float(bad));
+    }
+    assert_eq!(state.monitors[0].pertag.mfacts[curtag], before);
+    assert!(state.clients[0].scroller_proportion.is_finite());
+}

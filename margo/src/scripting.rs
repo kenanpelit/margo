@@ -297,13 +297,16 @@ fn args_to_arg(args: &Array) -> Arg {
             string_slot += 1;
         } else if v.is_int() {
             let i = v.as_int().unwrap_or(0);
+            // Saturate the signed slot (a wrapped sign would flip a
+            // move/resize); `ui` keeps the low bits, it carries tag masks.
+            let signed = i.clamp(rhai::INT::from(i32::MIN), rhai::INT::from(i32::MAX)) as i32;
             match int_slot {
                 0 => {
-                    arg.i = i as i32;
+                    arg.i = signed;
                     arg.ui = i as u32;
                 }
                 1 => {
-                    arg.i2 = i as i32;
+                    arg.i2 = signed;
                     arg.ui2 = i as u32;
                 }
                 _ => {}
@@ -325,10 +328,13 @@ fn args_to_arg(args: &Array) -> Arg {
             }
             int_slot += 1;
         } else if v.is_float() {
-            let f = v.as_float().unwrap_or(0.0);
+            // NaN / ±inf (or a finite f64 beyond f32) would pass through
+            // f32::clamp into the layouts: leave the slot at its default.
+            let f = v.as_float().unwrap_or(0.0) as f32;
+            let f = if f.is_finite() { f } else { 0.0 };
             match float_slot {
-                0 => arg.f = f as f32,
-                1 => arg.f2 = f as f32,
+                0 => arg.f = f,
+                1 => arg.f2 = f,
                 _ => {}
             }
             float_slot += 1;
@@ -689,5 +695,20 @@ mod tests {
         assert_eq!(tag_mask_for(crate::MAX_TAGS as rhai::INT + 1), 0);
         assert_eq!(tag_mask_for(32), 0);
         assert_eq!(tag_mask_for(-3), 0);
+    }
+
+    #[test]
+    fn numbers_from_scripts_are_saturated_and_finite() {
+        let arg = args_to_arg(&vec![
+            Dynamic::from(rhai::INT::MAX),
+            Dynamic::from(rhai::INT::MIN),
+            Dynamic::from(f64::NAN),
+            Dynamic::from(f64::INFINITY),
+        ]);
+        assert_eq!((arg.i, arg.i2), (i32::MAX, i32::MIN));
+        assert_eq!((arg.f, arg.f2), (0.0, 0.0));
+        // A finite f64 too large for f32 becomes inf when cast.
+        let arg = args_to_arg(&vec![Dynamic::from(1e300_f64)]);
+        assert_eq!(arg.f, 0.0);
     }
 }
