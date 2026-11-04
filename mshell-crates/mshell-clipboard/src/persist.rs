@@ -14,8 +14,15 @@
 //! Restored image / binary entries keep only their preview in memory
 //! (`ClipboardEntry::data_in_blob`); the payload is read back from its
 //! blob by [`read_blob`] when the entry is pasted.
+//!
+//! The history holds whatever was copied (passwords and tokens included), so
+//! the store is private: directories 0700, files 0600, whatever the umask or
+//! the home directory's mode. [`load`] tightens a store an older version left
+//! world-readable.
 
-use std::fs;
+use std::fs::{self, OpenOptions, Permissions};
+use std::io::Write;
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use time::OffsetDateTime;
@@ -35,6 +42,58 @@ fn data_dir() -> PathBuf {
             home.join(".local/share")
         });
     base.join("mshell/clipboard")
+}
+
+const DIR_MODE: u32 = 0o700;
+const FILE_MODE: u32 = 0o600;
+
+/// Create `dir` (and missing parents) and make `dir` itself owner-only.
+fn create_private_dir(dir: &Path) -> std::io::Result<()> {
+    if let Some(parent) = dir.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    match fs::DirBuilder::new().mode(DIR_MODE).create(dir) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(e) => return Err(e),
+    }
+    fs::set_permissions(dir, Permissions::from_mode(DIR_MODE))
+}
+
+/// Write `bytes` to `path` as an owner-only file. The `fchmod` covers a file
+/// that already existed with a wider mode (`mode` applies only on create).
+fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(FILE_MODE)
+        .open(path)?;
+    file.set_permissions(Permissions::from_mode(FILE_MODE))?;
+    file.write_all(bytes)
+}
+
+/// Make an existing store owner-only: the directories, `history.json` and
+/// every blob. Best-effort; a missing store is nothing to do.
+fn tighten_permissions(dir: &Path) {
+    let set = |p: &Path, mode: u32| {
+        if let Err(e) = fs::set_permissions(p, Permissions::from_mode(mode))
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            warn!("clipboard: chmod {} failed: {e}", p.display());
+        }
+    };
+    set(dir, DIR_MODE);
+    set(&history_path(dir), FILE_MODE);
+    let blobs = blobs_dir(dir);
+    set(&blobs, DIR_MODE);
+    if let Ok(rd) = fs::read_dir(&blobs) {
+        for entry in rd.flatten() {
+            if entry.file_type().is_ok_and(|t| t.is_file()) {
+                set(&entry.path(), FILE_MODE);
+            }
+        }
+    }
 }
 
 fn history_path(dir: &Path) -> PathBuf {
@@ -77,7 +136,7 @@ fn save_to(dir: &Path, entries: &[ClipboardEntry], mode: PersistMode) {
         PersistMode::None => unreachable!(),
     };
 
-    if let Err(e) = fs::create_dir_all(dir) {
+    if let Err(e) = create_private_dir(dir) {
         warn!("clipboard: create data dir failed: {e}");
         return;
     }
@@ -87,12 +146,14 @@ fn save_to(dir: &Path, entries: &[ClipboardEntry], mode: PersistMode) {
     // A blob-backed entry was loaded *from* its blob, which is
     // already on disk (and its in-memory `data` is empty).
     let blobs = blobs_dir(dir);
-    let _ = fs::create_dir_all(&blobs);
+    if let Err(e) = create_private_dir(&blobs) {
+        warn!("clipboard: create blob dir failed: {e}");
+    }
     for e in &keep {
         if !e.is_text() && !e.data_in_blob {
             let p = blob_path(dir, e.content_hash);
             if !p.exists()
-                && let Err(err) = fs::write(&p, &e.data)
+                && let Err(err) = write_private(&p, &e.data)
             {
                 warn!("clipboard: blob write failed: {err}");
             }
@@ -109,7 +170,7 @@ fn save_to(dir: &Path, entries: &[ClipboardEntry], mode: PersistMode) {
         Ok(bytes) => {
             // Write to a temp file then rename for atomicity.
             let tmp = history_path(dir).with_extension("json.tmp");
-            if fs::write(&tmp, &bytes).is_ok() {
+            if write_private(&tmp, &bytes).is_ok() {
                 let _ = fs::rename(&tmp, history_path(dir));
                 debug!("clipboard: persisted {} entries", persisted.len());
             }
@@ -129,6 +190,7 @@ pub fn load() -> Vec<ClipboardEntry> {
 }
 
 fn load_from(dir: &Path) -> Vec<ClipboardEntry> {
+    tighten_permissions(dir);
     let path = history_path(dir);
     let Ok(bytes) = fs::read(&path) else {
         return Vec::new();
@@ -275,6 +337,51 @@ mod tests {
                 .ok(),
             Some(image.data.len())
         );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    fn mode(path: &Path) -> u32 {
+        use std::os::unix::fs::PermissionsExt;
+        fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    #[test]
+    fn the_store_is_private_to_the_user() {
+        let dir = std::env::temp_dir().join(format!("mshell-clip-mode-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let image = entry(2, "image/png", png_bytes());
+        let text = entry(1, "text/plain", b"hunter2".to_vec());
+        save_to(&dir, &[image.clone(), text], PersistMode::All);
+
+        assert_eq!(mode(&dir), 0o700);
+        assert_eq!(mode(&blobs_dir(&dir)), 0o700);
+        assert_eq!(mode(&history_path(&dir)), 0o600);
+        assert_eq!(mode(&blob_path(&dir, image.content_hash)), 0o600);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_old_world_readable_store_is_tightened_on_load() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("mshell-clip-old-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let image = entry(2, "image/png", png_bytes());
+        save_to(&dir, std::slice::from_ref(&image), PersistMode::All);
+        let blob = blob_path(&dir, image.content_hash);
+        for (p, m) in [
+            (dir.clone(), 0o755),
+            (blobs_dir(&dir), 0o755),
+            (history_path(&dir), 0o644),
+            (blob.clone(), 0o644),
+        ] {
+            fs::set_permissions(&p, fs::Permissions::from_mode(m)).unwrap();
+        }
+
+        assert_eq!(load_from(&dir).len(), 1);
+        assert_eq!(mode(&dir), 0o700);
+        assert_eq!(mode(&blobs_dir(&dir)), 0o700);
+        assert_eq!(mode(&history_path(&dir)), 0o600);
+        assert_eq!(mode(&blob), 0o600);
         let _ = fs::remove_dir_all(&dir);
     }
 }
