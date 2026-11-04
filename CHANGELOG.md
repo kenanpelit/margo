@@ -5,6 +5,17 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.8.1] – 2026-11-04
+
+**The bottom of the screen-edge frame sits on the output edge again.**
+
+### Fixed
+
+- With the frame drawn from edge strips (4.8.0), the bottom strip painted
+  its band about a corner radius too high: the bottom bar was cut off and
+  the wallpaper showed along the output's last rows. The strips now place
+  the frame by the window's real height.
+
 ## [4.8.0] – 2026-11-04
 
 **Five clearer animation presets, a lighter shell frame, interactive
