@@ -220,12 +220,11 @@ fn two_output_presets(laptop: &CapturedOutput, external: &CapturedOutput) -> Vec
 
     // 5. Mirrored — both at the same origin. Useful for
     //    presentations / projector-mode where you want the
-    //    laptop to mirror what's on screen. Note: margo can't
-    //    actually clone outputs today (no `wl_mirror` analogue),
-    //    so this preset positions both at (0,0) which yields
-    //    overlapping content with the bigger one in front;
-    //    treat it as "informational" until the mirror feature
-    //    lands.
+    //    laptop to mirror what's on screen. Note: a layout
+    //    preset only positions outputs, so this puts both at
+    //    (0,0) (overlapping content, the bigger one in front).
+    //    Real mirroring is margo's `mirror_output` action
+    //    (`mctl mirror start`), which scales the picture to fit.
     presets.push(Preset {
         slug: "mirrored",
         name: "Mirrored (overlap at origin)".to_string(),

@@ -109,7 +109,7 @@ pub(crate) enum LayoutSettingsInput {
     /// Re-read live outputs, discarding un-applied drags.
     ResetArrangement,
     /// Apply a semantic quick-profile (Internal/External/Extend/Mirror)
-    /// live via `mctl dispatch enable_output/disable_output` (+ wl-mirror).
+    /// live via `mctl dispatch enable_output/disable_output/mirror_output`.
     ApplyProfile(DisplayProfile),
     /// Flip one output on/off via `mctl dispatch toggle_output <connector>`.
     ToggleOutput(String),
@@ -126,8 +126,8 @@ pub(crate) enum DisplayProfile {
     ExternalOnly,
     /// Every output on, side by side.
     Extend,
-    /// Every output on + `wl-mirror` duplicating the laptop onto the first
-    /// external monitor.
+    /// Every output on + margo's native mirror showing the laptop panel on
+    /// the first external monitor (`mirror_output`).
     Mirror,
 }
 
@@ -205,7 +205,7 @@ impl Component for LayoutSettingsModel {
                 },
                 gtk::Label {
                     add_css_class: "label-small",
-                    set_label: "One-click display arrangements, applied live (mctl). The laptop panel is detected by its eDP/LVDS connector; Mirror duplicates it onto an external monitor (needs wl-mirror). Use Extend to bring every screen back.",
+                    set_label: "One-click display arrangements, applied live (mctl). The laptop panel is detected by its eDP/LVDS connector; Mirror shows it on an external monitor, scaled to fit. Use Extend to bring every screen back.",
                     set_halign: gtk::Align::Start,
                     set_xalign: 0.0,
                     set_wrap: true,
@@ -232,7 +232,7 @@ impl Component for LayoutSettingsModel {
                     gtk::Button {
                         add_css_class: "ok-button-surface",
                         set_label: "Mirror",
-                        set_tooltip_text: Some("Duplicate the laptop screen onto an external monitor (needs wl-mirror)"),
+                        set_tooltip_text: Some("Show the laptop screen on an external monitor, scaled to fit"),
                         connect_clicked[sender] => move |_| sender.input(LayoutSettingsInput::ApplyProfile(DisplayProfile::Mirror)),
                     },
                 },
@@ -555,7 +555,6 @@ impl Component for LayoutSettingsModel {
                 run_dispatches(
                     sender.clone(),
                     vec![vec!["toggle_output".to_string(), connector.clone()]],
-                    None,
                     format!("toggle {connector}"),
                 );
             }
@@ -725,23 +724,15 @@ fn is_internal_connector(connector: &str) -> bool {
     l.starts_with("edp") || l.starts_with("lvds")
 }
 
-/// Run a sequence of `dispatch <action> <connector>` requests on margo's
-/// IPC socket, then
-/// optionally launch `wl-mirror` to show `mirror.1` fullscreen on
-/// `mirror.0`. A `CommandResult` re-reads the catalogue + live outputs
-/// afterwards. Any running mirror is dropped first so switching is clean.
+/// Run a sequence of `dispatch <action> <args…>` requests on margo's IPC
+/// socket. A `CommandResult` re-reads the catalogue + live outputs
+/// afterwards.
 fn run_dispatches(
     sender: ComponentSender<LayoutSettingsModel>,
     dispatches: Vec<Vec<String>>,
-    mirror: Option<(String, String)>,
     label: String,
 ) {
     relm4::spawn(async move {
-        let _ = tokio::process::Command::new("pkill")
-            .args(["-x", "wl-mirror"])
-            .status()
-            .await;
-
         let mut err: Option<String> = None;
         for d in &dispatches {
             let Some((action, args)) = d.split_first() else {
@@ -754,16 +745,6 @@ fn run_dispatches(
                 break;
             }
         }
-
-        if err.is_none()
-            && let Some((target, source)) = mirror
-            && let Err(e) = tokio::process::Command::new("wl-mirror")
-                .args(["--fullscreen-output", &target, &source])
-                .spawn()
-        {
-            err = Some(format!("wl-mirror: {e} (is it installed?)"));
-        }
-
         sender.input(LayoutSettingsInput::CommandResult(match err {
             Some(e) => Err(e),
             None => Ok(label),
@@ -779,7 +760,7 @@ fn spawn_profile(
     outputs: Vec<EditorOut>,
 ) {
     match profile_plan(profile, &outputs) {
-        Ok((plan, mirror, label)) => run_dispatches(sender, plan, mirror, label.to_string()),
+        Ok((plan, label)) => run_dispatches(sender, plan, label.to_string()),
         Err(e) => sender.input(LayoutSettingsInput::CommandResult(Err(e.to_string()))),
     }
 }
@@ -788,15 +769,14 @@ fn spawn_profile(
 type DispatchPlan = Vec<Vec<String>>;
 
 /// The `mctl dispatch` plan for a display profile over the live outputs,
-/// the optional `wl-mirror` pair (as [`run_dispatches`] takes it: the
-/// external output to fill, the laptop panel shown on it), and the label
-/// reported when it ran. `Err` (the message to show) when the profile can't
-/// apply to these outputs — in particular, never a plan that would leave
-/// every output switched off.
+/// and the label reported when it ran. Every plan first ends a running
+/// mirror (its target is out of the layout until then). `Err` (the message
+/// to show) when the profile can't apply to these outputs — in particular,
+/// never a plan that would leave every output switched off.
 fn profile_plan(
     profile: DisplayProfile,
     outputs: &[EditorOut],
-) -> Result<(DispatchPlan, Option<(String, String)>, &'static str), &'static str> {
+) -> Result<(DispatchPlan, &'static str), &'static str> {
     if outputs.is_empty() {
         return Err("No outputs detected");
     }
@@ -813,6 +793,7 @@ fn profile_plan(
 
     let enable = |c: &String| vec!["enable_output".to_string(), c.clone()];
     let disable = |c: &String| vec!["disable_output".to_string(), c.clone()];
+    let stop = || std::iter::once(vec!["stop_mirror".to_string()]);
 
     Ok(match profile {
         DisplayProfile::InternalOnly if internal.is_empty() => {
@@ -822,34 +803,40 @@ fn profile_plan(
             return Err("No external monitor to switch to");
         }
         DisplayProfile::InternalOnly => (
-            internal
-                .iter()
-                .map(&enable)
+            stop()
+                .chain(internal.iter().map(&enable))
                 .chain(external.iter().map(&disable))
                 .collect(),
-            None,
             "profile: internal only",
         ),
         DisplayProfile::ExternalOnly => (
-            external
-                .iter()
-                .map(&enable)
+            stop()
+                .chain(external.iter().map(&enable))
                 .chain(internal.iter().map(&disable))
                 .collect(),
-            None,
             "profile: external only",
         ),
         DisplayProfile::Extend => (
-            outputs.iter().map(|o| enable(&o.connector)).collect(),
-            None,
+            stop()
+                .chain(outputs.iter().map(|o| enable(&o.connector)))
+                .collect(),
             "profile: extend",
         ),
         DisplayProfile::Mirror => {
-            let plan: Vec<Vec<String>> = outputs.iter().map(|o| enable(&o.connector)).collect();
             let (Some(ext), Some(int)) = (external.first(), internal.first()) else {
                 return Err("Mirror needs both a laptop screen and an external monitor");
             };
-            (plan, Some((ext.clone(), int.clone())), "profile: mirror")
+            (
+                stop()
+                    .chain(outputs.iter().map(|o| enable(&o.connector)))
+                    .chain(std::iter::once(vec![
+                        "mirror_output".to_string(),
+                        int.clone(),
+                        ext.clone(),
+                    ]))
+                    .collect(),
+                "profile: mirror",
+            )
         }
     })
 }
@@ -1536,17 +1523,35 @@ mod tests {
             out("eDP-1", 0, 0, 1920, 1080),
             out("DP-1", 1920, 0, 2560, 1440),
         ];
-        let (plan, mirror, _) = profile_plan(DisplayProfile::InternalOnly, &outs).unwrap();
-        assert_eq!(cmds(&plan), ["enable_output eDP-1", "disable_output DP-1"]);
-        assert!(mirror.is_none());
-        let (plan, _, _) = profile_plan(DisplayProfile::ExternalOnly, &outs).unwrap();
-        assert_eq!(cmds(&plan), ["enable_output DP-1", "disable_output eDP-1"]);
-        let (plan, _, label) = profile_plan(DisplayProfile::Extend, &outs).unwrap();
-        assert_eq!(cmds(&plan), ["enable_output eDP-1", "enable_output DP-1"]);
+        // Every profile first ends a running mirror (its target is out of
+        // the layout until then).
+        let (plan, _) = profile_plan(DisplayProfile::InternalOnly, &outs).unwrap();
+        assert_eq!(
+            cmds(&plan),
+            ["stop_mirror", "enable_output eDP-1", "disable_output DP-1"]
+        );
+        let (plan, _) = profile_plan(DisplayProfile::ExternalOnly, &outs).unwrap();
+        assert_eq!(
+            cmds(&plan),
+            ["stop_mirror", "enable_output DP-1", "disable_output eDP-1"]
+        );
+        let (plan, label) = profile_plan(DisplayProfile::Extend, &outs).unwrap();
+        assert_eq!(
+            cmds(&plan),
+            ["stop_mirror", "enable_output eDP-1", "enable_output DP-1"]
+        );
         assert_eq!(label, "profile: extend");
-        let (plan, mirror, _) = profile_plan(DisplayProfile::Mirror, &outs).unwrap();
-        assert_eq!(cmds(&plan), ["enable_output eDP-1", "enable_output DP-1"]);
-        assert_eq!(mirror, Some(("DP-1".to_string(), "eDP-1".to_string())));
+        // Mirror is margo's own: the laptop panel shown on the external one.
+        let (plan, _) = profile_plan(DisplayProfile::Mirror, &outs).unwrap();
+        assert_eq!(
+            cmds(&plan),
+            [
+                "stop_mirror",
+                "enable_output eDP-1",
+                "enable_output DP-1",
+                "mirror_output eDP-1 DP-1"
+            ]
+        );
     }
 
     #[test]
