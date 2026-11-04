@@ -193,10 +193,21 @@ impl Element for ClippedSurfaceRenderElement {
             .collect()
     }
 
-    fn opaque_regions(&self, _scale: Scale<f64>) -> OpaqueRegions<i32, Physical> {
-        // Rounded masks have anti-aliased corners and the compositor must not
-        // assume the clipped surface is fully opaque.
-        OpaqueRegions::default()
+    fn opaque_regions(&self, scale: Scale<f64>) -> OpaqueRegions<i32, Physical> {
+        // Keep the surface's own opaque region inside the clip, minus the
+        // anti-aliased outline and rounded corners. Reporting nothing made
+        // the damage tracker redraw the clear colour and the wallpaper under
+        // every damaged window pixel.
+        let inner = self.inner.opaque_regions(scale);
+        if inner.is_empty() {
+            return inner;
+        }
+        let elem_loc = self.geometry(scale).loc;
+        let mut clip = self.geometry.to_physical_precise_round(scale);
+        clip.loc -= elem_loc;
+        clipped_opaque_regions(&inner, clip, f64::from(self.radius) * scale.x)
+            .into_iter()
+            .collect()
     }
 
     fn alpha(&self) -> f32 {
@@ -235,6 +246,51 @@ impl RenderElement<GlesRenderer> for ClippedSurfaceRenderElement {
     fn underlying_storage(&self, _renderer: &mut GlesRenderer) -> Option<UnderlyingStorage<'_>> {
         None
     }
+}
+
+/// Opaque part of a rounded-clipped surface, element-local physical.
+///
+/// `inner` is what the wrapped surface reports as opaque, `clip` the rounded
+/// clip rect and `radius` its corner radius, all physical and relative to the
+/// element. The clip's 1 px anti-aliased outline and the four `radius`
+/// corner squares are translucent; everything else inside the clip keeps the
+/// surface's own opacity.
+fn clipped_opaque_regions(
+    inner: &[Rectangle<i32, Physical>],
+    clip: Rectangle<i32, Physical>,
+    radius: f64,
+) -> Vec<Rectangle<i32, Physical>> {
+    let visible: Vec<_> = inner.iter().filter_map(|r| r.intersection(clip)).collect();
+    if radius <= 0.0 {
+        // The shader's mask is a hard 0/1 clip without a radius.
+        return visible;
+    }
+    // The 1 px anti-aliased outline runs along every edge of the clip.
+    let mut cut = vec![
+        Rectangle::new(clip.loc, (clip.size.w, 1).into()),
+        Rectangle::new(
+            (clip.loc.x, clip.loc.y + clip.size.h - 1).into(),
+            (clip.size.w, 1).into(),
+        ),
+        Rectangle::new(clip.loc, (1, clip.size.h).into()),
+        Rectangle::new(
+            (clip.loc.x + clip.size.w - 1, clip.loc.y).into(),
+            (1, clip.size.h).into(),
+        ),
+    ];
+    // The curve lives in the `radius` square at each corner (the shader
+    // clamps the radius to half the smaller side; a bigger square just
+    // covers everything).
+    let r = radius.ceil() as i32;
+    for (x, y) in [
+        (clip.loc.x, clip.loc.y),
+        (clip.loc.x + clip.size.w - r, clip.loc.y),
+        (clip.loc.x, clip.loc.y + clip.size.h - r),
+        (clip.loc.x + clip.size.w - r, clip.loc.y + clip.size.h - r),
+    ] {
+        cut.push(Rectangle::new((x, y).into(), (r, r).into()));
+    }
+    Rectangle::subtract_rects_many(visible, cut)
 }
 
 const MAT_IDENTITY: [f32; 9] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
@@ -338,3 +394,76 @@ void main() {
     gl_FragColor = color;
 }
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::clipped_opaque_regions;
+    use smithay::utils::{Physical, Rectangle};
+
+    fn rect(x: i32, y: i32, w: i32, h: i32) -> Rectangle<i32, Physical> {
+        Rectangle::new((x, y).into(), (w, h).into())
+    }
+
+    fn covers(rects: &[Rectangle<i32, Physical>], x: i32, y: i32) -> bool {
+        rects
+            .iter()
+            .any(|r| r.contains::<smithay::utils::Point<i32, Physical>>((x, y).into()))
+    }
+
+    fn area(rects: &[Rectangle<i32, Physical>]) -> i32 {
+        // The result is built by subtraction, so the pieces are disjoint.
+        rects.iter().map(|r| r.size.w * r.size.h).sum()
+    }
+
+    #[test]
+    fn an_opaque_surface_stays_opaque_except_the_outline_and_corners() {
+        let out = clipped_opaque_regions(&[rect(0, 0, 100, 100)], rect(0, 0, 100, 100), 10.0);
+        assert!(covers(&out, 50, 50));
+        assert!(covers(&out, 1, 50), "inside the straight edge");
+        assert!(covers(&out, 10, 1), "just past the corner square");
+        assert!(!covers(&out, 0, 50), "the 1 px anti-aliased outline");
+        assert!(!covers(&out, 99, 50));
+        assert!(!covers(&out, 50, 99));
+        for (x, y) in [(5, 5), (95, 5), (5, 95), (95, 95), (9, 9)] {
+            assert!(!covers(&out, x, y), "corner pixel {x},{y}");
+        }
+        // 98x98 inset minus four 9x9 corner pieces.
+        assert_eq!(area(&out), 98 * 98 - 4 * 81);
+    }
+
+    #[test]
+    fn only_the_surface_opaque_part_inside_the_clip_is_kept() {
+        // Opaque bottom half; the clip is offset inside the element.
+        let out = clipped_opaque_regions(&[rect(0, 50, 200, 150)], rect(20, 30, 100, 100), 4.0);
+        assert!(covers(&out, 60, 60));
+        assert!(!covers(&out, 60, 40), "not opaque in the surface");
+        assert!(!covers(&out, 150, 60), "outside the clip");
+        assert!(!covers(&out, 21, 128), "bottom-left corner of the clip");
+        assert!(covers(&out, 21, 120));
+    }
+
+    #[test]
+    fn a_fractional_radius_rounds_the_corner_up() {
+        let out = clipped_opaque_regions(&[rect(0, 0, 50, 50)], rect(0, 0, 50, 50), 7.5);
+        assert!(!covers(&out, 7, 7));
+        assert!(covers(&out, 8, 7));
+        assert!(covers(&out, 7, 8));
+    }
+
+    #[test]
+    fn a_radius_past_half_the_size_leaves_nothing_opaque() {
+        let out = clipped_opaque_regions(&[rect(0, 0, 40, 40)], rect(0, 0, 40, 40), 30.0);
+        assert_eq!(area(&out), 0);
+    }
+
+    #[test]
+    fn no_radius_means_a_plain_hard_clip() {
+        let out = clipped_opaque_regions(&[rect(0, 0, 100, 100)], rect(10, 10, 50, 50), 0.0);
+        assert_eq!(out, vec![rect(10, 10, 50, 50)]);
+    }
+
+    #[test]
+    fn a_translucent_surface_stays_translucent() {
+        assert!(clipped_opaque_regions(&[], rect(0, 0, 100, 100), 10.0).is_empty());
+    }
+}
