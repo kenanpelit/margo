@@ -33,6 +33,13 @@ Environment=MALLOC_ARENA_MAX=2
 # with THP (76-146 MB AnonHugePages) vs 206 MB without, same restart.
 Environment=MIMALLOC_ALLOW_THP=0
 
+# One worker for runtimes built without an explicit `worker_threads`. That is
+# only zbus's internal blocking-API runtime (wayle-audio enables zbus's
+# `tokio` feature, so `zbus::block_on` lazily builds a multi-thread runtime
+# sized to the CPU count: 22 idle `tokio-rt-worker` threads here). mshell's
+# own runtimes (services: 4, relm4: RELM_THREADS) set their size explicitly.
+Environment=TOKIO_WORKER_THREADS=1
+
 ExecStart=/usr/bin/mshell
 Restart=on-failure
 RestartSec=2

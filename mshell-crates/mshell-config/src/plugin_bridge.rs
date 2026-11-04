@@ -21,16 +21,22 @@ pub const PLUGIN_PREFIX: &str = "plugin:";
 
 /// Replace all plugin-derived custom widgets with the current set from the
 /// enabled, installed plugins. Idempotent — safe to call on every load.
+///
+/// Never touches the keyring: secret values come from the
+/// `mshell_plugins::secrets` cache. Secrets not read yet are fetched on a
+/// background thread, which calls `on_secrets_loaded` (if one was
+/// registered) so the caller can resync with the real values.
 pub fn resync_plugin_widgets(config: &mut Config) {
     strip_plugin_widgets(config);
 
     let store = PluginStore::new();
     let state = store.load_state();
+    let mut missing = Vec::new();
     for plugin in store.installed() {
         if !state.is_enabled(&plugin.key) {
             continue;
         }
-        let values = setting_values(&plugin, &state);
+        let values = setting_values(&plugin, &state, &mut missing);
         let layout = state.panel(&plugin.key);
         for widget in &plugin.manifest.widgets {
             config
@@ -40,21 +46,34 @@ pub fn resync_plugin_widgets(config: &mut Config) {
                 .push(to_custom_widget(&plugin, widget, &values, &layout));
         }
     }
+    prefetch_secrets(missing);
 }
 
 /// The effective setting values for a plugin: the user's stored value, or the
 /// manifest default, per declared setting — plus built-in placeholders. For
 /// settings marked `type = "secret"` the value comes from the system keyring
 /// (Secret Service), never from `plugins.toml`.
-fn setting_values(plugin: &InstalledPlugin, state: &PluginsState) -> BTreeMap<String, String> {
+fn setting_values(
+    plugin: &InstalledPlugin,
+    state: &PluginsState,
+    missing: &mut Vec<(String, String)>,
+) -> BTreeMap<String, String> {
     let mut values: BTreeMap<String, String> = plugin
         .manifest
         .settings
         .iter()
         .map(|s| {
             let v = if s.is_secret() {
-                mshell_plugins::secrets::read(&plugin.key, &s.key)
-                    .unwrap_or_else(|| s.default.clone())
+                // Cache only: this runs on the GTK thread on every config
+                // load and save. Unread secrets are fetched off-thread by
+                // `prefetch_secrets`, which then resyncs.
+                match mshell_plugins::secrets::cached(&plugin.key, &s.key) {
+                    Some(v) => v.unwrap_or_else(|| s.default.clone()),
+                    None => {
+                        missing.push((plugin.key.clone(), s.key.clone()));
+                        s.default.clone()
+                    }
+                }
             } else {
                 state
                     .setting(&plugin.key, &s.key)
@@ -72,6 +91,41 @@ fn setting_values(plugin: &InstalledPlugin, state: &PluginsState) -> BTreeMap<St
         plugin.dir.to_string_lossy().into_owned(),
     );
     values
+}
+
+/// Called once a background secret prefetch has filled the cache (the
+/// config manager registers a resync here).
+static ON_SECRETS_LOADED: std::sync::OnceLock<fn()> = std::sync::OnceLock::new();
+
+/// Register what to run after a background secret prefetch.
+pub fn on_secrets_loaded(f: fn()) {
+    let _ = ON_SECRETS_LOADED.set(f);
+}
+
+/// Read `missing` secrets on a background thread (the Secret Service call
+/// blocks, and may show an unlock prompt), then run the registered callback.
+/// Concurrent requests coalesce: one prefetch at a time.
+fn prefetch_secrets(missing: Vec<(String, String)>) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static RUNNING: AtomicBool = AtomicBool::new(false);
+    if missing.is_empty() || RUNNING.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    let spawned = std::thread::Builder::new()
+        .name("plugin-secrets".into())
+        .spawn(move || {
+            for (plugin, key) in &missing {
+                // `read` caches the value (or "unset").
+                let _ = mshell_plugins::secrets::read(plugin, key);
+            }
+            RUNNING.store(false, Ordering::Release);
+            if let Some(f) = ON_SECRETS_LOADED.get() {
+                f();
+            }
+        });
+    if spawned.is_err() {
+        RUNNING.store(false, Ordering::Release);
+    }
 }
 
 /// Drop every plugin-derived custom widget (used before persisting a layer
@@ -245,5 +299,43 @@ mod tests {
         };
         assert_eq!(w.secret_env, vec![env.clone()]);
         assert_eq!(w.menu[0].secret_env, vec![env]);
+    }
+
+    /// Config loads/saves read secrets from the cache only; one not read yet
+    /// is reported as missing (for the background prefetch) instead of
+    /// blocking on the keyring.
+    #[test]
+    fn setting_values_never_block_on_the_keyring() {
+        let plugin = InstalledPlugin {
+            key: "test-bridge/p".into(),
+            manifest: Manifest {
+                id: "p".into(),
+                version: "1".into(),
+                settings: vec![
+                    Setting {
+                        key: "known".into(),
+                        kind: "secret".into(),
+                        ..Default::default()
+                    },
+                    Setting {
+                        key: "unread".into(),
+                        kind: "secret".into(),
+                        default: "dflt".into(),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            },
+            dir: "/p".into(),
+        };
+        mshell_plugins::secrets::remember("test-bridge/p", "known", Some("cached-v".into()));
+        let mut missing = Vec::new();
+        let v = setting_values(&plugin, &PluginsState::default(), &mut missing);
+        assert_eq!(v["known"], "cached-v");
+        assert_eq!(v["unread"], "dflt");
+        assert_eq!(
+            missing,
+            vec![("test-bridge/p".to_string(), "unread".to_string())]
+        );
     }
 }

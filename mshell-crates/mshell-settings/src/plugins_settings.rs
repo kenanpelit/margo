@@ -989,7 +989,11 @@ fn build_settings_form(
         row.append(&col);
 
         let current = if s.is_secret() {
-            mshell_plugins::secrets::read(&p.key, &s.key).unwrap_or_default()
+            // Usually cached by the shell's background prefetch; only a
+            // secret it never needed costs a keyring read here.
+            mshell_plugins::secrets::cached(&p.key, &s.key)
+                .unwrap_or_else(|| mshell_plugins::secrets::read(&p.key, &s.key))
+                .unwrap_or_default()
         } else {
             state
                 .setting(&p.key, &s.key)

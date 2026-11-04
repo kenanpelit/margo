@@ -30,6 +30,9 @@ pub fn config_manager() -> &'static ConfigManager {
 impl ConfigManager {
     fn new() -> Self {
         info!("Creating new ConfigManager");
+        // Plugin secrets are read off-thread (see plugin_bridge); once they
+        // are in, re-derive the plugin widgets with the real values.
+        crate::plugin_bridge::on_secrets_loaded(|| config_manager().refresh_plugin_widgets());
         let mut active_profile = read_active_profile_from_cache();
         // Drop a stale cached name whose profile file no longer exists. The
         // cache lives in ~/.cache/mshell, so it survives a `~/.config/margo`
@@ -279,6 +282,17 @@ impl ConfigManager {
             self.config.patch(updated);
         } else {
             self.set_active_profile(Some(DEFAULT_PROFILE_NAME.to_string()));
+        }
+    }
+
+    /// Re-derive the plugin-widget layer on the live config (after plugin
+    /// secrets arrive from the keyring). No file I/O beyond the plugin
+    /// manifests; patches only on a real change.
+    pub fn refresh_plugin_widgets(&self) {
+        let mut cfg = self.config.read_untracked().clone();
+        crate::plugin_bridge::resync_plugin_widgets(&mut cfg);
+        if cfg != *self.config.read_untracked() {
+            self.config.patch(cfg);
         }
     }
 
