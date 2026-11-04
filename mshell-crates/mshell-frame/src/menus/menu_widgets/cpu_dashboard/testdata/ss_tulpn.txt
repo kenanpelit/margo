@@ -1,0 +1,44 @@
+udp UNCONN 0      0            0.0.0.0:40711 0.0.0.0:* users:(("chrome",pid=10689,fd=82))
+udp UNCONN 0      0            0.0.0.0:12355 0.0.0.0:* users:(("chrome",pid=10689,fd=100))
+udp UNCONN 0      0            0.0.0.0:46604 0.0.0.0:* users:(("chrome",pid=10689,fd=112))
+udp UNCONN 0      0            0.0.0.0:51413 0.0.0.0:* users:(("transmission-da",pid=1790,fd=18))
+udp UNCONN 0      0            0.0.0.0:23216 0.0.0.0:* users:(("transmission-da",pid=1790,fd=17))
+udp UNCONN 0      0            0.0.0.0:65214 0.0.0.0:*
+udp UNCONN 0      0         127.0.0.54:53    0.0.0.0:*
+udp UNCONN 0      0         127.0.0.53:53    0.0.0.0:*
+udp UNCONN 0      0        224.0.0.251:5353  0.0.0.0:* users:(("chrome",pid=5653,fd=545))
+udp UNCONN 0      0        224.0.0.251:5353  0.0.0.0:* users:(("chrome",pid=5653,fd=542))
+udp UNCONN 0      0        224.0.0.251:5353  0.0.0.0:* users:(("electron",pid=14028,fd=88))
+udp UNCONN 0      0        224.0.0.251:5353  0.0.0.0:* users:(("electron",pid=14028,fd=86))
+udp UNCONN 0      0        224.0.0.251:5353  0.0.0.0:* users:(("chrome",pid=10689,fd=52))
+udp UNCONN 0      0        224.0.0.251:5353  0.0.0.0:* users:(("chrome",pid=10689,fd=42))
+udp UNCONN 0      0            0.0.0.0:5353  0.0.0.0:*
+udp UNCONN 0      0            0.0.0.0:5353  0.0.0.0:*
+udp UNCONN 0      0            0.0.0.0:5355  0.0.0.0:*
+udp UNCONN 0      0            0.0.0.0:6771  0.0.0.0:* users:(("transmission-da",pid=1790,fd=19))
+udp UNCONN 0      0                  *:47523       *:* users:(("chrome",pid=10689,fd=92))
+udp UNCONN 0      0                  *:16545       *:* users:(("chrome",pid=10689,fd=101))
+udp UNCONN 0      0                  *:51413       *:* users:(("transmission-da",pid=1790,fd=20))
+udp UNCONN 0      0                  *:21414       *:* users:(("chrome",pid=10689,fd=113))
+udp UNCONN 0      0                  *:65214       *:*
+udp UNCONN 0      0                  *:1716        *:* users:(("valent",pid=12404,fd=12))
+udp UNCONN 0      0                  *:5353        *:*
+udp UNCONN 0      0                  *:5353        *:*
+udp UNCONN 0      0                  *:5355        *:*
+tcp LISTEN 0      128        127.0.0.1:8642  0.0.0.0:* users:(("hermes",pid=14374,fd=31))
+tcp LISTEN 0      2048       127.0.0.1:8787  0.0.0.0:* users:(("headroom",pid=1726,fd=15))
+tcp LISTEN 0      5            0.0.0.0:8443  0.0.0.0:* users:(("python3",pid=1724,fd=3))
+tcp LISTEN 0      128          0.0.0.0:9091  0.0.0.0:* users:(("transmission-da",pid=1790,fd=22))
+tcp LISTEN 0      8192      127.0.0.54:53    0.0.0.0:*
+tcp LISTEN 0      2048       127.0.0.1:36945 0.0.0.0:* users:(("hermes",pid=14374,fd=23))
+tcp LISTEN 0      5            0.0.0.0:6600  0.0.0.0:* users:(("mpd",pid=1766,fd=10))
+tcp LISTEN 0      511        127.0.0.1:6463  0.0.0.0:* users:(("Discord",pid=14208,fd=87))
+tcp LISTEN 0      8192         0.0.0.0:5355  0.0.0.0:*
+tcp LISTEN 0      8192   127.0.0.53%lo:53    0.0.0.0:*
+tcp LISTEN 0      8192         0.0.0.0:51413 0.0.0.0:* users:(("transmission-da",pid=1790,fd=14))
+tcp LISTEN 0      10                 *:1716        *:* users:(("valent",pid=12404,fd=11))
+tcp LISTEN 0      5                  *:8096        *:* users:(("python3",pid=1722,fd=3))
+tcp LISTEN 0      8192            [::]:5355     [::]:*
+tcp LISTEN 0      511            [::1]:5174     [::]:* users:(("node-MainThread",pid=1721,fd=21))
+tcp LISTEN 0      511            [::1]:5175     [::]:* users:(("node-MainThread",pid=1735,fd=22))
+tcp LISTEN 0      8192            [::]:51413    [::]:* users:(("transmission-da",pid=1790,fd=15))

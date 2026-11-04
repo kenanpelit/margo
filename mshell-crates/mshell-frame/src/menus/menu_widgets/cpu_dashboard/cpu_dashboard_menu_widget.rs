@@ -17,14 +17,15 @@
 //!
 //! The page above is the **Overview** tab; the other tabs are child
 //! components that poll only while the menu is open and their tab is
-//! visible (`sync_tabs`): **Processes** (`processes_tab.rs`), **Drives**
-//! (`drives_tab.rs`).
+//! visible (`sync_tabs`): **Processes** (`processes_tab.rs`), **Ports**
+//! (`ports_tab.rs`), **Drives** (`drives_tab.rs`).
 //!
 //! Severity classes (calm / warn / danger) come from the same
 //! thresholds the bar pill uses so the menu's tint reads the same
 //! signal at the same time.
 
 use super::drives_tab::{DrivesTabInput, DrivesTabModel};
+use super::ports_tab::{PortsTabInput, PortsTabModel};
 use super::processes_tab::{ProcessesTabInput, ProcessesTabModel};
 use crate::bars::bar_widgets::sysstat::{
     find_cpu_temp_sensor_pub, read_all_fans_pub, read_all_temp_sensors_pub, read_cpu_stat_pub,
@@ -176,6 +177,7 @@ pub(crate) struct CpuDashboardMenuWidgetModel {
     /// Visible tab name (`overview`, `processes`, …).
     tab: String,
     processes: Controller<ProcessesTabModel>,
+    ports: Controller<PortsTabModel>,
     drives: Controller<DrivesTabModel>,
 }
 
@@ -661,6 +663,7 @@ impl Component for CpuDashboardMenuWidgetModel {
             revealed: true,
             tab: "overview".to_string(),
             processes: ProcessesTabModel::builder().launch(()).detach(),
+            ports: PortsTabModel::builder().launch(()).detach(),
             drives: DrivesTabModel::builder().launch(()).detach(),
         };
 
@@ -668,6 +671,9 @@ impl Component for CpuDashboardMenuWidgetModel {
         widgets
             .stack
             .add_titled(model.processes.widget(), Some("processes"), "Processes");
+        widgets
+            .stack
+            .add_titled(model.ports.widget(), Some("ports"), "Ports");
         widgets
             .stack
             .add_titled(model.drives.widget(), Some("drives"), "Drives");
@@ -924,6 +930,9 @@ impl CpuDashboardMenuWidgetModel {
     fn sync_tabs(&self) {
         self.processes.emit(ProcessesTabInput::SetActive(
             self.revealed && self.tab == "processes",
+        ));
+        self.ports.emit(PortsTabInput::SetActive(
+            self.revealed && self.tab == "ports",
         ));
         self.drives.emit(DrivesTabInput::SetActive(
             self.revealed && self.tab == "drives",
