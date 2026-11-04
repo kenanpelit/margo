@@ -1,6 +1,9 @@
 use crate::bars::bar::BarType;
 use crate::bars::bar_widgets::margo_dock::{MargoDockInit, MargoDockModel, MargoDockOutput};
 use crate::menus::menu::{MenuModel, MenuOutput};
+use crate::menus::menu_widgets::agents::agents_menu_widget::{
+    AgentsMenuWidgetInit, AgentsMenuWidgetModel,
+};
 use crate::menus::menu_widgets::ai::ai_menu_widget::{AiMenuWidgetInit, AiMenuWidgetModel};
 use crate::menus::menu_widgets::alarm_clock::alarm_clock_menu_widget::{
     AlarmClockMenuWidgetInit, AlarmClockMenuWidgetModel,
@@ -364,6 +367,11 @@ pub fn build_widget(
                 .forward(sender.output_sender(), |msg| match msg {
                     SessionMenuWidgetOutput::CloseMenu => MenuOutput::CloseMenu,
                 }),
+        ),
+        MenuWidget::Agents => Box::new(
+            AgentsMenuWidgetModel::builder()
+                .launch(AgentsMenuWidgetInit {})
+                .detach(),
         ),
         MenuWidget::Podman => Box::new(
             PodmanMenuWidgetModel::builder()

@@ -482,6 +482,9 @@ impl IPCService {
     async fn podman(&self) -> fdo::Result<()> {
         self.send(IPCCommand::Podman)
     }
+    async fn agents(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Agents)
+    }
     async fn notes(&self) -> fdo::Result<()> {
         self.send(IPCCommand::Notes)
     }

@@ -205,6 +205,9 @@ pub(crate) enum ShellInput {
     ToggleDnsMenu(Option<String>),
     ToggleTranslateMenu(Option<String>),
     TogglePodmanMenu(Option<String>),
+    /// Toggle any uniform menu by id on a monitor (the generic form newer
+    /// menus use instead of a dedicated `Toggle*Menu` variant each).
+    ToggleMenu(MenuId, Option<String>),
     ToggleNotesMenu(Option<String>),
     /// Toggle an installed plugin's panel/menu by key (monitor, key). Generic
     /// — the frame resolves the key to the plugin's derived widget.
@@ -902,6 +905,11 @@ impl Component for Shell {
             ShellInput::ToggleTranslateMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
                     frame.emit(FrameInput::ToggleMenu(MenuId::Translate));
+                }
+            }
+            ShellInput::ToggleMenu(id, monitor_name) => {
+                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
+                    frame.emit(FrameInput::ToggleMenu(id));
                 }
             }
             ShellInput::TogglePodmanMenu(monitor_name) => {

@@ -286,6 +286,12 @@ _arguments "${_arguments_options[@]}" : \
 '--help[Print help]' \
 && ret=0
 ;;
+(agents)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
 (notes)
 _arguments "${_arguments_options[@]}" : \
 '-h[Print help]' \
@@ -584,6 +590,10 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (podman)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(agents)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -3524,6 +3534,10 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(agents)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (notes)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -5882,6 +5896,7 @@ _mshellctl__subcmd__help__subcmd__menu_commands() {
 'dns:Toggle the DNS / VPN menu (alias for \`vpn\`)' \
 'ai:Toggle the AI assistant chat menu' \
 'podman:Toggle the Podman menu' \
+'agents:Toggle the AI Agents menu' \
 'notes:Toggle the Notes Hub menu' \
 'ip:Toggle the Public IP menu' \
 'vpn-indicator:Toggle the generic-VPN detail menu (active OpenVPN / WireGuard tunnels)' \
@@ -5897,6 +5912,11 @@ _mshellctl__subcmd__help__subcmd__menu_commands() {
 'close-all:Close all open menus' \
     )
     _describe -t commands 'mshellctl help menu commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__menu__subcmd__agents_commands] )) ||
+_mshellctl__subcmd__help__subcmd__menu__subcmd__agents_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help menu agents commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__help__subcmd__menu__subcmd__ai_commands] )) ||
 _mshellctl__subcmd__help__subcmd__menu__subcmd__ai_commands() {
@@ -7119,6 +7139,7 @@ _mshellctl__subcmd__menu_commands() {
 'dns:Toggle the DNS / VPN menu (alias for \`vpn\`)' \
 'ai:Toggle the AI assistant chat menu' \
 'podman:Toggle the Podman menu' \
+'agents:Toggle the AI Agents menu' \
 'notes:Toggle the Notes Hub menu' \
 'ip:Toggle the Public IP menu' \
 'vpn-indicator:Toggle the generic-VPN detail menu (active OpenVPN / WireGuard tunnels)' \
@@ -7135,6 +7156,11 @@ _mshellctl__subcmd__menu_commands() {
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'mshellctl menu commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__menu__subcmd__agents_commands] )) ||
+_mshellctl__subcmd__menu__subcmd__agents_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl menu agents commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__menu__subcmd__ai_commands] )) ||
 _mshellctl__subcmd__menu__subcmd__ai_commands() {
@@ -7219,6 +7245,7 @@ _mshellctl__subcmd__menu__subcmd__help_commands() {
 'dns:Toggle the DNS / VPN menu (alias for \`vpn\`)' \
 'ai:Toggle the AI assistant chat menu' \
 'podman:Toggle the Podman menu' \
+'agents:Toggle the AI Agents menu' \
 'notes:Toggle the Notes Hub menu' \
 'ip:Toggle the Public IP menu' \
 'vpn-indicator:Toggle the generic-VPN detail menu (active OpenVPN / WireGuard tunnels)' \
@@ -7235,6 +7262,11 @@ _mshellctl__subcmd__menu__subcmd__help_commands() {
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'mshellctl menu help commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__menu__subcmd__help__subcmd__agents_commands] )) ||
+_mshellctl__subcmd__menu__subcmd__help__subcmd__agents_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl menu help agents commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__menu__subcmd__help__subcmd__ai_commands] )) ||
 _mshellctl__subcmd__menu__subcmd__help__subcmd__ai_commands() {

@@ -1,3 +1,4 @@
+mod agents;
 pub mod audio_inhibit;
 mod bars;
 mod common_widgets;

@@ -1,0 +1,82 @@
+@use "../02-functions/index" as *;
+// AI agents — bar pill + menu (plan limits, today's stats, live sessions).
+// Tokens only (DESIGN.md §1); the severity ladder is §2: warn = --warning,
+// danger = --error, calm inherits.
+
+.agents-menu-widget {
+  padding: 0;
+}
+
+.agents-menu-widget scrolledwindow {
+  background-color: transparent;
+}
+
+// ── Bar pill ──────────────────────────────────────────────────
+// Same cluster idiom as the CPU pill: tint label + image together, and
+// target them directly to win over `.ok-button-surface label`.
+.agents-bar-cluster {
+  label, image {
+    transition: color var(--motion-fast) var(--ease-standard);
+  }
+  &.warn label,
+  &.warn image {
+    color: var(--warning);
+  }
+  &.danger label,
+  &.danger image {
+    color: var(--error);
+  }
+  // Numbers kept from before a failed refresh read dimmed.
+  &.stale label {
+    opacity: 0.6;
+  }
+}
+
+.agents-bar-label {
+  font-size: var(--font-bar);
+  font-variant-numeric: tabular-nums;
+}
+
+.agents-bar-icon {
+  -gtk-icon-size: 14px;
+  opacity: 0.85;
+}
+
+// ── Limit window rows ─────────────────────────────────────────
+.agents-window-row.stale {
+  opacity: 0.6;
+}
+
+.agents-window-pct {
+  font-size: var(--font-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface);
+  &.warn { color: var(--warning); }
+  &.danger { color: var(--error); }
+}
+
+// Inset capsule, as the CPU dashboard bars.
+.agents-bar {
+  min-height: 6px;
+
+  trough {
+    min-height: 6px;
+    background-color: var(--surface-container-high);
+    border-radius: var(--radius-pill);
+    border: none;
+  }
+  progress {
+    min-height: 6px;
+    border-radius: var(--radius-pill);
+    background-color: var(--primary);
+    border: none;
+    transition: background-color var(--motion-medium) var(--ease-standard);
+  }
+  &.warn progress { background-color: var(--warning); }
+  &.danger progress { background-color: var(--error); }
+}
+
+.agents-stat-value {
+  font-variant-numeric: tabular-nums;
+}

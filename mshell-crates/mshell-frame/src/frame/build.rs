@@ -90,6 +90,7 @@ impl Frame {
                 BarOutput::AiClicked => FrameInput::ToggleMenu(MenuId::Ai),
                 BarOutput::DnsClicked => FrameInput::ToggleMenu(MenuId::Dns),
                 BarOutput::PodmanClicked => FrameInput::ToggleMenu(MenuId::Podman),
+                BarOutput::AgentsClicked => FrameInput::ToggleMenu(MenuId::Agents),
                 BarOutput::NotesClicked => FrameInput::ToggleMenu(MenuId::Notes),
                 BarOutput::PluginPanelClicked {
                     name,

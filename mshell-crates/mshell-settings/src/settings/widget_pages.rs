@@ -141,6 +141,12 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
             icon: "notes-symbolic",
         },
         WidgetEntry::Menu {
+            kind: MenuKind::Agents,
+            stack_name: "agents",
+            label: "AI Agents",
+            icon: "ai-agents-symbolic",
+        },
+        WidgetEntry::Menu {
             kind: MenuKind::Podman,
             stack_name: "podman",
             label: "Podman",

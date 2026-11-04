@@ -63,6 +63,7 @@ const NDNS_MENU: &str = "dns";
 const NVPN_MENU: &str = "vpn";
 const NAI_MENU: &str = "ai";
 const NPODMAN_MENU: &str = "podman";
+const NAGENTS_MENU: &str = "agents";
 const NNOTES_MENU: &str = "notes";
 const NPLUGIN_PANEL_MENU: &str = "plugin-panel";
 const NIP_MENU: &str = "ip";
@@ -768,6 +769,7 @@ impl Component for Frame {
             pos!(ufw_menu);
             pos!(dns_menu);
             pos!(podman_menu);
+            pos!(agents_menu);
             pos!(notes_menu);
             pos!(ip_menu);
             pos!(vpn_indicator_menu);
@@ -1140,6 +1142,7 @@ impl Component for Frame {
                     NAI_MENU,
                     NUFW_MENU,
                     NPODMAN_MENU,
+                    NAGENTS_MENU,
                     NNETWORK_MENU,
                 ] {
                     if let Some(menu) = self.menus.get(name) {

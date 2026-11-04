@@ -1,4 +1,5 @@
 use crate::bars::bar_widgets::active_window::{ActiveWindowInit, ActiveWindowModel};
+use crate::bars::bar_widgets::agents::{AgentsInit, AgentsModel};
 use crate::bars::bar_widgets::alarm_clock::{AlarmClockInit, AlarmClockModel};
 use crate::bars::bar_widgets::audio_visualizer::{AudioVisualizerInit, AudioVisualizerModel};
 use crate::bars::bar_widgets::bluetooth::{BluetoothInit, BluetoothModel};
@@ -236,6 +237,7 @@ pub(crate) enum BarOutput {
     AiClicked,
     DnsClicked,
     PodmanClicked,
+    AgentsClicked,
     NotesClicked,
     IpClicked,
     VpnIndicatorClicked,
@@ -1287,6 +1289,14 @@ impl BarModel {
                 |msg| match msg {
                     crate::bars::bar_widgets::notes::NotesOutput::Clicked => {
                         BarOutput::NotesClicked
+                    }
+                },
+            )),
+            BarWidget::Agents => Box::new(AgentsModel::builder().launch(AgentsInit {}).forward(
+                sender.output_sender(),
+                |msg| match msg {
+                    crate::bars::bar_widgets::agents::AgentsOutput::Clicked => {
+                        BarOutput::AgentsClicked
                     }
                 },
             )),

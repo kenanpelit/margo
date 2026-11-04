@@ -1,4 +1,7 @@
 use crate::menus::builder::build_widget;
+use crate::menus::menu_widgets::agents::agents_menu_widget::{
+    AgentsMenuWidgetInput, AgentsMenuWidgetModel,
+};
 use crate::menus::menu_widgets::ai::ai_menu_widget::{AiMenuWidgetInput, AiMenuWidgetModel};
 use crate::menus::menu_widgets::alarm_clock::alarm_clock_menu_widget::{
     AlarmClockMenuWidgetInput, AlarmClockMenuWidgetModel,
@@ -113,6 +116,7 @@ pub(crate) enum MenuType {
     Vpn,
     Ai,
     Podman,
+    Agents,
     Notes,
     Ip,
     VpnIndicator,
@@ -491,6 +495,12 @@ impl Component for MenuModel {
                 effect_widgets!(effects, base_config, sender, ai_menu);
                 effect_min_width!(effects, base_config, sender, ai_menu);
                 effect_max_height!(effects, base_config, sender, ai_menu);
+            }
+            MenuType::Agents => {
+                css_class = "agents-menu".to_string();
+                effect_widgets!(effects, base_config, sender, agents_menu);
+                effect_min_width!(effects, base_config, sender, agents_menu);
+                effect_max_height!(effects, base_config, sender, agents_menu);
             }
             MenuType::Podman => {
                 css_class = "podman-menu".to_string();
@@ -1004,6 +1014,14 @@ impl Component for MenuModel {
                         controller
                             .sender()
                             .send(UfwMenuWidgetInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<AgentsMenuWidgetModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(AgentsMenuWidgetInput::ParentRevealChanged(visible))
                             .ok();
                     }
                     if let Some(controller) =

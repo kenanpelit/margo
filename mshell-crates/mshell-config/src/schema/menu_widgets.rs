@@ -82,6 +82,8 @@ pub enum MenuWidget {
     Notes,
     Notifications,
     Podman,
+    /// AI agents pill — Claude Code / Codex plan limits with burn-rate forecast and today's local stats.
+    Agents,
     Power,
     /// `privacy` bar pill's panel — live "in use now" rows (mic /
     /// camera / screen-share + which apps) plus a clearable access
@@ -197,6 +199,7 @@ impl MenuWidget {
             MenuWidget::Notes => "Notes Hub",
             MenuWidget::Notifications => "Notifications",
             MenuWidget::Podman => "Podman",
+            MenuWidget::Agents => "AI Agents",
             MenuWidget::Power => "Power Profile",
             MenuWidget::Privacy => "Privacy",
             MenuWidget::OverviewIntel => "Overview Intelligence",
@@ -269,6 +272,7 @@ impl MenuWidget {
             MenuWidget::Notes,
             MenuWidget::Notifications,
             MenuWidget::Podman,
+            MenuWidget::Agents,
             MenuWidget::Power,
             MenuWidget::Privacy,
             MenuWidget::OverviewIntel,
