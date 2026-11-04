@@ -94,6 +94,11 @@ jobs:
         # Built on its own in the PKGBUILD too (its GStreamer/libadwaita stack).
         run: cargo build --locked -p mtune
 
+      - name: shell completions drift (gate)
+        # contrib/completions/ is clap output checked in for packagers;
+        # regenerate from the debug binaries just built and diff.
+        run: ./contrib/completions/generate.sh --check target/debug
+
       - name: cargo test
         # Tests cover every crate; feature unification in the test build
         # doesn't ship, so `--workspace` is fine here.

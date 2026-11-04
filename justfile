@@ -68,9 +68,9 @@ mtune:
     sudo gtk-update-icon-cache -qtf /usr/share/icons/hicolor || true
     @echo "mtune installed"
 
-# Regenerate the checked-in mctl + mshellctl shell completions (bash/zsh/fish)
-# from clap. Run after adding/renaming a subcommand or argument, then commit
-# contrib/completions/.
+# Regenerate the checked-in mctl + mshellctl + mdots shell completions
+# (bash/zsh/fish) from clap. Run after adding/renaming a subcommand or
+# argument, then commit contrib/completions/ (CI fails on drift).
 completions:
     ./contrib/completions/generate.sh
 

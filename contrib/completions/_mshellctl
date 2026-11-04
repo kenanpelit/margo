@@ -435,6 +435,12 @@ _arguments "${_arguments_options[@]}" : \
 ':key -- The plugin key (its id, or a widget key):_default' \
 && ret=0
 ;;
+(translate)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
 (close-all)
 _arguments "${_arguments_options[@]}" : \
 '-h[Print help]' \
@@ -654,6 +660,10 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (plugin)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(translate)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -2543,6 +2553,75 @@ esac
     ;;
 esac
 ;;
+(translate)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+":: :_mshellctl__subcmd__translate_commands" \
+"*::: :->translate" \
+&& ret=0
+
+    case $state in
+    (translate)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mshellctl-translate-command-$line[1]:"
+        case $line[1] in
+            (selection)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(clipboard)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(text)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+':text:_default' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_mshellctl__subcmd__translate__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mshellctl-translate-help-command-$line[1]:"
+        case $line[1] in
+            (selection)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(clipboard)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(text)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
 (toast)
 _arguments "${_arguments_options[@]}" : \
 '--icon=[Symbolic icon name (default\: dialog-information-symbolic)]:ICON:_default' \
@@ -3521,6 +3600,10 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(translate)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (close-all)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -4245,6 +4328,34 @@ _arguments "${_arguments_options[@]}" : \
     ;;
 esac
 ;;
+(translate)
+_arguments "${_arguments_options[@]}" : \
+":: :_mshellctl__subcmd__help__subcmd__translate_commands" \
+"*::: :->translate" \
+&& ret=0
+
+    case $state in
+    (translate)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mshellctl-help-translate-command-$line[1]:"
+        case $line[1] in
+            (selection)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(clipboard)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(text)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
 (toast)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -4573,6 +4684,7 @@ _mshellctl_commands() {
 'screenshot:Capture a screenshot — region / window / output / full, delivered to file + clipboard (or \`--copy\` / \`--save\` / \`--edit\`). Drives the shell'\''s own screenshot engine (same path as the screenshot menu)' \
 'screenrecord:Screen recording — start / stop / toggle. Drives the shell'\''s own recording engine (same as the screenshot menu'\''s recording section)' \
 'clipboard:Clipboard history — list / copy / pin / delete / clear / wipe. Drives the same store as \`mshellctl menu clipboard\`' \
+'translate:Headless translate\: select or copy text, run this (bind it to a keybind/gesture), get the result copied + toasted back. No menu panel involved — use \`mshellctl menu translate\` for manual entry' \
 'toast:Show a transient state-change toast — the \`notify-send\` equivalent for the toast surface. Ephemeral (no notification history); usable from scripts and startup services' \
 'gamemode:Game Mode — drop compositor effects, silence notifications, and keep the session awake while gaming. Configure what it affects in Settings → Game Mode' \
 'calendar:Calendar — today'\''s / upcoming events and connected accounts (proxied to the \`mcal\` calendar tool). \`calendar account setup google\` connects a Google account' \
@@ -5265,6 +5377,7 @@ _mshellctl__subcmd__help_commands() {
 'screenshot:Capture a screenshot — region / window / output / full, delivered to file + clipboard (or \`--copy\` / \`--save\` / \`--edit\`). Drives the shell'\''s own screenshot engine (same path as the screenshot menu)' \
 'screenrecord:Screen recording — start / stop / toggle. Drives the shell'\''s own recording engine (same as the screenshot menu'\''s recording section)' \
 'clipboard:Clipboard history — list / copy / pin / delete / clear / wipe. Drives the same store as \`mshellctl menu clipboard\`' \
+'translate:Headless translate\: select or copy text, run this (bind it to a keybind/gesture), get the result copied + toasted back. No menu panel involved — use \`mshellctl menu translate\` for manual entry' \
 'toast:Show a transient state-change toast — the \`notify-send\` equivalent for the toast surface. Ephemeral (no notification history); usable from scripts and startup services' \
 'gamemode:Game Mode — drop compositor effects, silence notifications, and keep the session awake while gaming. Configure what it affects in Settings → Game Mode' \
 'calendar:Calendar — today'\''s / upcoming events and connected accounts (proxied to the \`mcal\` calendar tool). \`calendar account setup google\` connects a Google account' \
@@ -5780,6 +5893,7 @@ _mshellctl__subcmd__help__subcmd__menu_commands() {
 'session:Toggle the session / power menu, or run a session action' \
 'mdash:Toggle the mdash dashboard menu — greeting header, calendar + weather, the quick-settings card stack, and a menu-shortcut grid' \
 'plugin:Toggle an installed plugin'\''s panel/menu by key — e.g. \`menu plugin assistant\` or \`menu plugin mullvad\`. Generic\: works for any plugin that ships a panel or a \`\[\[widget.menu\]\]\`, with no per-plugin code (the key matches the plugin id or a widget key)' \
+'translate:Toggle the Translate menu (manual language lookup; the select-or-copy + keybind flow is headless — see \`mshellctl translate\`)' \
 'close-all:Close all open menus' \
     )
     _describe -t commands 'mshellctl help menu commands' commands "$@"
@@ -5989,6 +6103,11 @@ _mshellctl__subcmd__help__subcmd__menu__subcmd__ssh-sessions_commands() {
 _mshellctl__subcmd__help__subcmd__menu__subcmd__system-update_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help menu system-update commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__menu__subcmd__translate_commands] )) ||
+_mshellctl__subcmd__help__subcmd__menu__subcmd__translate_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help menu translate commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__help__subcmd__menu__subcmd__twilight_commands] )) ||
 _mshellctl__subcmd__help__subcmd__menu__subcmd__twilight_commands() {
@@ -6551,6 +6670,30 @@ _mshellctl__subcmd__help__subcmd__toast_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help toast commands' commands "$@"
 }
+(( $+functions[_mshellctl__subcmd__help__subcmd__translate_commands] )) ||
+_mshellctl__subcmd__help__subcmd__translate_commands() {
+    local commands; commands=(
+'selection:Capture whichever of (primary selection, clipboard) was most recently set, translate it, copy the result, toast it' \
+'clipboard:Same, but only ever look at the regular clipboard' \
+'text:Skip capture — translate this string directly' \
+    )
+    _describe -t commands 'mshellctl help translate commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__translate__subcmd__clipboard_commands] )) ||
+_mshellctl__subcmd__help__subcmd__translate__subcmd__clipboard_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help translate clipboard commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__translate__subcmd__selection_commands] )) ||
+_mshellctl__subcmd__help__subcmd__translate__subcmd__selection_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help translate selection commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__translate__subcmd__text_commands] )) ||
+_mshellctl__subcmd__help__subcmd__translate__subcmd__text_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help translate text commands' commands "$@"
+}
 (( $+functions[_mshellctl__subcmd__help__subcmd__vpn_commands] )) ||
 _mshellctl__subcmd__help__subcmd__vpn_commands() {
     local commands; commands=(
@@ -6987,6 +7130,7 @@ _mshellctl__subcmd__menu_commands() {
 'session:Toggle the session / power menu, or run a session action' \
 'mdash:Toggle the mdash dashboard menu — greeting header, calendar + weather, the quick-settings card stack, and a menu-shortcut grid' \
 'plugin:Toggle an installed plugin'\''s panel/menu by key — e.g. \`menu plugin assistant\` or \`menu plugin mullvad\`. Generic\: works for any plugin that ships a panel or a \`\[\[widget.menu\]\]\`, with no per-plugin code (the key matches the plugin id or a widget key)' \
+'translate:Toggle the Translate menu (manual language lookup; the select-or-copy + keybind flow is headless — see \`mshellctl translate\`)' \
 'close-all:Close all open menus' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
@@ -7086,6 +7230,7 @@ _mshellctl__subcmd__menu__subcmd__help_commands() {
 'session:Toggle the session / power menu, or run a session action' \
 'mdash:Toggle the mdash dashboard menu — greeting header, calendar + weather, the quick-settings card stack, and a menu-shortcut grid' \
 'plugin:Toggle an installed plugin'\''s panel/menu by key — e.g. \`menu plugin assistant\` or \`menu plugin mullvad\`. Generic\: works for any plugin that ships a panel or a \`\[\[widget.menu\]\]\`, with no per-plugin code (the key matches the plugin id or a widget key)' \
+'translate:Toggle the Translate menu (manual language lookup; the select-or-copy + keybind flow is headless — see \`mshellctl translate\`)' \
 'close-all:Close all open menus' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
@@ -7301,6 +7446,11 @@ _mshellctl__subcmd__menu__subcmd__help__subcmd__ssh-sessions_commands() {
 _mshellctl__subcmd__menu__subcmd__help__subcmd__system-update_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl menu help system-update commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__menu__subcmd__help__subcmd__translate_commands] )) ||
+_mshellctl__subcmd__menu__subcmd__help__subcmd__translate_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl menu help translate commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__menu__subcmd__help__subcmd__twilight_commands] )) ||
 _mshellctl__subcmd__menu__subcmd__help__subcmd__twilight_commands() {
@@ -7567,6 +7717,11 @@ _mshellctl__subcmd__menu__subcmd__ssh-sessions_commands() {
 _mshellctl__subcmd__menu__subcmd__system-update_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl menu system-update commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__menu__subcmd__translate_commands] )) ||
+_mshellctl__subcmd__menu__subcmd__translate_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl menu translate commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__menu__subcmd__twilight_commands] )) ||
 _mshellctl__subcmd__menu__subcmd__twilight_commands() {
@@ -8741,6 +8896,61 @@ _mshellctl__subcmd__theme__subcmd__set_commands() {
 _mshellctl__subcmd__toast_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl toast commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__translate_commands] )) ||
+_mshellctl__subcmd__translate_commands() {
+    local commands; commands=(
+'selection:Capture whichever of (primary selection, clipboard) was most recently set, translate it, copy the result, toast it' \
+'clipboard:Same, but only ever look at the regular clipboard' \
+'text:Skip capture — translate this string directly' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mshellctl translate commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__translate__subcmd__clipboard_commands] )) ||
+_mshellctl__subcmd__translate__subcmd__clipboard_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl translate clipboard commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__translate__subcmd__help_commands] )) ||
+_mshellctl__subcmd__translate__subcmd__help_commands() {
+    local commands; commands=(
+'selection:Capture whichever of (primary selection, clipboard) was most recently set, translate it, copy the result, toast it' \
+'clipboard:Same, but only ever look at the regular clipboard' \
+'text:Skip capture — translate this string directly' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mshellctl translate help commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__translate__subcmd__help__subcmd__clipboard_commands] )) ||
+_mshellctl__subcmd__translate__subcmd__help__subcmd__clipboard_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl translate help clipboard commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__translate__subcmd__help__subcmd__help_commands] )) ||
+_mshellctl__subcmd__translate__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl translate help help commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__translate__subcmd__help__subcmd__selection_commands] )) ||
+_mshellctl__subcmd__translate__subcmd__help__subcmd__selection_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl translate help selection commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__translate__subcmd__help__subcmd__text_commands] )) ||
+_mshellctl__subcmd__translate__subcmd__help__subcmd__text_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl translate help text commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__translate__subcmd__selection_commands] )) ||
+_mshellctl__subcmd__translate__subcmd__selection_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl translate selection commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__translate__subcmd__text_commands] )) ||
+_mshellctl__subcmd__translate__subcmd__text_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl translate text commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__vpn_commands] )) ||
 _mshellctl__subcmd__vpn_commands() {
