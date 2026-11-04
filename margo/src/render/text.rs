@@ -268,3 +268,56 @@ fn fit_text(font: &Font, text: &str, px: f32, max_w: f32) -> String {
     out.push('…');
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// fontdue's glyph tables (char -> glyph id, kerning) are hash maps; these
+    /// lookups are what every label goes through. Skipped on a host with no
+    /// font under /usr/share/fonts (labels are disabled there anyway).
+    #[test]
+    fn labels_measure_fit_and_rasterise() {
+        let Some(font) = font() else {
+            eprintln!("no font under /usr/share/fonts; skipping");
+            return;
+        };
+        let px = 14.0;
+        for ch in ('!'..='~').chain(['…', 'ç', 'ş', 'ğ', 'ı', 'ö', 'ü']) {
+            assert_ne!(font.lookup_glyph_index(ch), 0, "{ch:?} has no glyph");
+        }
+
+        // Short text is kept as is and measures as the sum of its advances.
+        let w = label_width("Firefox", 14, 1000).unwrap();
+        let sum: f32 = "Firefox"
+            .chars()
+            .map(|c| font.metrics(c, px).advance_width)
+            .sum();
+        assert_eq!(w, sum.ceil() as i32);
+        assert_eq!(fit_text(font, "Firefox", px, 1000.0), "Firefox");
+
+        // Long text is cut with an ellipsis and fits.
+        let long = "A very long window title that cannot fit in a tab chip";
+        let fitted = fit_text(font, long, px, 120.0);
+        assert!(
+            fitted.ends_with('…') && fitted.len() < long.len(),
+            "{fitted}"
+        );
+        assert!(label_width(long, 14, 120).unwrap() <= 120);
+
+        // Rasterising draws something for visible glyphs and nothing for a space.
+        let (m, bitmap) = font.rasterize('W', px);
+        assert!(m.width > 0 && bitmap.iter().any(|&c| c > 0));
+        let (_, space) = font.rasterize(' ', px);
+        assert!(space.iter().all(|&c| c == 0));
+
+        // Coverage checksum over a mixed string, for comparing fontdue builds.
+        let checksum: u64 = "Terminal — ~/repo ç ş ğ"
+            .chars()
+            .flat_map(|c| font.rasterize(c, px).1)
+            .map(u64::from)
+            .sum();
+        eprintln!("coverage checksum {checksum}");
+        assert!(checksum > 0);
+    }
+}
