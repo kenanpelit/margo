@@ -47,7 +47,7 @@ parameter and use YAML tag syntax:
 | `AudioVisualizer` | Audio Visualizer | Live audio spectrum — a strip of bars driven by the `cava` CLI. Pulses with whatever is playing; flat strip on silence. Needs `cava` installed. |
 | `Catwalk` | Catwalk | A CPU-reactive animated cat (noctalia / RunCat sprites). Idles below a CPU threshold, walks faster as load climbs. Click opens the CPU dashboard. |
 | `Weather` | Weather | Current condition icon + temperature for the configured location. Click opens the Current / Hourly / Daily weather menu. Location is set in Settings → General. |
-| `SystemUpdate` | System Updates | Count of pending updates across official repo / AUR / Flatpak. Click opens the package list; right-click re-probes. Sources + interval in Settings → System Updates. |
+| `SystemUpdate` | System Updates | Count of pending updates across official repo / AUR / Flatpak. Click opens the package list; right-click re-probes. The panel flags Arch news posts published since the last full upgrade and asks you to read them before **Update** runs (`check_news`). Sources + interval in Settings → System Updates. |
 | `Podman` | Podman | Running containers / pods / images summary from `podman ps`. Click opens the Podman menu. |
 | `SshSessions` | SSH Sessions | Live count of active `ssh` clients. Click opens a searchable host list from `~/.ssh/config` (click a host to connect in a new terminal); right-click re-polls. |
 | `Power` | Power Profile | Active power profile (performance / balanced / power-saver) + battery / power source, from power-profiles-daemon + UPower. Click opens the profile switcher panel. |

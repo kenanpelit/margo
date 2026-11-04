@@ -7,6 +7,8 @@
 //! flatpak). On non-Arch systems the repo source degrades to a
 //! count-only probe via dnf / apt (no per-package versions).
 
+pub(crate) mod news;
+
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
     BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, SystemUpdateBarWidgetStoreFields,

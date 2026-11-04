@@ -4,8 +4,14 @@
 //! Flatpak), each row showing `name  old → new`, plus Refresh and
 //! Update buttons. Probing lives in [`crate::system_update`].
 
+use crate::system_update::news::{self, NewsItem};
 use crate::system_update::{self, ProbeConfig, Source, UpdateReport};
 use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{
+    BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, SystemUpdateBarWidgetStoreFields,
+};
+use mshell_process::SpawnReaped;
+use reactive_graph::traits::GetUntracked;
 use relm4::gtk::glib;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -18,6 +24,12 @@ pub(crate) struct SystemUpdateMenuWidgetModel {
     /// the source switches; the change persists to config and
     /// triggers a re-probe.
     sources: ProbeConfig,
+    /// Arch news posts published since the last full upgrade (empty
+    /// when the feed is off, unreachable, or everything is read).
+    news: Vec<NewsItem>,
+    /// Update was pressed while news was unread: the news card is
+    /// raised and the button now reads "Upgrade anyway".
+    news_confirm: bool,
 }
 
 #[derive(Debug)]
@@ -34,6 +46,10 @@ pub(crate) enum SystemUpdateMenuWidgetInput {
     /// helper (and its sudo) runs when the user opens the panel, not
     /// on every shell start.
     ParentRevealChanged(bool),
+    /// Mark every fetched news post read (hides the card).
+    MarkNewsRead,
+    /// Open a news post (or the news page) in the browser.
+    OpenUrl(String),
 }
 
 #[derive(Debug)]
@@ -46,6 +62,9 @@ pub(crate) struct SystemUpdateMenuWidgetInit {}
 #[derive(Debug)]
 pub(crate) enum SystemUpdateMenuWidgetCommandOutput {
     Loaded(UpdateReport),
+    /// Unread Arch news (empty on a fetch error — the heads-up is
+    /// advisory, a failed fetch must not block the upgrade).
+    News(Vec<NewsItem>),
 }
 
 #[relm4::component(pub(crate))]
@@ -104,6 +123,50 @@ impl Component for SystemUpdateMenuWidgetModel {
                 set_visible: model.report.as_ref().is_some_and(|r| !r.is_empty()),
                 #[watch]
                 set_label: &summary_line(model.report.as_ref()),
+            },
+
+            // Arch news heads-up — posts since the last full upgrade.
+            // Raised to the warn tier when Update is pressed with
+            // unread posts (DESIGN.md §2), so they are read first.
+            gtk::Box {
+                #[watch]
+                set_css_classes: &news_card_classes(model.news_confirm),
+                set_orientation: gtk::Orientation::Vertical,
+                set_spacing: 6,
+                #[watch]
+                set_visible: !model.news.is_empty(),
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 8,
+                    gtk::Image {
+                        add_css_class: "system-update-news-icon",
+                        set_icon_name: Some("dialog-information-symbolic"),
+                    },
+                    gtk::Label {
+                        add_css_class: "label-medium-bold",
+                        set_hexpand: true,
+                        set_xalign: 0.0,
+                        set_wrap: true,
+                        #[watch]
+                        set_label: &news_title(model.news.len(), model.news_confirm),
+                    },
+                    gtk::Button {
+                        add_css_class: "ok-button-flat",
+                        set_valign: gtk::Align::Center,
+                        set_label: "Mark read",
+                        connect_clicked[sender] => move |_| {
+                            sender.input(SystemUpdateMenuWidgetInput::MarkNewsRead);
+                        },
+                    },
+                },
+
+                #[name = "news_list"]
+                gtk::Box {
+                    add_css_class: "ok-boxed-list",
+                    add_css_class: "compact",
+                    set_orientation: gtk::Orientation::Vertical,
+                },
             },
 
             // Source toggles — enable / disable each probe source
@@ -184,7 +247,10 @@ impl Component for SystemUpdateMenuWidgetModel {
                     set_spacing: 6,
                     set_halign: gtk::Align::Center,
                     gtk::Image { set_icon_name: Some("software-update-available-symbolic") },
-                    gtk::Label { set_label: "Update everything" },
+                    gtk::Label {
+                        #[watch]
+                        set_label: update_label(model.news_confirm),
+                    },
                 },
             },
         }
@@ -205,6 +271,8 @@ impl Component for SystemUpdateMenuWidgetModel {
             report: system_update::load_cache().map(|(_, report)| report),
             refreshing: false,
             sources: ProbeConfig::from_config(),
+            news: Vec::new(),
+            news_confirm: false,
         };
         let widgets = view_output!();
         ComponentParts { model, widgets }
@@ -230,9 +298,35 @@ impl Component for SystemUpdateMenuWidgetModel {
                 // build/startup). Hidden → nothing.
                 if visible {
                     sender.input(SystemUpdateMenuWidgetInput::Refresh);
+                    if news_enabled() {
+                        sender.oneshot_command(async {
+                            SystemUpdateMenuWidgetCommandOutput::News(
+                                news::unread_now().await.unwrap_or_default(),
+                            )
+                        });
+                    }
+                } else {
+                    self.news_confirm = false;
                 }
             }
+            SystemUpdateMenuWidgetInput::Update if !self.news.is_empty() && !self.news_confirm => {
+                // Heads-up: the first press with unread news only
+                // raises the card; the second press upgrades.
+                self.news_confirm = true;
+            }
+            SystemUpdateMenuWidgetInput::MarkNewsRead => {
+                news::mark_read(chrono::Utc::now().timestamp());
+                self.news.clear();
+                self.news_confirm = false;
+                rebuild_news(&widgets.news_list, &self.news, &sender);
+            }
+            SystemUpdateMenuWidgetInput::OpenUrl(url) => {
+                let _ = std::process::Command::new("xdg-open")
+                    .arg(url)
+                    .spawn_reaped();
+            }
             SystemUpdateMenuWidgetInput::Update => {
+                self.news_confirm = false;
                 relm4::spawn(async {
                     system_update::launch_terminal_upgrade(ProbeConfig::from_config()).await;
                 });
@@ -278,8 +372,77 @@ impl Component for SystemUpdateMenuWidgetModel {
                 rebuild_list(&widgets.list, &report);
                 self.report = Some(report);
             }
+            SystemUpdateMenuWidgetCommandOutput::News(items) => {
+                rebuild_news(&widgets.news_list, &items, &sender);
+                self.news = items;
+            }
         }
         self.update_view(widgets, sender);
+    }
+}
+
+fn news_enabled() -> bool {
+    config_manager()
+        .config()
+        .bars()
+        .widgets()
+        .system_update()
+        .check_news()
+        .get_untracked()
+}
+
+fn news_card_classes(confirm: bool) -> Vec<&'static str> {
+    if confirm {
+        vec!["system-update-news", "warn"]
+    } else {
+        vec!["system-update-news"]
+    }
+}
+
+fn news_title(n: usize, confirm: bool) -> String {
+    let posts = if n == 1 { "post" } else { "posts" };
+    if confirm {
+        format!("Read {n} Arch news {posts} before upgrading")
+    } else {
+        format!("{n} Arch news {posts} since your last upgrade")
+    }
+}
+
+fn update_label(confirm: bool) -> &'static str {
+    if confirm {
+        "Upgrade anyway"
+    } else {
+        "Update everything"
+    }
+}
+
+/// One row per unread post: the title, opening the post on click.
+fn rebuild_news(
+    list: &gtk::Box,
+    items: &[NewsItem],
+    sender: &ComponentSender<SystemUpdateMenuWidgetModel>,
+) {
+    while let Some(child) = list.first_child() {
+        list.remove(&child);
+    }
+    for item in items {
+        let label = gtk::Label::builder()
+            .label(&item.title)
+            .xalign(0.0)
+            .wrap(true)
+            .build();
+        label.add_css_class("label-small");
+        let row = gtk::Button::builder().child(&label).build();
+        row.add_css_class("ok-button-flat");
+        row.set_tooltip_text(Some("Open in the browser"));
+        let url = if item.link.is_empty() {
+            news::NEWS_PAGE.to_string()
+        } else {
+            item.link.clone()
+        };
+        let s = sender.clone();
+        row.connect_clicked(move |_| s.input(SystemUpdateMenuWidgetInput::OpenUrl(url.clone())));
+        list.append(&row);
     }
 }
 

@@ -429,6 +429,9 @@ pub struct SystemUpdateBarWidget {
     pub check_aur: bool,
     /// Count Flatpak updates (`flatpak remote-ls --updates`).
     pub check_flatpak: bool,
+    /// Fetch the Arch Linux news feed when the panel opens and flag
+    /// posts published since the last full upgrade before upgrading.
+    pub check_news: bool,
 }
 
 impl Default for SystemUpdateBarWidget {
@@ -438,6 +441,7 @@ impl Default for SystemUpdateBarWidget {
             check_repo: true,
             check_aur: true,
             check_flatpak: true,
+            check_news: true,
         }
     }
 }

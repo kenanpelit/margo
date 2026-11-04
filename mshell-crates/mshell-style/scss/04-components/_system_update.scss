@@ -89,3 +89,21 @@
   font-variant-numeric: tabular-nums;
   color: var(--on-surface-variant);
 }
+
+// Arch news heads-up card — a --surface-container card above the
+// list; `.warn` (Update pressed with unread posts) escalates the
+// title + icon to the §2 warn tier instead of blocking the upgrade.
+.system-update-news {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container);
+
+  .system-update-news-icon {
+    color: var(--on-surface-variant);
+  }
+
+  &.warn .system-update-news-icon,
+  &.warn > box > label {
+    color: var(--warning);
+  }
+}

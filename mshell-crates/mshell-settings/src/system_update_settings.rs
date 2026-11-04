@@ -32,6 +32,7 @@ pub(crate) enum SystemUpdateSettingsInput {
     SetCheckRepo(bool),
     SetCheckAur(bool),
     SetCheckFlatpak(bool),
+    SetCheckNews(bool),
 }
 
 #[derive(Debug)]
@@ -226,6 +227,22 @@ impl Component for SystemUpdateSettingsModel {
                             },
                         },
                     },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/bars/widgets/system_update/check_news",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Label { set_label: "Arch news heads-up before upgrading", set_hexpand: true, set_halign: gtk::Align::Start },
+                        #[name = "su_news"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            connect_state_set[sender] => move |_, state| {
+                                sender.input(SystemUpdateSettingsInput::SetCheckNews(state));
+                                glib::Propagation::Proceed
+                            },
+                        },
+                    },
                 },
             },
         }
@@ -261,6 +278,7 @@ impl Component for SystemUpdateSettingsModel {
         widgets.su_repo.set_active(su.check_repo);
         widgets.su_aur.set_active(su.check_aur);
         widgets.su_flatpak.set_active(su.check_flatpak);
+        widgets.su_news.set_active(su.check_news);
 
         let _ = root;
         ComponentParts { model, widgets }
@@ -295,6 +313,9 @@ impl Component for SystemUpdateSettingsModel {
             }
             SystemUpdateSettingsInput::SetCheckFlatpak(on) => {
                 config_manager().update_config(|c| c.bars.widgets.system_update.check_flatpak = on);
+            }
+            SystemUpdateSettingsInput::SetCheckNews(on) => {
+                config_manager().update_config(|c| c.bars.widgets.system_update.check_news = on);
             }
         }
     }
