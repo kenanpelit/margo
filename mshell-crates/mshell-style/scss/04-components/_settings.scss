@@ -658,6 +658,12 @@
     &:hover {
         background-color: unquote("color-mix(in srgb, var(--primary) 18%, var(--surface-container-highest))");
     }
+
+    // Settings → Monitors: the display whose controls are shown below.
+    &.selected {
+        border-color: var(--primary);
+        background-color: unquote("color-mix(in srgb, var(--primary) 12%, var(--surface-container-highest))");
+    }
 }
 
 // Settings → Launcher: one editable script row (name + edit + trash).

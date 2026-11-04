@@ -65,6 +65,7 @@ mod mdash_buttons_settings;
 mod media_player_settings;
 mod menu_settings;
 mod mlogind_conf;
+mod monitors_arrange;
 mod monitors_settings;
 mod net;
 mod network_settings;
