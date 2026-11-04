@@ -139,26 +139,100 @@ pub struct Keybind {
 /// Replace every `{{key}}` in `template` with its value from `values`.
 /// Unknown placeholders are left untouched.
 ///
-/// SECURITY: this is a raw, unescaped string substitution, and its result
-/// (a widget's `exec`/`on_click`/menu-row `exec`) is run through `sh -c`
-/// by the shell's custom-widget engine (`mshell-frame`'s `custom.rs`). A
-/// value that contains shell metacharacters (`;`, `` ` ``, `$(...)`, an
-/// unbalanced quote, a newline) is interpreted BY THE SHELL wherever the
-/// template author placed `{{key}}` outside their own quoting — including
-/// values sourced from the system keyring for `type = "secret"` settings
-/// (see `plugin_bridge::setting_values`), which the user doesn't get to
-/// pre-sanitize the way they might a plain text setting. There's no safe
-/// place to auto-quote here: a value substituted *inside* a template
-/// author's own `'...'` would become double-quoted and break, so this
-/// stays raw. Plugin manifests should wrap every `{{placeholder}}` in
-/// their own single quotes in `exec`/`on_click` strings, and settings
-/// (secret or not) that a plugin then feeds to `sh -c` should be treated
-/// as the plugin's own trust boundary, not the shell's.
+/// SECURITY: this is a raw, unescaped string substitution. Use it for text
+/// that is displayed (labels, tooltips), never for a command: commands go
+/// through [`substitute_command`], which keeps `type = "secret"` values out
+/// of the command line. A plain value that contains shell metacharacters is
+/// still interpreted by the shell wherever the template author placed
+/// `{{key}}` outside their own quoting.
 pub fn substitute(template: &str, values: &std::collections::BTreeMap<String, String>) -> String {
     let mut out = template.to_string();
     for (k, v) in values {
         let placeholder = ["{{", k.as_str(), "}}"].concat();
         out = out.replace(&placeholder, v);
+    }
+    out
+}
+
+/// The environment variable a secret setting reaches a plugin command
+/// through: `MPLUGIN_SECRET_<KEY>`, the key upper-cased with every character
+/// outside `[A-Z0-9_]` turned into `_`.
+pub fn secret_env_var(setting_key: &str) -> String {
+    let mut var = String::from("MPLUGIN_SECRET_");
+    var.extend(setting_key.chars().map(|c| {
+        let c = c.to_ascii_uppercase();
+        if c.is_ascii_alphanumeric() || c == '_' {
+            c
+        } else {
+            '_'
+        }
+    }));
+    var
+}
+
+/// [`substitute`] for a command the shell runs with `sh -c`.
+///
+/// Plain settings are substituted raw, as before. A secret setting (a key in
+/// `secrets`) is NOT put into the text: `/proc/<pid>/cmdline` of the
+/// `sh -c` (and of every poll) is world-readable. Its placeholder becomes a
+/// reference to [`secret_env_var`] instead, which the runner exports to the
+/// child (`/proc/<pid>/environ` is owner-only). The reference is quoted for
+/// where the placeholder sits in the template's own shell quoting, so it
+/// expands as one word unquoted, inside `"…"` and inside `'…'` alike.
+pub fn substitute_command(
+    template: &str,
+    values: &std::collections::BTreeMap<String, String>,
+    secrets: &[String],
+) -> String {
+    #[derive(Clone, Copy, PartialEq)]
+    enum Quote {
+        None,
+        Single,
+        Double,
+    }
+    let mut out = String::with_capacity(template.len());
+    let mut quote = Quote::None;
+    let mut rest = template;
+    while let Some(c) = rest.chars().next() {
+        if let Some(after) = rest.strip_prefix("{{")
+            && let Some(end) = after.find("}}")
+        {
+            let key = &after[..end];
+            if secrets.iter().any(|s| s == key) {
+                let var = secret_env_var(key);
+                match quote {
+                    Quote::None => out.push_str(&format!("\"${{{var}}}\"")),
+                    Quote::Double => out.push_str(&format!("${{{var}}}")),
+                    Quote::Single => out.push_str(&format!("'\"${{{var}}}\"'")),
+                }
+                rest = &after[end + 2..];
+                continue;
+            }
+            if let Some(v) = values.get(key) {
+                out.push_str(v);
+                rest = &after[end + 2..];
+                continue;
+            }
+        }
+        match (c, quote) {
+            ('\'', Quote::None) => quote = Quote::Single,
+            ('\'', Quote::Single) => quote = Quote::None,
+            ('"', Quote::None) => quote = Quote::Double,
+            ('"', Quote::Double) => quote = Quote::None,
+            ('\\', Quote::None | Quote::Double) => {
+                // An escaped character never changes the quoting.
+                out.push(c);
+                rest = &rest[1..];
+                if let Some(next) = rest.chars().next() {
+                    out.push(next);
+                    rest = &rest[next.len_utf8()..];
+                }
+                continue;
+            }
+            _ => {}
+        }
+        out.push(c);
+        rest = &rest[c.len_utf8()..];
     }
     out
 }
@@ -553,6 +627,74 @@ opens_panel = true
         );
         // Unknown placeholders are left intact.
         assert_eq!(substitute("x {{nope}} y", &v), "x {{nope}} y");
+    }
+
+    /// A secret never appears in the command text; it is referenced through
+    /// its env var, quoted so it expands wherever the author put it.
+    #[test]
+    fn secrets_stay_out_of_the_command_line() {
+        let mut v = std::collections::BTreeMap::new();
+        v.insert("api_key".to_string(), "sk-SECRET".to_string());
+        v.insert("model".to_string(), "flash".to_string());
+        v.insert("plugin_dir".to_string(), "/p".to_string());
+        let secrets = vec!["api_key".to_string()];
+        let cases = [
+            (
+                "env GEMINI_API_KEY={{api_key}} sh {{plugin_dir}}/chat.sh {{model}}",
+                "env GEMINI_API_KEY=\"${MPLUGIN_SECRET_API_KEY}\" sh /p/chat.sh flash",
+            ),
+            (
+                "curl -H \"Authorization: Bearer {{api_key}}\" x",
+                "curl -H \"Authorization: Bearer ${MPLUGIN_SECRET_API_KEY}\" x",
+            ),
+            (
+                "curl -H 'Authorization: Bearer {{api_key}}' x",
+                "curl -H 'Authorization: Bearer '\"${MPLUGIN_SECRET_API_KEY}\"'' x",
+            ),
+            // An escaped quote doesn't open a quoted span.
+            (
+                "echo \\' {{api_key}}",
+                "echo \\' \"${MPLUGIN_SECRET_API_KEY}\"",
+            ),
+            ("x {{nope}} y", "x {{nope}} y"),
+        ];
+        for (template, want) in cases {
+            let got = substitute_command(template, &v, &secrets);
+            assert_eq!(got, want, "{template}");
+            assert!(!got.contains("sk-SECRET"), "{got}");
+        }
+    }
+
+    /// What the runner's `sh -c` does with the substituted text: the secret
+    /// (from the environment) comes out as one word in every quoting.
+    #[test]
+    fn secret_reference_expands_in_sh() {
+        let v = std::collections::BTreeMap::new();
+        let secrets = vec!["k".to_string()];
+        for template in [
+            "printf %s {{k}}",
+            "printf %s \"<{{k}}>\"",
+            "printf %s '<{{k}}>'",
+        ] {
+            let cmd = substitute_command(template, &v, &secrets);
+            let out = std::process::Command::new("sh")
+                .arg("-c")
+                .arg(&cmd)
+                .env(secret_env_var("k"), "a b$c")
+                .output()
+                .unwrap();
+            let got = String::from_utf8(out.stdout).unwrap();
+            assert!(
+                got == "a b$c" || got == "<a b$c>",
+                "{template} -> {cmd} -> {got:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn secret_env_var_names_are_shell_safe() {
+        assert_eq!(secret_env_var("api_key"), "MPLUGIN_SECRET_API_KEY");
+        assert_eq!(secret_env_var("open-ai.key"), "MPLUGIN_SECRET_OPEN_AI_KEY");
     }
 
     #[test]

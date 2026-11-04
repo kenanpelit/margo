@@ -8,7 +8,7 @@
 //!
 //! `pub(super)` because `Frame`'s own methods (the parent module) call these;
 //! kept as a child module so `Self`, `Frame`'s fields, the free helpers
-//! (`plugin_key_from_widget`, `position_from_kebab`, `run_plugin_cmd`) and
+//! (`plugin_key_from_widget`, `position_from_kebab`) and
 //! every imported type resolve through `use super::*`.
 
 use super::*;
@@ -226,9 +226,10 @@ impl Frame {
             hb.append(&lbl);
             btn.set_child(Some(&hb));
             let cmd = row.exec.clone();
+            let env = row.secret_env.clone();
             let sender = sender.clone();
             btn.connect_clicked(move |_| {
-                run_plugin_cmd(&cmd);
+                crate::plugin_cmd::run_detached(&cmd, &env);
                 sender.input(FrameInput::CloseMenus);
             });
             list.append(&btn);

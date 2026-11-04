@@ -1236,6 +1236,22 @@ pub struct CustomWidgetConfig {
     /// plugin-menu surface on open). 0 = use the surface default.
     pub panel_min_width: i32,
     pub panel_max_height: i32,
+    /// Secret settings the commands above reference as `${MPLUGIN_SECRET_*}`
+    /// (plugin-derived widgets only). The runner reads each from the keyring
+    /// and exports it to the child, so a secret is never in a command line.
+    pub secret_env: Vec<PluginSecretEnv>,
+}
+
+/// One secret a plugin command needs in its environment: `var` is filled
+/// from the keyring entry of setting `key` of plugin `plugin`.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize, Store, Patch, JsonSchema,
+)]
+#[serde(default)]
+pub struct PluginSecretEnv {
+    pub var: String,
+    pub plugin: String,
+    pub key: String,
 }
 
 /// One row of a custom widget's dropdown menu: an icon + label that runs a
@@ -1250,6 +1266,8 @@ pub struct CustomMenuRow {
     pub exec: String,
     /// Severity tint for the row (`"danger"` = destructive), per DESIGN.md.
     pub severity: String,
+    /// Secrets `exec` references (see [`CustomWidgetConfig::secret_env`]).
+    pub secret_env: Vec<PluginSecretEnv>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]

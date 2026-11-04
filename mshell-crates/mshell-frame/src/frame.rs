@@ -2280,22 +2280,6 @@ fn position_from_kebab(s: &str) -> Position {
     }
 }
 
-/// Fire-and-forget a plugin menu row's `sh -c` command (reaped to avoid
-/// zombies).
-fn run_plugin_cmd(cmd: &str) {
-    let cmd = cmd.trim().to_string();
-    if cmd.is_empty() {
-        return;
-    }
-    relm4::spawn(async move {
-        let _ = tokio::process::Command::new("sh")
-            .arg("-c")
-            .arg(&cmd)
-            .status()
-            .await;
-    });
-}
-
 impl Drop for Frame {
     fn drop(&mut self) {
         self.top_spacer.widget().destroy();

@@ -16,7 +16,7 @@ pub mod state;
 
 pub use manifest::{
     Keybind, Manifest, MenuRow, Registry, RegistryEntry, Setting, WidgetDef, is_newer,
-    meets_min_mshell, substitute, validate,
+    meets_min_mshell, secret_env_var, substitute, substitute_command, validate,
 };
 pub use state::{PanelLayout, PluginsState, Source};
 

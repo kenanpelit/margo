@@ -6,6 +6,7 @@
 //! `bars.widgets.custom_widgets` and placed in a bar slot via
 //! `!Custom <name>`. (Inspired by VibePanel's custom widgets.)
 
+use crate::plugin_cmd::{run_capture, run_detached};
 use mshell_config::schema::config::{CustomMenuRow, CustomWidgetConfig};
 use relm4::gtk::prelude::{
     BoxExt, ButtonExt, GestureExt, GestureSingleExt, OrientableExt, WidgetExt,
@@ -172,7 +173,10 @@ impl Component for CustomWidgetModel {
             });
         } else {
             let cmd = config.on_click.clone();
-            widgets.root.connect_clicked(move |_| run_cmd(&cmd));
+            let env = config.secret_env.clone();
+            widgets
+                .root
+                .connect_clicked(move |_| run_detached(&cmd, &env));
         }
 
         // Right click → on_click_right.
@@ -180,9 +184,10 @@ impl Component for CustomWidgetModel {
             let gesture = gtk::GestureClick::new();
             gesture.set_button(gtk::gdk::BUTTON_SECONDARY);
             let cmd = config.on_click_right.clone();
+            let env = config.secret_env.clone();
             gesture.connect_pressed(move |g, _, _, _| {
                 g.set_state(gtk::EventSequenceState::Claimed);
-                run_cmd(&cmd);
+                run_detached(&cmd, &env);
             });
             widgets.root.add_controller(gesture);
         }
@@ -190,6 +195,7 @@ impl Component for CustomWidgetModel {
         // `exec` poller fills the label from command stdout.
         if !config.exec.trim().is_empty() {
             let exec = config.exec.clone();
+            let env = config.secret_env.clone();
             let template = config.template.clone();
             let max_chars = config.max_chars;
             let interval = config.interval;
@@ -198,7 +204,7 @@ impl Component for CustomWidgetModel {
                 let shutdown_fut = shutdown.wait();
                 tokio::pin!(shutdown_fut);
                 loop {
-                    if let Some(stdout) = run_capture(&exec).await {
+                    if let Some(stdout) = run_capture(&exec, &env).await {
                         let (art_path, body, paused, state_class) = if art {
                             let (cand, label, paused) = split_art_output(&stdout);
                             // Only show the image if the file actually exists.
@@ -335,7 +341,8 @@ fn wire_panel(
             "This plugin's panel needs an mshell built with --features wasm-plugins",
         ));
     } else {
-        button.connect_clicked(move |_| run_cmd(&cmd));
+        let env = config.secret_env.clone();
+        button.connect_clicked(move |_| run_detached(&cmd, &env));
     }
 }
 
@@ -395,41 +402,6 @@ fn truncate(s: &str, max: u32) -> String {
     } else {
         s.chars().take(max as usize).collect()
     }
-}
-
-/// Fire-and-forget a shell command (`sh -c`). Reaped to avoid zombies.
-///
-/// For a plugin-derived widget, `cmd` already had its `{{placeholder}}`s
-/// substituted (raw, unescaped — see `mshell_plugins::manifest::substitute`)
-/// including any `type = "secret"` settings, so a value with shell
-/// metacharacters is interpreted here exactly as typed.
-fn run_cmd(cmd: &str) {
-    let cmd = cmd.trim().to_string();
-    if cmd.is_empty() {
-        return;
-    }
-    relm4::spawn(async move {
-        let _ = tokio::process::Command::new("sh")
-            .arg("-c")
-            .arg(&cmd)
-            .status()
-            .await;
-    });
-}
-
-/// Run a shell command (`sh -c`) and capture its stdout. `None` on spawn
-/// failure or a non-zero exit.
-async fn run_capture(cmd: &str) -> Option<String> {
-    let out = tokio::process::Command::new("sh")
-        .arg("-c")
-        .arg(cmd)
-        .output()
-        .await
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    Some(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 #[cfg(test)]

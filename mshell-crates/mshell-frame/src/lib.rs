@@ -10,6 +10,7 @@ mod keybinds;
 mod lyrics;
 pub mod mdock_surface;
 mod menus;
+mod plugin_cmd;
 #[cfg(feature = "wasm-plugins")]
 mod plugin_providers;
 pub mod screen_corners;

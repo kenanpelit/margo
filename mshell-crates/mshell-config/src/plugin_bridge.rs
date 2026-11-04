@@ -9,9 +9,10 @@
 //! `plugin:<key>:<widget-key>` so the bar can place them like any custom
 //! widget.
 
-use crate::schema::config::{Config, CustomMenuRow, CustomWidgetConfig};
+use crate::schema::config::{Config, CustomMenuRow, CustomWidgetConfig, PluginSecretEnv};
 use mshell_plugins::{
-    InstalledPlugin, PanelLayout, PluginStore, PluginsState, WidgetDef, substitute,
+    InstalledPlugin, PanelLayout, PluginStore, PluginsState, WidgetDef, secret_env_var, substitute,
+    substitute_command,
 };
 use std::collections::BTreeMap;
 
@@ -95,7 +96,36 @@ fn to_custom_widget(
     } else {
         plugin.dir.join(&w.image).to_string_lossy().into_owned()
     };
-    let sub = |s: &str| substitute(s, values);
+    // Secrets never go into text: displayed fields get an empty string,
+    // commands get an env reference (see `substitute_command`).
+    let secrets: Vec<String> = plugin
+        .manifest
+        .settings
+        .iter()
+        .filter(|s| s.is_secret())
+        .map(|s| s.key.clone())
+        .collect();
+    let display_values: BTreeMap<String, String> = values
+        .iter()
+        .map(|(k, v)| {
+            let v = if secrets.contains(k) {
+                String::new()
+            } else {
+                v.clone()
+            };
+            (k.clone(), v)
+        })
+        .collect();
+    let sub = |s: &str| substitute(s, &display_values);
+    let cmd = |s: &str| substitute_command(s, values, &secrets);
+    let secret_env: Vec<PluginSecretEnv> = secrets
+        .iter()
+        .map(|key| PluginSecretEnv {
+            var: secret_env_var(key),
+            plugin: plugin.key.clone(),
+            key: key.clone(),
+        })
+        .collect();
     // A widget that opens the plugin's WASM panel carries the absolute path to
     // the compiled component + the resolved settings (for `get-setting`); the
     // shell's custom pill opens an in-shell panel instead of running a command.
@@ -118,9 +148,9 @@ fn to_custom_widget(
         image,
         label: sub(&w.label),
         tooltip: sub(&w.tooltip),
-        on_click: sub(&w.on_click),
-        on_click_right: sub(&w.on_click_right),
-        exec: sub(&w.exec),
+        on_click: cmd(&w.on_click),
+        on_click_right: cmd(&w.on_click_right),
+        exec: cmd(&w.exec),
         template: sub(&w.template),
         interval: w.interval,
         max_chars: w.max_chars,
@@ -131,8 +161,9 @@ fn to_custom_widget(
             .map(|r| CustomMenuRow {
                 label: sub(&r.label),
                 icon: r.icon.clone(),
-                exec: sub(&r.exec),
+                exec: cmd(&r.exec),
                 severity: r.severity.clone(),
+                secret_env: secret_env.clone(),
             })
             .collect(),
         panel_entry,
@@ -140,5 +171,79 @@ fn to_custom_widget(
         panel_capabilities,
         panel_min_width: layout.min_width,
         panel_max_height: layout.max_height,
+        secret_env,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mshell_plugins::{Manifest, MenuRow, Setting};
+
+    /// A secret setting's value never lands in a command (world-readable
+    /// argv of `sh -c`) or a label; commands reference its env var, and the
+    /// widget lists what the runner must export.
+    #[test]
+    fn secrets_never_reach_command_text() {
+        let manifest = Manifest {
+            id: "assistant".into(),
+            version: "1.0.0".into(),
+            settings: vec![
+                Setting {
+                    key: "api_key".into(),
+                    kind: "secret".into(),
+                    ..Default::default()
+                },
+                Setting {
+                    key: "model".into(),
+                    default: "flash".into(),
+                    ..Default::default()
+                },
+            ],
+            widgets: vec![WidgetDef {
+                key: "chat".into(),
+                label: "AI {{api_key}}".into(),
+                exec: "curl -H \"Authorization: Bearer {{api_key}}\" x/{{model}}".into(),
+                on_click: "env KEY={{api_key}} chat".into(),
+                menu: vec![MenuRow {
+                    label: "Ask".into(),
+                    exec: "ask '{{api_key}}'".into(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let plugin = InstalledPlugin {
+            key: "official/assistant".into(),
+            manifest,
+            dir: "/plugins/assistant".into(),
+        };
+        let mut values = BTreeMap::new();
+        values.insert("api_key".to_string(), "sk-SECRET".to_string());
+        values.insert("model".to_string(), "flash".to_string());
+
+        let w = to_custom_widget(
+            &plugin,
+            &plugin.manifest.widgets[0],
+            &values,
+            &PanelLayout::default(),
+        );
+        for text in [&w.exec, &w.on_click, &w.label, &w.menu[0].exec] {
+            assert!(!text.contains("sk-SECRET"), "{text}");
+        }
+        assert!(w.exec.contains("${MPLUGIN_SECRET_API_KEY}"), "{}", w.exec);
+        assert!(
+            w.exec.ends_with("x/flash"),
+            "plain settings still substitute"
+        );
+        assert_eq!(w.label, "AI ");
+        let env = PluginSecretEnv {
+            var: "MPLUGIN_SECRET_API_KEY".into(),
+            plugin: "official/assistant".into(),
+            key: "api_key".into(),
+        };
+        assert_eq!(w.secret_env, vec![env.clone()]);
+        assert_eq!(w.menu[0].secret_env, vec![env]);
     }
 }
