@@ -1651,18 +1651,31 @@ unsafe fn find_meta_header(buffer: *mut spa_buffer) -> Option<NonNull<spa_meta_h
     }
 }
 
+/// The buffer's cursor meta, if it is large enough for everything margo
+/// writes into it: the `spa_meta_cursor` header, the `spa_meta_bitmap` right
+/// after it and the `CURSOR_BITMAP_SIZE` bitmap after that. A consumer whose
+/// buffers carry a smaller cursor meta than the `CURSOR_META_SIZE` margo
+/// advertises gets no cursor instead of a write past the meta.
+///
+/// # Safety
+/// `spa_buffer` must point to a valid `spa_buffer`.
+unsafe fn find_cursor_meta(spa_buffer: *mut spa_buffer) -> Option<NonNull<spa_meta_cursor>> {
+    // SAFETY: caller passes a valid `spa_buffer`; the result is null-checked.
+    unsafe {
+        NonNull::new(
+            spa_buffer_find_meta_data(spa_buffer, SPA_META_Cursor, CURSOR_META_SIZE).cast(),
+        )
+    }
+}
+
 unsafe fn add_invisible_cursor(spa_buffer: *mut spa_buffer) {
     // SAFETY: caller passes a valid `spa_buffer`; the meta pointer is null-checked before use.
     unsafe {
-        let cursor_meta_ptr: *mut spa_meta_cursor = spa_buffer_find_meta_data(
-            spa_buffer,
-            SPA_META_Cursor,
-            mem::size_of::<spa_meta_cursor>(),
-        )
-        .cast();
-        let Some(cursor_meta) = cursor_meta_ptr.as_mut() else {
+        let Some(cursor_meta_ptr) = find_cursor_meta(spa_buffer) else {
             return;
         };
+        let cursor_meta_ptr = cursor_meta_ptr.as_ptr();
+        let cursor_meta = &mut *cursor_meta_ptr;
 
         // The cursor is present but invisible.
         cursor_meta.id = 1;
@@ -1707,15 +1720,11 @@ unsafe fn add_cursor_metadata(
 ) {
     // SAFETY: caller passes a valid `spa_buffer`; the meta pointer is null-checked before use.
     unsafe {
-        let cursor_meta_ptr: *mut spa_meta_cursor = spa_buffer_find_meta_data(
-            spa_buffer,
-            SPA_META_Cursor,
-            mem::size_of::<spa_meta_cursor>(),
-        )
-        .cast();
-        let Some(cursor_meta) = cursor_meta_ptr.as_mut() else {
+        let Some(cursor_meta_ptr) = find_cursor_meta(spa_buffer) else {
             return;
         };
+        let cursor_meta_ptr = cursor_meta_ptr.as_ptr();
+        let cursor_meta = &mut *cursor_meta_ptr;
 
         cursor_meta.id = 1;
         cursor_meta.position.x = cursor_data.location.x;
@@ -1793,5 +1802,66 @@ unsafe fn add_cursor_metadata(
         bitmap_meta.size.width = size.w as _;
         bitmap_meta.size.height = size.h as _;
         bitmap_meta.stride = size.w * CURSOR_BPP as i32;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Whether `find_cursor_meta` accepts a buffer whose one cursor meta
+    /// declares `meta_size` bytes.
+    fn cursor_meta_found(meta_size: usize) -> bool {
+        let mut storage = vec![0u8; CURSOR_META_SIZE];
+        let mut meta = spa_meta {
+            type_: SPA_META_Cursor,
+            size: meta_size as u32,
+            data: storage.as_mut_ptr().cast(),
+        };
+        let mut buffer = spa_buffer {
+            n_metas: 1,
+            n_datas: 0,
+            metas: &mut meta,
+            datas: std::ptr::null_mut(),
+        };
+        // SAFETY: `buffer` is a valid one-meta `spa_buffer` whose meta points
+        // at `storage`, all alive for the call.
+        unsafe { find_cursor_meta(&mut buffer).is_some() }
+    }
+
+    #[test]
+    fn a_cursor_meta_smaller_than_what_margo_writes_is_not_used() {
+        // Room for the header but not for the bitmap margo writes after it.
+        assert!(!cursor_meta_found(mem::size_of::<spa_meta_cursor>()));
+        assert!(!cursor_meta_found(CURSOR_META_SIZE - 1));
+    }
+
+    #[test]
+    fn a_full_size_cursor_meta_is_used() {
+        assert!(cursor_meta_found(CURSOR_META_SIZE));
+    }
+
+    #[test]
+    fn the_invisible_cursor_leaves_a_short_meta_untouched() {
+        // The meta declares less than margo writes; the backing storage is
+        // full size so a write past the declared size is observable
+        // instead of a heap overflow.
+        let size = mem::size_of::<spa_meta_cursor>() + 8;
+        let mut storage = vec![0u8; CURSOR_META_SIZE];
+        let mut meta = spa_meta {
+            type_: SPA_META_Cursor,
+            size: size as u32,
+            data: storage.as_mut_ptr().cast(),
+        };
+        let mut buffer = spa_buffer {
+            n_metas: 1,
+            n_datas: 0,
+            metas: &mut meta,
+            datas: std::ptr::null_mut(),
+        };
+        // SAFETY: as in `cursor_meta_found`; the storage is CURSOR_META_SIZE
+        // bytes, so even a write past the declared size stays in bounds.
+        unsafe { add_invisible_cursor(&mut buffer) };
+        assert!(storage.iter().all(|&b| b == 0));
     }
 }
