@@ -12,12 +12,8 @@
 
 use crate::bars::bar_widgets::github::GITHUB_POLL;
 use crate::github::{self, CiState, GhError, GithubSnapshot, Notification, PullRequest, Review};
-use crate::menus::list_fit::fit_scroller;
 use crate::menus::menu_widgets::agents::agents_menu_widget::open_url;
-use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{ConfigStoreFields, MenuStoreFields, MenusStoreFields};
 use mshell_utils::shared_poll::PollSubscription;
-use reactive_graph::traits::GetUntracked;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::collections::HashSet;
@@ -38,21 +34,6 @@ pub(crate) struct GithubMenuWidgetModel {
     tabs: gtk::Box,
     meta: gtk::Label,
     poll: PollSubscription<GithubSnapshot>,
-    /// The Inbox / PRs list scroller, sized against the menu height.
-    list_scroll: Option<gtk::ScrolledWindow>,
-}
-
-/// Built-in height cap of the list when the menu has no configured height.
-const LIST_CAP: i32 = 520;
-
-fn fit_list(sw: &gtk::ScrolledWindow) {
-    let h = config_manager()
-        .config()
-        .menus()
-        .github_menu()
-        .maximum_height()
-        .get_untracked();
-    fit_scroller(sw, h, LIST_CAP);
 }
 
 #[derive(Debug)]
@@ -139,11 +120,11 @@ impl Component for GithubMenuWidgetModel {
                 set_spacing: 4,
             },
 
-            #[name = "list_scroll"]
+            #[name = "fill_list"]
             gtk::ScrolledWindow {
                 set_hscrollbar_policy: gtk::PolicyType::Never,
                 set_min_content_height: 0,
-                set_max_content_height: LIST_CAP,
+                set_max_content_height: 520,
                 set_propagate_natural_height: true,
 
                 #[local_ref]
@@ -195,7 +176,7 @@ impl Component for GithubMenuWidgetModel {
         let content = gtk::Box::new(gtk::Orientation::Vertical, 8);
         let tabs = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         let meta = gtk::Label::new(None);
-        let mut model = GithubMenuWidgetModel {
+        let model = GithubMenuWidgetModel {
             tab: Tab::Inbox,
             snapshot: None,
             marked: HashSet::new(),
@@ -203,11 +184,9 @@ impl Component for GithubMenuWidgetModel {
             tabs: tabs.clone(),
             meta: meta.clone(),
             poll,
-            list_scroll: None,
         };
         let widgets = view_output!();
-        fit_list(&widgets.list_scroll);
-        model.list_scroll = Some(widgets.list_scroll.clone());
+        crate::menus::list_fit::mark_menu_list(&widgets.fill_list, 520);
         mshell_common::a11y::name(&widgets.mark_all_btn, "Mark all as read");
         mshell_common::a11y::name(&widgets.refresh_btn, "Refresh");
         model.render(&sender);
@@ -241,10 +220,6 @@ impl Component for GithubMenuWidgetModel {
                 });
             }
             GithubMenuWidgetInput::ParentRevealChanged(visible) => {
-                if visible && let Some(sw) = &self.list_scroll {
-                    // Pick up a Settings height change without a restart.
-                    fit_list(sw);
-                }
                 self.poll.set_active(visible);
                 return;
             }

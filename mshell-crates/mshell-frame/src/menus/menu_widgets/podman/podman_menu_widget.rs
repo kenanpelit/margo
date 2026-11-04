@@ -213,6 +213,7 @@ impl Component for PodmanMenuWidgetModel {
                 set_transition_type: gtk::StackTransitionType::SlideLeftRight,
                 set_transition_duration: 200,
 
+                #[name = "fill_list"]
                 add_titled[Some("containers"), "Containers"] = &gtk::ScrolledWindow {
                     set_min_content_height: 0,
                     set_max_content_height: 460,
@@ -225,6 +226,7 @@ impl Component for PodmanMenuWidgetModel {
                         set_selection_mode: gtk::SelectionMode::None,
                     },
                 },
+                #[name = "fill_list1"]
                 add_titled[Some("images"), "Images"] = &gtk::ScrolledWindow {
                     set_min_content_height: 0,
                     set_max_content_height: 460,
@@ -237,6 +239,7 @@ impl Component for PodmanMenuWidgetModel {
                         set_selection_mode: gtk::SelectionMode::None,
                     },
                 },
+                #[name = "fill_list2"]
                 add_titled[Some("pods"), "Pods"] = &gtk::ScrolledWindow {
                     set_min_content_height: 0,
                     set_max_content_height: 460,
@@ -280,6 +283,9 @@ impl Component for PodmanMenuWidgetModel {
         };
 
         let widgets = view_output!();
+        crate::menus::list_fit::mark_menu_list(&widgets.fill_list, 460);
+        crate::menus::list_fit::mark_menu_list(&widgets.fill_list1, 460);
+        crate::menus::list_fit::mark_menu_list(&widgets.fill_list2, 460);
         sync_view(&model, &sender);
 
         ComponentParts { model, widgets }

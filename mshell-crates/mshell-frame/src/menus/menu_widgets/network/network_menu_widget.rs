@@ -406,6 +406,7 @@ impl Component for NetworkMenuWidgetModel {
                 set_xalign: 0.0,
             },
 
+            #[name = "fill_list"]
             gtk::ScrolledWindow {
                 set_min_content_height: 0,
                 set_max_content_height: 420,
@@ -512,6 +513,7 @@ impl Component for NetworkMenuWidgetModel {
         arm_wired_watcher(&sender, &mut model.wired_watcher_token);
 
         let widgets = view_output!();
+        crate::menus::list_fit::mark_menu_list(&widgets.fill_list, 420);
         sync_view(&model, &sender);
         sync_hotspot(&model);
 

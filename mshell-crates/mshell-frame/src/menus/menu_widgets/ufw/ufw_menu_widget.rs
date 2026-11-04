@@ -203,6 +203,7 @@ impl Component for UfwMenuWidgetModel {
             },
 
             // ── Scrollable rule list ────────────────────────────
+            #[name = "fill_list"]
             gtk::ScrolledWindow {
                 // No fixed floor — let the list size to its rows
                 // (propagate_natural_height) so a short rule set ends
@@ -299,6 +300,7 @@ impl Component for UfwMenuWidgetModel {
         };
 
         let widgets = view_output!();
+        crate::menus::list_fit::mark_menu_list(&widgets.fill_list, 320);
         sync_view(&model, &sender);
 
         ComponentParts { model, widgets }

@@ -178,6 +178,7 @@ impl Component for ProcessesTabModel {
                 },
             },
 
+            #[name = "fill_list"]
             gtk::ScrolledWindow {
                 set_min_content_height: 0,
                 set_max_content_height: 380,
@@ -247,6 +248,7 @@ impl Component for ProcessesTabModel {
             sort_buttons,
         };
         let widgets = view_output!();
+        crate::menus::list_fit::mark_menu_list(&widgets.fill_list, 380);
         model
             .list
             .append(&ui::placeholder_row("Reading processes…"));

@@ -1,55 +1,69 @@
-//! How a menu's own list scroller sizes itself against the menu's
+//! How a menu's list scrollers size themselves against the menu's
 //! configured `maximum_height` (Settings → Widgets → <menu> → height).
 //!
-//! Menus whose content is a header + one long list (AI Agents, GitHub,
-//! Crashes) keep the header fixed and scroll only the list. With no height
-//! configured the list grows to its content up to a built-in cap. With a
-//! height configured the menu is pinned to that height (`fixed_height` in
-//! `menu.rs`) and the list fills whatever the header leaves — a built-in cap
-//! would leave the menu short of the configured size or empty below the list.
+//! Many menus are a header plus one long list (AI Agents, GitHub, Crashes,
+//! USB, Discord voice, Podman, Notes, UFW, the CPU dashboard tabs, the
+//! network list). The list scrolls on its own so the header stays put, and
+//! grows to its content up to a cap. That cap used to be a constant, so a
+//! configured height above it changed nothing: the list — and with it the
+//! menu — stopped at the constant.
+//!
+//! The clipboard and notification lists already did this right: their
+//! scroller's cap IS the menu's configured height, re-read every time the
+//! menu opens. Every other list now follows them. A widget marks its
+//! scroller with [`mark_menu_list`] (its built-in cap rides along for menus
+//! with no height set); the hosting menu calls [`fit_menu_lists`] whenever
+//! it opens or its height setting changes.
 
-/// Scroller settings for one list.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ListFit {
-    /// `set_max_content_height`; `-1` = no cap.
-    pub(crate) max_content_height: i32,
-    /// `set_propagate_natural_height`: report the content's height upward
-    /// (grow to fit) instead of taking the space the menu gives.
-    pub(crate) propagate_natural_height: bool,
-    /// `set_vexpand`: take the space left below the header.
-    pub(crate) vexpand: bool,
-}
+use relm4::gtk;
+use relm4::gtk::prelude::{Cast, ObjectExt, WidgetExt};
 
-/// The fit for a list whose built-in cap is `default_cap`, in a menu whose
-/// configured `maximum_height` is `menu_max_height` (0 = not set).
-pub(crate) fn list_fit(menu_max_height: i32, default_cap: i32) -> ListFit {
+/// CSS class of a marked list scroller.
+const LIST_CLASS: &str = "menu-fill-list";
+/// Object-data key holding a marked scroller's built-in cap.
+const CAP_KEY: &str = "mshell-menu-list-cap";
+
+/// The list's `max_content_height`: the menu's configured height when one is
+/// set (0 = not set), else the list's built-in cap.
+pub(crate) fn list_cap(menu_max_height: i32, default_cap: i32) -> i32 {
     if menu_max_height > 0 {
-        ListFit {
-            max_content_height: -1,
-            propagate_natural_height: false,
-            vexpand: true,
-        }
+        menu_max_height
     } else {
-        ListFit {
-            max_content_height: default_cap,
-            propagate_natural_height: true,
-            vexpand: false,
-        }
+        default_cap
     }
 }
 
-/// Apply [`list_fit`] to `sw`.
-pub(crate) fn fit_scroller(
-    sw: &relm4::gtk::ScrolledWindow,
-    menu_max_height: i32,
-    default_cap: i32,
-) {
-    use relm4::gtk::prelude::WidgetExt;
-    let fit = list_fit(menu_max_height, default_cap);
-    // min_content_height stays 0, so any max (or -1) keeps min <= max.
-    sw.set_max_content_height(fit.max_content_height);
-    sw.set_propagate_natural_height(fit.propagate_natural_height);
-    sw.set_vexpand(fit.vexpand);
+/// Mark `sw` as a menu list with built-in cap `default_cap`.
+pub(crate) fn mark_menu_list(sw: &gtk::ScrolledWindow, default_cap: i32) {
+    sw.add_css_class(LIST_CLASS);
+    // SAFETY: the key is only ever read back as `i32` (`cap_of`).
+    unsafe { sw.set_data::<i32>(CAP_KEY, default_cap) };
+    sw.set_max_content_height(default_cap);
+}
+
+fn cap_of(sw: &gtk::ScrolledWindow) -> Option<i32> {
+    // SAFETY: `CAP_KEY` is only ever stored as `i32` (`mark_menu_list`).
+    unsafe { sw.data::<i32>(CAP_KEY).map(|p| *p.as_ref()) }
+}
+
+/// Cap every marked list under `root` at `menu_max_height`.
+pub(crate) fn fit_menu_lists(root: &gtk::Widget, menu_max_height: i32) {
+    let mut stack = vec![root.clone()];
+    while let Some(w) = stack.pop() {
+        if w.has_css_class(LIST_CLASS)
+            && let Some(sw) = w.downcast_ref::<gtk::ScrolledWindow>()
+            && let Some(cap) = cap_of(sw)
+        {
+            // Never below the list's own minimum: GTK asserts min <= max.
+            let max = list_cap(menu_max_height, cap).max(sw.min_content_height());
+            sw.set_max_content_height(max);
+        }
+        let mut child = w.first_child();
+        while let Some(c) = child {
+            child = c.next_sibling();
+            stack.push(c);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -57,22 +71,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn without_a_configured_height_the_list_grows_to_its_cap() {
-        let fit = list_fit(0, 560);
-        assert_eq!(fit.max_content_height, 560);
-        assert!(fit.propagate_natural_height);
-        assert!(!fit.vexpand);
+    fn without_a_configured_height_the_list_keeps_its_cap() {
+        assert_eq!(list_cap(0, 560), 560);
     }
 
     /// A configured height larger than the built-in cap used to change
     /// nothing: the list stopped at 560 px and so did the menu.
     #[test]
-    fn a_configured_height_lets_the_list_fill_the_menu() {
-        for h in [300, 560, 1000] {
-            let fit = list_fit(h, 560);
-            assert_eq!(fit.max_content_height, -1, "height {h}");
-            assert!(!fit.propagate_natural_height);
-            assert!(fit.vexpand);
-        }
+    fn a_configured_height_is_the_lists_cap() {
+        assert_eq!(list_cap(1000, 560), 1000);
+        assert_eq!(list_cap(300, 560), 300);
     }
 }

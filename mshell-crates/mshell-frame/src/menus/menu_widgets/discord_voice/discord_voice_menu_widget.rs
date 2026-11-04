@@ -133,6 +133,7 @@ impl Component for DiscordVoiceMenuWidgetModel {
                     set_label: "Participants",
                     set_xalign: 0.0,
                 },
+                #[name = "fill_list"]
                 gtk::ScrolledWindow {
                     set_min_content_height: 0,
                     set_max_content_height: 360,
@@ -173,6 +174,7 @@ impl Component for DiscordVoiceMenuWidgetModel {
             rows: HashMap::new(),
         };
         let widgets = view_output!();
+        crate::menus::list_fit::mark_menu_list(&widgets.fill_list, 360);
         sync_static(&model.state, &widgets);
         ComponentParts { model, widgets }
     }

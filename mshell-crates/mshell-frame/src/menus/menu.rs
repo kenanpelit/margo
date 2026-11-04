@@ -1,4 +1,5 @@
 use crate::menus::builder::build_widget;
+use crate::menus::list_fit::fit_menu_lists;
 use crate::menus::menu_widgets::agents::agents_menu_widget::{
     AgentsMenuWidgetInput, AgentsMenuWidgetModel,
 };
@@ -751,9 +752,6 @@ impl Component for MenuModel {
                     | MenuType::Vpn
                     | MenuType::AppLauncher
                     | MenuType::Translate
-                    | MenuType::Agents
-                    | MenuType::Github
-                    | MenuType::Crashes
             ),
             _effects: effects,
         };
@@ -824,6 +822,10 @@ impl Component for MenuModel {
                     } else {
                         self.build_content(&widgets.widget_container, &sender);
                     }
+                }
+                if visible {
+                    // Lists cap at the configured height (see list_fit).
+                    fit_menu_lists(widgets.widget_container.upcast_ref(), self.maximum_height);
                 }
                 // Defer the per-widget reveal broadcasts (which kick off
                 // pollers — network/BT scans, launcher requery, …) off the
@@ -1175,6 +1177,7 @@ impl Component for MenuModel {
             }
             MenuInput::SetMaximumHeight(height) => {
                 self.maximum_height = height;
+                fit_menu_lists(widgets.widget_container.upcast_ref(), self.maximum_height);
                 pin_scroller_bounds(
                     &widgets.scrolled_window,
                     self.minimum_width,

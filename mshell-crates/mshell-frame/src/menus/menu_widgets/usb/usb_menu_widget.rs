@@ -88,6 +88,7 @@ impl Component for UsbMenuWidgetModel {
                 },
             },
 
+            #[name = "fill_list"]
             gtk::ScrolledWindow {
                 add_css_class: "usb-scroller",
                 set_hscrollbar_policy: gtk::PolicyType::Never,
@@ -134,6 +135,7 @@ impl Component for UsbMenuWidgetModel {
             content: content.clone(),
         };
         let widgets = view_output!();
+        crate::menus::list_fit::mark_menu_list(&widgets.fill_list, 480);
         model.rebuild(&sender);
 
         ComponentParts { model, widgets }

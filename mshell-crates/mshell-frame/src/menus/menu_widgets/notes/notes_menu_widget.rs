@@ -156,6 +156,7 @@ impl Component for NotesMenuWidgetModel {
                 set_transition_duration: 200,
 
                 // ── Scratchpad tab ──────────────────────────────
+                #[name = "fill_list"]
                 add_titled[Some("scratchpad"), "Scratchpad"] = &gtk::ScrolledWindow {
                     set_min_content_height: 240,
                     set_max_content_height: 420,
@@ -188,6 +189,7 @@ impl Component for NotesMenuWidgetModel {
                         },
                     },
 
+                    #[name = "fill_list1"]
                     gtk::ScrolledWindow {
                         set_min_content_height: 220,
                         set_max_content_height: 400,
@@ -220,6 +222,7 @@ impl Component for NotesMenuWidgetModel {
                         },
                     },
 
+                    #[name = "fill_list2"]
                     gtk::ScrolledWindow {
                         set_min_content_height: 220,
                         set_max_content_height: 400,
@@ -305,6 +308,9 @@ impl Component for NotesMenuWidgetModel {
         };
 
         let widgets = view_output!();
+        crate::menus::list_fit::mark_menu_list(&widgets.fill_list, 420);
+        crate::menus::list_fit::mark_menu_list(&widgets.fill_list1, 400);
+        crate::menus::list_fit::mark_menu_list(&widgets.fill_list2, 400);
         sync_view(&model, &sender);
 
         ComponentParts { model, widgets }

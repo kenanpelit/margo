@@ -111,6 +111,7 @@ impl Component for DrivesTabModel {
             set_orientation: gtk::Orientation::Vertical,
             set_spacing: 10,
 
+            #[name = "fill_list"]
             gtk::ScrolledWindow {
                 set_min_content_height: 0,
                 set_max_content_height: 420,
@@ -182,6 +183,7 @@ impl Component for DrivesTabModel {
             list: list.clone(),
         };
         let widgets = view_output!();
+        crate::menus::list_fit::mark_menu_list(&widgets.fill_list, 420);
         model.render();
         ComponentParts { model, widgets }
     }

@@ -10,11 +10,8 @@
 use crate::crashes::{
     self, Crash, Fetch, JournalEntry, format_time, is_muted, journal_priority, signal_name,
 };
-use crate::menus::list_fit::fit_scroller;
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{
-    ConfigStoreFields, CrashesConfigStoreFields, MenuStoreFields, MenusStoreFields,
-};
+use mshell_config::schema::config::{ConfigStoreFields, CrashesConfigStoreFields};
 use reactive_graph::prelude::GetUntracked;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -31,21 +28,6 @@ pub(crate) struct CrashesMenuWidgetModel {
     journal: Option<Fetch<Vec<JournalEntry>>>,
     visible: bool,
     content: gtk::Box,
-    /// The list scroller, sized against the menu height.
-    list_scroll: Option<gtk::ScrolledWindow>,
-}
-
-/// Built-in height cap of the list when the menu has no configured height.
-const LIST_CAP: i32 = 480;
-
-fn fit_list(sw: &gtk::ScrolledWindow) {
-    let h = config_manager()
-        .config()
-        .menus()
-        .crashes_menu()
-        .maximum_height()
-        .get_untracked();
-    fit_scroller(sw, h, LIST_CAP);
 }
 
 #[derive(Debug)]
@@ -146,12 +128,12 @@ impl Component for CrashesMenuWidgetModel {
                 },
             },
 
-            #[name = "list_scroll"]
+            #[name = "fill_list"]
             gtk::ScrolledWindow {
                 set_vexpand: true,
                 set_hscrollbar_policy: gtk::PolicyType::Never,
                 set_min_content_height: 0,
-                set_max_content_height: LIST_CAP,
+                set_max_content_height: 480,
                 set_propagate_natural_height: true,
 
                 #[local_ref]
@@ -168,17 +150,15 @@ impl Component for CrashesMenuWidgetModel {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        let mut model = CrashesMenuWidgetModel {
+        let model = CrashesMenuWidgetModel {
             tab: CrashesTab::Crashes,
             crashes: None,
             journal: None,
             visible: false,
             content: content.clone(),
-            list_scroll: None,
         };
         let widgets = view_output!();
-        fit_list(&widgets.list_scroll);
-        model.list_scroll = Some(widgets.list_scroll.clone());
+        crate::menus::list_fit::mark_menu_list(&widgets.fill_list, 480);
         mshell_common::a11y::name(&widgets.refresh_button, "Refresh");
         model.render(&sender);
         ComponentParts { model, widgets }
@@ -189,9 +169,6 @@ impl Component for CrashesMenuWidgetModel {
             CrashesMenuWidgetInput::ParentRevealChanged(visible) => {
                 let opened = visible && !self.visible;
                 self.visible = visible;
-                if opened && let Some(sw) = &self.list_scroll {
-                    fit_list(sw);
-                }
                 if opened {
                     self.fetch(&sender);
                 }

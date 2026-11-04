@@ -20,13 +20,9 @@ use crate::agents::sessions;
 use crate::agents::{
     ProviderLimits, SESSIONS_POLL, SessionsSnapshot, USAGE_POLL, UsageSnapshot, request_refresh,
 };
-use crate::menus::list_fit::fit_scroller;
 use crate::menus::menu_widgets::agents::sessions_page::{self, SessionAction};
-use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{ConfigStoreFields, MenuStoreFields, MenusStoreFields};
 use mshell_process::SpawnReaped;
 use mshell_utils::shared_poll::PollSubscription;
-use reactive_graph::traits::GetUntracked;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
@@ -66,22 +62,6 @@ pub(crate) enum AgentsMenuWidgetCommandOutput {
     Sessions(SessionsSnapshot),
     /// A jump / resume finished; `Some` = what went wrong.
     ActionDone(Option<String>),
-}
-
-/// Built-in height cap of the Usage / Sessions lists when the menu has no
-/// configured height.
-const LIST_CAP: i32 = 560;
-
-/// Size both tab lists against the menu's configured height.
-fn fit_lists(usage: &gtk::ScrolledWindow, sessions: &gtk::ScrolledWindow) {
-    let h = config_manager()
-        .config()
-        .menus()
-        .agents_menu()
-        .maximum_height()
-        .get_untracked();
-    fit_scroller(usage, h, LIST_CAP);
-    fit_scroller(sessions, h, LIST_CAP);
 }
 
 #[relm4::component(pub(crate))]
@@ -240,7 +220,8 @@ impl Component for AgentsMenuWidgetModel {
             sessions_poll,
         };
         let widgets = view_output!();
-        fit_lists(&widgets.usage_scroll, &widgets.sessions_scroll);
+        crate::menus::list_fit::mark_menu_list(&widgets.usage_scroll, 560);
+        crate::menus::list_fit::mark_menu_list(&widgets.sessions_scroll, 560);
         mshell_common::a11y::name(&widgets.refresh_btn, "Refresh");
         rebuild_usage(&model.usage_box, None);
         model.rebuild_sessions(&sender);
@@ -277,10 +258,6 @@ impl Component for AgentsMenuWidgetModel {
             }
             AgentsMenuWidgetInput::OpenDashboard => open_url(Provider::Claude.dashboard_url()),
             AgentsMenuWidgetInput::ParentRevealChanged(visible) => {
-                if visible {
-                    // Pick up a Settings height change without a restart.
-                    fit_lists(&widgets.usage_scroll, &widgets.sessions_scroll);
-                }
                 self.poll.set_active(visible);
                 self.sessions_poll.set_active(visible);
                 if !visible {
