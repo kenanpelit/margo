@@ -249,21 +249,23 @@ pub(super) fn drain_image_copy_frames(
         // Write into the client's wl_buffer (SHM only — DMA-BUF
         // is Step 2.1).
         let buffer = frame.buffer();
-        let need = (buf_size.w as usize)
-            .saturating_mul(4)
-            .saturating_mul(buf_size.h as usize);
         let copy_result =
-            smithay::wayland::shm::with_buffer_contents_mut(&buffer, |dst_ptr, dst_len, _meta| {
-                let n = need.min(dst_len).min(pixels.len());
-                // SAFETY: dst_ptr/dst_len come from a validated
-                // wl_shm wl_buffer; we never read more than n
-                // bytes from `pixels` (whose length is bounded by
-                // dst_len above). Both regions are non-overlapping
-                // (CPU map vs renderer mapping).
+            smithay::wayland::shm::with_buffer_contents_mut(&buffer, |pool_ptr, pool_len, meta| {
+                // SAFETY: pool_ptr/pool_len are the client's validated
+                // wl_shm pool mapping, valid for this callback; the helper
+                // writes only inside this buffer's own bytes (`meta.offset`,
+                // `meta.stride`). `pixels` is our own readback, so the
+                // regions don't overlap.
                 unsafe {
-                    std::ptr::copy_nonoverlapping(pixels.as_ptr(), dst_ptr, n);
+                    super::helpers::copy_frame_into_shm_pool(
+                        pool_ptr,
+                        pool_len,
+                        &meta,
+                        (buf_size.w.max(0) as usize).saturating_mul(4),
+                        buf_size.h.max(0) as usize,
+                        &pixels,
+                    )
                 }
-                n > 0
             });
         match copy_result {
             Ok(true) => {

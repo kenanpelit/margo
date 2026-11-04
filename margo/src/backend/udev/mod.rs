@@ -1781,29 +1781,31 @@ fn render_screencopy(
     // future ScreencopyBuffer variant fails to compile here.
     let copied = match screencopy.buffer() {
         crate::protocols::screencopy::ScreencopyBuffer::Shm(buf) => {
-            let need = (size.w as usize)
-                .saturating_mul(4)
-                .saturating_mul(size.h as usize);
-            let copied_n = match smithay::wayland::shm::with_buffer_contents_mut(
+            match smithay::wayland::shm::with_buffer_contents_mut(
                 buf,
-                |dst_ptr, dst_len, _meta| {
-                    let n = need.min(dst_len).min(pixels.len());
-                    // SAFETY: dst_ptr+dst_len come from a validated wl_shm
-                    // wl_buffer; we never read more than n bytes from
-                    // pixels (whose size is dst_len-clamped).
+                |pool_ptr, pool_len, meta| {
+                    // SAFETY: pool_ptr/pool_len are the client's validated wl_shm
+                    // pool mapping, valid for this callback; the helper writes
+                    // only inside this buffer's own bytes (`meta.offset`,
+                    // `meta.stride`) and `pixels` is our own readback.
                     unsafe {
-                        std::ptr::copy_nonoverlapping(pixels.as_ptr(), dst_ptr, n);
+                        helpers::copy_frame_into_shm_pool(
+                            pool_ptr,
+                            pool_len,
+                            &meta,
+                            (size.w.max(0) as usize).saturating_mul(4),
+                            size.h.max(0) as usize,
+                            &pixels,
+                        )
                     }
-                    n
                 },
             ) {
-                Ok(n) => n,
+                Ok(copied) => copied,
                 Err(e) => {
                     warn!("screencopy: shm map failed: {e:?}");
-                    0
+                    false
                 }
-            };
-            copied_n > 0
+            }
         }
         crate::protocols::screencopy::ScreencopyBuffer::Dmabuf(_) => {
             // Should not happen: handled earlier and returned.

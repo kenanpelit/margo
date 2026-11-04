@@ -100,3 +100,146 @@ pub(super) fn output_refresh_duration(output: &Output) -> std::time::Duration {
 pub(super) fn monotonic_now() -> std::time::Duration {
     crate::utils::get_monotonic_time()
 }
+
+/// Copy a tightly packed frame (`rows` rows of `row_bytes` bytes each) into a
+/// `wl_shm` buffer that lives somewhere inside its pool.
+///
+/// `smithay::wayland::shm::with_buffer_contents_mut` hands out the *pool's*
+/// pointer and length; the buffer starts at `buffer.offset` and its rows are
+/// `buffer.stride` bytes apart. Returns `true` only when the whole frame was
+/// written; a buffer that does not fit inside the pool, or a frame shorter
+/// than the buffer, writes nothing.
+///
+/// # Safety
+/// `pool_ptr` must be valid for writes of `pool_len` bytes for the duration of
+/// the call and must not overlap `pixels`.
+pub(super) unsafe fn copy_frame_into_shm_pool(
+    pool_ptr: *mut u8,
+    pool_len: usize,
+    buffer: &smithay::wayland::shm::BufferData,
+    row_bytes: usize,
+    rows: usize,
+    pixels: &[u8],
+) -> bool {
+    let (Ok(offset), Ok(stride)) = (
+        usize::try_from(buffer.offset),
+        usize::try_from(buffer.stride),
+    ) else {
+        return false;
+    };
+    if rows == 0 || row_bytes == 0 || stride < row_bytes {
+        return false;
+    }
+    let Some(frame_len) = row_bytes.checked_mul(rows) else {
+        return false;
+    };
+    // The last row only needs `row_bytes`, not a full stride.
+    let fits = stride
+        .checked_mul(rows - 1)
+        .and_then(|n| n.checked_add(row_bytes))
+        .and_then(|n| n.checked_add(offset))
+        .is_some_and(|end| end <= pool_len);
+    if !fits || pixels.len() < frame_len {
+        return false;
+    }
+    if stride == row_bytes {
+        // SAFETY: `offset + frame_len <= pool_len` (checked above) and
+        // `frame_len <= pixels.len()`; the caller guarantees the regions don't
+        // overlap.
+        unsafe { std::ptr::copy_nonoverlapping(pixels.as_ptr(), pool_ptr.add(offset), frame_len) };
+    } else {
+        for (row, src) in pixels[..frame_len].chunks_exact(row_bytes).enumerate() {
+            // SAFETY: `offset + row * stride + row_bytes <= pool_len` for every
+            // `row < rows` (checked above).
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    src.as_ptr(),
+                    pool_ptr.add(offset + row * stride),
+                    row_bytes,
+                );
+            }
+        }
+    }
+    true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::copy_frame_into_shm_pool;
+    use smithay::reexports::wayland_server::protocol::wl_shm::Format;
+    use smithay::wayland::shm::BufferData;
+
+    fn buffer(offset: i32, w: i32, h: i32, stride: i32) -> BufferData {
+        BufferData {
+            offset,
+            width: w,
+            height: h,
+            stride,
+            format: Format::Xrgb8888,
+        }
+    }
+
+    fn copy(pool: &mut [u8], b: &BufferData, pixels: &[u8]) -> bool {
+        let row_bytes = b.width as usize * 4;
+        // SAFETY: `pool` is a plain Vec-backed slice, valid for its length.
+        unsafe {
+            copy_frame_into_shm_pool(
+                pool.as_mut_ptr(),
+                pool.len(),
+                b,
+                row_bytes,
+                b.height as usize,
+                pixels,
+            )
+        }
+    }
+
+    #[test]
+    fn writes_at_the_buffer_offset_and_leaves_the_rest_of_the_pool_alone() {
+        // Two 2x2 XRGB buffers sub-allocated from one 32-byte pool; the
+        // target is the second one (offset 16).
+        let mut pool = vec![0xAAu8; 32];
+        let b = buffer(16, 2, 2, 8);
+        let pixels: Vec<u8> = (1..=16).collect();
+        assert!(copy(&mut pool, &b, &pixels));
+        assert_eq!(&pool[..16], &[0xAA; 16], "the other buffer was overwritten");
+        assert_eq!(&pool[16..], &pixels[..]);
+    }
+
+    #[test]
+    fn honours_a_stride_wider_than_the_row() {
+        let mut pool = vec![0u8; 4 + 2 * 12];
+        let b = buffer(4, 2, 2, 12);
+        let pixels: Vec<u8> = (1..=16).collect();
+        assert!(copy(&mut pool, &b, &pixels));
+        assert_eq!(&pool[4..12], &pixels[..8]);
+        assert_eq!(&pool[12..16], &[0; 4], "row padding must stay untouched");
+        assert_eq!(&pool[16..24], &pixels[8..]);
+    }
+
+    #[test]
+    fn a_buffer_running_past_the_pool_writes_nothing() {
+        let mut pool = vec![0u8; 20];
+        let b = buffer(16, 2, 2, 8);
+        let pixels = vec![7u8; 16];
+        assert!(!copy(&mut pool, &b, &pixels));
+        assert!(pool.iter().all(|&x| x == 0));
+    }
+
+    #[test]
+    fn a_short_frame_writes_nothing() {
+        let mut pool = vec![0u8; 16];
+        let b = buffer(0, 2, 2, 8);
+        assert!(!copy(&mut pool, &b, &[9u8; 15]));
+        assert!(pool.iter().all(|&x| x == 0));
+    }
+
+    #[test]
+    fn a_negative_offset_or_stride_writes_nothing() {
+        let mut pool = vec![0u8; 32];
+        let pixels = vec![7u8; 16];
+        assert!(!copy(&mut pool, &buffer(-4, 2, 2, 8), &pixels));
+        assert!(!copy(&mut pool, &buffer(0, 2, 2, -8), &pixels));
+        assert!(pool.iter().all(|&x| x == 0));
+    }
+}
