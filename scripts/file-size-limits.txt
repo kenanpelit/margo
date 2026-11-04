@@ -6,3 +6,9 @@
 # MargoState's struct, constructor and the few methods with no better home.
 # Subsystem code lives in margo/src/state/*.rs.
 margo/src/state.rs 1300
+
+# mshell god files (split along their seams; new code goes into the submodule
+# that owns it).
+# IPC dispatch (IPCCommand -> ShellInput). The D-Bus interface, audio/media
+# renderers, plugin watcher, daily wallpaper and alarms live in ipc/*.rs.
+mshell-crates/mshell-core/src/ipc.rs 1100
