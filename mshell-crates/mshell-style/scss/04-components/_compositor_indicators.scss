@@ -40,3 +40,16 @@
   font-variant-numeric: tabular-nums;
   color: var(--on-surface-variant);
 }
+
+// ── XWayland badge (active window) ──────────────────────────
+// A quiet tonal tag, not an accent: it labels the window, it doesn't
+// demand attention (§13.2 keeps the accent for the selection).
+.active-window-xwayland-badge {
+  font-size: var(--font-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
+  background-color: var(--secondary-container);
+  color: var(--on-secondary-container);
+}

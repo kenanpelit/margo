@@ -47,7 +47,8 @@ column's target rect with `x` relative to the work area (negative = off
 the left edge, `x >= viewport_width` = off the right).
 
 Each `clients[]` entry carries `scratchpad` (in the scratchpad set),
-`scratchpad_shown` (on screen now) and `named_scratchpad`.
+`scratchpad_shown` (on screen now) and `named_scratchpad`, plus `xwayland`
+(an X11 client running through XWayland).
 
 Error frames are `{"error":"<message>"}`. Unknown verb/topic returns an
 error frame; the connection stays open.

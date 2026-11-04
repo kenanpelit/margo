@@ -11,6 +11,10 @@
 //! also change without a focus change — typing in a browser, a
 //! tab switch — so those reactives are watched under a
 //! `WatcherToken` that's reset whenever focus moves.
+//!
+//! An "X11" badge rides next to the glyph while the focused window is an
+//! XWayland client (margo's per-client `xwayland` flag), so blurry-scaling
+//! or input quirks can be traced to XWayland at a glance.
 
 use futures::StreamExt;
 use mshell_common::{WatcherToken, watch_cancellable};
@@ -35,6 +39,8 @@ pub(crate) struct ActiveWindowModel {
     has_window: bool,
     class: String,
     title: String,
+    /// The focused window is an X11 client (XWayland).
+    xwayland: bool,
     /// Holds the (start/stop) marquee scroll timer. Only `Some` while the
     /// title actually overflows — see `wire_marquee`. Removed in `Drop` so a
     /// bar rebuild while a long title is scrolling doesn't leak the 33 Hz timer
@@ -99,6 +105,14 @@ impl Component for ActiveWindowModel {
                     set_icon_name: Some("screenshot-window-symbolic"),
                 },
 
+                #[name = "xwayland_badge"]
+                gtk::Label {
+                    add_css_class: "active-window-xwayland-badge",
+                    set_label: "X11",
+                    set_valign: gtk::Align::Center,
+                    set_visible: false,
+                },
+
                 // The title rides in a capped scroller: short titles size to
                 // fit, long ones cap at `max_content_width` and the tick
                 // callback marquees the full text instead of ellipsizing.
@@ -158,6 +172,7 @@ impl Component for ActiveWindowModel {
             has_window: false,
             class: String::new(),
             title: String::new(),
+            xwayland: false,
             marquee_source: Rc::new(RefCell::new(None)),
         };
 
@@ -208,9 +223,15 @@ fn subscribe_focused(
     };
     let title = client.title.clone();
     let class = client.class.clone();
-    watch_cancellable!(sender, token, [title.watch(), class.watch()], |out| {
-        let _ = out.send(ActiveWindowCommandOutput::WindowMetaChanged);
-    });
+    let xwayland = client.xwayland.clone();
+    watch_cancellable!(
+        sender,
+        token,
+        [title.watch(), class.watch(), xwayland.watch()],
+        |out| {
+            let _ = out.send(ActiveWindowCommandOutput::WindowMetaChanged);
+        }
+    );
 }
 
 fn read_focused(model: &mut ActiveWindowModel) {
@@ -219,9 +240,11 @@ fn read_focused(model: &mut ActiveWindowModel) {
             model.has_window = true;
             model.class = client.class.get();
             model.title = client.title.get();
+            model.xwayland = client.xwayland.get();
         }
         None => {
             model.has_window = false;
+            model.xwayland = false;
             model.class.clear();
             model.title.clear();
         }
@@ -232,6 +255,9 @@ fn apply_visual(widgets: &ActiveWindowModelWidgets, model: &ActiveWindowModel) {
     // The label is about to change — snap the marquee back to the start so
     // the new title reads from its beginning rather than mid-scroll.
     widgets.marquee_scroller.hadjustment().set_value(0.0);
+    widgets
+        .xwayland_badge
+        .set_visible(model.has_window && model.xwayland);
 
     if !model.has_window {
         widgets.label.set_label("Desktop");
@@ -247,13 +273,18 @@ fn apply_visual(widgets: &ActiveWindowModelWidgets, model: &ActiveWindowModel) {
     let title = if title.is_empty() { "Window" } else { title };
 
     widgets.label.set_label(title);
-    widgets
-        .root
-        .set_tooltip_text(Some(&if model.class.trim().is_empty() {
+    widgets.root.set_tooltip_text(Some(&{
+        let base = if model.class.trim().is_empty() {
             title.to_string()
         } else {
             format!("{}  ·  {}", model.class.trim(), title)
-        }));
+        };
+        if model.xwayland {
+            format!("{base}  ·  XWayland")
+        } else {
+            base
+        }
+    }));
 }
 
 /// Wire the title marquee to the scroller's content width: the 30 ms scroll

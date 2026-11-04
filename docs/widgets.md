@@ -75,7 +75,7 @@ parameter and use YAML tag syntax:
 
 | Token | Widget | What it does |
 | --- | --- | --- |
-| `ActiveWindow` | Active Window | Title of the globally focused window next to an app glyph; long titles marquee. |
+| `ActiveWindow` | Active Window | Title of the globally focused window next to an app glyph; long titles marquee. An `X11` badge marks an XWayland window. |
 | `MargoTags` | Margo Tags | 1–9 tag pills with focus / occupied / urgent states. Click to switch tags, scroll to cycle. |
 | `ScrollerRibbon` | Scroller Ribbon | One segment per column of the focused output's scroller strip — lit inside the viewport, accented for the focused column, dim when scrolled off — with `‹N` / `N›` counts of the columns hidden on each side. Click a segment to focus that column, scroll to move focus. Hidden outside the scroller layout. |
 | `Scratchpads` | Scratchpads | One chip per scratchpad window (named or anonymous), labelled with its app; the filled accent capsule while it is on screen. Click toggles it (`togglescratchpadid`). Hidden when there are no scratchpads. |

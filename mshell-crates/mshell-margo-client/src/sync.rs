@@ -696,6 +696,9 @@ fn update_client_in_place(client: &Client, c: &RawClient, state: &StateJson) {
     if client.pinned.get() != c.global {
         client.pinned.set(c.global);
     }
+    if client.xwayland.get() != c.xwayland {
+        client.xwayland.set(c.xwayland);
+    }
     let fullscreen_mode = if c.fullscreen {
         FullscreenMode::Fullscreen
     } else {
@@ -788,7 +791,7 @@ fn build_client(
         initial_class: Reactive::new(c.app_id.clone()),
         initial_title: Reactive::new(c.title.clone()),
         pid: Reactive::new(c.pid),
-        xwayland: Reactive::new(false),
+        xwayland: Reactive::new(c.xwayland),
         pinned: Reactive::new(c.global),
         fullscreen: Reactive::new(fullscreen_mode),
         fullscreen_client: Reactive::new(fullscreen_mode),
@@ -1650,6 +1653,22 @@ mod apply_tests {
         f.clients[1].scratchpad_shown = false;
         apply(&svc, &f);
         assert!(!svc.scratchpads.get()[0].shown, "hide is mirrored");
+    }
+
+    #[test]
+    fn xwayland_flag_is_mirrored_and_updated_in_place() {
+        let svc = service();
+        let mut f = frame();
+        f.clients[2].xwayland = true;
+        apply(&svc, &f);
+        assert!(client_by_id(&svc, 3).xwayland.get(), "built with the flag");
+        assert!(!client_by_id(&svc, 1).xwayland.get());
+        let before = client_by_id(&svc, 3);
+        f.clients[2].xwayland = false;
+        apply(&svc, &f);
+        let after = client_by_id(&svc, 3);
+        assert!(Arc::ptr_eq(&before, &after), "same window, same Arc");
+        assert!(!after.xwayland.get(), "updated in place");
     }
 
     /// A frame as margo serialises it (extra fields included), parsed and

@@ -170,3 +170,11 @@ fn scratchpad_state_is_published_and_toggled_by_id() {
     assert_eq!(c["scratchpad"], false);
     assert_eq!(c["minimized"], false);
 }
+
+#[test]
+fn wayland_clients_are_not_reported_as_xwayland() {
+    let mut fx = Fixture::new();
+    fx.add_output("DP-1", (1920, 1080));
+    let id = map_window(&mut fx, "kitty");
+    assert_eq!(snapshot_client(&fx, id)["xwayland"], false);
+}

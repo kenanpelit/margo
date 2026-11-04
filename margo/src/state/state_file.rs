@@ -260,6 +260,9 @@ impl MargoState {
                     "global": c.is_global,
                     "focused": Some(idx) == focused_idx,
                     "pid": c.pid,
+                    // An X11 client (XWayland) — the shell's active-window
+                    // XWayland badge.
+                    "xwayland": c.window.x11_surface().is_some(),
                     "scanout": c.last_scanout,
                     // Tabbed-group membership (null for ungrouped windows).
                     // Lets the shell surface "tab 2/4" / a group pill later.

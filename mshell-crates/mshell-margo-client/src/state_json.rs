@@ -224,6 +224,9 @@ pub struct RawClient {
     /// A named scratchpad (`toggle_named_scratchpad` / window rule).
     #[serde(default)]
     pub named_scratchpad: bool,
+    /// An X11 window running through XWayland. `false` on older margo.
+    #[serde(default)]
+    pub xwayland: bool,
     pub tags: u32,
     pub monitor: String,
     pub monitor_idx: i32,
