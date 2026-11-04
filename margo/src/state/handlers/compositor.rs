@@ -584,25 +584,82 @@ impl BufferHandler for MargoState {
 /// niri wires this the same way (`niri/src/handlers/mod.rs:845`).
 impl smithay::wayland::fractional_scale::FractionalScaleHandler for MargoState {}
 
-/// Push `wl_surface.preferred_buffer_scale` (integer) +
-/// `wp_fractional_scale_v1.preferred_scale` (fractional) events to
-/// a surface and all of its subsurfaces, matching the output the
-/// surface is currently mapped to. Call after a surface is mapped
-/// or whenever the output's scale changes. Mirrors niri's
-/// `send_scale_transform` (`niri/src/utils/mod.rs:258`).
+/// Push `wl_surface.preferred_buffer_scale` / `preferred_buffer_transform`
+/// and `wp_fractional_scale_v1.preferred_scale` to a surface and all of its
+/// subsurfaces, matching the output the surface is on. Both smithay setters
+/// only send when the value changed, so calling this on every arrange is
+/// cheap. Mirrors niri's `send_scale_transform` (`niri/src/utils/mod.rs:258`).
 pub fn send_scale_transform(
     surface: &WlSurface,
     scale: smithay::output::Scale,
     transform: smithay::utils::Transform,
 ) {
-    use smithay::wayland::compositor::{send_surface_state, with_states};
+    use smithay::wayland::compositor::{
+        TraversalAction, send_surface_state, with_surface_tree_downward,
+    };
     use smithay::wayland::fractional_scale::with_fractional_scale;
-    with_states(surface, |data| {
-        send_surface_state(surface, data, scale.integer_scale(), transform);
-        with_fractional_scale(data, |fractional| {
-            fractional.set_preferred_scale(scale.fractional_scale());
-        });
-    });
+    with_surface_tree_downward(
+        surface,
+        (),
+        |_, _, _| TraversalAction::DoChildren(()),
+        |surface, data, _| {
+            send_surface_state(surface, data, scale.integer_scale(), transform);
+            with_fractional_scale(data, |fractional| {
+                fractional.set_preferred_scale(scale.fractional_scale());
+            });
+        },
+        |_, _, _| true,
+    );
+}
+
+impl MargoState {
+    /// Send `mon_idx`'s output scale and transform to every window on it
+    /// and every layer surface on its output (see [`send_scale_transform`]).
+    /// Run on each arrange, so a window that just mapped or moved here,
+    /// and everything after a scale / transform change, hears the new
+    /// values; unchanged surfaces get nothing.
+    pub(crate) fn send_monitor_scale_transform(&self, mon_idx: usize) {
+        use smithay::wayland::seat::WaylandFocus;
+        let Some(mon) = self.monitors.get(mon_idx) else {
+            return;
+        };
+        let output = &mon.output;
+        let scale = output.current_scale();
+        let transform = output.current_transform();
+        let with_popups = |root: &WlSurface| {
+            send_scale_transform(root, scale, transform);
+            for (popup, _) in smithay::desktop::PopupManager::popups_for_surface(root) {
+                send_scale_transform(popup.wl_surface(), scale, transform);
+            }
+        };
+        for client in self.clients.iter().filter(|c| c.monitor == mon_idx) {
+            if let Some(surface) = client.window.wl_surface() {
+                with_popups(&surface);
+            }
+        }
+        {
+            let map = smithay::desktop::layer_map_for_output(output);
+            for layer in map.layers() {
+                with_popups(layer.wl_surface());
+            }
+        }
+        for (_, lock) in self.lock_surfaces.iter().filter(|(o, _)| o == output) {
+            send_scale_transform(lock.wl_surface(), scale, transform);
+        }
+    }
+
+    /// [`send_scale_transform`] for a surface that belongs under the
+    /// pointer (a client cursor surface), using the pointer's output.
+    pub(crate) fn send_pointer_output_scale_transform(&self, surface: &WlSurface) {
+        let Some(mon) = self.pointer_monitor().and_then(|i| self.monitors.get(i)) else {
+            return;
+        };
+        send_scale_transform(
+            surface,
+            mon.output.current_scale(),
+            mon.output.current_transform(),
+        );
+    }
 }
 
 /// Find the output that owns this root surface — walks the layer

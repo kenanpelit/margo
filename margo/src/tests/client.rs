@@ -55,7 +55,7 @@ use wayland_client::protocol::wl_buffer::WlBuffer;
 use wayland_client::protocol::wl_callback::{self, WlCallback};
 use wayland_client::protocol::wl_compositor::WlCompositor;
 use wayland_client::protocol::wl_display::WlDisplay;
-use wayland_client::protocol::wl_output::WlOutput;
+use wayland_client::protocol::wl_output::{self, WlOutput};
 use wayland_client::protocol::wl_pointer::{self, WlPointer};
 use wayland_client::protocol::wl_registry::{self, WlRegistry};
 use wayland_client::protocol::wl_seat::{self, WlSeat};
@@ -121,6 +121,10 @@ pub struct ClientState {
     /// What a bound `zwlr_output_manager_v1` reported (see
     /// `wlr_output_client.rs`).
     pub output_management: super::wlr_output_client::OutputManagementEvents,
+    /// Last `wl_surface.preferred_buffer_scale` / `_transform` per surface
+    /// protocol id.
+    pub preferred_buffer_scale: BTreeMap<u32, i32>,
+    pub preferred_buffer_transform: BTreeMap<u32, wayland_client::WEnum<wl_output::Transform>>,
 }
 
 /// Sync sentinel: each `roundtrip` mints one and the fixture spins
@@ -596,18 +600,25 @@ impl Dispatch<WlCompositor, ()> for ClientState {
 
 impl Dispatch<WlSurface, ()> for ClientState {
     fn event(
-        _: &mut Self,
-        _: &WlSurface,
+        state: &mut Self,
+        surface: &WlSurface,
         event: wl_surface::Event,
         _: &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        // Enter / leave events arrive when outputs come and go;
-        // headless tests have no outputs so they shouldn't fire,
-        // but we accept them silently if the harness later adds an
-        // Output via MargoState.
-        let _ = event;
+        // Enter / leave are accepted silently; the preferred buffer
+        // scale / transform are recorded for the tests that check them.
+        let id = surface.id().protocol_id();
+        match event {
+            wl_surface::Event::PreferredBufferScale { factor } => {
+                state.preferred_buffer_scale.insert(id, factor);
+            }
+            wl_surface::Event::PreferredBufferTransform { transform } => {
+                state.preferred_buffer_transform.insert(id, transform);
+            }
+            _ => {}
+        }
     }
 }
 

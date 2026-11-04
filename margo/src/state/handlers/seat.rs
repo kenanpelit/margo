@@ -64,6 +64,9 @@ impl SeatHandler for MargoState {
         if let CursorImageStatus::Named(icon) = &image {
             self.cursor_manager.set_named(icon.name(), icon.alt_names());
         }
+        if let CursorImageStatus::Surface(surface) = &image {
+            self.send_pointer_output_scale_transform(surface);
+        }
         self.cursor_status = image;
         self.request_repaint();
     }

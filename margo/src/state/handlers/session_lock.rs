@@ -112,6 +112,11 @@ impl SessionLockHandler for MargoState {
         surface.with_pending_state(|state| {
             state.size = Some(size);
         });
+        crate::state::handlers::compositor::send_scale_transform(
+            surface.wl_surface(),
+            output.current_scale(),
+            output.current_transform(),
+        );
         surface.send_configure();
 
         tracing::info!(

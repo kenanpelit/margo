@@ -296,7 +296,11 @@ impl Protocols {
         config: &Config,
         loop_handle: &LoopHandle<'static, MargoState>,
     ) -> Self {
-        let compositor = CompositorState::new::<MargoState>(dh);
+        // v6: clients learn their buffer scale / transform from
+        // `wl_surface.preferred_buffer_*`, which margo sends to every
+        // window, popup, layer, lock, cursor and subsurface through
+        // `handlers::compositor::send_scale_transform`.
+        let compositor = CompositorState::new_v6::<MargoState>(dh);
         let xdg_shell = XdgShellState::new::<MargoState>(dh);
         let xdg_decoration = XdgDecorationState::new::<MargoState>(dh);
         let shm_formats = vec![

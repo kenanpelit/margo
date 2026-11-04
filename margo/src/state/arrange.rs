@@ -402,6 +402,7 @@ impl MargoState {
         if !self.monitors[mon_idx].enabled {
             return None;
         }
+        self.send_monitor_scale_transform(mon_idx);
 
         // Preserve the old output footprint before any map/unmap/move below.
         // A floating window (or a window moving between monitors) can overlap

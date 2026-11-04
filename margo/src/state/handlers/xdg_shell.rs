@@ -81,6 +81,17 @@ impl XdgShellHandler for MargoState {
         // "open → snap to rule-driven geometry" flicker.
         client.is_initial_map_pending = true;
 
+        // Tell the client its output's scale before its first buffer, so a
+        // fractional-scale-aware app renders that first frame sharp. The
+        // arrange at map time re-sends if a window rule moves it.
+        if let Some(mon) = self.monitors.get(mon_idx) {
+            crate::state::handlers::compositor::send_scale_transform(
+                surface.wl_surface(),
+                mon.output.current_scale(),
+                mon.output.current_transform(),
+            );
+        }
+
         let ft_handle = self.protocols.foreign_toplevel_list.new_toplevel::<Self>(
             crate::utils::clamp_wire_str(&title),
             crate::utils::clamp_wire_str(&app_id),
@@ -130,6 +141,18 @@ impl XdgShellHandler for MargoState {
         // Keep the popup inside its parent's output (flip/slide per the
         // positioner) so edge-of-screen menus don't spill off.
         self.unconstrain_popup(&surface);
+        // Same buffer scale / transform as the window or layer it opens
+        // from, before the popup's first buffer.
+        if let Ok(root) =
+            smithay::desktop::find_popup_root_surface(&PopupKind::Xdg(surface.clone()))
+            && let Some(output) = super::compositor::output_for_root(self, &root)
+        {
+            super::compositor::send_scale_transform(
+                surface.wl_surface(),
+                output.current_scale(),
+                output.current_transform(),
+            );
+        }
         match self.popups.track_popup(PopupKind::Xdg(surface)) {
             Ok(()) => tracing::info!("new_popup: tracked"),
             Err(e) => tracing::warn!(?e, "new_popup: track_popup failed"),
