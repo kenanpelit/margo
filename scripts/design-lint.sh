@@ -8,7 +8,7 @@
 # the exception THERE first, then mirror it here. Don't loosen a rule to
 # make CI green.
 #
-# Covered: L1–L7 + L10 + L11 (all hard gates — the tree was audited clean when this
+# Covered: L1–L7 + L10–L12 (all hard gates — the tree was audited clean when this
 # gate shipped). L8 (main-thread blocking) is advisory-only per DESIGN.md
 # (grep can't prove the thread) and L9 (fmt/clippy) already has its own
 # CI steps.
@@ -139,7 +139,49 @@ hits=$(find mshell-crates mshell mshellctl mshellshare -path '*/target' -prune -
         { allow = 0 }' || true)
 report "L11" "hand-rolled XDG lookup (use margo_fs::xdg)" "$hits"
 
+# L12 — an icon-only `Button::from_icon_name(…)` in mshell-frame needs an
+# accessible name (DESIGN.md §13.8): `mshell_common::a11y::name(&btn, …)`
+# within the next 8 lines. Bar pills are named centrally in bar.rs. Marker
+# `design-lint: allow-unnamed <why>` on the line skips it.
+#   menus/menu_widgets/alarm_clock: review3/shellperf has it open; name its
+#   two trash buttons after that merge.
+hits=$(find mshell-crates/mshell-frame/src -name '*.rs' 2>/dev/null \
+    | grep -v 'menus/menu_widgets/alarm_clock/' \
+    | xargs awk '
+        FNR == 1 { if (pending > 0) print where; in_test = 0; pending = 0 }
+        /#\[cfg\(test\)\]/ { in_test = 1 }
+        in_test { next }
+        pending > 0 && /a11y::name/ { pending = 0 }
+        pending > 0 { pending--; if (pending == 0) print where }
+        /Button::from_icon_name\(/ && !/design-lint: allow-unnamed/ {
+            pending = 8; where = FILENAME ":" FNR ":" $0
+        }
+        END { if (pending > 0) print where }' || true)
+report "L12" "icon-only button without an accessible name (use a11y::name)" "$hits"
+
+# L12 (view! form) — a `gtk::Button { … gtk::Image … }` block in a relm4
+# view with no text child, tooltip or accessible property in it. Bar pills
+# (bars/bar_widgets) are named centrally in bar.rs.
+hits=$(find mshell-crates/mshell-frame/src -name '*.rs' 2>/dev/null \
+    | grep -v -e 'menus/menu_widgets/alarm_clock/' -e 'bars/bar_widgets/' \
+    | xargs awk '
+        FNR == 1 { inb = 0 }
+        !inb && /gtk::Button \{/ && !/design-lint: allow-unnamed/ {
+            inb = 1; depth = 0; buf = ""; where = FILENAME ":" FNR
+        }
+        inb {
+            buf = buf $0 "\n"
+            line = $0
+            depth += gsub(/\{/, "{", line) - gsub(/\}/, "}", line)
+            if (depth <= 0) {
+                inb = 0
+                if (buf ~ /gtk::Image/ && buf !~ /tooltip|set_label|gtk::Label|accessible|a11y/)
+                    print where
+            }
+        }' || true)
+report "L12" "icon-only view! button without an accessible name (update_property Label + tooltip)" "$hits"
+
 if [ "$fail" -ne 0 ]; then
     exit 1
 fi
-echo "design-lint OK: L1–L7, L10, L11 clean."
+echo "design-lint OK: L1–L7, L10–L12 clean."

@@ -7,7 +7,9 @@ use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields, Saved
 use mshell_services::weather_service;
 use mshell_utils::weather::{load_weather_cache, spawn_weather_watcher};
 use reactive_graph::traits::Get;
-use relm4::gtk::prelude::{BoxExt, ButtonExt, ListModelExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{
+    AccessibleExtManual, BoxExt, ButtonExt, ListModelExt, OrientableExt, WidgetExt,
+};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::ops::Not;
 use std::time::Duration;
@@ -222,6 +224,8 @@ impl Component for WeatherModel {
                     // Paging controls — hidden in the all-in-one
                     // (standalone) variant where every section is shown.
                     gtk::Button {
+                        set_tooltip_text: Some("Previous"),
+                        update_property: &[gtk::accessible::Property::Label("Previous")],
                         add_css_class: "ok-button-surface",
                         set_hexpand: false,
                         set_vexpand: false,
@@ -243,6 +247,8 @@ impl Component for WeatherModel {
                     },
 
                     gtk::Button {
+                        set_tooltip_text: Some("Next"),
+                        update_property: &[gtk::accessible::Property::Label("Next")],
                         add_css_class: "ok-button-surface",
                         set_hexpand: false,
                         set_vexpand: false,

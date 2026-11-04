@@ -434,7 +434,7 @@ impl AiMenuWidgetModel {
         let copy = gtk::Button::from_icon_name("edit-copy-symbolic");
         copy.set_css_classes(&["ai-bubble-copy", "flat"]);
         copy.set_valign(gtk::Align::Start);
-        copy.set_tooltip_text(Some("Copy"));
+        mshell_common::a11y::name(&copy, "Copy");
         {
             let body = body.clone();
             copy.connect_clicked(move |b| {

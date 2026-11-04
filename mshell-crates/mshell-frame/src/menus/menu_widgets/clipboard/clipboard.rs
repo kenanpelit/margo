@@ -648,6 +648,7 @@ impl Component for ClipboardModel {
             pin_image.set_halign(gtk::Align::Center);
             pin_image.set_valign(gtk::Align::Center);
             pin_button.set_child(Some(&pin_image));
+            mshell_common::a11y::name(&pin_button, "Pin");
 
             let trash_button = gtk::Button::new();
             trash_button.add_css_class("ok-button-surface");
@@ -656,6 +657,7 @@ impl Component for ClipboardModel {
             trash_image.set_halign(gtk::Align::Center);
             trash_image.set_valign(gtk::Align::Center);
             trash_button.set_child(Some(&trash_image));
+            mshell_common::a11y::name(&trash_button, "Delete entry");
 
             actions.append(&pin_button);
             actions.append(&trash_button);
@@ -760,13 +762,18 @@ impl Component for ClipboardModel {
             }
             rw.swatch.set_visible(swatch_shown);
 
-            if row.pinned {
+            let pin_label = if row.pinned {
                 rw.pin_button.add_css_class("pinned");
                 rw.pin_image.set_icon_name(Some("starred-symbolic"));
+                "Unpin"
             } else {
                 rw.pin_button.remove_css_class("pinned");
                 rw.pin_image.set_icon_name(Some("non-starred-symbolic"));
-            }
+                "Pin"
+            };
+            // Rows are recycled: re-name the button for this row's state.
+            rw.pin_button.set_tooltip_text(Some(pin_label));
+            mshell_common::a11y::name(&rw.pin_button, pin_label);
             clear_box(&rw.preview_box);
             let query = bind_query.borrow();
             build_preview(&rw.preview_box, &row.preview, &query);

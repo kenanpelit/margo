@@ -510,7 +510,7 @@ fn make_note_row(note: &Note, sender: &ComponentSender<NotesMenuWidgetModel>) ->
     header.append(&title_entry);
     let delete = gtk::Button::from_icon_name("trash-symbolic");
     delete.add_css_class("ok-button-flat");
-    delete.set_tooltip_text(Some("Delete note"));
+    mshell_common::a11y::name(&delete, "Delete note");
     let id_for_delete = note.id.clone();
     let s_delete = sender.clone();
     delete.connect_clicked(move |_| {
@@ -635,7 +635,7 @@ fn make_todo_row(todo: &Todo, sender: &ComponentSender<NotesMenuWidgetModel>) ->
 
     let delete = gtk::Button::from_icon_name("trash-symbolic");
     delete.add_css_class("ok-button-flat");
-    delete.set_tooltip_text(Some("Delete todo"));
+    mshell_common::a11y::name(&delete, "Delete todo");
     let id_for_delete = todo.id.clone();
     let s_delete = sender.clone();
     delete.connect_clicked(move |_| {

@@ -1,5 +1,5 @@
 use mshell_utils::picker::spawn_color_picker;
-use relm4::gtk::prelude::{ButtonExt, WidgetExt};
+use relm4::gtk::prelude::{AccessibleExtManual, ButtonExt, WidgetExt};
 use relm4::{ComponentParts, ComponentSender, SimpleComponent, gtk};
 
 #[derive(Debug, Clone)]
@@ -28,6 +28,8 @@ impl SimpleComponent for ColorPickerModel {
         gtk::Box {
             #[name = "button"]
             gtk::Button {
+                set_tooltip_text: Some("Pick a colour"),
+                update_property: &[gtk::accessible::Property::Label("Pick a colour")],
                 set_css_classes: &["ok-button-surface", "ok-button-medium"],
                 set_hexpand: false,
                 set_vexpand: false,

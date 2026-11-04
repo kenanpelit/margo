@@ -1,5 +1,5 @@
 use mshell_settings::open_settings;
-use relm4::gtk::prelude::{ButtonExt, WidgetExt};
+use relm4::gtk::prelude::{AccessibleExtManual, ButtonExt, WidgetExt};
 use relm4::{ComponentParts, ComponentSender, SimpleComponent, gtk};
 
 pub(crate) struct SettingsModel {}
@@ -25,6 +25,8 @@ impl SimpleComponent for SettingsModel {
         gtk::Box {
             #[name = "button"]
             gtk::Button {
+                set_tooltip_text: Some("Settings"),
+                update_property: &[gtk::accessible::Property::Label("Settings")],
                 set_css_classes: &["ok-button-surface", "ok-button-medium"],
                 set_hexpand: false,
                 set_vexpand: false,

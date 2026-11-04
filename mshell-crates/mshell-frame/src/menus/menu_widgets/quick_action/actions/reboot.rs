@@ -2,7 +2,7 @@ use crate::common_widgets::confirmation_dialog::{
     ConfirmationDialogInit, ConfirmationDialogModel, ConfirmationDialogOutput,
 };
 use mshell_utils::reboot::reboot;
-use relm4::gtk::prelude::{ButtonExt, WidgetExt};
+use relm4::gtk::prelude::{AccessibleExtManual, ButtonExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, Controller, SimpleComponent, gtk};
 
 pub(crate) struct RebootModel {
@@ -32,6 +32,8 @@ impl SimpleComponent for RebootModel {
         gtk::Box {
             #[name = "button"]
             gtk::Button {
+                set_tooltip_text: Some("Reboot"),
+                update_property: &[gtk::accessible::Property::Label("Reboot")],
                 set_css_classes: &["ok-button-surface", "ok-button-medium"],
                 set_hexpand: false,
                 set_vexpand: false,

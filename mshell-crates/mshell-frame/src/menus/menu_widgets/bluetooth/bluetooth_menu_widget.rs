@@ -583,11 +583,14 @@ impl BluetoothMenuWidgetModel {
             if pinned {
                 pin_btn.add_css_class("pinned");
             }
-            pin_btn.set_tooltip_text(Some(if pinned {
-                "Auto-connects at login — click to stop"
-            } else {
-                "Auto-connect this device at login"
-            }));
+            mshell_common::a11y::name(
+                &pin_btn,
+                if pinned {
+                    "Auto-connects at login — click to stop"
+                } else {
+                    "Auto-connect this device at login"
+                },
+            );
             {
                 let addr_p = address.clone();
                 let name_p = alias.clone();

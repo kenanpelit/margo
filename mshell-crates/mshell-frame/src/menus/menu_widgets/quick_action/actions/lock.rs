@@ -1,5 +1,5 @@
 use mshell_session::session_lock::lock_session;
-use relm4::gtk::prelude::{ButtonExt, WidgetExt};
+use relm4::gtk::prelude::{AccessibleExtManual, ButtonExt, WidgetExt};
 use relm4::{ComponentParts, ComponentSender, SimpleComponent, gtk};
 
 #[derive(Debug, Clone)]
@@ -28,6 +28,8 @@ impl SimpleComponent for LockModel {
         gtk::Box {
             #[name = "button"]
             gtk::Button {
+                set_tooltip_text: Some("Lock screen"),
+                update_property: &[gtk::accessible::Property::Label("Lock screen")],
                 set_css_classes: &["ok-button-surface", "ok-button-medium"],
                 set_hexpand: false,
                 set_vexpand: false,

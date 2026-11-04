@@ -62,6 +62,8 @@ where
                 set_orientation: Orientation::Horizontal,
 
                 gtk::Button {
+                    set_tooltip_text: Some("Toggle"),
+                    update_property: &[gtk::accessible::Property::Label("Toggle")],
                     set_css_classes: &["ok-button-surface", "ok-button-medium", "ok-button-no-disabled", "revealer-row-chip"],
                     set_hexpand: false,
                     set_vexpand: false,
@@ -85,6 +87,8 @@ where
                 model.content.widget().clone() {},
 
                 gtk::Button {
+                    set_tooltip_text: Some("Show details"),
+                    update_property: &[gtk::accessible::Property::Label("Show details")],
                     set_css_classes: &["ok-button-surface", "ok-button-medium-thin", "revealer-row-chip"],
                     set_hexpand: false,
                     set_vexpand: false,

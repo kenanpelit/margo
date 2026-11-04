@@ -8,6 +8,7 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
+gtk4.workspace = true
 gtk4-layer-shell.workspace = true
 gtk4-session-lock.workspace = true
 futures.workspace = true
@@ -23,6 +24,9 @@ wayle-notification.workspace = true
 workspace = true
 
 [package.metadata.cargo-machete]
-# gtk4-session-lock is not named in the source, but removing it breaks the build:
-# relm4's widget macros then fail to resolve `gtk::Accessible`.
-ignored = ["gtk4-session-lock"]
+# gtk4 and gtk4-session-lock are not named in the source (we use relm4's
+# re-export); they are here to turn on the workspace's gtk4 version features.
+# Without them `cargo build -p mshell-common` fails on its own: relm4's
+# widget macros can't resolve `gtk::Accessible`, and `gtk::accessible`
+# (the a11y helper) is behind gtk4's `v4_10`.
+ignored = ["gtk4", "gtk4-session-lock"]

@@ -2,7 +2,7 @@ use crate::common_widgets::confirmation_dialog::{
     ConfirmationDialogInit, ConfirmationDialogModel, ConfirmationDialogOutput,
 };
 use mshell_utils::shutdown::shutdown;
-use relm4::gtk::prelude::{ButtonExt, WidgetExt};
+use relm4::gtk::prelude::{AccessibleExtManual, ButtonExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, Controller, SimpleComponent, gtk};
 
 pub(crate) struct ShutdownModel {
@@ -32,6 +32,8 @@ impl SimpleComponent for ShutdownModel {
         gtk::Box {
             #[name = "button"]
             gtk::Button {
+                set_tooltip_text: Some("Shut down"),
+                update_property: &[gtk::accessible::Property::Label("Shut down")],
                 set_css_classes: &["ok-button-surface", "ok-button-medium"],
                 set_hexpand: false,
                 set_vexpand: false,

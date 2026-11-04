@@ -203,6 +203,8 @@ impl Component for WallpaperMenuWidgetModel {
                     set_spacing: 16,
 
                     gtk::Button {
+                        set_tooltip_text: Some("Change wallpaper folder"),
+                        update_property: &[gtk::accessible::Property::Label("Change wallpaper folder")],
                         set_css_classes: &["ok-button-primary"],
                         set_halign: gtk::Align::Start,
                         set_hexpand: false,

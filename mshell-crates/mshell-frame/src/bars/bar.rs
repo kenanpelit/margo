@@ -1442,6 +1442,13 @@ impl BarModel {
             root.add_css_class("bar-pill-std");
             root.set_halign(gtk::Align::Center);
             root.set_valign(gtk::Align::Center);
+            // Most pills are icon-only: name them for screen readers (and
+            // give the ones without a tooltip a hover hint) in this one place.
+            let name = match widget {
+                BarWidget::Custom(plugin) => plugin.as_str(),
+                other => other.display_name(),
+            };
+            mshell_common::a11y::name_pill(root.upcast_ref(), name);
         }
         controller
     }

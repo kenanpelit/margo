@@ -600,7 +600,7 @@ fn connected_card(
     ));
     let share_text_btn = gtk::Button::from_icon_name("insert-text-symbolic");
     share_text_btn.add_css_class("ok-button-surface");
-    share_text_btn.set_tooltip_text(Some("Share text"));
+    mshell_common::a11y::name(&share_text_btn, "Share text");
     share_text_btn.set_valign(gtk::Align::Center);
     {
         let sender = sender.clone();
@@ -705,7 +705,7 @@ fn name_row(
 
         let commit = gtk::Button::from_icon_name("object-select-symbolic");
         commit.add_css_class("ok-button-surface");
-        commit.set_tooltip_text(Some("Save"));
+        mshell_common::a11y::name(&commit, "Save");
         {
             let id = device.id.clone();
             let sender = sender.clone();
@@ -730,7 +730,7 @@ fn name_row(
 
         let cancel = gtk::Button::from_icon_name("process-stop-symbolic");
         cancel.add_css_class("ok-button-surface");
-        cancel.set_tooltip_text(Some("Cancel"));
+        mshell_common::a11y::name(&cancel, "Cancel");
         {
             let sender = sender.clone();
             cancel.connect_clicked(move |_| {
@@ -753,7 +753,7 @@ fn name_row(
 
         let rename_btn = gtk::Button::from_icon_name("document-edit-symbolic");
         rename_btn.add_css_class("ok-button-surface");
-        rename_btn.set_tooltip_text(Some("Rename this device"));
+        mshell_common::a11y::name(&rename_btn, "Rename this device");
         {
             let id = device.id.clone();
             let sender = sender.clone();
@@ -806,7 +806,7 @@ fn share_text_row(device_id: &str, sender: &ComponentSender<ValentMenuWidgetMode
 
     let send = gtk::Button::from_icon_name("mail-send-symbolic");
     send.add_css_class("ok-button-primary");
-    send.set_tooltip_text(Some("Send"));
+    mshell_common::a11y::name(&send, "Send");
 
     {
         let id = device_id.to_string();
@@ -1020,7 +1020,7 @@ fn action_button(
 ) -> gtk::Button {
     let btn = gtk::Button::from_icon_name(icon);
     btn.add_css_class("ok-button-surface");
-    btn.set_tooltip_text(Some(tooltip));
+    mshell_common::a11y::name(&btn, tooltip);
     btn.set_valign(gtk::Align::Center);
     let sender = sender.clone();
     btn.connect_clicked(move |_| {

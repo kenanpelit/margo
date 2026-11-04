@@ -856,7 +856,7 @@ fn action_button(
 ) -> gtk::Button {
     let btn = gtk::Button::from_icon_name(icon);
     btn.add_css_class("ok-button-flat");
-    btn.set_tooltip_text(Some(tooltip));
+    mshell_common::a11y::name(&btn, tooltip);
     let s = sender.clone();
     btn.connect_clicked(move |_| {
         s.input(PodmanMenuWidgetInput::RunPodman(args.clone()));

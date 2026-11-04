@@ -320,6 +320,8 @@ impl Component for AppLauncherModel {
                 },
 
                 gtk::Button {
+                    set_tooltip_text: Some("Show hidden apps"),
+                    update_property: &[gtk::accessible::Property::Label("Show hidden apps")],
                     add_css_class: "ok-button-surface",
                     set_hexpand: false,
                     set_vexpand: false,

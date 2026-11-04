@@ -5064,6 +5064,7 @@ name = "mshell-common"
 version = "4.6.1"
 dependencies = [
  "futures",
+ "gtk4",
  "gtk4-layer-shell",
  "gtk4-session-lock",
  "mshell-config",

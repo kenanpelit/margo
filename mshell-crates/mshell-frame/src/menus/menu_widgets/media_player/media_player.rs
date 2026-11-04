@@ -211,6 +211,8 @@ impl Component for MediaPlayerModel {
                 set_spacing: 8,
 
                 gtk::Button {
+                    set_tooltip_text: Some("Shuffle"),
+                    update_property: &[gtk::accessible::Property::Label("Shuffle")],
                     add_css_class: "ok-button-surface",
                     set_hexpand: false,
                     set_vexpand: false,
@@ -235,6 +237,8 @@ impl Component for MediaPlayerModel {
                 },
 
                 gtk::Button {
+                    set_tooltip_text: Some("Previous track"),
+                    update_property: &[gtk::accessible::Property::Label("Previous track")],
                     add_css_class: "ok-button-surface",
                     set_hexpand: false,
                     set_vexpand: false,
@@ -254,6 +258,8 @@ impl Component for MediaPlayerModel {
                 },
 
                 gtk::Button {
+                    set_tooltip_text: Some("Play or pause"),
+                    update_property: &[gtk::accessible::Property::Label("Play or pause")],
                     add_css_class: "ok-button-surface",
                     add_css_class: "media-player-ctl-primary",
                     set_hexpand: false,
@@ -279,6 +285,8 @@ impl Component for MediaPlayerModel {
                 },
 
                 gtk::Button {
+                    set_tooltip_text: Some("Next track"),
+                    update_property: &[gtk::accessible::Property::Label("Next track")],
                     add_css_class: "ok-button-surface",
                     set_hexpand: false,
                     set_vexpand: false,
@@ -298,6 +306,8 @@ impl Component for MediaPlayerModel {
                 },
 
                 gtk::Button {
+                    set_tooltip_text: Some("Loop"),
+                    update_property: &[gtk::accessible::Property::Label("Loop")],
                     add_css_class: "ok-button-surface",
                     set_hexpand: false,
                     set_vexpand: false,

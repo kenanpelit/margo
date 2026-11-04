@@ -462,7 +462,7 @@ fn make_rule_row(rule: &str, sender: &ComponentSender<UfwMenuWidgetModel>) -> gt
 
     let del = gtk::Button::from_icon_name("user-trash-symbolic");
     del.add_css_class("ok-button-flat");
-    del.set_tooltip_text(Some("Delete rule (requires authentication)"));
+    mshell_common::a11y::name(&del, "Delete rule (requires authentication)");
     let rule_owned = rule.to_string();
     let s = sender.clone();
     del.connect_clicked(move |_| {

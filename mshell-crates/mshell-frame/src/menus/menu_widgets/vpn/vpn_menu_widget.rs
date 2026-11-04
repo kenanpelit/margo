@@ -1019,6 +1019,7 @@ fn rebuild_favs(
         }
         let remove = gtk::Button::from_icon_name("user-trash-symbolic");
         remove.set_css_classes(&["ok-button-surface", "dns-action"]);
+        mshell_common::a11y::name(&remove, "Remove relay");
         {
             let (s, r) = (sender.clone(), f.relay.clone());
             connect.connect_clicked(move |_| s.input(VpnMenuWidgetInput::Connect(r.clone())));

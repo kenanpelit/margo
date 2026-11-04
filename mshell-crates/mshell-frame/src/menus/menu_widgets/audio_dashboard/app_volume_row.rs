@@ -99,6 +99,8 @@ impl Component for AppVolumeRowModel {
             },
 
             gtk::Button {
+                set_tooltip_text: Some("Mute or unmute"),
+                update_property: &[gtk::accessible::Property::Label("Mute or unmute")],
                 add_css_class: "ok-button-surface",
                 set_valign: gtk::Align::Center,
                 connect_clicked[sender] => move |_| {

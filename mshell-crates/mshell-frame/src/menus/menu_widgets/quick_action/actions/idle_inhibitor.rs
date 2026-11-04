@@ -1,6 +1,6 @@
 use mshell_idle::inhibitor::IdleInhibitor;
 use mshell_utils::idle::spawn_idle_inhibitor_watcher;
-use relm4::gtk::prelude::{ButtonExt, WidgetExt};
+use relm4::gtk::prelude::{AccessibleExtManual, ButtonExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
 #[derive(Debug, Clone)]
@@ -35,6 +35,8 @@ impl Component for IdleInhibitorModel {
         gtk::Box {
             #[name = "button"]
             gtk::Button {
+                set_tooltip_text: Some("Keep awake"),
+                update_property: &[gtk::accessible::Property::Label("Keep awake")],
                 #[watch]
                 set_css_classes: if model.enabled {
                     &["ok-button-surface", "ok-button-medium", "selected"]

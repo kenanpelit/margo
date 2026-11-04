@@ -122,6 +122,8 @@ impl Component for MediaPlayersModel {
                 },
 
                 gtk::Button {
+                    set_tooltip_text: Some("Previous player"),
+                    update_property: &[gtk::accessible::Property::Label("Previous player")],
                     add_css_class: "ok-button-surface",
                     set_hexpand: false,
                     set_vexpand: false,
@@ -141,6 +143,8 @@ impl Component for MediaPlayersModel {
                 },
 
                 gtk::Button {
+                    set_tooltip_text: Some("Next player"),
+                    update_property: &[gtk::accessible::Property::Label("Next player")],
                     add_css_class: "ok-button-surface",
                     set_hexpand: false,
                     set_vexpand: false,

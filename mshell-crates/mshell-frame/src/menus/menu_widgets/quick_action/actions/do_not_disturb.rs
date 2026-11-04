@@ -1,6 +1,6 @@
 use mshell_services::notification_service;
 use mshell_utils::notifications::spawn_dnd_watcher;
-use relm4::gtk::prelude::{ButtonExt, WidgetExt};
+use relm4::gtk::prelude::{AccessibleExtManual, ButtonExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
 #[derive(Debug, Clone)]
@@ -35,6 +35,8 @@ impl Component for DoNotDisturbModel {
         gtk::Box {
             #[name = "button"]
             gtk::Button {
+                set_tooltip_text: Some("Do not disturb"),
+                update_property: &[gtk::accessible::Property::Label("Do not disturb")],
                 #[watch]
                 set_css_classes: if model.enabled {
                     &["ok-button-surface", "ok-button-medium", "selected"]

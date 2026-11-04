@@ -12,7 +12,7 @@
 //! keeps a single source of truth — no two writers fighting over
 //! `zwlr_gamma_control` the way the old `mshell-gamma` path did.
 
-use relm4::gtk::prelude::{ButtonExt, WidgetExt};
+use relm4::gtk::prelude::{AccessibleExtManual, ButtonExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::time::Duration;
 use tracing::warn;
@@ -53,6 +53,8 @@ impl Component for NightLightModel {
         gtk::Box {
             #[name = "button"]
             gtk::Button {
+                set_tooltip_text: Some("Night light"),
+                update_property: &[gtk::accessible::Property::Label("Night light")],
                 #[watch]
                 set_css_classes: if model.enabled {
                     &["ok-button-surface", "ok-button-medium", "selected"]

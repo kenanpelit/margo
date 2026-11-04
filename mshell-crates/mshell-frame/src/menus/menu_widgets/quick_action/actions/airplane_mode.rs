@@ -1,7 +1,7 @@
 use mshell_common::WatcherToken;
 use mshell_services::network_service;
 use mshell_utils::network::{spawn_wifi_available_watcher, spawn_wifi_enabled_watcher};
-use relm4::gtk::prelude::{ButtonExt, WidgetExt};
+use relm4::gtk::prelude::{AccessibleExtManual, ButtonExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
 pub(crate) struct AirplaneModeModel {
@@ -38,6 +38,8 @@ impl Component for AirplaneModeModel {
         gtk::Box {
             #[name = "button"]
             gtk::Button {
+                set_tooltip_text: Some("Airplane mode"),
+                update_property: &[gtk::accessible::Property::Label("Airplane mode")],
                 #[watch]
                 set_css_classes: if model.enabled {
                     &["ok-button-surface", "ok-button-medium",]

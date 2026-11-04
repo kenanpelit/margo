@@ -613,6 +613,7 @@ impl NotificationsModel {
                 close_img.set_halign(gtk::Align::Center);
                 close_img.set_valign(gtk::Align::Center);
                 close_button.set_child(Some(&close_img));
+                mshell_common::a11y::name(&close_button, "Dismiss notification");
                 header_row.append(&app_icon_box);
                 header_row.append(&app_name);
                 header_row.append(&time_label);
@@ -914,7 +915,7 @@ fn bind_card(
             let btn = if action_icons {
                 let b = gtk::Button::new();
                 b.set_child(Some(&gtk::Image::from_icon_name(&action.id)));
-                b.set_tooltip_text(Some(&action.label));
+                mshell_common::a11y::name(&b, &action.label);
                 b
             } else {
                 gtk::Button::with_label(&action.label)
