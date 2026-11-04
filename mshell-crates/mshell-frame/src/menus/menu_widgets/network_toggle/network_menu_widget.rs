@@ -129,7 +129,9 @@ impl Component for NetworkToggleMenuWidgetModel {
                 set_network_label(&self.revealer_row.model().content.widgets().label);
             }
             NetworkToggleMenuWidgetInput::RevealerRowRevealed => {
-                let network = network_service();
+                let Some(network) = network_service() else {
+                    return;
+                };
                 if let Some(wifi) = network.wifi.get() {
                     self.revealer_row
                         .model()

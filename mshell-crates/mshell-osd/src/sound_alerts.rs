@@ -82,7 +82,9 @@ impl Component for SoundAlertsModel {
     ) {
         match message {
             SoundAlertsCommandOutput::BatteryChanged => {
-                let battery_service = battery_service();
+                let Some(battery_service) = battery_service() else {
+                    return;
+                };
                 let device = battery_service.device.clone();
                 let discharging_low = device.is_present.get()
                     && device.state.get() == DeviceState::Discharging

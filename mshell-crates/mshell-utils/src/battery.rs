@@ -61,7 +61,9 @@ pub fn spawn_battery_watcher<C>(
     C: Component,
     C::CommandOutput: Send + 'static,
 {
-    let service = battery_service();
+    let Some(service) = battery_service() else {
+        return;
+    };
     let percentage = service.device.percentage.clone();
     let state = service.device.state.clone();
     let is_present = service.device.is_present.clone();

@@ -97,7 +97,7 @@ impl Component for AirplaneModeModel {
     ) {
         match message {
             AirplaneModeInput::Clicked => {
-                if let Some(wifi) = network_service().wifi.get() {
+                if let Some(wifi) = network_service().and_then(|n| n.wifi.get()) {
                     tokio::spawn(async move {
                         let _ = wifi.set_enabled(!wifi.enabled.get()).await;
                     });
@@ -115,7 +115,7 @@ impl Component for AirplaneModeModel {
     ) {
         match message {
             AirplaneModeCommandOutput::WifiChanged => {
-                if let Some(wifi) = network_service().wifi.get() {
+                if let Some(wifi) = network_service().and_then(|n| n.wifi.get()) {
                     self.enabled = wifi.enabled.get();
                     self.wifi_available = true;
                 } else {
@@ -129,7 +129,7 @@ impl Component for AirplaneModeModel {
                 });
             }
             AirplaneModeCommandOutput::WifiEnabledChanged => {
-                if let Some(wifi) = network_service().wifi.get() {
+                if let Some(wifi) = network_service().and_then(|n| n.wifi.get()) {
                     self.enabled = wifi.enabled.get();
                     self.wifi_available = true;
                 } else {

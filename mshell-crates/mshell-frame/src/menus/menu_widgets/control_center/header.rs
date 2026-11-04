@@ -7,7 +7,7 @@
 //!           up 3h 5m
 //! ```
 
-use mshell_services::{battery_service, line_power_service};
+use mshell_services::line_power_service;
 use mshell_session::session_lock::lock_session;
 use mshell_settings::open_settings;
 use mshell_utils::battery::{get_battery_icon, get_charging_battery_icon};
@@ -60,17 +60,15 @@ fn read_battery_chip() -> (bool, String, String) {
         .control_center()
         .show_battery_chip()
         .get_untracked();
-    let dev = &battery_service().device;
-    if !enabled || !dev.is_present.get() {
+    let dev = mshell_services::battery_reading();
+    if !enabled || !dev.present {
         return (false, String::new(), String::new());
     }
-    let percent = dev.percentage.get();
-    let charging = matches!(
-        dev.state.get(),
-        DeviceState::Charging | DeviceState::FullyCharged
-    ) || line_power_service()
-        .map(|s| s.device.online.get())
-        .unwrap_or(false);
+    let percent = dev.percentage;
+    let charging = matches!(dev.state, DeviceState::Charging | DeviceState::FullyCharged)
+        || line_power_service()
+            .map(|s| s.device.online.get())
+            .unwrap_or(false);
     let icon = if charging {
         get_charging_battery_icon(percent)
     } else {

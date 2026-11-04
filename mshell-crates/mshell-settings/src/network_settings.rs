@@ -803,9 +803,10 @@ impl Component for NetworkSettingsModel {
             || NetworkSettingsCommandOutput::WiredChanged,
         );
 
-        let network = network_service();
-        let wifi_opt = network.wifi.get();
-        let wired_opt = network.wired.get();
+        // No NetworkManager: the page shows no Wi-Fi / wired sections.
+        let (wifi_opt, wired_opt) = network_service()
+            .map(|n| (n.wifi.get(), n.wired.get()))
+            .unwrap_or((None, None));
 
         // Build the editor controller first — its widget is referenced in
         // view_output!() via `model.editor_controller.widget()`.
@@ -903,7 +904,7 @@ impl Component for NetworkSettingsModel {
                     }
                 });
                 // Also request a device-level scan via wayle
-                if let Some(wifi) = network_service().wifi.get() {
+                if let Some(wifi) = network_service().and_then(|n| n.wifi.get()) {
                     tokio::spawn(async move {
                         let _ = wifi.device.request_scan().await;
                     });
@@ -922,7 +923,9 @@ impl Component for NetworkSettingsModel {
     ) {
         match message {
             NetworkSettingsCommandOutput::StateChanged => {
-                let network = network_service();
+                let Some(network) = network_service() else {
+                    return;
+                };
                 let wifi_opt = network.wifi.get();
                 let wired_opt = network.wired.get();
                 self.wifi_available = wifi_opt.is_some();
@@ -953,7 +956,9 @@ impl Component for NetworkSettingsModel {
                 });
             }
             NetworkSettingsCommandOutput::AvailableNetworksChanged => {
-                let network = network_service();
+                let Some(network) = network_service() else {
+                    return;
+                };
                 self.access_points = network
                     .wifi
                     .get()
@@ -975,7 +980,7 @@ impl Component for NetworkSettingsModel {
         match message {
             // ── Wi-Fi enable toggle ───────────────────────────────────────
             NetworkSettingsInput::SetWifiEnabled(enabled) => {
-                if let Some(wifi) = network_service().wifi.get() {
+                if let Some(wifi) = network_service().and_then(|n| n.wifi.get()) {
                     tokio::spawn(async move {
                         let _ = wifi.set_enabled(enabled).await;
                     });
@@ -984,7 +989,9 @@ impl Component for NetworkSettingsModel {
 
             // ── Connect to AP (saved profile or open network) ─────────────
             NetworkSettingsInput::ConnectAp(ssid) => {
-                let network = network_service();
+                let Some(network) = network_service() else {
+                    return;
+                };
                 let has_saved = network
                     .settings
                     .connections_for_ssid(&Ssid::from(ssid.as_str()))
@@ -1018,7 +1025,7 @@ impl Component for NetworkSettingsModel {
 
             // ── Connect to secured AP with password ───────────────────────
             NetworkSettingsInput::ConnectApWithPassword(ssid, password) => {
-                if let Some(wifi) = network_service().wifi.get()
+                if let Some(wifi) = network_service().and_then(|n| n.wifi.get())
                     && let Some(ap_path) = self
                         .access_points
                         .iter()
@@ -1039,7 +1046,9 @@ impl Component for NetworkSettingsModel {
 
             // ── Forget saved connections for an SSID ──────────────────────
             NetworkSettingsInput::ForgetConn(ssid) => {
-                let network = network_service();
+                let Some(network) = network_service() else {
+                    return;
+                };
                 let ssid_val = Ssid::from(ssid.as_str());
                 let settings = network.settings.clone();
                 let sender_c = sender.clone();
@@ -1386,12 +1395,14 @@ impl NetworkSettingsModel {
             .unwrap_or(false);
         let has_security = security != SecurityType::None;
 
-        let network = network_service();
-        let has_saved = network
-            .settings
-            .connections_for_ssid(&Ssid::from(ssid_str.as_str()))
-            .is_empty()
-            .not();
+        // An AP row only exists while NetworkManager runs.
+        let has_saved = network_service().is_some_and(|network| {
+            network
+                .settings
+                .connections_for_ssid(&Ssid::from(ssid_str.as_str()))
+                .is_empty()
+                .not()
+        });
 
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         row.add_css_class("wifi-row");
@@ -1479,7 +1490,7 @@ impl NetworkSettingsModel {
             let disconnect_btn = gtk::Button::with_label("Disconnect");
             disconnect_btn.add_css_class("ok-button-primary");
             disconnect_btn.connect_clicked(move |_| {
-                if let Some(wifi) = network_service().wifi.get() {
+                if let Some(wifi) = network_service().and_then(|n| n.wifi.get()) {
                     tokio::spawn(async move {
                         let _ = wifi.disconnect().await;
                     });

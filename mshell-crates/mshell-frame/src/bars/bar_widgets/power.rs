@@ -348,9 +348,11 @@ pub(crate) fn read_power_state() -> PowerState {
         state.profile = Some(Profile::from_wayle(&profile));
     }
 
-    let battery = battery_service().device.clone();
-    let dev_state = battery.state.get();
-    if battery.is_present.get() {
+    let dev_state = mshell_services::battery_reading().state;
+    // No UPower: no battery section.
+    if let Some(battery) = battery_service().map(|b| b.device.clone())
+        && battery.is_present.get()
+    {
         state.battery_available = true;
         state.battery_percent = Some(battery.percentage.get().round().clamp(0.0, 100.0) as u8);
         state.battery_status = match dev_state {

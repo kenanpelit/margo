@@ -1368,17 +1368,23 @@ fn apply_battery_visuals(widgets: &PowerSettingsModelWidgets, model: &PowerSetti
 
 // ── Service read helpers ──────────────────────────────────────────────────────
 
+// No UPower (`battery_service()` is `None`): reads as no battery present.
+
 fn read_battery_available() -> bool {
-    battery_service().device.is_present.get()
+    battery_service().is_some_and(|b| b.device.is_present.get())
 }
 
 fn read_battery_percent() -> u8 {
-    let pct = battery_service().device.percentage.get();
+    let pct = battery_service().map_or(0.0, |b| b.device.percentage.get());
     pct.round().clamp(0.0, 100.0) as u8
 }
 
+fn battery_state() -> DeviceState {
+    battery_service().map_or(DeviceState::Unknown, |b| b.device.state.get())
+}
+
 fn read_battery_status() -> String {
-    match battery_service().device.state.get() {
+    match battery_state() {
         DeviceState::Charging => "Charging".to_string(),
         DeviceState::Discharging => "Discharging".to_string(),
         DeviceState::FullyCharged => "Full".to_string(),
@@ -1389,7 +1395,7 @@ fn read_battery_status() -> String {
 }
 
 fn read_on_ac() -> bool {
-    let dev_state = battery_service().device.state.get();
+    let dev_state = battery_state();
     line_power_service()
         .map(|s| s.device.online.get())
         .unwrap_or(dev_state == DeviceState::Charging || dev_state == DeviceState::FullyCharged)

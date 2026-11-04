@@ -8,7 +8,9 @@ use wayle_network::types::connectivity::ConnectionType;
 use wayle_network::types::states::NetworkStatus;
 
 pub fn set_network_icon(image: &gtk::Image) {
-    let network = network_service();
+    let Some(network) = network_service() else {
+        return;
+    };
     let primary = network.primary.get();
 
     match primary {
@@ -87,7 +89,9 @@ pub fn get_wifi_icon_for_strength(strength: u8) -> &'static str {
 }
 
 pub fn set_network_label(label: &gtk::Label) {
-    let network = network_service();
+    let Some(network) = network_service() else {
+        return;
+    };
     let primary = network.primary.get();
 
     match primary {
@@ -170,7 +174,9 @@ pub fn spawn_network_watcher<C>(
     C: Component,
     C::CommandOutput: Send + 'static,
 {
-    let network = network_service();
+    let Some(network) = network_service() else {
+        return;
+    };
     let primary = network.primary.clone();
     let wifi = network.wifi.clone();
     let wired = network.wired.clone();
@@ -192,7 +198,9 @@ pub fn spawn_wifi_available_watcher<C>(
     C: Component,
     C::CommandOutput: Send + 'static,
 {
-    let network = network_service();
+    let Some(network) = network_service() else {
+        return;
+    };
     let wifi = network.wifi.clone();
     watch!(sender, [wifi.watch()], |out| {
         let _ = out.send(map_wifi());
@@ -207,7 +215,9 @@ pub fn spawn_wifi_enabled_watcher<C>(
     C: Component,
     C::CommandOutput: Send + 'static,
 {
-    let network = network_service();
+    let Some(network) = network_service() else {
+        return;
+    };
     let Some(wifi) = network.wifi.get() else {
         return;
     };
@@ -225,7 +235,9 @@ pub fn spawn_wifi_watcher<C>(
     C: Component,
     C::CommandOutput: Send + 'static,
 {
-    let network = network_service();
+    let Some(network) = network_service() else {
+        return;
+    };
     let Some(wifi) = network.wifi.get() else {
         return;
     };
@@ -256,7 +268,9 @@ pub fn spawn_available_wifi_networks_watcher<C>(
     C: Component,
     C::CommandOutput: Send + 'static,
 {
-    let network = network_service();
+    let Some(network) = network_service() else {
+        return;
+    };
     let Some(wifi) = network.wifi.get() else {
         return;
     };
@@ -280,7 +294,9 @@ pub fn spawn_wired_watcher<C>(
     C: Component,
     C::CommandOutput: Send + 'static,
 {
-    let network = network_service();
+    let Some(network) = network_service() else {
+        return;
+    };
     let Some(wired) = network.wired.get() else {
         return;
     };
@@ -295,7 +311,7 @@ pub fn spawn_wired_watcher<C>(
 /// machine has no active link. Mirrors the bar pill's `read_network_state`
 /// primary-kind logic without the AP scan.
 pub fn active_network_label() -> Option<String> {
-    let net = network_service();
+    let net = network_service()?;
     let wifi = net.wifi.get();
     let wired = net.wired.get();
 

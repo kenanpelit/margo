@@ -471,7 +471,7 @@ impl ToastProducerModel {
                 severity: ToastSeverity::Positive,
             });
         } else {
-            let pct = battery_service().device.percentage.get();
+            let pct = battery_service().map_or(0.0, |b| b.device.percentage.get());
             push_toast(ToastEvent {
                 icon: get_battery_icon(pct).to_string(),
                 title: "On battery".to_string(),
@@ -482,7 +482,10 @@ impl ToastProducerModel {
     }
 
     fn on_battery(&mut self) {
-        let device = battery_service().device.clone();
+        let Some(battery) = battery_service() else {
+            return;
+        };
+        let device = battery.device.clone();
         if !device.is_present.get() {
             return;
         }

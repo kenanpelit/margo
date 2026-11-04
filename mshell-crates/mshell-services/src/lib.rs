@@ -60,24 +60,67 @@ use wayle_weather::{LocationQuery, TemperatureUnit, WeatherService, WeatherServi
 use zbus::zvariant::OwnedObjectPath;
 use zbus::{Connection, Error};
 
-/// Time one service's construction.
+/// How long one service may take to come up before the shell starts without
+/// it. A wedged system bus or a stuck activation otherwise held the first
+/// paint for the whole D-Bus timeout (~25 s).
+const SERVICE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// How one service's start went.
+#[derive(Debug, PartialEq, Eq)]
+enum Started<T> {
+    Ready(T),
+    Failed(String),
+    TimedOut,
+}
+
+impl<T> Started<T> {
+    fn ok(self) -> Option<T> {
+        match self {
+            Started::Ready(v) => Some(v),
+            Started::Failed(_) | Started::TimedOut => None,
+        }
+    }
+}
+
+/// Start one service with a timeout, timing it and logging a failure.
 ///
 /// `init_services` is awaited from the GTK main thread *before* the first bar
-/// is painted, so the blank-screen window at login is exactly the slowest arm
-/// of the `try_join!` below — the arms run concurrently, so the total is the
-/// max, not the sum. Without per-arm timing there is no way to tell which
-/// D-Bus peer is responsible, and the obvious suspects (BlueZ registering a
-/// pairing agent, UPower's `EnumerateDevices`, the StatusNotifier host) are
-/// all equally plausible. Attribute first, restructure second.
-async fn timed<T>(name: &'static str, fut: impl std::future::Future<Output = T>) -> T {
+/// is painted, and the services start concurrently, so the blank-screen
+/// window at login is the slowest of them — now bounded by `limit`. A
+/// failure or timeout of one service no longer stops the others or the
+/// shell; the caller decides what a missing service means.
+async fn start<T, E: std::fmt::Display>(
+    name: &'static str,
+    limit: Duration,
+    fut: impl std::future::Future<Output = Result<T, E>>,
+) -> Started<T> {
     let started = std::time::Instant::now();
-    let out = fut.await;
-    info!(
-        service = name,
-        ms = started.elapsed().as_millis() as u64,
-        "service ready"
-    );
+    let out = match tokio::time::timeout(limit, fut).await {
+        Ok(Ok(v)) => Started::Ready(v),
+        Ok(Err(e)) => Started::Failed(format!("{e:#}")),
+        Err(_) => Started::TimedOut,
+    };
+    let ms = started.elapsed().as_millis() as u64;
+    match &out {
+        Started::Ready(_) => info!(service = name, ms, "service ready"),
+        Started::Failed(e) => {
+            warn!(service = name, ms, error = %e, "service unavailable; continuing without it")
+        }
+        Started::TimedOut => warn!(
+            service = name,
+            ms, "service did not start in time; continuing without it"
+        ),
+    }
     out
+}
+
+/// Names of the required services that did not start.
+fn missing_required<'a>(services: &[(&'a str, bool)]) -> Vec<&'a str> {
+    services
+        .iter()
+        .filter(|(_, up)| !up)
+        .map(|(name, _)| *name)
+        .collect()
 }
 
 pub async fn init_services(
@@ -87,6 +130,7 @@ pub async fn init_services(
 ) -> anyhow::Result<()> {
     info!("Initializing services...");
     let init_started = std::time::Instant::now();
+    let t = SERVICE_TIMEOUT;
     let line_power_fut = async {
         if let Some(path) = find_line_power_path().await? {
             Ok::<_, anyhow::Error>(Some(
@@ -97,109 +141,42 @@ pub async fn init_services(
         }
     };
 
+    // Every service starts on its own: one failing or hanging peer (no
+    // NetworkManager under iwd, no UPower in a VM, a stuck BlueZ activation)
+    // used to abort the whole `try_join!` and the shell never painted.
     let (
         audio,
         battery,
         bluetooth,
         brightness,
-        hyprland,
+        margo,
         line_power,
         media,
         network,
         notifications,
         power_profiles,
         systray,
-    ) = tokio::try_join!(
-        timed("audio", async {
-            Ok::<_, anyhow::Error>(AudioService::new().await?)
-        }),
-        timed("battery", async {
-            Ok::<_, anyhow::Error>(BatteryService::new().await?)
-        }),
-        // Bluetooth is best-effort. `BluetoothService::new()` registers a BlueZ
-        // pairing agent, which requires a running `org.bluez`. A host with no
-        // adapter (e.g. a VM) has bluez installed but `bluetooth.service`
-        // condition-skipped (`ConditionPathIsDirectory=/sys/class/bluetooth`),
-        // so activating org.bluez fails — without this guard that error aborts
-        // the whole `try_join!` and the shell never starts. Degrade to "no
-        // Bluetooth" instead; `bluetooth_service()` is then `None`.
-        timed("bluetooth", async {
-            Ok::<_, anyhow::Error>(match BluetoothService::new().await {
-                Ok(bt) => Some(bt),
-                Err(e) => {
-                    warn!("Bluetooth unavailable; continuing without it: {e:#}");
-                    None
-                }
-            })
-        }),
-        // Brightness is best-effort. `BrightnessService::new()` returns
-        // `Ok(None)` when there's simply no backlight device, but a desktop
-        // with no `/sys/class/backlight` at all — or a transient sysfs/D-Bus
-        // error — surfaces as `Err`, which without this guard would abort the
-        // whole `try_join!` and the shell never starts. Degrade to "no
-        // brightness control"; `brightness_service()` is then `None` (its
-        // callers already handle that).
-        timed("brightness", async {
-            Ok::<_, anyhow::Error>(match BrightnessService::new().await {
-                Ok(b) => b,
-                Err(e) => {
-                    warn!("Brightness backlight unavailable; continuing without it: {e:#}");
-                    None
-                }
-            })
-        }),
-        timed("margo", async { MargoService::new().await }),
-        timed("line_power", line_power_fut),
-        timed("media", async {
-            // `with_art_cache()` resolves MPRIS `mpris:artUrl`s (incl.
-            // remote http(s) covers from Spotify / browsers) to local
-            // files on `TrackMetadata::cover_art`, which the media
-            // widgets render as album art.
-            Ok::<_, anyhow::Error>(MediaService::builder().with_art_cache().build().await?)
-        }),
-        timed("network", async {
-            Ok::<_, anyhow::Error>(NetworkService::new().await?)
-        }),
-        // Notifications are best-effort. `NotificationService::new()` claims the
-        // `org.freedesktop.Notifications` well-known name; if another daemon
-        // (dunst / mako) already owns it, construction fails — that must not
-        // abort login. Degrade to `None`; toasts just don't show.
-        timed("notifications", async {
-            Ok::<_, anyhow::Error>(match NotificationService::new().await {
-                Ok(n) => Some(n),
-                Err(e) => {
-                    warn!("Notification service unavailable; continuing without it: {e:#}");
-                    None
-                }
-            })
-        }),
-        // Power profiles are best-effort. `PowerProfilesService::new()` talks to
-        // `power-profiles-daemon` over D-Bus; on a host without ppd installed it
-        // fails, which must not block the shell. Degrade to `None`; the profile
-        // pill / control-center tile hide.
-        timed("power_profiles", async {
-            Ok::<_, anyhow::Error>(match PowerProfilesService::new().await {
-                Ok(p) => Some(p),
-                Err(e) => {
-                    warn!("Power-profiles service unavailable; continuing without it: {e:#}");
-                    None
-                }
-            })
-        }),
-        // System tray is best-effort. Building the StatusNotifier host can
-        // fail (e.g. the well-known name is already owned by another tray).
-        // The tray pill is non-essential, so degrade to "no tray" rather than
-        // blocking login; `sys_tray_service()` is then `None`.
-        timed("systray", async {
-            Ok::<_, anyhow::Error>(match SystemTrayService::builder().build().await {
-                Ok(t) => Some(t),
-                Err(e) => {
-                    warn!("System tray host unavailable; continuing without it: {e:#}");
-                    None
-                }
-            })
-        }),
-    )?;
+    ) = tokio::join!(
+        start("audio", t, AudioService::new()),
+        start("battery", t, BatteryService::new()),
+        // Needs a running `org.bluez` (a VM without an adapter has none).
+        start("bluetooth", t, BluetoothService::new()),
+        // `Ok(None)` when there's simply no backlight device.
+        start("brightness", t, BrightnessService::new()),
+        start("margo", t, MargoService::new()),
+        start("line_power", t, line_power_fut),
+        // `with_art_cache()` resolves MPRIS `mpris:artUrl`s (incl. remote
+        // http(s) covers from Spotify / browsers) to local files on
+        // `TrackMetadata::cover_art`, which the media widgets render.
+        start("media", t, MediaService::builder().with_art_cache().build()),
+        start("network", t, NetworkService::new()),
+        // Fails when another daemon (dunst / mako) owns the name.
+        start("notifications", t, NotificationService::new()),
+        // Needs power-profiles-daemon.
+        start("power_profiles", t, PowerProfilesService::new()),
+        // Fails when another tray already owns the StatusNotifier host name.
+        start("systray", t, SystemTrayService::builder().build()),
+    );
     // The bar cannot paint until this line is reached — the caller awaits us on
     // the GTK main thread. Compare this against the slowest `service ready`
     // line above to see whether the barrier is one slow peer or all of them.
@@ -207,6 +184,23 @@ pub async fn init_services(
         ms = init_started.elapsed().as_millis() as u64,
         "all services ready"
     );
+
+    // Hard dependencies: their getters are used unconditionally across the
+    // shell, so the shell can't run without them. Name every one that
+    // failed instead of an opaque join error.
+    let (audio, margo, media) = (audio.ok(), margo.ok(), media.ok());
+    let missing = missing_required(&[
+        ("audio", audio.is_some()),
+        ("margo", margo.is_some()),
+        ("media", media.is_some()),
+    ]);
+    let (Some(audio), Some(margo), Some(media)) = (audio, margo, media) else {
+        anyhow::bail!(
+            "required service(s) failed to start: {} (see the warnings above)",
+            missing.join(", ")
+        );
+    };
+
     let sysinfo = SysinfoService::builder().build();
     let weather = WeatherServiceBuilder::new()
         .poll_interval(Duration::from_mins(weather_poll_minutes.max(1) as u64))
@@ -215,22 +209,20 @@ pub async fn init_services(
         .build();
 
     AUDIO_SERVICE.set(audio).ok();
-    BATTERY_SERVICE.set(Arc::new(battery)).ok();
-    BLUETOOTH_SERVICE.set(bluetooth.map(Arc::new)).ok();
-    BRIGHTNESS_SERVICE.set(brightness).ok();
-    MARGO_SERVICE.set(hyprland).ok();
+    BATTERY_SERVICE.set(battery.ok().map(Arc::new)).ok();
+    BLUETOOTH_SERVICE.set(bluetooth.ok().map(Arc::new)).ok();
+    BRIGHTNESS_SERVICE.set(brightness.ok().flatten()).ok();
+    MARGO_SERVICE.set(margo).ok();
     spawn_margo_sync_health_toast();
-    if let Some(line_power) = line_power {
-        LINE_POWER_SERVICE.set(Some(Arc::new(line_power))).ok();
-    } else {
-        LINE_POWER_SERVICE.set(None).ok();
-    }
+    LINE_POWER_SERVICE
+        .set(line_power.ok().flatten().map(Arc::new))
+        .ok();
     MEDIA_SERVICE.set(media).ok();
-    NETWORK_SERVICE.set(Arc::new(network)).ok();
-    NOTIFICATION_SERVICE.set(notifications).ok();
-    POWER_PROFILE_SERVICE.set(power_profiles).ok();
+    NETWORK_SERVICE.set(network.ok().map(Arc::new)).ok();
+    NOTIFICATION_SERVICE.set(notifications.ok()).ok();
+    POWER_PROFILE_SERVICE.set(power_profiles.ok()).ok();
     SYS_INFO_SERVICE.set(Arc::new(sysinfo)).ok();
-    SYS_TRAY_SERVICE.set(systray).ok();
+    SYS_TRAY_SERVICE.set(systray.ok()).ok();
     WEATHER_SERVICE.set(Arc::new(weather)).ok();
 
     info!("Done");
@@ -289,13 +281,39 @@ pub fn audio_service() -> Arc<AudioService> {
         .clone()
 }
 
-static BATTERY_SERVICE: OnceLock<Arc<BatteryService>> = OnceLock::new();
+static BATTERY_SERVICE: OnceLock<Option<Arc<BatteryService>>> = OnceLock::new();
 
-pub fn battery_service() -> Arc<BatteryService> {
+/// The UPower battery service, or `None` when UPower wasn't reachable at
+/// startup (a VM / container). Callers hide battery UI.
+pub fn battery_service() -> Option<Arc<BatteryService>> {
     BATTERY_SERVICE
         .get()
         .expect("BatteryService not initialized")
         .clone()
+}
+
+/// A point-in-time battery reading.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BatteryReading {
+    pub present: bool,
+    pub percentage: f64,
+    pub state: wayle_battery::types::DeviceState,
+}
+
+/// The battery's presence, charge and state; "no battery" without UPower.
+pub fn battery_reading() -> BatteryReading {
+    match battery_service() {
+        Some(b) => BatteryReading {
+            present: b.device.is_present.get(),
+            percentage: b.device.percentage.get(),
+            state: b.device.state.get(),
+        },
+        None => BatteryReading {
+            present: false,
+            percentage: 0.0,
+            state: wayle_battery::types::DeviceState::Unknown,
+        },
+    }
 }
 
 static BLUETOOTH_SERVICE: OnceLock<Option<Arc<BluetoothService>>> = OnceLock::new();
@@ -346,9 +364,11 @@ pub fn media_service() -> Arc<MediaService> {
         .clone()
 }
 
-static NETWORK_SERVICE: OnceLock<Arc<NetworkService>> = OnceLock::new();
+static NETWORK_SERVICE: OnceLock<Option<Arc<NetworkService>>> = OnceLock::new();
 
-pub fn network_service() -> Arc<NetworkService> {
+/// The NetworkManager service, or `None` when NetworkManager isn't running
+/// (iwd / systemd-networkd hosts). Callers hide network UI.
+pub fn network_service() -> Option<Arc<NetworkService>> {
     NETWORK_SERVICE
         .get()
         .expect("NetworkService not initialized")
@@ -407,4 +427,39 @@ pub fn weather_service() -> Arc<WeatherService> {
         .get()
         .expect("WeatherService not initialized")
         .clone()
+}
+
+#[cfg(test)]
+mod start_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn a_hanging_service_times_out_instead_of_blocking_startup() {
+        let hang = std::future::pending::<Result<(), String>>();
+        let out = start("hang", Duration::from_millis(20), hang).await;
+        assert_eq!(out, Started::TimedOut);
+    }
+
+    #[tokio::test]
+    async fn a_failing_service_is_isolated() {
+        let (bad, good) = tokio::join!(
+            start("bad", Duration::from_secs(1), async {
+                Err::<u8, _>("ServiceUnknown")
+            }),
+            start("good", Duration::from_secs(1), async {
+                Ok::<_, String>(7u8)
+            }),
+        );
+        assert_eq!(bad, Started::Failed("ServiceUnknown".into()));
+        assert_eq!(good.ok(), Some(7));
+    }
+
+    #[test]
+    fn missing_required_names_every_failed_service() {
+        assert_eq!(
+            missing_required(&[("audio", false), ("margo", true), ("media", false)]),
+            vec!["audio", "media"]
+        );
+        assert!(missing_required(&[("audio", true)]).is_empty());
+    }
 }

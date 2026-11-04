@@ -220,7 +220,9 @@ impl Component for NetworkRevealedContentModel {
     ) {
         match message {
             NetworkRevealedContentInput::UpdateState => {
-                let network = network_service();
+                let Some(network) = network_service() else {
+                    return;
+                };
                 let wifi = network.wifi.get();
                 let wifi_exists = wifi.is_some();
                 let has_ssid = wifi.map(|w| w.ssid.get().is_some()).unwrap_or(false);
@@ -236,7 +238,9 @@ impl Component for NetworkRevealedContentModel {
                     .set_visible(wifi_exists);
             }
             NetworkRevealedContentInput::UpdateAvailableNetworks => {
-                let network = network_service();
+                let Some(network) = network_service() else {
+                    return;
+                };
 
                 if let Some(wifi) = network.wifi.get() {
                     let access_points: Vec<Arc<AccessPoint>> = wifi

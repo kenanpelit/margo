@@ -26,7 +26,7 @@
 
 use crate::menus::reveal_poll::RevealPoll;
 use mshell_common::scoped_effects::EffectScope;
-use mshell_services::{battery_service, line_power_service, power_profile_service};
+use mshell_services::{line_power_service, power_profile_service};
 use mshell_utils::battery::{
     get_battery_icon, get_charging_battery_icon, spawn_battery_online_watcher,
     spawn_battery_watcher,
@@ -242,10 +242,10 @@ impl Component for SystemStatusModel {
         });
 
         // Prime initial state.
-        let battery = battery_service().device.clone();
-        let has_battery = battery.is_present.get();
-        let battery_percent = battery.percentage.get().round().clamp(0.0, 100.0) as i32;
-        let battery_state = battery.state.get();
+        let battery = mshell_services::battery_reading();
+        let has_battery = battery.present;
+        let battery_percent = battery.percentage.round().clamp(0.0, 100.0) as i32;
+        let battery_state = battery.state;
         let battery_charging = is_on_ac(battery_state);
 
         let profile = power_profile_service()
@@ -296,10 +296,10 @@ impl Component for SystemStatusModel {
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             SystemStatusInput::BatteryChanged => {
-                let battery = battery_service().device.clone();
-                self.has_battery = battery.is_present.get();
-                self.battery_percent = battery.percentage.get().round().clamp(0.0, 100.0) as i32;
-                self.battery_state = battery.state.get();
+                let battery = mshell_services::battery_reading();
+                self.has_battery = battery.present;
+                self.battery_percent = battery.percentage.round().clamp(0.0, 100.0) as i32;
+                self.battery_state = battery.state;
                 self.battery_charging = is_on_ac(self.battery_state);
             }
             SystemStatusInput::ProfileChanged => {

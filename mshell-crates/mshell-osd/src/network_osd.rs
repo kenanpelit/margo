@@ -124,13 +124,14 @@ impl Component for NetworkOsdModel {
         // wifi adapter appears or disappears). On any tick the
         // handler re-reads everything and emits the new
         // classified snapshot.
-        let svc = network_service();
-        let primary = svc.primary.clone();
-        let wifi = svc.wifi.clone();
-        watch!(sender, [primary.watch(), wifi.watch()], |out| {
-            let snap = snapshot_state();
-            let _ = out.send(NetworkOsdCommandOutput::StateChanged(snap));
-        });
+        if let Some(svc) = network_service() {
+            let primary = svc.primary.clone();
+            let wifi = svc.wifi.clone();
+            watch!(sender, [primary.watch(), wifi.watch()], |out| {
+                let snap = snapshot_state();
+                let _ = out.send(NetworkOsdCommandOutput::StateChanged(snap));
+            });
+        }
 
         let model = NetworkOsdModel {
             hide_token: WatcherToken::new(),
@@ -213,7 +214,9 @@ fn is_enabled() -> bool {
 }
 
 fn snapshot_state() -> NetState {
-    let svc = network_service();
+    let Some(svc) = network_service() else {
+        return NetState::None;
+    };
     match svc.primary.get() {
         ConnectionType::Wifi => {
             let ssid = svc.wifi.get().and_then(|w| w.ssid.get());

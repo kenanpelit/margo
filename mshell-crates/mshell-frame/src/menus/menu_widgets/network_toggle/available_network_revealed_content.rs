@@ -108,16 +108,18 @@ impl Component for AvailableNetworkRevealedContentModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let network = network_service();
         let ssid = params.access_point.ssid.get().clone();
 
         let has_security = params.access_point.security.get() != SecurityType::None;
 
-        let is_saved = network
-            .settings
-            .connections_for_ssid(&ssid)
-            .is_empty()
-            .not();
+        // An access point row only exists while NetworkManager runs.
+        let is_saved = network_service().is_some_and(|network| {
+            network
+                .settings
+                .connections_for_ssid(&ssid)
+                .is_empty()
+                .not()
+        });
 
         let show_password_entry = !is_saved && has_security;
 
@@ -148,7 +150,9 @@ impl Component for AvailableNetworkRevealedContentModel {
                 if self.connecting {
                     return;
                 }
-                let network = network_service();
+                let Some(network) = network_service() else {
+                    return;
+                };
                 if let Some(wifi) = network.wifi.get() {
                     let password = if !self.show_password_entry {
                         None

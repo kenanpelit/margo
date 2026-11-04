@@ -438,7 +438,10 @@ pub(crate) fn wifi_signal_icon(signal: u8) -> &'static str {
 /// `network_service()`. Exposed `pub(crate)` so the menu widget
 /// reuses it.
 pub(crate) fn read_network_state() -> NetworkState {
-    let net = network_service();
+    // No NetworkManager: `available` stays false and the pill hides.
+    let Some(net) = network_service() else {
+        return NetworkState::default();
+    };
     let mut state = NetworkState::default();
 
     let wifi = net.wifi.get();

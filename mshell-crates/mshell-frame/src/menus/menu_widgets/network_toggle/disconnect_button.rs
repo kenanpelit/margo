@@ -53,7 +53,7 @@ impl SimpleComponent for DisconnectButtonModel {
     fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>) {
         match message {
             DisconnectButtonInput::DisconnectClicked => {
-                if let Some(wifi) = network_service().wifi.get() {
+                if let Some(wifi) = network_service().and_then(|n| n.wifi.get()) {
                     tokio::spawn(async move {
                         let _ = wifi.disconnect().await;
                     });

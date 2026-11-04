@@ -30,7 +30,7 @@
 use crate::menus::reveal_poll::RevealPoll;
 use crate::system_update::{self, ProbeConfig};
 use mshell_common::scoped_effects::EffectScope;
-use mshell_services::{battery_service, notification_service};
+use mshell_services::notification_service;
 use mshell_utils::battery::spawn_battery_watcher;
 use mshell_utils::notifications::spawn_notifications_watcher;
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
@@ -264,9 +264,9 @@ impl Component for OverviewIntelModel {
                 .is_ok()
         });
 
-        let battery = battery_service().device.clone();
-        let has_battery = battery.is_present.get();
-        let battery_percent = battery.percentage.get().round().clamp(0.0, 100.0) as i32;
+        let battery = mshell_services::battery_reading();
+        let has_battery = battery.present;
+        let battery_percent = battery.percentage.round().clamp(0.0, 100.0) as i32;
         let battery_charging = current_battery_charging();
         let notification_count = notification_service()
             .map(|s| s.notifications.get().len())
@@ -310,9 +310,9 @@ impl Component for OverviewIntelModel {
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             OverviewIntelInput::Refresh => {
-                let battery = battery_service().device.clone();
-                self.has_battery = battery.is_present.get();
-                self.battery_percent = battery.percentage.get().round().clamp(0.0, 100.0) as i32;
+                let battery = mshell_services::battery_reading();
+                self.has_battery = battery.present;
+                self.battery_percent = battery.percentage.round().clamp(0.0, 100.0) as i32;
                 self.battery_charging = current_battery_charging();
                 self.notification_count = notification_service()
                     .map(|s| s.notifications.get().len())
@@ -429,9 +429,9 @@ fn quiet_summary(model: &OverviewIntelModel) -> String {
 // named struct — keeping the call sites short with a fresh read.
 
 fn current_battery_charging() -> bool {
-    use mshell_services::{battery_service, line_power_service};
+    use mshell_services::line_power_service;
     use wayle_battery::types::DeviceState;
-    let state = battery_service().device.state.get();
+    let state = mshell_services::battery_reading().state;
     line_power_service()
         .map(|s| s.device.online.get())
         .unwrap_or(state == DeviceState::Charging || state == DeviceState::FullyCharged)

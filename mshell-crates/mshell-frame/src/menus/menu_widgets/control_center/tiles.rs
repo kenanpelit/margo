@@ -1119,7 +1119,7 @@ impl Component for ControlCenterTilesModel {
 
             ControlCenterTilesInput::ClickAirplaneMode => {
                 // Airplane mode = disable Wi-Fi (toggle wifi enabled state)
-                if let Some(wifi) = network_service().wifi.get() {
+                if let Some(wifi) = network_service().and_then(|n| n.wifi.get()) {
                     let new_enabled = !wifi.enabled.get();
                     tokio::spawn(async move {
                         let _ = wifi.set_enabled(new_enabled).await;

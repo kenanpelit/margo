@@ -10,7 +10,7 @@
 #![cfg(feature = "wasm-plugins")]
 
 use mshell_plugin_host::{MediaInfo, MediaInfoSource, SystemInfo, SystemInfoSource};
-use mshell_services::{battery_service, media_service, network_service};
+use mshell_services::{media_service, network_service};
 use wayle_battery::types::DeviceState;
 use wayle_media::types::PlaybackState;
 use wayle_network::types::connectivity::ConnectionType;
@@ -69,14 +69,14 @@ pub struct WayleSystemProvider;
 
 impl SystemInfoSource for WayleSystemProvider {
     fn snapshot(&self) -> SystemInfo {
-        let bat = battery_service();
-        let battery_pct = if bat.device.is_present.get() {
-            let pct = bat.device.percentage.get();
-            pct.round().clamp(0.0, 100.0) as u8
+        // No UPower reads as "no battery" (255).
+        let bat = mshell_services::battery_reading();
+        let battery_pct = if bat.present {
+            bat.percentage.round().clamp(0.0, 100.0) as u8
         } else {
             255
         };
-        let battery_status = match bat.device.state.get() {
+        let battery_status = match bat.state {
             DeviceState::Charging => "charging".to_string(),
             DeviceState::Discharging => "discharging".to_string(),
             DeviceState::FullyCharged => "full".to_string(),
@@ -87,17 +87,17 @@ impl SystemInfoSource for WayleSystemProvider {
         // mshell-idle (it's a stage manager, not a counter) — leave 0
         // until that surface grows.
         let net = network_service();
-        let (network_kind, network_ssid) = match net.primary.get() {
-            ConnectionType::Wifi => {
+        let (network_kind, network_ssid) = match net.as_ref().map(|n| n.primary.get()) {
+            Some(ConnectionType::Wifi) => {
                 let ssid = net
-                    .wifi
-                    .get()
+                    .as_ref()
+                    .and_then(|n| n.wifi.get())
                     .and_then(|w| w.ssid.get())
                     .unwrap_or_default();
                 ("wifi".to_string(), ssid)
             }
-            ConnectionType::Wired => ("ethernet".to_string(), String::new()),
-            ConnectionType::Bluetooth => ("bluetooth".to_string(), String::new()),
+            Some(ConnectionType::Wired) => ("ethernet".to_string(), String::new()),
+            Some(ConnectionType::Bluetooth) => ("bluetooth".to_string(), String::new()),
             _ => ("none".to_string(), String::new()),
         };
         SystemInfo {

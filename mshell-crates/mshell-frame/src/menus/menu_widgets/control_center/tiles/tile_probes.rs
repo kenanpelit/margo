@@ -7,7 +7,9 @@
 use super::*;
 
 pub(super) fn read_battery() -> BatterySnapshot {
-    let service = battery_service();
+    let Some(service) = battery_service() else {
+        return BatterySnapshot::default();
+    };
     let dev = &service.device;
     let present = dev.is_present.get();
     if !present {
@@ -184,7 +186,9 @@ pub(super) async fn stop_podman_machines() {
 
 /// Returns (subtitle, is_connected). Connected = has an SSID.
 pub(super) fn read_wifi_state() -> (String, bool) {
-    let network = network_service();
+    let Some(network) = network_service() else {
+        return (String::new(), false);
+    };
     if let Some(wifi) = network.wifi.get() {
         if let Some(ssid) = wifi.ssid.get() {
             return (ssid, true);
@@ -287,8 +291,7 @@ pub(super) fn valent_state_from_report(report: &crate::valent::ValentReport) -> 
 
 pub(super) fn read_airplane_state() -> (bool, bool) {
     // Airplane mode = Wi-Fi is disabled. Returns (is_airplane_on, is_wifi_available).
-    let network = network_service();
-    if let Some(wifi) = network.wifi.get() {
+    if let Some(wifi) = network_service().and_then(|n| n.wifi.get()) {
         let enabled = wifi.enabled.get();
         // Airplane mode is "on" when Wi-Fi is disabled
         (!enabled, true)
