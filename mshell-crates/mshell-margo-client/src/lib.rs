@@ -43,6 +43,7 @@ mod sync;
 /// (debug tooling, integration tests) can do so without a
 /// second JSON round-trip.
 pub use state_json::{RawConfigDiagnostic, RawLockKeys, StateJson, read as read_state_json};
+pub use sync::sync_degraded;
 
 // ── Reactive property ────────────────────────────────────────────────────────
 

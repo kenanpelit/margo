@@ -219,6 +219,7 @@ pub async fn init_services(
     BLUETOOTH_SERVICE.set(bluetooth.map(Arc::new)).ok();
     BRIGHTNESS_SERVICE.set(brightness).ok();
     MARGO_SERVICE.set(hyprland).ok();
+    spawn_margo_sync_health_toast();
     if let Some(line_power) = line_power {
         LINE_POWER_SERVICE.set(Some(Arc::new(line_power))).ok();
     } else {
@@ -235,6 +236,28 @@ pub async fn init_services(
     info!("Done");
 
     Ok(())
+}
+
+/// Toast when margo's state frames stop parsing (a margo/mshell version skew
+/// after an upgrade): otherwise tags, focus and the dock freeze at the last
+/// good state with nothing on screen saying why. Once per degraded spell.
+fn spawn_margo_sync_health_toast() {
+    let mut rx = mshell_margo_client::sync_degraded();
+    tokio::spawn(async move {
+        while rx.changed().await.is_ok() {
+            if *rx.borrow_and_update() {
+                mshell_config::toast::push_toast(mshell_config::toast::ToastEvent {
+                    icon: "dialog-warning-symbolic".to_string(),
+                    title: "margo state not understood".to_string(),
+                    body: Some(
+                        "The bar shows the last good state — restart mshell after upgrading margo"
+                            .to_string(),
+                    ),
+                    severity: mshell_config::toast::ToastSeverity::Warn,
+                });
+            }
+        }
+    });
 }
 
 pub async fn find_line_power_path() -> Result<Option<OwnedObjectPath>, Error> {

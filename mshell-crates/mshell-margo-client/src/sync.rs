@@ -25,6 +25,60 @@ use crate::{
 /// Backoff between socket reconnect attempts.
 const RECONNECT_DELAY: Duration = Duration::from_millis(500);
 
+/// While frames keep failing to parse, log every Nth failure after the first.
+const LOG_EVERY: u64 = 100;
+
+/// How much of a bad frame goes into the log line.
+const EXCERPT_BYTES: usize = 200;
+
+/// Counts consecutive frames that failed to parse, so a schema skew between
+/// margo and mshell (every frame failing) is logged once and then every
+/// [`LOG_EVERY`]th time instead of being dropped silently or flooding the log.
+#[derive(Debug, Default)]
+struct FrameErrors {
+    consecutive: u64,
+}
+
+impl FrameErrors {
+    /// A frame failed. Returns the failure count when this one should be
+    /// logged.
+    fn on_error(&mut self) -> Option<u64> {
+        self.consecutive += 1;
+        (self.consecutive == 1 || self.consecutive.is_multiple_of(LOG_EVERY))
+            .then_some(self.consecutive)
+    }
+
+    /// A frame parsed. Returns true when this ends a run of failures.
+    fn on_ok(&mut self) -> bool {
+        std::mem::take(&mut self.consecutive) > 0
+    }
+}
+
+/// The first [`EXCERPT_BYTES`] of a frame (cut on a char boundary).
+fn frame_excerpt(line: &str) -> &str {
+    let mut end = line.len().min(EXCERPT_BYTES);
+    while !line.is_char_boundary(end) {
+        end -= 1;
+    }
+    &line[..end]
+}
+
+fn degraded_tx() -> &'static tokio::sync::watch::Sender<bool> {
+    static TX: std::sync::OnceLock<tokio::sync::watch::Sender<bool>> = std::sync::OnceLock::new();
+    TX.get_or_init(|| tokio::sync::watch::Sender::new(false))
+}
+
+fn set_degraded(degraded: bool) {
+    degraded_tx().send_if_modified(|d| std::mem::replace(d, degraded) != degraded);
+}
+
+/// `true` while margo's `watch state` frames fail to parse (the shell shows
+/// the last good state). The shell toasts on the rising edge so a
+/// margo/mshell version skew isn't a silently frozen bar.
+pub fn sync_degraded() -> tokio::sync::watch::Receiver<bool> {
+    degraded_tx().subscribe()
+}
+
 /// Spawn the reactive sync task: a `watch state` subscription on
 /// margo's IPC socket. The task holds only a `Weak` reference to the
 /// service so it still drops cleanly when the last `Arc<MargoService>`
@@ -34,6 +88,7 @@ const RECONNECT_DELAY: Duration = Duration::from_millis(500);
 pub(crate) fn spawn(service: &Arc<MargoService>) {
     let weak = Arc::downgrade(service);
     tokio::spawn(async move {
+        let mut errors = FrameErrors::default();
         // Subscribe to the compositor's IPC socket with `watch state`:
         // margo pushes a full snapshot frame on every change (focus /
         // tag / arrange / hotplug / config reload), so there is no
@@ -55,17 +110,45 @@ pub(crate) fn spawn(service: &Arc<MargoService>) {
                 tokio::time::sleep(RECONNECT_DELAY).await;
                 continue;
             }
+            tracing::debug!("margo sync: subscribed to `watch state`");
             let mut lines = BufReader::new(rd).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
+            loop {
+                let line = match lines.next_line().await {
+                    Ok(Some(line)) => line,
+                    Ok(None) => break,
+                    Err(e) => {
+                        tracing::warn!(error = %e, "margo sync: reading the state stream failed; reconnecting");
+                        break;
+                    }
+                };
                 let Some(service) = weak.upgrade() else {
                     return;
                 };
-                if let Ok(state) = serde_json::from_str::<StateJson>(&line) {
-                    apply(&service, &state);
+                match serde_json::from_str::<StateJson>(&line) {
+                    Ok(state) => {
+                        if errors.on_ok() {
+                            tracing::info!("margo sync: state frames parse again");
+                            set_degraded(false);
+                        }
+                        apply(&service, &state);
+                    }
+                    Err(e) => {
+                        if let Some(n) = errors.on_error() {
+                            tracing::warn!(
+                                error = %e,
+                                failures = n,
+                                frame = %frame_excerpt(&line),
+                                "margo sync: state frame does not parse (margo/mshell version skew?); \
+                                 the bar keeps the last good state"
+                            );
+                        }
+                        set_degraded(true);
+                    }
                 }
             }
             // Connection closed (compositor exit / restart) — back off
             // and reconnect.
+            tracing::debug!("margo sync: state stream closed; reconnecting");
             tokio::time::sleep(RECONNECT_DELAY).await;
         }
     });
@@ -753,6 +836,55 @@ fn active_layout(state: &StateJson) -> Option<ActiveLayout> {
         idx: focused.layout_idx,
         name: name.clone(),
     })
+}
+
+#[cfg(test)]
+mod frame_error_tests {
+    use super::*;
+
+    /// Every frame failing (schema skew) logs the first failure and then
+    /// every LOG_EVERY-th, and a good frame reports the recovery once.
+    #[test]
+    fn failures_are_logged_rate_limited_and_recovery_is_reported() {
+        let mut e = FrameErrors::default();
+        assert_eq!(e.on_error(), Some(1));
+        let logged: Vec<u64> = (2..=250).filter_map(|_| e.on_error()).collect();
+        assert_eq!(logged, vec![100, 200]);
+        assert!(e.on_ok(), "first good frame ends the run");
+        assert!(!e.on_ok(), "only once");
+        assert_eq!(e.on_error(), Some(1), "a new run logs again");
+    }
+
+    #[test]
+    fn excerpt_is_bounded_and_cut_on_a_char_boundary() {
+        let line = "ş".repeat(300);
+        let ex = frame_excerpt(&line);
+        assert!(ex.len() <= EXCERPT_BYTES);
+        assert!(ex.len() >= EXCERPT_BYTES - 1);
+        assert_eq!(frame_excerpt("{}"), "{}");
+    }
+
+    /// A frame whose required field has the wrong type is an error the
+    /// loop now reports, not something it silently skips.
+    #[test]
+    fn a_skewed_frame_is_a_parse_error() {
+        let skewed =
+            r#"{"active_output":"eDP-1","layouts":"tile","outputs":[],"clients":[],"tag_count":9}"#;
+        assert!(serde_json::from_str::<StateJson>(skewed).is_err());
+    }
+
+    #[test]
+    fn degraded_flag_notifies_on_change_only() {
+        let mut rx = sync_degraded();
+        rx.mark_unchanged();
+        set_degraded(true);
+        assert!(rx.has_changed().unwrap());
+        rx.mark_unchanged();
+        set_degraded(true);
+        assert!(!rx.has_changed().unwrap(), "no repeat notification");
+        set_degraded(false);
+        assert!(!*rx.borrow_and_update());
+    }
 }
 
 #[cfg(test)]
