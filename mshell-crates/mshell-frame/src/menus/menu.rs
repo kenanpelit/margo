@@ -751,6 +751,9 @@ impl Component for MenuModel {
                     | MenuType::Vpn
                     | MenuType::AppLauncher
                     | MenuType::Translate
+                    | MenuType::Agents
+                    | MenuType::Github
+                    | MenuType::Crashes
             ),
             _effects: effects,
         };
