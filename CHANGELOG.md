@@ -5,6 +5,66 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.7.0] – 2026-11-04
+
+**A safer session and a quieter shell: child processes receive signals again,
+window opacity takes effect, redundant rendering and polling are reduced,
+and configuration checks agree with the compositor.**
+
+### Added
+
+- `mctl check-config --strict` treats warnings as failures;
+  `start-margo --strict-preflight` opts into blocking startup on config errors.
+- IPC state includes `session_locked` and `lock_keys`, so mshell can react to
+  compositor events instead of repeatedly checking processes and sysfs.
+- Config source/include filename globs, accessible names for icon-only shell
+  controls, and size gates for the split shell configuration, settings, IPC
+  and frame modules.
+
+### Changed
+
+- Config diagnostics run at startup. Invalid configs no longer prevent normal
+  startup; `reload --force` really forces a reload without saving it as last-good.
+- Rounded windows preserve opaque regions; borders and shadows draw only their
+  visible bands. Gamma writes skip unchanged ramps, cursor changes target the
+  affected output, and present timers avoid an extra repaint wakeup.
+- Shared, visibility-aware pollers reduce background work. Camera probes are
+  coalesced, alarm and indicator timers are event-driven, idle dim surfaces are
+  destroyed on activity, and unchanged session snapshots are not written again.
+- Notes and AI history share one store; configuration writes are debounced and
+  malformed files are preserved rather than overwritten with defaults.
+- Installation, completions and local CI gates are aligned; fourteen duplicate
+  dependency versions are removed. WASM plugin support remains enabled and the
+  Arch package keeps the release profile: dist with WASM still fails to link.
+
+### Fixed
+
+- Clear inherited signal masks before launching children, including Xwayland;
+  pause and reactivate DRM devices on session transitions.
+- Refuse force-unlock while the locker is alive; resize lock surfaces correctly.
+  Disabled outputs stop accepting windows and the pointer. Fix fullscreen output
+  moves, unplugged layers, stale output configurations, scale notifications,
+  touchpad gestures and invalid numeric dispatch arguments.
+- Apply focused/unfocused opacity to windows and update open windows on reload;
+  fullscreen remains opaque. Honor SHM offsets during screencopy and check
+  PipeWire cursor metadata capacity.
+- Drop misspelled-selector rules instead of accidentally matching all windows;
+  unify parser/validator behavior and retain last-good config after xkb failure.
+- Protect login logs, clipboard history and saved theme files; sanitize greeter
+  palettes and screen-share labels, confirm unchecked screenshot requests, create
+  plugin temporary files exclusively, and enforce Xorg's authentication cookie.
+- Improve service startup isolation, plugin secret handling, config watching,
+  monitor replacement, live shell settings and settings-page refresh.
+- Restore the Arch install scriptlet and incremental prepare step; fix Debian
+  install parity and direct mdots self-update to the package manager.
+
+### Scope
+
+- The ten WASM plugins have not been migrated into native shell components.
+  Full-screen shell surface redesign, remaining event-source conversions and
+  optional audio/media startup are deferred; incomplete work is retained on
+  separate review branches rather than included in this release.
+
 ## [4.6.1] – 2026-11-03
 
 **A reboot or logout is a clean shutdown again: margo stops properly on
