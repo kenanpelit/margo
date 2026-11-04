@@ -21,6 +21,7 @@ use mshell_config::schema::config::CustomMenuRow;
 
 /// Self-less controller/content builders + GTK-stack attach/detach helpers.
 mod build;
+mod hooks;
 mod input;
 mod layout;
 mod menu_id;
@@ -704,6 +705,8 @@ impl Component for Frame {
         // builds + attaches the panel on demand.
 
         let mut effects = EffectScope::new();
+
+        hooks::push_background_hooks(&mut effects);
 
         let config = base_config.clone();
         let sender_clone = sender.clone();

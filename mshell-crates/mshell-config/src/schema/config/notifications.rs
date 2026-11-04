@@ -87,6 +87,21 @@ pub struct Notifications {
     /// `value` hint (downloads, file transfers, backups).
     #[serde(default = "default_true")]
     pub show_progress: bool,
+    /// Turn Do-Not-Disturb on automatically while any screencast /
+    /// screen-share is running (the same PipeWire detection the privacy
+    /// pill uses) and restore the previous state when the last one ends.
+    /// If DND was already on when sharing started it is left alone.
+    /// Off by default.
+    #[serde(default)]
+    pub auto_dnd_screen_share: bool,
+    /// How long (ms) sharing must stay stopped before auto-DND releases,
+    /// so a stop/start pair (switching the shared window) doesn't flap.
+    #[serde(default = "default_auto_dnd_release_ms")]
+    pub auto_dnd_release_ms: u32,
+}
+
+fn default_auto_dnd_release_ms() -> u32 {
+    1000
 }
 
 fn default_quiet_start() -> String {
@@ -127,6 +142,8 @@ impl Default for Notifications {
             quiet_hours_start: default_quiet_start(),
             quiet_hours_end: default_quiet_end(),
             show_progress: true,
+            auto_dnd_screen_share: false,
+            auto_dnd_release_ms: default_auto_dnd_release_ms(),
         }
     }
 }

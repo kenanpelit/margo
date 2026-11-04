@@ -9,6 +9,7 @@
 //! configured accent, names the apps in the tooltip, and left-click opens
 //! the Privacy panel (live state + clearable access log).
 
+pub(crate) mod auto_dnd;
 pub(crate) mod monitor;
 
 use monitor::PrivacyLive;

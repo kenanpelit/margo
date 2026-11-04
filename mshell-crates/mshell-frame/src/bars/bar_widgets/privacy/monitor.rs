@@ -915,11 +915,16 @@ fn drain_json_values(buf: &mut Vec<u8>) -> Vec<serde_json::Value> {
     out
 }
 
-mod screen_watch {
+pub(super) mod screen_watch {
     use super::{AsyncReadExt, Duration, LazyLock, Mutex, Notify, ScreenNodes, WAKE};
     use std::sync::atomic::{AtomicBool, Ordering};
 
+    /// Effective "run `pw-dump`" flag: either consumer wants it.
     static WANTED: AtomicBool = AtomicBool::new(false);
+    /// The privacy pill's `detect_screen_share`.
+    static WANTED_BY_PILL: AtomicBool = AtomicBool::new(false);
+    /// `notifications.auto_dnd_screen_share` (see `auto_dnd`).
+    static WANTED_BY_AUTO_DND: AtomicBool = AtomicBool::new(false);
     static WANTED_CHANGED: LazyLock<Notify> = LazyLock::new(Notify::new);
     static STARTED: AtomicBool = AtomicBool::new(false);
     static APPS: Mutex<Vec<String>> = Mutex::new(Vec::new());
@@ -928,12 +933,27 @@ mod screen_watch {
     const RESTART_DELAY: Duration = Duration::from_secs(5);
 
     /// Latest screencast app list.
-    pub(super) fn apps() -> Vec<String> {
+    pub(in crate::bars::bar_widgets::privacy) fn apps() -> Vec<String> {
         APPS.lock().map(|a| a.clone()).unwrap_or_default()
     }
 
-    /// Run the monitor while `wanted`; stop the `pw-dump` child when not.
+    /// The privacy pill wants screen-share detection (or not).
     pub(super) fn set_wanted(wanted: bool) {
+        WANTED_BY_PILL.store(wanted, Ordering::SeqCst);
+        update_wanted();
+    }
+
+    /// Auto-DND wants screen-share detection (or not).
+    pub(in crate::bars::bar_widgets::privacy) fn set_wanted_by_auto_dnd(wanted: bool) {
+        WANTED_BY_AUTO_DND.store(wanted, Ordering::SeqCst);
+        update_wanted();
+    }
+
+    /// Run the monitor while either consumer wants it; stop the `pw-dump`
+    /// child when neither does.
+    fn update_wanted() {
+        let wanted =
+            WANTED_BY_PILL.load(Ordering::SeqCst) || WANTED_BY_AUTO_DND.load(Ordering::SeqCst);
         if WANTED.swap(wanted, Ordering::SeqCst) != wanted {
             WANTED_CHANGED.notify_one();
         }
@@ -953,6 +973,7 @@ mod screen_watch {
             .unwrap_or(false);
         if changed {
             WAKE.notify_one();
+            super::super::auto_dnd::WAKE.notify_one();
         }
     }
 

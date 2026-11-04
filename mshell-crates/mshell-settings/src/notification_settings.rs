@@ -25,6 +25,7 @@ pub(crate) struct NotificationSettingsModel {
     blocklist: Vec<String>,
     inline_reply: bool,
     show_progress: bool,
+    auto_dnd: bool,
     sound_enabled: bool,
     sound_low: bool,
     sound_normal: bool,
@@ -61,6 +62,8 @@ pub(crate) enum NotificationSettingsInput {
     BlocklistEffect(Vec<String>),
     InlineReplyChanged(bool),
     ShowProgressChanged(bool),
+    AutoDndChanged(bool),
+    AutoDndEffect(bool),
     SoundEnabledChanged(bool),
     SoundLowChanged(bool),
     SoundNormalChanged(bool),
@@ -488,6 +491,44 @@ impl Component for NotificationSettingsModel {
                             connect_active_notify[sender] => move |s| {
                                 sender.input(NotificationSettingsInput::ShowProgressChanged(s.is_active()));
                             } @progress_handler,
+                        },
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/notifications/auto_dnd_screen_share",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Do not disturb while sharing",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Turn do-not-disturb on while any screencast or screen share runs, and restore it afterwards.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        #[name = "auto_dnd_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(auto_dnd_handler)]
+                            set_active: model.auto_dnd,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(NotificationSettingsInput::AutoDndChanged(s.is_active()));
+                            } @auto_dnd_handler,
                         },
                     },
 
@@ -1098,7 +1139,22 @@ impl Component for NotificationSettingsModel {
             });
         });
 
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let v = config_manager()
+                .config()
+                .notifications()
+                .auto_dnd_screen_share()
+                .get();
+            sender_clone.input(NotificationSettingsInput::AutoDndEffect(v));
+        });
+
         let model = NotificationSettingsModel {
+            auto_dnd: config_manager()
+                .config()
+                .notifications()
+                .auto_dnd_screen_share()
+                .get_untracked(),
             position: config_manager()
                 .config()
                 .notifications()
@@ -1344,6 +1400,13 @@ impl Component for NotificationSettingsModel {
             NotificationSettingsInput::InlineReplyChanged(v) => {
                 self.inline_reply = v;
                 config_manager().update_config(|c| c.notifications.inline_reply = v);
+            }
+            NotificationSettingsInput::AutoDndChanged(v) => {
+                self.auto_dnd = v;
+                config_manager().update_config(|c| c.notifications.auto_dnd_screen_share = v);
+            }
+            NotificationSettingsInput::AutoDndEffect(v) => {
+                self.auto_dnd = v;
             }
             NotificationSettingsInput::ShowProgressChanged(v) => {
                 self.show_progress = v;
