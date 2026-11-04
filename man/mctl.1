@@ -115,6 +115,13 @@ Live-swap the visual theme preset.
 .B twilight \fI.\|.\|.\fR
 Control the built-in blue-light filter (toggle / temperature / mode).
 .TP
+.B mirror \fR{ \fBstart\fR [\fISOURCE\fR [\fITARGET\fR]] | \fBtoggle\fR | \fBstop\fR | \fBstatus\fR [\fB\-\-json\fR] }
+Mirror one output onto another (presentation mode): SOURCE's picture is
+shown on TARGET, scaled to fit and letterboxed, and TARGET leaves the
+layout until \fBstop\fR or either output is unplugged. Without names the
+laptop panel is mirrored onto the first external output. A refusal (unknown
+output, no second display) is printed and exits non-zero.
+.TP
 .B quit
 Quit the compositor cleanly.
 .SS "Logging and plugins"

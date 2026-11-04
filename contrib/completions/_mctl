@@ -628,6 +628,89 @@ esac
     ;;
 esac
 ;;
+(mirror)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+":: :_mctl__subcmd__mirror_commands" \
+"*::: :->mirror" \
+&& ret=0
+
+    case $state in
+    (mirror)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mctl-mirror-command-$line[1]:"
+        case $line[1] in
+            (start)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+'::source:_default' \
+'::target:_default' \
+&& ret=0
+;;
+(toggle)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+'::source:_default' \
+'::target:_default' \
+&& ret=0
+;;
+(stop)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(status)
+_arguments "${_arguments_options[@]}" : \
+'--json[]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_mctl__subcmd__mirror__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mctl-mirror-help-command-$line[1]:"
+        case $line[1] in
+            (start)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(toggle)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(stop)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(status)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
 (config)
 _arguments "${_arguments_options[@]}" : \
 '-h[Print help (see more with '\''--help'\'')]' \
@@ -1005,6 +1088,38 @@ esac
     ;;
 esac
 ;;
+(mirror)
+_arguments "${_arguments_options[@]}" : \
+":: :_mctl__subcmd__help__subcmd__mirror_commands" \
+"*::: :->mirror" \
+&& ret=0
+
+    case $state in
+    (mirror)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mctl-help-mirror-command-$line[1]:"
+        case $line[1] in
+            (start)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(toggle)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(stop)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(status)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
 (config)
 _arguments "${_arguments_options[@]}" : \
 ":: :_mctl__subcmd__help__subcmd__config_commands" \
@@ -1103,6 +1218,7 @@ _mctl_commands() {
 'status:Print current status (one shot)' \
 'actions:List every dispatch action margo accepts (for binds and \`mctl dispatch\`)' \
 'twilight:Twilight (built-in blue-light filter) control' \
+'mirror:Mirror one output onto another (presentation mode)' \
 'config:Config generation history — list, diff, or roll back \`~/.config/margo/config.conf\`' \
 'config-errors:Show the running compositor'\''s config diagnostics (niri-style)' \
 'check-config:Validate the user'\''s config (niri-style diagnostics)' \
@@ -1243,6 +1359,7 @@ _mctl__subcmd__help_commands() {
 'status:Print current status (one shot)' \
 'actions:List every dispatch action margo accepts (for binds and \`mctl dispatch\`)' \
 'twilight:Twilight (built-in blue-light filter) control' \
+'mirror:Mirror one output onto another (presentation mode)' \
 'config:Config generation history — list, diff, or roll back \`~/.config/margo/config.conf\`' \
 'config-errors:Show the running compositor'\''s config diagnostics (niri-style)' \
 'check-config:Validate the user'\''s config (niri-style diagnostics)' \
@@ -1381,6 +1498,36 @@ _mctl__subcmd__help__subcmd__log__subcmd__path_commands() {
 _mctl__subcmd__help__subcmd__migrate_commands() {
     local commands; commands=()
     _describe -t commands 'mctl help migrate commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__help__subcmd__mirror_commands] )) ||
+_mctl__subcmd__help__subcmd__mirror_commands() {
+    local commands; commands=(
+'start:Start mirroring SOURCE onto TARGET (defaults\: laptop → external)' \
+'toggle:Stop mirroring if active, else start like \`start\`' \
+'stop:Stop mirroring; the target returns to the layout' \
+'status:Print the running mirror (\`--json\`\: the \`mirror\` IPC object)' \
+    )
+    _describe -t commands 'mctl help mirror commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__help__subcmd__mirror__subcmd__start_commands] )) ||
+_mctl__subcmd__help__subcmd__mirror__subcmd__start_commands() {
+    local commands; commands=()
+    _describe -t commands 'mctl help mirror start commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__help__subcmd__mirror__subcmd__status_commands] )) ||
+_mctl__subcmd__help__subcmd__mirror__subcmd__status_commands() {
+    local commands; commands=()
+    _describe -t commands 'mctl help mirror status commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__help__subcmd__mirror__subcmd__stop_commands] )) ||
+_mctl__subcmd__help__subcmd__mirror__subcmd__stop_commands() {
+    local commands; commands=()
+    _describe -t commands 'mctl help mirror stop commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__help__subcmd__mirror__subcmd__toggle_commands] )) ||
+_mctl__subcmd__help__subcmd__mirror__subcmd__toggle_commands() {
+    local commands; commands=()
+    _describe -t commands 'mctl help mirror toggle commands' commands "$@"
 }
 (( $+functions[_mctl__subcmd__help__subcmd__outputs_commands] )) ||
 _mctl__subcmd__help__subcmd__outputs_commands() {
@@ -1646,6 +1793,73 @@ _mctl__subcmd__log__subcmd__path_commands() {
 _mctl__subcmd__migrate_commands() {
     local commands; commands=()
     _describe -t commands 'mctl migrate commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__mirror_commands] )) ||
+_mctl__subcmd__mirror_commands() {
+    local commands; commands=(
+'start:Start mirroring SOURCE onto TARGET (defaults\: laptop → external)' \
+'toggle:Stop mirroring if active, else start like \`start\`' \
+'stop:Stop mirroring; the target returns to the layout' \
+'status:Print the running mirror (\`--json\`\: the \`mirror\` IPC object)' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mctl mirror commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__mirror__subcmd__help_commands] )) ||
+_mctl__subcmd__mirror__subcmd__help_commands() {
+    local commands; commands=(
+'start:Start mirroring SOURCE onto TARGET (defaults\: laptop → external)' \
+'toggle:Stop mirroring if active, else start like \`start\`' \
+'stop:Stop mirroring; the target returns to the layout' \
+'status:Print the running mirror (\`--json\`\: the \`mirror\` IPC object)' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mctl mirror help commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__mirror__subcmd__help__subcmd__help_commands] )) ||
+_mctl__subcmd__mirror__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'mctl mirror help help commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__mirror__subcmd__help__subcmd__start_commands] )) ||
+_mctl__subcmd__mirror__subcmd__help__subcmd__start_commands() {
+    local commands; commands=()
+    _describe -t commands 'mctl mirror help start commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__mirror__subcmd__help__subcmd__status_commands] )) ||
+_mctl__subcmd__mirror__subcmd__help__subcmd__status_commands() {
+    local commands; commands=()
+    _describe -t commands 'mctl mirror help status commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__mirror__subcmd__help__subcmd__stop_commands] )) ||
+_mctl__subcmd__mirror__subcmd__help__subcmd__stop_commands() {
+    local commands; commands=()
+    _describe -t commands 'mctl mirror help stop commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__mirror__subcmd__help__subcmd__toggle_commands] )) ||
+_mctl__subcmd__mirror__subcmd__help__subcmd__toggle_commands() {
+    local commands; commands=()
+    _describe -t commands 'mctl mirror help toggle commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__mirror__subcmd__start_commands] )) ||
+_mctl__subcmd__mirror__subcmd__start_commands() {
+    local commands; commands=()
+    _describe -t commands 'mctl mirror start commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__mirror__subcmd__status_commands] )) ||
+_mctl__subcmd__mirror__subcmd__status_commands() {
+    local commands; commands=()
+    _describe -t commands 'mctl mirror status commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__mirror__subcmd__stop_commands] )) ||
+_mctl__subcmd__mirror__subcmd__stop_commands() {
+    local commands; commands=()
+    _describe -t commands 'mctl mirror stop commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__mirror__subcmd__toggle_commands] )) ||
+_mctl__subcmd__mirror__subcmd__toggle_commands() {
+    local commands; commands=()
+    _describe -t commands 'mctl mirror toggle commands' commands "$@"
 }
 (( $+functions[_mctl__subcmd__outputs_commands] )) ||
 _mctl__subcmd__outputs_commands() {

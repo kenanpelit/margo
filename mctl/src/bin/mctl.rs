@@ -402,6 +402,25 @@ enum Command {
         action: TwilightCmd,
     },
 
+    /// Mirror one output onto another (presentation mode)
+    ///
+    /// Shows SOURCE's picture on TARGET, scaled to fit and letterboxed.
+    /// TARGET leaves the layout (its windows move to another output and
+    /// the pointer can't enter it) until `mctl mirror stop` or either
+    /// output unplugs. Without names: the laptop panel onto the first
+    /// external output.
+    ///
+    ///   mctl mirror start                 # eDP-1 → first external
+    ///   mctl mirror start eDP-1 DP-3
+    ///   mctl mirror toggle
+    ///   mctl mirror stop
+    ///   mctl mirror status [--json]
+    #[command(display_order = 38)]
+    Mirror {
+        #[command(subcommand)]
+        action: MirrorCmd,
+    },
+
     /// Config generation history — list, diff, or roll back
     /// `~/.config/margo/config.conf`
     ///
@@ -723,6 +742,27 @@ enum ConfigCmd {
 }
 
 #[derive(Subcommand, Debug)]
+enum MirrorCmd {
+    /// Start mirroring SOURCE onto TARGET (defaults: laptop → external).
+    Start {
+        source: Option<String>,
+        target: Option<String>,
+    },
+    /// Stop mirroring if active, else start like `start`.
+    Toggle {
+        source: Option<String>,
+        target: Option<String>,
+    },
+    /// Stop mirroring; the target returns to the layout.
+    Stop,
+    /// Print the running mirror (`--json`: the `mirror` IPC object).
+    Status {
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
 enum TwilightCmd {
     /// Print the current twilight state (temperature, gamma, phase,
     /// source). Reads `state snapshot` — works even when the compositor
@@ -921,6 +961,9 @@ fn main() -> Result<()> {
             action: TwilightCmd::Status { json },
         } => {
             return cmd_twilight_status(*json);
+        }
+        Command::Mirror { action } => {
+            return cmd_mirror(action);
         }
         Command::Twilight {
             action: TwilightCmd::Preset { action },
@@ -1236,6 +1279,7 @@ fn main() -> Result<()> {
         | Command::Outputs { .. }
         | Command::Perf { .. }
         | Command::Focused { .. }
+        | Command::Mirror { .. }
         | Command::Plugin { .. } => {
             // These return early at the top of `main`; this arm only
             // exists to keep the match exhaustive.
@@ -1642,6 +1686,59 @@ fn print_rule(rule: &margo_config::WindowRule) {
     if !bits.is_empty() {
         println!("    {}", bits.join("  "));
     }
+}
+
+fn cmd_mirror(action: &MirrorCmd) -> Result<()> {
+    let (dispatch, source, target) = match action {
+        MirrorCmd::Status { json } => {
+            let m = mctl::ipc_client::request_once("get mirror")
+                .map_err(|e| anyhow::anyhow!("cannot query margo IPC: {e}"))?;
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&m)?);
+            } else {
+                println!("{}", mirror_status_line(&m));
+            }
+            return Ok(());
+        }
+        MirrorCmd::Stop => ("stop_mirror", None, None),
+        MirrorCmd::Start { source, target } => {
+            ("mirror_output", source.as_deref(), target.as_deref())
+        }
+        MirrorCmd::Toggle { source, target } => {
+            ("toggle_mirror", source.as_deref(), target.as_deref())
+        }
+    };
+    // One name is the source (`start DP-3`: mirror DP-3 somewhere).
+    let args: Vec<&str> = [source, target].into_iter().flatten().collect();
+    send_dispatch(dispatch, &args)?;
+    let m = mctl::ipc_client::request_once("get mirror")
+        .map_err(|e| anyhow::anyhow!("cannot query margo IPC: {e}"))?;
+    match mirror_error(&m) {
+        Some(e) => anyhow::bail!("mirror: {e}"),
+        None => {
+            println!("{}", mirror_status_line(&m));
+            Ok(())
+        }
+    }
+}
+
+/// One-line summary of the `mirror` IPC object.
+fn mirror_status_line(m: &serde_json::Value) -> String {
+    match (
+        m["active"]["source"].as_str(),
+        m["active"]["target"].as_str(),
+    ) {
+        (Some(s), Some(t)) => format!("mirroring {s} → {t}"),
+        _ if m.get("active").is_none() => {
+            "mirror: not advertised by this compositor (older margo?)".into()
+        }
+        _ => "not mirroring".into(),
+    }
+}
+
+/// Why margo refused the last mirror request, if it did.
+fn mirror_error(m: &serde_json::Value) -> Option<String> {
+    m["error"].as_str().map(str::to_string)
 }
 
 fn cmd_twilight_status(as_json: bool) -> Result<()> {
@@ -3373,6 +3470,43 @@ mod helper_tests {
             Ok(()),
             "empty exclusion is ignored"
         );
+    }
+
+    #[test]
+    fn mirror_status_and_errors_read_the_ipc_object() {
+        use super::{mirror_error, mirror_status_line};
+        use serde_json::json;
+        let on = json!({ "active": { "source": "eDP-1", "target": "DP-3" }, "error": null });
+        assert_eq!(mirror_status_line(&on), "mirroring eDP-1 → DP-3");
+        assert_eq!(mirror_error(&on), None);
+        let refused = json!({ "active": null, "error": "no output named DP-9" });
+        assert_eq!(mirror_status_line(&refused), "not mirroring");
+        assert_eq!(
+            mirror_error(&refused).as_deref(),
+            Some("no output named DP-9")
+        );
+        assert!(
+            mirror_status_line(&json!({ "error": "unknown topic: mirror" }))
+                .contains("older margo")
+        );
+    }
+
+    #[test]
+    fn mirror_args_parse() {
+        use super::MirrorCmd;
+        let args = Args::try_parse_from(["mctl", "mirror", "start", "eDP-1", "DP-3"]).unwrap();
+        let Command::Mirror {
+            action: MirrorCmd::Start { source, target },
+        } = args.command
+        else {
+            panic!("expected mirror start");
+        };
+        assert_eq!(
+            (source.as_deref(), target.as_deref()),
+            (Some("eDP-1"), Some("DP-3"))
+        );
+        assert!(Args::try_parse_from(["mctl", "mirror", "stop"]).is_ok());
+        assert!(Args::try_parse_from(["mctl", "mirror", "status", "--json"]).is_ok());
     }
 
     #[test]
