@@ -84,8 +84,8 @@ pub(crate) fn read_scoped(root: &Path, rel_path: &str) -> Result<Vec<u8>, String
 }
 
 /// Scoped write: resolve under `root`, create parent dirs, then write
-/// atomically-ish (tmp + rename) so a crash mid-write doesn't corrupt the
-/// existing file.
+/// atomically-ish (an exclusively created tmp + rename) so a crash mid-write
+/// doesn't corrupt the existing file.
 #[cfg_attr(not(feature = "wasm"), allow(dead_code))]
 pub(crate) fn write_scoped(root: &Path, rel_path: &str, bytes: &[u8]) -> Result<(), String> {
     // Materialise `root` first (a fixed, host-controlled path — every
@@ -111,10 +111,48 @@ pub(crate) fn write_scoped(root: &Path, rel_path: &str, bytes: &[u8]) -> Result<
             ));
         }
     }
-    let tmp = path.with_extension("mplugin-tmp");
-    std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
+    // The temp name is not what `resolve_inside_root` checked, so it gets its
+    // own guard: a fresh name, created exclusively (O_CREAT|O_EXCL refuses an
+    // existing path, a symlink included), so a link planted beside the target
+    // can never redirect the write out of the sandbox.
+    let tmp = temp_sibling(&path);
+    create_exclusive(&tmp, bytes).map_err(|e| e.to_string())?;
+    if let Err(e) = std::fs::rename(&tmp, &path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e.to_string());
+    }
     Ok(())
+}
+
+/// `<name>.<pid>-<n>-<nanos>.mplugin-tmp` beside `path`: unique per write in
+/// this process, unpredictable enough across processes.
+fn temp_sibling(path: &Path) -> PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.subsec_nanos());
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(format!(
+        ".{}-{}-{nanos:08x}.mplugin-tmp",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    path.with_file_name(name)
+}
+
+/// Create `path` (which must not exist, not even as a dangling symlink) and
+/// write `bytes` to it. A failed write removes the file it created; a failed
+/// create removes nothing, since whatever is there is not ours.
+fn create_exclusive(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)?;
+    file.write_all(bytes).inspect_err(|_| {
+        let _ = std::fs::remove_file(path);
+    })
 }
 
 #[cfg(test)]
@@ -233,7 +271,11 @@ mod tests {
             b"{\"v\":2}"
         );
         // The tmp sidecar must not linger after a successful write.
-        assert!(!s.0.join("nested/deep/state.mplugin-tmp").exists());
+        let names: Vec<_> = std::fs::read_dir(s.0.join("nested/deep"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names, ["state.json"]);
     }
 
     #[test]
@@ -292,5 +334,38 @@ mod tests {
         write_scoped(&s.0, "link/x.txt", b"ok").unwrap();
         assert_eq!(std::fs::read(s.0.join("real/x.txt")).unwrap(), b"ok");
         assert_eq!(read_scoped(&s.0, "link/x.txt").unwrap(), b"ok");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_planted_at_the_temp_name_is_not_written_through() {
+        use std::os::unix::fs::symlink;
+        let inside = Scratch::new("tmp-link-in");
+        let outside = Scratch::new("tmp-link-out");
+        let victim = outside.0.join("bashrc");
+        std::fs::write(&victim, b"original").unwrap();
+        // The old fixed temp name for `notes.txt`.
+        symlink(&victim, inside.0.join("notes.mplugin-tmp")).unwrap();
+
+        write_scoped(&inside.0, "notes.txt", b"plugin data").unwrap();
+        assert_eq!(std::fs::read(&victim).unwrap(), b"original");
+        assert_eq!(
+            std::fs::read(inside.0.join("notes.txt")).unwrap(),
+            b"plugin data"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_temp_file_is_created_exclusively() {
+        use std::os::unix::fs::symlink;
+        let inside = Scratch::new("tmp-excl-in");
+        let outside = Scratch::new("tmp-excl-out");
+        let victim = outside.0.join("target");
+        std::fs::write(&victim, b"original").unwrap();
+        let tmp = inside.0.join("x.tmp");
+        symlink(&victim, &tmp).unwrap();
+        assert!(create_exclusive(&tmp, b"evil").is_err());
+        assert_eq!(std::fs::read(&victim).unwrap(), b"original");
     }
 }
