@@ -1,0 +1,479 @@
+# community-plugins (noctalia) vs margo/mshell — review 2026-11-04
+
+317 plugins: PORT 46, IMPROVE 65, HAVE 49, SKIP 157.
+
+## Port (no equivalent in margo/mshell)
+
+- **arch-audit** [high] — native bar widget + menu (or section in system_update menu)
+  - Arch owner; runs `arch-audit --json` + pacman version lookup, severity-coloured badge and new-CVE alerts. Nothing in margo greps for arch-audit; fits naturally next to system_update.
+- **ocr** [high] — companion feature (mscreenshot mode + screenshot menu action + keybind)
+  - There's no OCR anywhere (no tesseract hits). Region→tesseract→clipboard with a notification preview is a small, high-value addition to the existing mscreenshot region selector.
+- **procmon** [high] — native menu (tab in cpu_dashboard) + bar sysstat click
+  - There's no process table or kill anywhere (cpu_dashboard has no per-process list; mtm is a tmux manager, not a task manager). A sortable/searchable process list with CPU/RAM/swap bars, load average and kill fills a real gap natively (/proc).
+- **sharednd** [high] — companion feature (notifications/privacy setting)
+  - margo-portal handles screencast and privacy tracks screenshare, but nothing auto-enables DND. Turning on DND automatically while any screencast is active (Discord/Chrome sharing) and restoring it afterwards, with debounce, is a small native hook.
+- **usb-manager** [high] — native bar widget + native menu
+  - Removable drives via sysfs/udev + udisksctl: mount/open, LUKS unlock/lock, safe-remove (power off/eject), auto-hide when empty, notifications. Nothing equivalent; road_map_mshell.md lists 'Removable drive mounting (udisks)' as missing; udisksctl present on owner's machine.
+- **claude-operator** [medium] — native bar widget + menu (fold model-usage into it) (ours: model-usage WASM plugin (usage stats only))
+  - Best-of-breed Claude Code session switchboard; a native version would replace the model-usage WASM plugin, matching the owner's fold-into-native goal. Terminal jump maps to margo via mctl focus by pid/app-id.
+  - missing: live Claude Code sessions with working/needs-you lamps; read last reply, jump to session terminal, resume/search saved sessions; plan-window gauge with rate forecast and cost; CLAUDE.md / plugin management
+- **crashes** [medium] — native menu + notifications companion
+  - systemd-coredump crash notifications for the user's own processes, crash history, per-program mute and current-boot journal error tab; valuable for a compositor/shell developer. Nothing in margo uses coredumpctl.
+- **discord-voice** [medium] — native bar widget + menu
+  - Owner uses Discord: via Discord local RPC shows voice channel, participants/speaking, mute/deafen/hangup, own input volume and per-participant volume 0–200%, recent channels. Nothing in margo touches Discord RPC; privacy pill doesn't cover this.
+- **drive-health** [medium] — native menu (or cpu_dashboard/system_status section)
+  - SMART health, NVMe temperature, endurance/wear, error counters and self-tests via smartctl; useful for a ThinkPad NVMe. No smartctl usage anywhere in margo.
+- **file-search** [medium] — launcher provider
+  - `/fs` fuzzy file/folder search (fzf) opening via xdg-open, incl. removable disks, plus ncdu disk-usage view; launcher has no file provider.
+- **github-notifications** [medium] — native bar widget + native menu
+  - There is no GitHub notification surface at all. An unread count pill plus an inbox menu (mark read, open in browser) using the existing `gh` auth would fit the notifications/menu pattern.
+- **hotspot** [medium] — control-center tile + section in network menu
+  - No hotspot in mshell: grep finds only a search keyword in settings. NM `nmcli device wifi hotspot` start/stop with a connected-clients list (iw station dump) would be useful on a laptop.
+- **hypr-screen-mirror** [medium] — compositor feature (output clone via mctl) + control-center tile / display menu
+  - The idea maps to margo: I found no output mirroring in margo or in monitors_settings (grep "mirror"). With an external DP monitor, a one-click mirror for presentations is useful.
+- **lid-guard** [medium] — option in keep_awake menu / control-center tile
+  - keep_awake only inhibits idle, and logind settings change lid policy permanently. A temporary `systemd-inhibit --what=handle-lid-switch` toggle keeps builds and agents running with the lid shut on the ThinkPad.
+- **mic-denoise** [medium] — control-center tile + toggle in audio_in menu
+  - No RNNoise or filter-chain support anywhere (grep). A one-click PipeWire RNNoise virtual source is useful for Discord calls.
+- **niri-ribbon** [medium] — native bar widget
+  - margo has a scroller layout but no viewport/column-position indicator (margo_layout.rs only shows the layout icon). A slim ribbon showing hidden columns left/right of the viewport, with scroll-to-focus, maps directly onto margo scroller via mctl/margo-client events.
+- **phone-operate** [medium] — native menu (tab in valent menu) + launcher provider
+  - There's no scrcpy/adb integration. Mirroring and controlling the Android phone (wired/wireless adb pairing) fits an owner who uses Valent and builds an Android app (EnglishStudy).
+- **portctl** [medium] — native menu (or tab in ufw/podman menus) + bar indicator
+  - No listening-ports view exists. 'ss -tulpn' grouped by category, with search, copy PID and confirm-kill, is handy for a dev box running podman, blocky and local servers.
+- **processes** [medium] — native menu (cpu_dashboard process tab)
+  - Same gap as procmon. Extra ideas: group processes by app window via margo-client (pid→client), per-process disk read/write and swap, and a system-info header.
+- **speedtest-meter** [medium] — native menu (tab/button in network menu) + optional bar widget
+  - Runs Ookla speedtest/speedtest-cli (both installed on owner's machine) with live gauge, ping/jitter/loss, server+ISP; nothing equivalent (network-speed plugin only shows live throughput). Useful to check Mullvad relay throughput.
+- **systemd** [medium] — launcher provider
+  - Fuzzy-find user+system units (failed first, state on each row) and start/stop/restart via systemctl/polkit with result notification; our launcher has nothing for units (session provider only does power actions). Handy for blocky, mpd, podman, valent units.
+- **webapp-maker** [medium] — settings page or launcher action
+  - Create Chromium --app web apps (.desktop + fetched site icon + optional flags) and list/remove them; owner uses Chrome/Helium and nothing in mshell does this.
+- **wl-screen-mirror** [medium] — compositor feature + control-center tile
+  - Mirror one output to another (laptop ↔ external DP/projector), auto-stop on disconnect; margo has no output mirroring. Better native in margo (render source output onto target) than wrapping wl-mirror (not installed).
+- **case-convert** [low] — launcher provider
+  - `/case` converts text (camel/snake/kebab/CONSTANT…, 18 forms) from primary selection to clipboard; tiny, dev-useful, nothing equivalent in launcher providers.
+- **currency-exchange** [low] — launcher provider
+  - `/fx` conversions from open.er-api.com; no currency support in calculator provider. Could instead come via a qalc calculator backend.
+- **custom-shortcut** [low] — control-center tile
+  - User-defined CC tile (label, icon, command); cc tiles have no custom-command tile while bar has `custom` widgets.
+- **daily-wallpaper** [low] — companion feature (wallpaper)
+  - Bing/NASA image-of-the-day as wallpaper with caption; no such source in mshell-wallpaper, feeds matugen theming.
+- **eyecare** [low] — native bar widget (or alarm_clock/keep_awake companion)
+  - 20-20-20 break reminders that pause on idle/lock and play a sound; nothing equivalent (breathing plugin is guided breathing, countdown is manual).
+- **git_companion** [low] — native bar widget + menu
+  - Open PRs/issues across GitHub/GitLab/Gitea via gh/glab/tea with click-to-open; owner develops margo on GitHub, nothing equivalent exists.
+- **github-activity** [low] — native menu (mdash card) + optional bar pill
+  - Owner develops margo on GitHub; nothing in mshell touches GitHub (grep: no gh/heatmap). Contribution heatmap/streak via `gh api graphql` is a nice mdash/calendar add-on, but it's eye candy.
+- **github-prs** [low] — tab in GitHub native menu
+  - Shows the owner's PRs with CI, review and draft status via `gh pr list/search`. Best folded into the same GitHub menu as notifications, as a second tab.
+- **hypr-submap** [low] — native bar widget (needs keymode in mctl/IPC watch)
+  - margo has key modes (`setkeymode` in dispatch/mod.rs) but no bar indicator. A pill showing the active keymode and hiding on default is cheap (same idea as mangowm-keymode).
+- **link-ip-monitor** [low] — native bar widget + menu (or sysstat section)
+  - No host uptime monitor exists. Pinging a list (router, blocky DNS, servers) with down/up notifications is a small useful service.
+- **mangowm-keymode** [low] — native bar widget
+  - margo has setkeymode but no keymode indicator in the bar. Show it and optionally notify on change (merge with the hypr-submap entry).
+- **nvim-projects** [low] — launcher provider
+  - No projects provider exists (only tmux/ssh/scripts). A generic 'recent git repos under ~/…/.kod' provider that opens kitty/editor in the repo would suit a heavy multi-repo user; Neovim-specific session reading is not needed.
+- **obsidian** [low] — native menu + launcher provider
+  - The owner uses an Obsidian vault (there's a Hermes obsidian skill), and mshell has no vault integration: quick append-to-daily-note, recent notes, and git status/commit/pull/push for the vault. It could also be an action in the notes menu.
+- **podcasts** [low] — companion feature (mtune)
+  - Nothing handles podcasts. RSS/iTunes subscriptions with episodes queued into MPD would fit mtune better than this plugin's separate headless mpv player.
+- **radio** [low] — companion feature (mtune)
+  - No internet radio exists. radio-browser.info search + favorites feeding stream URLs into the MPD queue would extend mtune natively (MPD plays HTTP streams); no separate mpv needed.
+- **rss-notifier** [low] — companion feature (service + notifications menu)
+  - No feed support exists. Background RSS/Atom polling with unread badge and notifications is a lightweight native service if the owner follows release feeds; optional.
+- **share-wifi** [low] — control-center tile + network menu
+  - The network menu/settings have no hotspot (only a search keyword). A create_ap concurrent AP to share the laptop's Wi-Fi with a phone is occasionally useful; it needs pkexec.
+- **shelf** [low] — native menu (GTK4 drop target)
+  - No drag-and-drop file shelf exists. GTK4 makes drag in/out native, which suits shuttling files into Chrome/Discord uploads.
+- **thinkpad-led** [low] — control-center tile
+  - Toggle /sys/class/leds/tpacpi::lid_logo_dot/brightness (present on owner's ThinkPad); needs a udev rule or pkexec. Small, ThinkPad-specific nicety; could live next to the power/charge-limit tile.
+- **timezone-hub** [low] — native menu section (clock/calendar menu) + optional clock pill extra zones
+  - Compare cities with live times/hour-offset strip and set device TZ via timedatectl; we have date/time settings but no alt timezones (Tempo config in mshell-config/src/schema/config.rs only reserves a place for it).
+- **umbriel-submap** [low] — native bar widget + OSD
+  - margo has key modes (setkeymode) but no indicator; show current keymode in the bar (hidden in default) and an OSD on change, with custom labels.
+- **world-radio** [low] — companion feature (mtune radio tab)
+  - Browse radio-browser.info by country/genre with favourites; mtune/MPD can play stream URLs but has no station directory.
+- **youtube-search** [low] — launcher provider
+  - /yt query via yt-dlp (installed) with thumbnails, open in browser or mpv; no YouTube provider in our launcher.
+
+## Improve (we have it; the plugin has more)
+
+- **arch-updater** [high] — native menu (system_update) (ours: system_update bar widget + menu (explicitly a port of this plugin) + mdots update_check)
+  - Our port only lists pending updates and launches a terminal upgrade.
+  - missing: Arch news heads-up before upgrading; estimated download size (pacman); background upgrade mode via pkexec with live log tail/progress + result notification; update history with per-package rollback (pacman cache); .pacnew/.pacsave review with 3-way diff (mine/theirs/base); ignored-packages list (panel + IgnorePkg aware); activity graph of past updates
+- **headroom** [high] — native bar widget + menu (fold model-usage into native) (ours: model-usage plugin (WASM) / mshell ai)
+  - The model-usage WASM plugin only counts local Claude Code messages from ~/.claude/stats-cache.json. headroom reads the real plan limits.
+  - missing: Claude plan limit % left per window (5h/7d) from api.anthropic.com/api/oauth/usage using the CLI's saved OAuth token; Codex limits via chatgpt.com/backend-api/wham/usage; reset times + burn-rate forecast; multi-account
+- **audio-switcher** [medium] — native menu (audio_out/audio_in) (ours: audio_out/audio_in menus + audio_groups combine-sink + `mshellctl audio output next`)
+  - Grouping and output cycling already exist; device aliasing/hiding is the main gap.
+  - missing: rename and hide individual devices (aliases); Bluetooth audio handoff: connecting a disconnected BT sink on cycle/selection; keybind to connect a specific BT device by persistent number; middle-click cycles inputs / scroll changes output volume on the pill; /audio launcher prefix (partially covered by wireplumber provider)
+- **battery-graph** [medium] — native menu (power) (ours: power bar widget + power menu)
+  - Our power menu shows live state/profile/charge limit, no history chart; UPower already records it.
+  - missing: historical battery-level graph from UPower history (configurable timeframe)
+- **launcher-pass** [medium] —  (ours: launcher pass provider (pass.rs))
+  - pass.rs already does copy and wtype-type of the password.
+  - missing: OTP codes via pass-otp (copy/type); username and arbitrary key:value field copy/type; search within entry fields (":" syntax)
+- **mango-displays** [medium] —  (ours: monitors_settings / display_settings)
+  - monitors_settings already does mode, refresh, scale and position. The mirror half matches hypr-screen-mirror.
+  - missing: output mirroring (wl-mirror or a native clone); quick per-output resolution/scale from a bar menu without opening settings
+- **stdout** [medium] —  (ours: custom bar widget (bar_widgets/custom.rs, CustomWidgetConfig))
+  - Ours supports exec+interval+template+#state class+image line, but not dynamic tooltip/visibility/colours.
+  - missing: JSON output mode: visible flag, glyph, text, text/glyph colour per poll; multi-row key/value tooltip from command output (ours has static tooltip only); IPC/right-click force refresh of an exec widget
+- **super-caffeine** [medium] —  (ours: keep_awake bar widget/menu (keep_awake.rs, IdleInhibitor))
+  - Ours only inhibits compositor idle; lid handling is only a static logind setting.
+  - missing: optional logind lid-switch inhibitor (systemd-inhibit --what=handle-lid-switch held by a transient user unit) so closing the ThinkPad lid on the external DP monitor doesn't suspend, tied to the keep-awake toggle/timer
+- **thinkpad-fan** [medium] —  (ours: cpu_dashboard menu (reads hwmon fan RPM via read_all_fans))
+  - Owner's ThinkPad exposes /proc/acpi/ibm/fan; we only read RPM.
+  - missing: manual fan level control (Auto/Full-speed/0-7) by writing /proc/acpi/ibm/fan (needs thinkpad_acpi fan_control=1; currently N on owner's machine) via pkexec/udev group; fan RPM in a bar pill tinted when fans are forced/manual; temperature readout next to fan state
+- **umbriel-displays** [medium] —  (ours: Settings → monitors (monitors_settings.rs: name/mode/position X,Y/scale/VRR form, applied via mctl reload))
+  - Umbriel-only, but laptop+external DP owner benefits from easier arrangement.
+  - missing: visual arrangement map / place-left-right-above-below instead of typing X/Y; mode/refresh dropdowns populated from the output's advertised modes; quick-access bar/menu entry for display changes (not only Settings)
+- **agent-glow** [low] — companion feature (ours: model-usage WASM plugin / ai bar widget)
+  - Ours shows usage stats only, not live agent activity.
+  - missing: live 'agents working' indicator from /proc + ~/.claude/projects session data (count of busy coding-agent sessions); wallpaper/desktop glow while agents run
+- **ai-usagebar** [low] — native bar widget (ours: model-usage WASM plugin (Claude Code/OpenRouter))
+  - Only relevant if owner uses providers beyond Claude/OpenRouter.
+  - missing: multi-provider quota coverage (Codex, Copilot, Cursor, DeepSeek...) via ai-usagebar --json; quota reset countdowns + consumption pace
+- **ask-claude** [low] — launcher provider (ours: ai menu/bar widget + assistant-panel; launcher has no AI provider)
+  - Cheap addition to mshell-launcher providers if owner uses Claude Code.
+  - missing: `/ai` launcher prefix answering via `claude -p` inline; Enter continues the same Claude Code session in terminal/tmux
+- **calculator-plus** [low] — launcher provider (ours: calculator launcher provider (evalexpr))
+  - evalexpr is plain arithmetic; optional qalc fallback is a small, real upgrade.
+  - missing: qalc backend: units, currency, percentages, symbolic math; session expression history with click-to-copy
+- **claudecode** [low] — native menu (ours: model-usage WASM plugin)
+  - Fold into a native Claude usage view rather than separate plugin; claude-operator covers most.
+  - missing: real subscription rate windows from Anthropic API using Claude Code credentials (5h/week/model-week); estimated cost and per-model breakdown
+- **color_picker** [low] — native menu (color_picker) (ours: color_picker bar widget + mpicker (zoom lens, hex/rgb/hsl/cmyk output))
+  - Picking is better native (mpicker); the panel/history is the gap.
+  - missing: persistent history of recent picked colours; editable HEX/RGB/HSL fields with alpha and full colour-wheel adjust panel
+- **contact-sounds** [low] — settings page (notifications) (ours: notifications + mshell-sounds play_notification_file)
+  - Useful for Discord/KDE Connect messages; small extension of notification rules.
+  - missing: per-contact/group/app notification sound mapping (match app name/title/body); sound folder per contact
+- **containers** [low] — native menu (podman) (ours: podman bar widget + menu (port chips, shell, logs))
+  - Owner uses podman only; browser-open of ports is the useful gap.
+  - missing: click container/port chip to open its web UI in browser; host listening services (ss) with web UIs alongside containers; docker runtime support
+- **cursor** [low] — settings page (appearance) (ours: margo-config cursor_theme/cursor_size)
+  - margo has the config keys but no unified picker; mango variant support shows the idea maps.
+  - missing: cursor theme picker panel that applies to compositor + GTK + Qt/XWayland + session env together; drift warning when those disagree; import Windows .cur/.ani packs / build Xcursor themes
+- **dropkitty** [low] — compositor feature (summon/scratchpad) (ours: margo summon keybind (bring-or-launch app))
+  - Owner uses kitty; summon covers most; finished-command badge is the novelty.
+  - missing: true drop-down layer-shell terminal via kitty quick-access-terminal; bar badge when a command finishes while hidden
+- **gamer-mode** [low] — settings page (game mode) (ours: mshell-core game_mode (drops effects, DND, idle inhibit))
+  - Ours handles compositor side; process/service suspension is the gap.
+  - missing: suspend/restore configured background processes, systemd services/timers and containers while active; switch power profile on enter/exit; live CPU/RAM/GPU readout in the pill
+- **icons** [low] —  (ours: theme settings (icon theme fields))
+  - Theme settings already have shell_icon_theme / app_icon_theme (theme.rs).
+  - missing: icon theme picker that previews real icons; install from gnome-look.org / local folder; Papirus folder recolor matched to the matugen palette; apply to GTK+Qt+KDE at once
+- **internal-keyboard** [low] —  (ours: input_settings send_events)
+  - margo supports libinput send_events_mode (libinput_config.rs) and input_settings exposes it, but only as a static setting.
+  - missing: one-click CC tile/bar toggle to disable the built-in keyboard while an external one is used, with OSD and a TTY escape
+- **keymap** [low] —  (ours: keybinds_settings, mkeys)
+  - We have the keybinds_settings editor and mkeys.
+  - missing: visual keyboard layout (ANSI 60–100%) showing free vs occupied keys per modifier layer; conflict detection when choosing a new combo
+- **lyrics** [low] —  (ours: lyrics bar widget + lyrics menu)
+  - We have a lyrics pill and menu (lrclib, active-line highlight).
+  - missing: translation/romanization layers; multiple sources with fallback (NetEase etc.); word-level karaoke highlighting; album art in panel
+- **media-lyrics** [low] —  (ours: lyrics menu)
+  - We have the lyrics menu.
+  - missing: seekable progress + transport inside lyrics panel; desktop/lockscreen lyrics widget; NetEase fallback source
+- **network-control** [low] —  (ours: network menu + connection_editor)
+  - Wi-Fi scan and join already exist in the network menu, and static IP/DNS in settings/net/connection_editor.rs.
+  - missing: confirm-or-rollback window when editing a live connection's IP/DNS
+- **network-monitor** [low] —  (ours: network-speed plugin / network menu)
+  - We have network-speed.
+  - missing: listening-port list (ss -tulnp) with stop-process / open-port actions; traffic history graph
+- **niri-displays** [low] —  (ours: monitors_settings)
+  - monitors_settings exists.
+  - missing: temporary (non-persisted) output enable/disable and transform from a quick menu; output rotation toggle
+- **special-workspaces** [low] —  (ours: margo scratchpad actions (margo-config/src/actions.rs) + margo_tags bar widget)
+  - Hyprland-only plugin, but the idea maps to margo scratchpads.
+  - missing: bar chips listing populated named scratchpads, click to toggle (margo has scratchpads but no bar indicator)
+- **split-reset** [low] —  (ours: margo_layout widget/menu + setmfact action)
+  - Hyprland dwindle-only; idea maps to resetting margo mfact.
+  - missing: one-click 'equalize/reset split ratios' for the bar's monitor (mfact/cfact back to defaults) as a layout-menu button + mctl action
+- **ssh-launcher** [low] —  (ours: launcher ssh provider (mshell-launcher/src/providers/ssh.rs) + ssh_sessions widget/menu)
+  - missing: launcher /ssh provider reads only ~/.ssh/assh.yml; fall back to plain ~/.ssh/config Host entries (ssh_sessions already parses it in mshell-frame/src/ssh.rs); per-provider extra ssh args setting
+- **sticky-notes** [low] —  (ours: notes bar widget + notes menu (Scratchpad/Notes/Todos, notes_menu_widget.rs))
+  - missing: per-note colours (classic sticky or palette-blended); archive with restore and per-note/all hide; drag-reorder of notes; Markdown checklists inside a note; quick-capture IPC that opens a new note with keyboard focus
+- **system-monitor** [low] —  (ours: sysstat bar widget + cpu_dashboard menu + system-monitor plugin)
+  - missing: single compact capsule combining CPU, Intel iGPU busy%, RAM, disk and net rates with dividers; tooltip rows with top CPU and top RAM process; session RX/TX totals
+- **system-updater** [low] —  (ours: system_update bar widget/menu (pacman/AUR/flatpak))
+  - PackageKit/offline/single-package update are not appropriate for Arch (partial upgrades); only the info/adapter parts are worth taking.
+  - missing: per-package details list (description, installed→new version, app icon); extensible adapter scripts (cargo-install-update, pipx)
+- **theme-switcher** [low] —  (ours: theme_picker menu + theme settings (matugen palettes) + wallpaper menu)
+  - missing: saved theme bundles: palette source + wallpaper(s) + preview screenshot + title, applied in one click; carousel browser and editor for bundles
+- **topgrade-wrapper** [low] —  (ours: system_update widget/menu (mshell-frame/src/system_update))
+  - missing: optional topgrade backend for the 'upgrade' action (topgrade is installed on owner's machine); counts for extra managers (cargo-install-update, npm, pip) alongside pacman/AUR/flatpak
+- **umbriel-monitor-control** [low] —  (ours: Settings → monitors (monitors_settings.rs))
+  - Overlaps umbriel-displays; listed features are the extras.
+  - missing: rotation/transform control; validate-then-apply with automatic rollback if config invalid; control-center 'display' tile showing focused output resolution that opens the panel
+- **usbeehive** [low] —  (ours: power bar widget/menu (power.rs))
+  - missing: show USB-C PD charger wattage and source/sink direction (owner has /sys/class/typec ports); warn when cable/charger is the charging bottleneck; connected USB device list
+- **visualizerp** [low] —  (ours: audio_visualizer bar widget (cava-backed spectrum))
+  - missing: phase-locked oscilloscope render mode; RMS/peak level meters; native PipeWire monitor capture (no cava dependency)
+- **vpn-manager** [low] —  (ours: vpn/vpn_indicator widgets + vpn menu (Mullvad via mvpn))
+  - missing: auto-connect VPN when not on a trusted Wi-Fi network (no trusted-network logic in mvpn/vpn menu); also list NetworkManager VPN/WireGuard profiles (nmcli) next to Mullvad
+- **wallpaper-deck** [low] —  (ours: wallpaper menu + wallpaper settings (rotation))
+  - missing: Wallhaven search/download inside the picker; multi-monitor target selection in picker
+- **wallpaper-switcher** [low] —  (ours: wallpaper bar widget (click opens picker only))
+  - missing: next-wallpaper action from bar click and a control-center tile
+- **wallpaper-widget** [low] —  (ours: wallpaper bar widget + wallpaper menu)
+  - missing: scroll on bar pill cycles next/previous wallpaper; right-click applies random wallpaper; keyboard-navigable carousel (arrows/Enter/Space random) with cached thumbnails
+- **web-launcher** [low] —  (ours: launcher websearch provider (engine prefixes))
+  - Same idea as web-search.
+  - missing: favourite-sites list (/web) with auto-downloaded favicons
+- **web-search** [low] —  (ours: launcher websearch provider (providers/websearch.rs))
+  - missing: configurable favourite sites shown as results, ordered by recent use; favicon icons on results
+- **workspace-restore** [low] —  (ours: margo session_save/session_load actions)
+  - missing: per-tag app lists edited in a panel; restore status per app (open here / open on other tag / closed / not saved); one-click or at-login restore that launches missing apps and moves open ones back
+- **xwayland** [low] —  (ours: active_window bar widget)
+  - missing: badge/glyph when the focused window is XWayland (margo knows xwayland surfaces)
+- **gslapper** [-] —  (ours: wallpaper bar widget/menu + wallpaper_settings)
+  - We already have the wallpaper bar widget, menu and settings page.
+  - missing: video wallpapers (GStreamer/gSlapper or mpvpaper backend); a different wallpaper per output/connector in the picker
+- **niri-rules-studio** [-] —  (ours: mshell-settings window_rules_settings.rs (Layer/Window/Tag rules pages))
+  - missing: prefill a rule from the focused window or a searchable list of open windows (app-id/title); on-screen click picker to choose a window; validate config before applying (margo-config check) and refuse invalid edits; disable/enable a rule without deleting it; initial size + output/tag placement presets in a guided form
+- **niri-workspace-preview** [-] —  (ours: bar_widgets/margo_tags.rs)
+  - missing: proportional mini-map of windows per occupied tag (layout geometry, no content capture); optional app icons inside the minimap; per-output scope (all outputs vs bar's own output)
+- **niri-workspace-stack** [-] —  (ours: bar_widgets/margo_tags.rs)
+  - missing: clickable app icons of the active tag's windows next to the tag indicator; 'navigator' popup listing tags and their windows per monitor; per-bar display mode choice (badge / numbered rail / minimap)
+- **noctaproton-vpn** [-] —  (ours: vpn menu + mvpn (Mullvad))
+  - missing: live throughput graph (rx/tx) in the VPN panel — mvpn/vpn menu have no rx/tx bytes; split-tunnel app picker that scans .desktop apps (mvpn only lists excluded processes); quick country/server hop list in the panel
+- **nvtop** [-] —  (ours: cpu_dashboard menu / sysstat.rs (GPU only as a temperature label))
+  - missing: Intel iGPU busy %/frequency gauge (i915/xe via sysfs or intel_gpu_top); per-process GPU usage table (drm fdinfo) with kill; GPU load / memory history graph
+- **paged-todo** [-] —  (ours: notes menu Todos tab (+ todo WASM plugin to be folded in))
+  - missing: multiple named todo pages/lists; per-task priority and optional details; drag reordering; Markdown/JSON export
+- **pass** [-] —  (ours: launcher providers/pass.rs)
+  - missing: OTP copy via pass-otp ('/pass otp <query>'); pass.rs has no OTP support; fallback to a terminal when gpg-agent needs the passphrase
+- **phone-connect** [-] —  (ours: valent bar widget + menu (valent/mod.rs: battery, connectivity, ring, ping, sftp browse, share file/text, clipboard push/pull, pair))
+  - missing: SMS read/compose; phone media controls with album art inside the valent menu; run remote commands
+- **pomodoro** [-] —  (ours: alarm_clock menu (alarms, countdowns, stopwatch) / countdown bar widget)
+  - missing: pomodoro work/short-break/long-break cycles with configurable counts; auto-start next session; bar pill showing phase + remaining time; end-of-phase toast + sound
+- **portforward** [-] —  (ours: ssh_sessions bar widget/menu + ssh launcher provider)
+  - missing: named SSH -L forward profiles (local→remote host:port); connect/disconnect with systemd user-unit supervision; port-conflict reporting and open/copy local address
+- **profile-switcher** [-] —  (ours: theme_picker + dark_mode + wallpaper menus)
+  - missing: named appearance profiles bundling mode + palette + wallpaper dir + per-monitor wallpaper; time/weekday schedule for automatic profile switching (dark_mode has no scheduler)
+- **quill** [-] —  (ours: notes menu)
+  - missing: store notes/todos as plain Markdown files ('- [ ]') for Obsidian/git interop; natural-language due-date parsing (tomorrow, friday, 14:30); AI capture/summarize/Q&A over notes via the existing ai backend; optional git history for the notes folder
+- **run-path** [-] —  (ours: launcher providers/command.rs (>run with PATH completion + history))
+  - missing: path mode: live filesystem completion for ~/, /, ./; open the path with xdg-open/file manager; Enter on a directory descends into it
+- **screen-capture** [-] —  (ours: screen_record menu + mshell-screenshot/record.rs (wf-recorder, single --audio device))
+  - missing: record desktop + mic mixed together (currently one audio source); webcam overlay; gpu-screen-recorder backend (VAAPI hardware encoding on the Intel iGPU); trim/normalize audio after capture
+- **screen-toolkit** [-] —  (ours: mshell-screenshot (capture + annotate editor) + mpicker (color picker with lens))
+  - missing: OCR of a region (see ocr); QR/barcode scan from a screen region (zbarimg); color palette extraction from a region; Google Lens reverse-image search of a region; pixel measuring/ruler tool
+- **shell-command** [-] —  (ours: launcher providers/command.rs (detached sh -c, no terminal))
+  - missing: 'run in terminal' (kitty) for interactive/TUI commands with $SHELL rc aliases; completions from fish's completion engine (complete -C) beyond PATH; saved command snippets
+
+## HAVE
+
+- ambient-sounds: Same idea (mpv looping mix); should fold into native as planned, no new features worth noting beyond per-sound boost.
+- battery-power-management: Ours covers power draw, profile switching and charge-limit, plus auto profiles.
+- battery-threshold: Already native, including start threshold.
+- battery-widget: Desktop/lockscreen battery tile; we show the same data in bar; no desktop-widget layer.
+- better-clock: 38-line desktop clock; mshell has no desktop widgets and clock is covered.
+- bookmarks: Label+glyph+shell-command list is what launcher scripts/custom widgets already give.
+- calculator: Launcher calc covers it; a keypad panel adds little.
+- cat: Animated CPU cat already native.
+- default-apps: Native settings page exists.
+- desktop-launcher: Desktop app grid; dock covers it, no desktop-widget layer.
+- dns-switcher: Ours handles blocky + Mullvad DNS; NetworkManager provider presets don't fit owner's setup.
+- emoji-picker: Launcher emoji/symbols with frecency already cover it.
+- geoip-monitor: Native IP widget already shows geo info.
+- hover-widgets: Clock, volume, media, active window, CPU/RAM/temp and net speed already exist as native pills (clock, audio, media_player, active_window, sysstat, cpu_dashboard, network-speed). Hover-expand is just a style.
+- hypr-layout-switcher: Per-workspace layout cycling already exists as margo_layout and per-tag layouts.
+- hyprland-settings: mshell-settings already covers displays, input, look and animations natively.
+- hyprland-visual-editor: Animation, border and effects editing already lives in animations_settings / effects_settings (blur, shadow) and margo animation presets. Hyprland shaders don't apply.
+- ideapad-conservation-mode: For ThinkPads, power.rs already handles the charge_control_end_threshold sysfs (thinkpad_acpi). ideapad_acpi itself doesn't apply.
+- input-echo-bar: Key-combo display is already covered by the show-keys plugin.
+- ip-monitor: Public and local IP are already handled by the ip bar widget/menu.
+- keybind-cheatsheet: Already covered by the keybinds bar widget/menu cheatsheet and the mkeys viewer. Fcitx5 doesn't apply.
+- keyboard-state: Caps/Num lock state is already in the lock_keys bar widget.
+- keyviz: Floating keystroke HUD is already covered by the show-keys plugin.
+- lrc: Bar synced lyrics are already in the lyrics pill (lrclib, MPRIS + mtune).
+- lunar-workspaces: The tag indicator already exists as margo_tags. Custom moon icons are cosmetic.
+- mango_layouts: Layout switching is already covered by the margo_layout widget/menu.
+- media-island: A now-playing panel with art and controls is already in media_player plus mplayerplus. The island auto-popup on track change is the only novelty, and the OSD/toast could do it.
+- media-player-icon: The media_player pill already covers a compact playing indicator.
+- mimir: LLM chat is already covered by the native ai widget/menu and assistant-panel.
+- mini-docker: The owner uses podman, and the podman widget/menu already has container and image tabs.
+- network-toolkit: Wi-Fi, BT, ethernet and DNS already have separate native menus (network, bluetooth, dns). Hotspot is the only gap, tracked under hotspot.
+- niri-active-workspace: margo_tags is configurable. Showing only the active tag is a minor option.
+- niri-animations: Animation presets and speed are already covered by animations_settings and margo animation presets.
+- niri-media-idle: Media-aware idle inhibit is already in audio_inhibit.rs (idle.inhibit_while_media).
+- noctes: Desktop sticky-note sheets are cosmetic; note-taking is covered.
+- nwg-displays: Display settings quick profiles (Internal/External/Extend/Mirror) + mlayout saved profiles (layout_settings.rs)
+- palette-creator: color-scheme-creator plugin (same WerWolv lineage) + mpicker color picker
+- performance-plus: Extra ideas: set power profile and pause media on enter.
+- qr-share: Candidate to fold into a native feature per the owner's plan.
+- qrcode: qr-generator plugin
+- quickask: ai menu/bar widget + assistant-panel plugin
+- region-recorder: screen_record menu + mshell-screenshot/record.rs (wf-recorder region/window/monitor + audio)
+- screen-mirror: Display settings 'Mirror' quick profile (wl-mirror) in layout_settings.rs
+- shelly: system_update bar widget/menu (pacman/AUR/flatpak)
+- spotify-lyrics: lyrics bar widget + lyrics menu + lyrics settings (synced lyrics)
+- spotify-media: media_player bar widget/menu (MPRIS) + mplayerplus plugin
+- systempulse: Its extra GPU detail relies on nvtop (NVIDIA/AMD-oriented); owner has Intel iGPU.
+- tmux-provider: launcher tmux provider (providers/tmux.rs, handles tmuxp) + mtm tmux manager
+- todo: notes Todos tab + todo mshell plugin
+
+## SKIP
+
+- 9router-control: Niche: requires a self-hosted 9Router LLM proxy the owner doesn't run.
+- 9router-monitor: Niche 9Router proxy monitor; no 9Router in owner's stack.
+- agentik: Oh-My-Pi/Hermes multi-harness chat surface, 5.8k lines, niri/hyprland focus; overlaps assistant-panel/ai menu, too heavy.
+- agy: 57-line launcher for Antigravity CLI; covered by custom bar widget.
+- ai-triage: Depends on third-party ai-usagebar CLI with routing heuristics; model-usage covers what owner uses.
+- airpods: AirPods/librepods hardware the owner lacks.
+- als-brightness: Needs an iio ambient-light sensor (built for ASUS Zenbook AMD SFH); most ThinkPads lack one.
+- anilist: Niche anime tracking service.
+- asus-fan: ASUS asusctl hardware.
+- asus-fans-controller-ec: ASUS EC fan control hardware.
+- asus-gpu-mode: ASUS supergfxctl dGPU switching; owner has Intel iGPU.
+- audio-sticker: Decorative desktop sticker toy; mshell has no desktop-widget layer.
+- autoclicker: ydotool autoclicker toy; not a desktop-shell need.
+- awwwall: Animated wallpapers via awww; niche, margo has its own wallpaper stack.
+- ayet-kosesi: Daily Quran verse desktop widget; niche content and mshell has no desktop widgets.
+- bangumi-progress: Niche bgm.tv anime tracker.
+- basecamp: Basecamp service not in owner's stack.
+- bazaarsearch: Bazaar flatpak store (Fedora Atomic-centric); archpkgs provider covers package search.
+- beeminder: Niche service.
+- binance: Crypto portfolio service; not owner's stack.
+- bitdjinn: Crypto ticker; niche.
+- bloom: Claude Code bar indicator that needs an external backend + niri; claude-operator covers the idea better.
+- calibre: Calibre library not in owner's stack.
+- cc-usage: Command Code CLI usage; owner doesn't use Command Code.
+- charge-mode: Cycles `charge_types` (Lenovo IdeaPad/Legion ideapad-laptop); ThinkPads use thresholds, already handled.
+- cider: Cider (Apple Music) client; owner uses MPD/mtune and has lyrics widget.
+- claude-cockpit: Superseded by claude-operator (which merges it).
+- claude-companion: niri/hyprland/sway-bound; overlaps claude-operator.
+- claude-sessions: Merged into claude-operator; jump uses hyprctl/niri/swaymsg.
+- cmd-runner: Stores sudo passwords in keyring to run saved commands; security-dubious and covered by custom/scripts.
+- codexbar-meter: Requires CodexBar CLI (macOS-origin) the owner doesn't use.
+- competitive-programming-contest-tracker: Niche contest tracker.
+- config-swap: Swaps Noctalia settings.toml from a GitHub repo; mdots/backup settings cover config management.
+- cutemonitor-ups: UPS hardware the owner lacks.
+- deepseek-peak: DeepSeek pricing windows; niche.
+- deepseek_usage: DeepSeek balance; niche.
+- dnf-updater: Fedora DNF.
+- dropwall: Drag-drop image on desktop to set wallpaper; marginal, wallpaper menu covers it.
+- ds4-color: DualShock 4 hardware the owner lacks.
+- f1: Formula 1 schedule; niche.
+- game-launcher: Steam/Lutris/Heroic launcher; apps provider lists .desktop games, owner isn't a gamer setup.
+- github-kanban: A 3k-line GitHub dashboard (notifications, PRs, issues, Actions, following). It overlaps github-notifications/github-prs, which are the useful parts. Port those instead of a second dashboard.
+- gocryptfs: Niche. Nothing suggests the owner uses gocryptfs; he uses pass, and LUKS is likely.
+- godot-provider: Owner does not use Godot.
+- hassio: Home Assistant isn't part of the owner's setup.
+- headsetcontrol: Needs a HeadsetControl-supported USB gaming headset, and there's no sign the owner has one. Bluetooth battery is already in the bluetooth menu.
+- herdr: Niche (Herdr agent session manager). The owner uses tmux, which the tmux launcher provider covers.
+- honor-earbuds: Honor earbuds hardware.
+- iio_lock: Rotation lock for 2-in-1 devices. The owner has a regular ThinkPad, and the plugin is hyprland/sway only.
+- imagemagick-clock: Toy; we already have a native clock.
+- inhibit-idle-while-watching: A webcam face check before idle is a privacy-hostile gimmick. Media-based inhibit is already covered by audio_inhibit.rs (idle.inhibit_while_media).
+- inventory-manager: Business stock-keeping app; irrelevant.
+- jalali_calendar: Iranian calendar; the owner is Turkish/Gregorian.
+- jetbrains-provider: No JetBrains IDE in the owner's setup.
+- k8s-status: The owner uses podman, not Kubernetes.
+- keychron-battery: Keychron mouse hardware.
+- keysmith: Password, key and JWT generator panel. Niche dev toy; pass and the terminal cover it.
+- kineticwe-layouts: KWin-only.
+- kwallet-secrets: KWallet secret agent; the owner isn't on Plasma. An NM secret agent backed by Secret Service could be considered separately.
+- layout-fix: Punto-style wrong-layout text fixer, niri-only. Only worth it for a bilingual Cyrillic/Latin typist; TR/EN layouts rarely need it.
+- librelinkup: Medical glucose service; not relevant.
+- llamanager: The mshell AI already supports an Ollama provider. Full Ollama model management is niche unless the owner runs local models.
+- localsend: Valent (KDE Connect) already covers phone file and text transfer, and localsend-plus is the better LocalSend variant.
+- localsend-plus: Valent already handles phone/device sharing. A second transfer protocol would duplicate it, which the owner dislikes.
+- lunar-calendar: Chinese lunisolar calendar.
+- maildir: Not useful: the owner gets mail through himalaya/IMAP and Gmail, not a local Maildir.
+- mawaqit: Prayer times; not requested by the owner.
+- mihomo-control: Clash/Mihomo proxy; the owner uses Mullvad.
+- misr-quran-radio: Niche religious radio stream.
+- modernclock: Decorative desktop clock widget.
+- murattal: Niche Quran streaming.
+- mx-control: Logitech MX hardware (Solaar). The owner's device isn't known; hyprland-specific gestures.
+- mxmouse: Niri plus Logitech MX gestures.
+- nan-usage: Niche service (NaN quota). headroom covers the useful idea.
+- ncs-visualizer: Desktop orb visualizer; we already have audio_visualizer, and this needs a separate GPU binary.
+- neuralwatt: Niche inference provider.
+- nextboot-selector: The owner has single-boot Arch (no dual-boot evidence). mdots already manages boot config.
+- nightscout-monitor: Medical glucose service.
+- nix-monitor: NixOS-only (owner is on Arch/CachyOS).
+- nix-search: NixOS-only (owner is on Arch/CachyOS).
+- nix-status: NixOS-only (owner is on Arch/CachyOS).
+- nixos-updates: NixOS-only (owner is on Arch/CachyOS).
+- noctwhspr: Bar toggle for hyprwhspr dictation, which the owner doesn't use.
+- nothing-ear: Nothing/CMF earbuds hardware, which the owner doesn't have.
+- obs-control: OBS isn't in the owner's stack; native screen_record + margo-portal already cover recording.
+- obs-integration: openSUSE Build Service; irrelevant on Arch.
+- obsidian-vault-switcher: Single-vault user; a vault picker adds little (fold into the obsidian port if ever needed).
+- omniroute-quota: OmniRoute/Codex accounts aren't used; the model-usage plugin covers AI usage.
+- omp-launcher: Oh My Pi CLI isn't used.
+- opencode-companion: OpenCode isn't used; the ai menu/assistant-panel covers chat.
+- opencode-go-usage: OpenCode Go subscription isn't used; model-usage covers the owner's providers.
+- opencode-monitor: OpenCode-specific. The idea (live agent sessions, 'needs attention' when an agent waits for permission) could extend model-usage for Claude Code/Hermes later.
+- opencodex-bar: OpenCodex isn't used.
+- openvpn3: Owner uses Mullvad (mvpn); OpenVPN3 client isn't used.
+- opnsense: No OPNsense firewall (owner uses local ufw + blocky).
+- opnsense-traffic: No OPNsense firewall.
+- oppo-pods: OPPO/OnePlus earbuds hardware, which the owner doesn't have.
+- owntone-control: OwnTone server isn't used; MPD via mtune.
+- palettes: Static library of popular palettes for copying hex codes; theme_picker (matugen palettes) + mpicker cover the owner's needs.
+- pixel-buds: Google Pixel Buds hardware, which the owner doesn't have.
+- pixel-shift: OLED burn-in mitigation; the owner's ThinkPad + DP monitor aren't listed as OLED.
+- printers: No CUPS/printer in the owner's stack (no cups/lpstat anywhere in margo); revisit only if a printer is used.
+- prismlauncher-instances: Minecraft PrismLauncher isn't used.
+- proton-pass: Proton Pass isn't used (owner uses pass).
+- pulsar-mouse: Pulsar mouse hardware, which the owner doesn't have.
+- quranwidget: Religious-verse desktop widget, not relevant to the owner.
+- razer: Razer/OpenRazer hardware, which the owner doesn't have.
+- rbw-enhanced: Bitwarden/rbw isn't used (owner uses pass).
+- reading-list: Niche read-later manager; not part of the owner's workflow.
+- remmina: Remmina/RDP/VNC isn't used; the ssh provider/ssh_sessions cover remote shells.
+- rss-feeds: Desktop-widget RSS list; no desktop widget layer is wanted.
+- ruh-vpn: sing-box/VLESS proxies aren't used (owner uses Mullvad).
+- rum-updates: RakuOS-specific.
+- saved-desktop-widgets: Per-wallpaper desktop-widget layouts; mshell has no desktop widgets.
+- scroll-indicator: Hyprland-only; the same idea is covered by the niri-ribbon PORT (scroller column indicator for margo).
+- settings-to-nix: NixOS-only; mshell already has a Backup settings page.
+- shift: Work-hours/overtime tracker; niche for this owner.
+- shloka: Religious-verse desktop widget, not relevant to the owner.
+- sing-box-status: pgrep for sing-box proxy; owner uses Mullvad (vpn/vpn_indicator), sing-box not installed.
+- sonolith: Client for Sonolith YouTube-Music app via python bridge; niche app, owner uses MPD/mtune.
+- sony_headphones: Sony MDR RFCOMM protocol; hardware owner lacks.
+- soundcore-buds: Anker Soundcore via OpenSCQ30; hardware owner lacks.
+- spotify: Spotify Web API search via spotify_player auth, Premium required; owner's music is MPD/mtune, Spotify playback already controllable via MPRIS/playerctl provider.
+- super-productivity: Super Productivity REST API; app not used by owner.
+- sway-mode: Sway-only; same idea covered by umbriel-submap entry (margo keymode indicator).
+- sway-scratchpad: Sway-only; scratchpad-indicator idea covered under special-workspaces.
+- syncthing: Syncthing not installed on owner's machine.
+- taildrop: Tailscale not installed; phone file transfer covered by valent (KDE Connect).
+- tailnet: Tailscale not installed; owner uses Mullvad.
+- tailscale: Tailscale not installed; owner uses Mullvad (roadmap marks Tailscale as niche C2).
+- task-warrior: Taskwarrior not installed; todos covered by notes Todos tab + todo plugin.
+- terminal-widgets: Hyprland-0.56-Lua-only floating terminal toy cards (cava/cbonsai/pipes); margo scratchpads + window rules cover floating terminals.
+- thunderbird-companion: Thunderbird not installed.
+- todoist: Todoist cloud account; not used.
+- todoist-manager: Todoist cloud account; not used.
+- token-monitor: Needs a running Token Monitor Hub; Claude/OpenRouter usage already covered by model-usage plugin.
+- typing-stats: Toy: keystroke counter needing evdev read access + root setup; niri-only focus filter.
+- udiskie: Requires udiskie (not installed); superseded by usb-manager which uses udisks2 directly.
+- um5606_fan_state: ASUS ZenBook-only fan profile helper.
+- umami: Umami web analytics dashboard; niche service.
+- undershell: Controls third-party undershell desktop-widget daemon.
+- upbeat: Swatch Internet Time toy.
+- vial_keymap: Vial split-keyboard hardware owner lacks.
+- vidi: Niche vidi YouTube-subscription TUI.
+- vietnamese-lunar-calendar: Regional calendar, irrelevant to owner.
+- vikunja: Self-hosted Vikunja tasks; not used.
+- vm-manager: libvirt/virsh not installed; owner uses podman (podman widget).
+- voxtype: Voxtype dictation tool not installed.
+- vrchat-status: VRChat gaming status.
+- w-engine: Steam Wallpaper Engine via linux-wallpaperengine.
+- warp: Cloudflare WARP; owner uses Mullvad.
+- wayvibes: Typing-sound toy.
+- wfmu: Single US radio station player.
+- wireview-pro-ii: WireView GPU power-cable hardware owner lacks.
+- yt-music: Full YouTube Music client via cookies+yt-dlp+mpv; owner's music is MPD/mtune.
+- zakker: Religious reminder notifications; not relevant.
+- zed-provider: Zed not installed.
