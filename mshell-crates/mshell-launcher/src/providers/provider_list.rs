@@ -167,6 +167,18 @@ const ENTRIES: &[Entry] = &[
         icon: "system-search-symbolic",
     },
     Entry {
+        prefix: "web [site]",
+        example: "web",
+        description: "Favourite websites (most recent first)",
+        icon: "web-browser-symbolic",
+    },
+    Entry {
+        prefix: "webapp <name> <url>",
+        example: "webapp",
+        description: "Web apps — create / list / remove Chromium --app launchers",
+        icon: "web-browser-symbolic",
+    },
+    Entry {
         prefix: "svc <unit>",
         example: "svc blocky",
         description: "systemd units — start / stop / restart (user + system)",

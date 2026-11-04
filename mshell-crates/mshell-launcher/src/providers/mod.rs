@@ -23,6 +23,7 @@ pub mod symbols;
 pub mod systemd;
 pub mod tmux;
 pub mod tools;
+pub mod webapp;
 pub mod websearch;
 pub mod wireplumber;
 
@@ -43,5 +44,6 @@ pub use ssh::SshProvider;
 pub use symbols::SymbolsProvider;
 pub use systemd::SystemdProvider;
 pub use tmux::TmuxProvider;
+pub use webapp::WebappProvider;
 pub use websearch::WebsearchProvider;
 pub use wireplumber::WireplumberProvider;

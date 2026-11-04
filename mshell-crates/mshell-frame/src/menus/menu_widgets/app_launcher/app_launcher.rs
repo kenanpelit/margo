@@ -61,7 +61,7 @@ use mshell_launcher::providers::{
     ArchLinuxPkgsProvider, BluetoothProvider, CalculatorProvider, CommandProvider, EmojiProvider,
     FileSearchProvider, MctlProvider, PassProvider, PlayerctlProvider, ProviderListProvider,
     ScriptsProvider, SessionProvider, SettingsProvider, SshProvider, SymbolsProvider,
-    SystemdProvider, TmuxProvider, WebsearchProvider, WireplumberProvider,
+    SystemdProvider, TmuxProvider, WebappProvider, WebsearchProvider, WireplumberProvider,
 };
 use mshell_launcher::{DisplayItem, FrecencyStore, LauncherItem, LauncherRuntime};
 use reactive_graph::traits::*;
@@ -533,6 +533,7 @@ impl Component for AppLauncherModel {
         runtime.register(Box::new(PlayerctlProvider::new()));
         runtime.register(Box::new(archpkgs_provider));
         runtime.register(Box::new(FileSearchProvider::new()));
+        runtime.register(Box::new(WebappProvider::new()));
         runtime.register(Box::new(WireplumberProvider::new()));
         runtime.register(Box::new(BluetoothProvider::new()));
         runtime.register(Box::new(SshProvider::new()));

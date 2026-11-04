@@ -214,8 +214,13 @@ pub fn order_sites<'a>(sites: &'a [Site], mru: &[String]) -> Vec<&'a Site> {
 /// Favicon source. Google's s2 service returns a PNG for any domain
 /// (sites' own /favicon.ico is often missing or an ICO GTK can't size).
 pub fn favicon_url(domain: &str) -> String {
+    favicon_url_sized(domain, 64)
+}
+
+/// [`favicon_url`] at `size` px (the web-app maker wants a larger icon).
+pub fn favicon_url_sized(domain: &str, size: u32) -> String {
     format!(
-        "https://www.google.com/s2/favicons?sz=64&domain={}",
+        "https://www.google.com/s2/favicons?sz={size}&domain={}",
         url_encode(domain)
     )
 }
@@ -223,9 +228,11 @@ pub fn favicon_url(domain: &str) -> String {
 /// Largest favicon accepted (a real one is a few KB).
 const FAVICON_MAX_BYTES: u64 = 256 * 1024;
 
-fn download_favicon(domain: &str, dest: &std::path::Path) -> Result<(), String> {
+/// Download a PNG from `url` to `dest` (atomic rename). Blocking —
+/// worker threads only.
+pub(crate) fn download_png(url: &str, dest: &std::path::Path) -> Result<(), String> {
     use std::io::Read as _;
-    let resp = ureq::get(&favicon_url(domain))
+    let resp = ureq::get(url)
         .timeout(std::time::Duration::from_secs(6))
         .call()
         .map_err(|e| e.to_string())?;
@@ -286,7 +293,7 @@ impl Favicons {
         if first {
             let domain = domain.to_string();
             let notifier = Arc::clone(&self.notifier);
-            std::thread::spawn(move || match download_favicon(&domain, &path) {
+            std::thread::spawn(move || match download_png(&favicon_url(&domain), &path) {
                 Ok(()) => {
                     if let Ok(slot) = notifier.lock()
                         && let Some(notify) = slot.as_ref()
