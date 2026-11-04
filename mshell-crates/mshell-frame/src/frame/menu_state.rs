@@ -15,6 +15,77 @@ impl Frame {
             || self.bottom_right_revealed
     }
 
+    /// Map the overlay (the root window holding the menus) while any menu is
+    /// revealed, and unmap + unrealize it once none is and the close
+    /// animation is over. Unrealizing drops the GTK renderer and its
+    /// swapchain: four output-sized buffers that a merely hidden window
+    /// keeps. Call before `update_view` so a newly revealed menu animates on
+    /// a mapped widget (a `gtk::Revealer` jumps to the end when unmapped).
+    pub(super) fn sync_overlay(&self, root: &<Self as Component>::Root) {
+        use pieces::{OverlayAction, PieceMode, overlay_action};
+        let hide_pending = self.overlay_hide.borrow().is_some();
+        match overlay_action(self.any_menu_revealed(), root.is_visible(), hide_pending) {
+            OverlayAction::Show => {
+                if let Some(id) = self.overlay_hide.borrow_mut().take() {
+                    id.remove();
+                }
+                root.set_visible(true);
+                // Hand the area below the bands to the overlay only once it
+                // has painted, so the strips' corners never blink out.
+                if let Some(clock) = root.frame_clock() {
+                    let strips = std::rc::Rc::downgrade(&self.strips);
+                    let handler = std::rc::Rc::new(std::cell::RefCell::new(None));
+                    let handler_in = handler.clone();
+                    let id = clock.connect_after_paint(move |clock| {
+                        if let Some(strips) = strips.upgrade() {
+                            strips.set_mode(PieceMode::Menu);
+                        }
+                        if let Some(id) = handler_in.borrow_mut().take() {
+                            clock.disconnect(id);
+                        }
+                    });
+                    handler.replace(Some(id));
+                } else {
+                    self.strips.set_mode(PieceMode::Menu);
+                }
+            }
+            OverlayAction::CancelHide => {
+                if let Some(id) = self.overlay_hide.borrow_mut().take() {
+                    id.remove();
+                }
+                self.strips.set_mode(PieceMode::Menu);
+            }
+            OverlayAction::ScheduleHide => {
+                let strips = std::rc::Rc::downgrade(&self.strips);
+                let root_weak = root.downgrade();
+                let pending = self.overlay_hide.clone();
+                let delay = std::time::Duration::from_millis(u64::from(MENU_REVEAL_MS) + 80);
+                let id = glib::timeout_add_local_once(delay, move || {
+                    // The close animation is done: the strips take the
+                    // corners back, and one frame later the overlay goes.
+                    if let Some(strips) = strips.upgrade() {
+                        strips.set_mode(PieceMode::Idle);
+                    }
+                    let pending_in = pending.clone();
+                    let id = glib::timeout_add_local_once(
+                        std::time::Duration::from_millis(50),
+                        move || {
+                            pending_in.replace(None);
+                            if let Some(root) = root_weak.upgrade() {
+                                root.set_visible(false);
+                                WidgetExt::unrealize(&root);
+                            }
+                        },
+                    );
+                    // The fired source is gone; replace it without removing.
+                    pending.replace(Some(id));
+                });
+                self.overlay_hide.replace(Some(id));
+            }
+            OverlayAction::Keep => {}
+        }
+    }
+
     /// Switch the frame's layer-shell keyboard interactivity to track
     /// the current menu state. We need `Exclusive` while a menu is
     /// open so the compositor actually delivers keys to mshell — with

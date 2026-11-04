@@ -1266,10 +1266,13 @@ a percentage 60–100, default 100 = fully opaque).
 multiplier so the palette still tracks the wallpaper. Two application points,
 because margo paints surfaces two ways:
 
-- **Framed (default):** the single `FrameDrawWidget` fills the bar+menu shape;
-  it reads `--surface-opacity` and scales its fill alpha (border stays at full
-  alpha for definition). So bar and menus frost together as one connected
-  surface.
+- **Framed (default):** `FrameDrawWidget` fills the bar+menu shape; it reads
+  `--surface-opacity` and scales its fill alpha (border stays at full alpha
+  for definition). So bar and menus frost together as one connected shape.
+  The shape is painted by several layer surfaces that each own a disjoint part
+  of it (bar strips, thin side strips, and a menu overlay that is only mapped
+  while a menu is open; see `frame/pieces.rs`). Keep it that way: a
+  full-output surface that stays mapped costs four output-sized GPU buffers.
 - **Frameless (`.frame-disabled`):** each bar/menu paints its own background —
   `color-mix(in srgb, var(--surface-container) var(--surface-opacity), transparent)`.
 

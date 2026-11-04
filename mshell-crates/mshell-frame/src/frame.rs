@@ -25,7 +25,9 @@ mod input;
 mod layout;
 mod menu_id;
 mod menu_state;
+mod pieces;
 mod plugins;
+mod strips;
 pub use input::*;
 use layout::*;
 pub use menu_id::*;
@@ -125,6 +127,11 @@ pub struct Frame {
     monitor: gdk::Monitor,
     top_spacer: Controller<FrameSpacerModel>,
     bottom_spacer: Controller<FrameSpacerModel>,
+    /// The bar and border strip surfaces around this output's edges. The
+    /// root window (the overlay) keeps only the menus; see `pieces`.
+    strips: std::rc::Rc<strips::EdgeStrips>,
+    /// The pending overlay hide (`sync_overlay`), `None` when none is armed.
+    overlay_hide: std::rc::Rc<std::cell::RefCell<Option<glib::SourceId>>>,
     /// Every uniform [`MenuId`] menu, built on first open by
     /// [`ensure_menu_built`](Self::ensure_menu_built) and keyed by its stable
     /// menu-name. Each menu shell is a relm4 `Controller` plus ~3 config
@@ -187,10 +194,13 @@ impl Component for Frame {
                     set_hexpand: true,
                     set_orientation: gtk::Orientation::Vertical,
 
-                    #[name = "top_bar_container"]
-                    BoxWithResize::new() -> BoxWithResize {
+                    // The bars live on their own strip surfaces (see
+                    // `strips`); these placeholders keep the bars' height so
+                    // the menus below sit exactly where they did.
+                    #[name = "top_bar_placeholder"]
+                    gtk::Box {
                         set_hexpand: true,
-                        append = &model.top_bar.widget().clone() {},
+                        set_can_target: false,
                     },
 
                     gtk::Box {
@@ -538,16 +548,15 @@ impl Component for Frame {
                         },
                     },
 
-                    #[name = "bottom_bar_container"]
-                    BoxWithResize::new() -> BoxWithResize {
+                    #[name = "bottom_bar_placeholder"]
+                    gtk::Box {
                         set_hexpand: true,
-
-                        append = &model.bottom_bar.widget().clone() {},
+                        set_can_target: false,
                     },
                 },
 
-                #[name = "frame_draw_widget"]
-                FrameDrawWidget::new() -> FrameDrawWidget {
+                #[local_ref]
+                frame_draw_widget -> FrameDrawWidget {
                     set_hexpand: true,
                     set_vexpand: true,
                 }
@@ -589,7 +598,9 @@ impl Component for Frame {
         // exclusive interactivity — anything else gets focus stolen
         // by the active toplevel and ESC never reaches us.
         root.set_keyboard_mode(gtk4_layer_shell::KeyboardMode::None);
-        root.set_visible(true);
+        // The root window is the menu overlay: it stays unmapped (and
+        // unrealized, holding no buffers) until a menu opens. The bars and
+        // the frame edges live on the strip surfaces (`strips`).
         root.set_cursor_from_name(Some("default"));
 
         // Re-assert keyboard interactivity once the surface actually
@@ -809,7 +820,19 @@ impl Component for Frame {
             bottom_sender.emit(FrameSpacerInput::BorderHeightUpdated(border_width));
         });
 
+        let frame_draw_widget = FrameDrawWidget::new();
+        let top_bar_widget: Widget = top_bar.widget().clone().upcast();
+        let bottom_bar_widget: Widget = bottom_bar.widget().clone().upcast();
+        let strips = strips::EdgeStrips::new(
+            &params.monitor,
+            &top_bar_widget,
+            &bottom_bar_widget,
+            &frame_draw_widget,
+        );
+
         let model = Frame {
+            strips,
+            overlay_hide: std::rc::Rc::new(std::cell::RefCell::new(None)),
             top_bar,
             bottom_bar,
             left_menu_expansion_type,
@@ -851,6 +874,11 @@ impl Component for Frame {
 
         let widgets = view_output!();
 
+        strips::mirror_height(&model.strips.top_bar_box, &widgets.top_bar_placeholder);
+        strips::mirror_height(
+            &model.strips.bottom_bar_box,
+            &widgets.bottom_bar_placeholder,
+        );
         model.attach_resize_listeners(&widgets);
 
         ComponentParts { model, widgets }
@@ -878,6 +906,7 @@ impl Component for Frame {
                 } else {
                     widgets.overlay.add_css_class("frame-disabled");
                 }
+                self.strips.set_draw_frame(draw_frame);
                 // Toggling `.frame-disabled` changes each bar's natural height
                 // (the frameless bar adds an inset floating panel). Push the
                 // inset (margin = `frameless_gap`, or 0 when the frame is back
@@ -901,6 +930,7 @@ impl Component for Frame {
             }
             FrameInput::QueueFrameRedraw => {
                 widgets.frame_draw_widget.queue_draw();
+                self.strips.queue_draw();
             }
             FrameInput::SetLeftMenuExpansionType(expansion_type) => {
                 self.left_menu_expansion_type = expansion_type;
@@ -973,6 +1003,7 @@ impl Component for Frame {
                         .frame_draw_widget
                         .update_style(|s| s.bottom_thickness = height as f64);
                 }
+                self.strips.set_band(is_top, f64::from(height));
             }
             FrameInput::ToggleAppLauncherMenuWithTab(tab) => {
                 // If the launcher is already visible AND already
@@ -1199,6 +1230,7 @@ impl Component for Frame {
                 }
             }
         }
+        self.sync_overlay(root);
         self.update_view(widgets, sender);
     }
 }
@@ -1207,5 +1239,6 @@ impl Drop for Frame {
     fn drop(&mut self) {
         self.top_spacer.widget().destroy();
         self.bottom_spacer.widget().destroy();
+        self.strips.destroy();
     }
 }

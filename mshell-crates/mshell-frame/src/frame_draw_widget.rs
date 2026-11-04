@@ -1020,6 +1020,13 @@ mod imp {
         pub(super) css_hash: Cell<u64>,
         /// Which part of the output-wide frame this widget draws.
         pub(super) viewport: RefCell<Viewport>,
+        /// Set when the widget's window got a new surface (first realize,
+        /// or remapped after an unrealize): that surface takes input
+        /// everywhere until it gets a region, so the next region goes out at
+        /// once instead of after the debounce.
+        pub(super) fresh_surface: Cell<bool>,
+        /// Last (radius, border width) announced via `metrics-changed`.
+        pub(super) last_metrics: Cell<Option<(f64, f64)>>,
         /// Hash of the rectangles last submitted to
         /// `surface.set_input_region`. We re-compute the region on every
         /// snapshot (the cheap part), but the actual wayland call is
@@ -1064,6 +1071,20 @@ mod imp {
     }
 
     impl ObjectImpl for FrameDrawWidget {
+        fn signals() -> &'static [glib::subclass::Signal] {
+            static SIGNALS: std::sync::OnceLock<Vec<glib::subclass::Signal>> =
+                std::sync::OnceLock::new();
+            SIGNALS.get_or_init(|| {
+                // (border radius, border width) after the theme CSS resolved
+                // to new values. The edge strips size themselves from these.
+                vec![
+                    glib::subclass::Signal::builder("metrics-changed")
+                        .param_types([f64::static_type(), f64::static_type()])
+                        .build(),
+                ]
+            })
+        }
+
         fn constructed(&self) {
             self.parent_constructed();
             let widget = self.obj();
@@ -1072,6 +1093,11 @@ mod imp {
             widget.set_can_focus(false);
             widget.set_can_target(false);
             widget.set_sensitive(false);
+
+            widget.connect_realize(|w| {
+                w.imp().last_region_hash.set(0);
+                w.imp().fresh_surface.set(true);
+            });
 
             widget.connect_notify(Some("css-classes"), |w, _| {
                 w.imp().invalidate_css_cache();
@@ -1150,7 +1176,18 @@ mod imp {
                 apply_css_vars(&mut style, &vars);
 
                 self.css_hash.set(new_hash);
+                let metrics = (style.border_radius, style.border_width);
                 *self.resolved_style.borrow_mut() = Some(style);
+                if self.last_metrics.get() != Some(metrics) {
+                    self.last_metrics.set(Some(metrics));
+                    // Emitted from snapshot: let listeners resize outside it.
+                    let weak = self.obj().downgrade();
+                    glib::idle_add_local_once(move || {
+                        if let Some(w) = weak.upgrade() {
+                            w.emit_by_name::<()>("metrics-changed", &[&metrics.0, &metrics.1]);
+                        }
+                    });
+                }
             }
 
             self.resolved_style.borrow().clone().unwrap()
@@ -1166,6 +1203,14 @@ mod imp {
         /// only the final args after the animation settles get pushed
         /// to wayland.
         fn schedule_input_region_update(&self, args: RegionArgs) {
+            if self.fresh_surface.replace(false) {
+                if let Some(id) = self.pending_region_timeout.borrow_mut().take() {
+                    id.remove();
+                }
+                self.pending_region_args.replace(None);
+                self.update_input_region(&args);
+                return;
+            }
             *self.pending_region_args.borrow_mut() = Some(args);
             if let Some(id) = self.pending_region_timeout.borrow_mut().take() {
                 id.remove();
