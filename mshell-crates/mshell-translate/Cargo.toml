@@ -22,7 +22,7 @@ chrono = { workspace = true }
 # Edge neural-voice TTS (speak.rs): a plain blocking WebSocket client is enough
 # — the call already runs on a worker thread via spawn_blocking, same as
 # translate() itself. rustls to match ureq's TLS stack (no second TLS impl).
-tungstenite = { version = "0.24", default-features = false, features = [
+tungstenite = { version = "0.29", default-features = false, features = [
   "handshake",
   "rustls-tls-webpki-roots",
 ] }
