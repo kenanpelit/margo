@@ -155,6 +155,12 @@ const ENTRIES: &[Entry] = &[
         icon: "dialog-password-symbolic",
     },
     Entry {
+        prefix: "svc <unit>",
+        example: "svc blocky",
+        description: "systemd units — start / stop / restart (user + system)",
+        icon: "system-run-symbolic",
+    },
+    Entry {
         prefix: "tag [N]",
         example: "tag 3",
         description: "Switch the focused output to tag N (1-9)",
@@ -365,6 +371,7 @@ mod tests {
             ("player", "player"),
             ("ssh <host>", "ssh vhay"),
             ("tag [N]", "tag 3"),
+            ("svc <unit>", "svc blocky"),
         ] {
             let captured = Rc::new(RefCell::new(String::new()));
             let p = make(captured.clone());
