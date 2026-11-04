@@ -3,6 +3,7 @@
 pub mod blur;
 pub mod clipped_surface;
 pub mod config_error_overlay;
+pub mod damage_band;
 pub mod drag_highlight;
 pub mod group_tabs;
 pub mod hdr_metadata;

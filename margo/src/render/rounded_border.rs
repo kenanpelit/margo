@@ -155,9 +155,17 @@ impl Element for RoundedBorderElement {
         if commit == Some(self.commit) {
             return DamageSet::default();
         }
-        DamageSet::from_slice(&[Rectangle::from_size(
+        // Only the ring changes: the interior is transparent, and damaging
+        // it made a border colour fade re-composite the whole window.
+        let (edge, corner) = crate::render::damage_band::border_band(
+            self.border_width * scale.x as f32,
+            self.radius * scale.x as f32,
+        );
+        DamageSet::from_slice(&crate::render::damage_band::ring_rects(
             self.geometry.size.to_physical_precise_round(scale),
-        )])
+            edge,
+            corner,
+        ))
     }
 }
 
@@ -189,12 +197,23 @@ impl RenderElement<GlesRenderer> for RoundedBorderElement {
         let physical_radius = self.radius * scale;
         let physical_border = self.border_width * scale;
 
+        // Shade only the ring: the interior comes out fully transparent, so
+        // running the SDF over it (once more per damaged window pixel) is
+        // wasted fill.
+        let (edge, corner) =
+            crate::render::damage_band::border_band(physical_border, physical_radius);
+        let ring = crate::render::damage_band::ring_rects(dst.size, edge, corner);
+        let damage = crate::render::damage_band::clip_damage(damage, &ring);
+        if damage.is_empty() {
+            return Ok(());
+        }
+
         frame.render_pixel_shader_to(
             &self.program,
             src,
             dst,
             buf_size,
-            Some(damage),
+            Some(&damage),
             self.alpha,
             &[
                 Uniform::new("u_color", self.color),

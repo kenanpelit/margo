@@ -88,14 +88,10 @@ pub struct ShadowRenderElement {
     /// `(blur_radius + inset)` on every side and shifted by the
     /// configured X / Y offset.
     geometry: Rectangle<i32, Logical>,
-    /// The window rect (logical), used to compute the SDF inset
-    /// inside the fragment shader. Currently the shader derives
-    /// inner-rect bounds from `rect_size - 2*(inset+blur_radius)`
-    /// directly, so the field is informational; kept around for the
-    /// upcoming Kawase-blur path that needs the original window
-    /// rect to alpha-mask the area underneath the window itself.
-    #[allow(dead_code)]
-    window_size: (i32, i32),
+    /// The window rect (logical). The shader derives the SDF from
+    /// `rect_size - 2*(inset+blur_radius)`; this is used to leave the
+    /// part the window covers out of damage and drawing.
+    window_rect: Rectangle<i32, Logical>,
     /// Window's corner radius (logical px).
     corner_radius: f32,
     /// Soft-edge falloff in px. Bigger = blurrier.
@@ -154,7 +150,7 @@ impl ShadowRenderElement {
         Self {
             id,
             geometry,
-            window_size: (window_rect.size.w, window_rect.size.h),
+            window_rect,
             corner_radius,
             blur_radius: blur,
             inset: size,
@@ -163,6 +159,22 @@ impl ShadowRenderElement {
             commit: CommitCounter::from(params_key),
             program,
         }
+    }
+}
+
+impl ShadowRenderElement {
+    /// Element-local physical rects the shadow can be seen in: everything
+    /// but the part the window sits on.
+    fn visible_rects(&self) -> Vec<Rectangle<i32, Physical>> {
+        let geo = self.geometry.to_physical_precise_round(self.scale);
+        let mut window: Rectangle<i32, Physical> =
+            self.window_rect.to_physical_precise_round(self.scale);
+        window.loc -= geo.loc;
+        crate::render::damage_band::shadow_rects(
+            geo.size,
+            window,
+            self.corner_radius * self.scale.x as f32,
+        )
     }
 }
 
@@ -192,14 +204,11 @@ impl Element for ShadowRenderElement {
 
     fn damage_since(
         &self,
-        scale: Scale<f64>,
+        _scale: Scale<f64>,
         commit: Option<CommitCounter>,
     ) -> DamageSet<i32, Physical> {
         if commit != Some(self.commit) {
-            DamageSet::from_slice(&[Rectangle::new(
-                Default::default(),
-                self.geometry(scale).size,
-            )])
+            DamageSet::from_slice(&self.visible_rects())
         } else {
             DamageSet::default()
         }
@@ -252,12 +261,18 @@ impl RenderElement<GlesRenderer> for ShadowRenderElement {
         let src: Rectangle<f64, Buffer> =
             Rectangle::new((0.0, 0.0).into(), (phys_w as f64, phys_h as f64).into());
         let size: smithay::utils::Size<i32, Buffer> = (dst.size.w, dst.size.h).into();
+        // The window covers the middle of the rect; shading it is wasted
+        // fill (and would darken a translucent window from below).
+        let damage = crate::render::damage_band::clip_damage(damage, &self.visible_rects());
+        if damage.is_empty() {
+            return Ok(());
+        }
         frame.render_pixel_shader_to(
             &self.program,
             src,
             dst,
             size,
-            Some(damage),
+            Some(&damage),
             self.alpha(),
             &uniforms,
         )?;
