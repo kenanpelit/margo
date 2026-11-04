@@ -5,7 +5,8 @@ use mshell_cache::wallpaper::{CycleDirection, cycle_wallpaper};
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
     BarsStoreFields, ConfigStoreFields, DockStoreFields, FrameStoreFields, GeneralStoreFields,
-    IdleStoreFields, WallpaperRotationMode, WallpaperStoreFields,
+    IdleStoreFields, OsdStoreFields, ToastsStoreFields, WallpaperRotationMode,
+    WallpaperStoreFields,
 };
 use mshell_frame::audio_inhibit::{AudioInhibitInit, AudioInhibitModel};
 use mshell_frame::frame::{Frame, FrameInit, FrameInput, MenuId};
@@ -84,6 +85,26 @@ fn make_mdock(monitor: &Monitor) -> Option<Controller<MdockSurface>> {
     )
 }
 
+/// The corner radius to draw, or `None` when the overlays are off (the
+/// toggle is off, or a 0 px radius draws nothing).
+fn corner_radius(show: bool, radius: u32) -> Option<u32> {
+    (show && radius > 0).then_some(radius)
+}
+
+/// The rounded-screen-corner overlays for an output per the live config
+/// (empty when off). Used at window-group creation and on a live
+/// `general.show_screen_corners` / `screen_corner_radius` change.
+fn make_screen_corners(monitor: &Monitor) -> Vec<gtk::Window> {
+    let general = config_manager().config().general();
+    match corner_radius(
+        general.clone().show_screen_corners().get_untracked(),
+        general.screen_corner_radius().get_untracked(),
+    ) {
+        Some(radius) => mshell_frame::screen_corners::spawn(monitor, radius),
+        None => Vec::new(),
+    }
+}
+
 /// Is the standalone dock the bar-attached (LayerShell) Frame menu?
 fn dock_is_layer_shell() -> bool {
     let dock = config_manager().config().dock().get_untracked();
@@ -124,6 +145,10 @@ pub(crate) enum ShellInput {
     /// `dock.standalone/behavior/position` changed — tear down + recreate
     /// every output's standalone mdock surface.
     RebuildDocks,
+    /// Re-create the screen-corner overlays (toggle / radius changed).
+    RebuildCorners,
+    /// Re-anchor the OSD and toast surfaces (position / distance changed).
+    ReapplyOverlayPlacement,
     /// Standalone mdock: toggle / show / hide on every output.
     DockToggle,
     DockShow,
@@ -290,6 +315,31 @@ impl Component for Shell {
             sender_clone.input(ShellInput::RebuildDocks);
         });
 
+        // Screen corners and the OSD / toast placement follow the config
+        // live (they used to need an mshell restart).
+        let sender_clone = sender.clone();
+        Effect::new(move |_| {
+            let _ = config_manager()
+                .config()
+                .general()
+                .show_screen_corners()
+                .get();
+            let _ = config_manager()
+                .config()
+                .general()
+                .screen_corner_radius()
+                .get();
+            sender_clone.input(ShellInput::RebuildCorners);
+        });
+        let sender_clone = sender.clone();
+        Effect::new(move |_| {
+            let _ = config_manager().config().osd().position().get();
+            let _ = config_manager().config().osd().distance().get();
+            let _ = config_manager().config().toasts().position().get();
+            let _ = config_manager().config().toasts().distance().get();
+            sender_clone.input(ShellInput::ReapplyOverlayPlacement);
+        });
+
         let monitor_filter = config_manager()
             .config()
             .bars()
@@ -435,6 +485,30 @@ impl Component for Shell {
                     }
                 }
             }
+            ShellInput::RebuildCorners => {
+                for group in self.window_groups.values_mut() {
+                    for corner in group._screen_corners.drain(..) {
+                        corner.close();
+                    }
+                    group._screen_corners = make_screen_corners(&group.monitor);
+                }
+            }
+            ShellInput::ReapplyOverlayPlacement => {
+                for group in self.window_groups.values() {
+                    let osds = [
+                        group._volume_osd.as_ref().map(|c| c.widget().clone()),
+                        group._mic_osd.as_ref().map(|c| c.widget().clone()),
+                        group._brightness_osd.as_ref().map(|c| c.widget().clone()),
+                        group._network_osd.as_ref().map(|c| c.widget().clone()),
+                    ];
+                    for osd in osds.into_iter().flatten() {
+                        mshell_osd::osd_geometry::reapply(osd.upcast_ref());
+                    }
+                    if let Some(toast) = &group._toast {
+                        mshell_osd::toast::apply_placement(toast.widget().upcast_ref());
+                    }
+                }
+            }
             ShellInput::RebuildDocks => {
                 for group in self.window_groups.values_mut() {
                     if let Some(old) = group.mdock.take() {
@@ -571,26 +645,9 @@ impl Component for Shell {
                         .detach(),
                 );
 
-                // Rounded screen corners — one tiny overlay per
-                // corner. Reads config once at monitor-add time;
-                // live toggling needs a reload (or a future
-                // reactive effect plumbing). Empty `Vec` when
-                // the user has turned the corners off.
-                let show_corners = config_manager()
-                    .config()
-                    .general()
-                    .show_screen_corners()
-                    .get_untracked();
-                let corner_radius = config_manager()
-                    .config()
-                    .general()
-                    .screen_corner_radius()
-                    .get_untracked();
-                let screen_corners = if show_corners {
-                    mshell_frame::screen_corners::spawn(&monitor, corner_radius)
-                } else {
-                    Vec::new()
-                };
+                // Rounded screen corners — one tiny overlay per corner;
+                // rebuilt live on a config change (`RebuildCorners`).
+                let screen_corners = make_screen_corners(&monitor);
 
                 let mdock = make_mdock(&monitor);
 
@@ -1285,5 +1342,17 @@ impl Shell {
                 corner.close();
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod corner_tests {
+    use super::corner_radius;
+
+    #[test]
+    fn corners_draw_only_when_on_with_a_radius() {
+        assert_eq!(corner_radius(true, 12), Some(12));
+        assert_eq!(corner_radius(false, 12), None);
+        assert_eq!(corner_radius(true, 0), None);
     }
 }

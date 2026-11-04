@@ -2,7 +2,7 @@
 //! (the shell paints the corner mask), as opposed to the compositor-owned
 //! Twilight/gamma controls next to it. Today: the rounded-screen-corner mask
 //! and its radius. Both persist to `general.*` on the shared `config_manager`
-//! store and apply on the next mshell restart / monitor reconnect.
+//! store and apply live (the shell rebuilds the corner overlays).
 
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
@@ -146,7 +146,7 @@ impl Component for ScreenSettingsModel {
                         gtk::Label {
                             add_css_class: "label-small",
                             set_halign: gtk::Align::Start,
-                            set_label: "Radius (px) of the black overlay mask that rounds the physical SCREEN corners — only when 'Rounded screen corners' above is on. This does NOT change widget, button, card or menu corners (those follow the fixed design scale, not a setting). Applies after restarting mshell (systemctl --user restart mshell) or reconnecting the monitor.",
+                            set_label: "Radius (px) of the black overlay mask that rounds the physical SCREEN corners — only when 'Rounded screen corners' above is on. This does NOT change widget, button, card or menu corners (those follow the fixed design scale, not a setting).",
                             set_hexpand: true,
                             set_xalign: 0.0,
                             set_wrap: true,

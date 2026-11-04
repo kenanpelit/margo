@@ -5,8 +5,8 @@
 //! only owns the bits CSS can't express: which screen edge the layer-shell
 //! window anchors to and its margin from that edge.
 //!
-//! Read once when each OSD window is created (a shell restart picks up
-//! position changes — the same contract as the screen-corner overlays).
+//! Applied when each OSD window is created and again on a live config change
+//! ([`reapply`], driven by the shell).
 
 use gtk4_layer_shell::{Edge, LayerShell};
 use mshell_config::config_manager::config_manager;
@@ -21,6 +21,13 @@ pub fn read() -> (OsdPosition, i32) {
         config_manager().config().osd().position().get_untracked(),
         config_manager().config().osd().distance().get_untracked(),
     )
+}
+
+/// Re-anchor an existing OSD window to the live `osd` config (a position or
+/// distance change applies without a restart).
+pub fn reapply(root: &gtk::Window) {
+    let (position, distance) = read();
+    apply(root, &position, distance);
 }
 
 /// The single edge `position` anchors to, or `None` for `Center` (no anchors

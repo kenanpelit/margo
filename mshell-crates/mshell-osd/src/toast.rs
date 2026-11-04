@@ -51,7 +51,7 @@ fn placement_edges(position: &Position) -> &'static [Edge] {
 /// Anchor the toast window per the `toasts` config: a single edge (the
 /// compositor centres the card on it) or a corner (two edges), with `distance`
 /// px of margin from each anchored edge.
-fn apply_placement(root: &gtk::Window) {
+pub fn apply_placement(root: &gtk::Window) {
     let position = config_manager()
         .config()
         .toasts()
@@ -168,8 +168,8 @@ impl Component for ToastSurfaceModel {
         root.set_namespace(Some("mshell-toast"));
         root.set_layer(Layer::Overlay);
         root.set_exclusive_zone(0);
-        // Dock per the toast config (edge / corner + margin). Read once here —
-        // a shell restart picks up a position change, like the OSD windows.
+        // Dock per the toast config (edge / corner + margin); the shell
+        // re-applies it live on a config change.
         apply_placement(&root);
 
         // Mirror the bus into this surface's command stream.

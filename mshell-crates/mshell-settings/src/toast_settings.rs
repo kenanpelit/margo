@@ -166,7 +166,7 @@ impl Component for ToastSettingsModel {
                             gtk::Label {
                                 add_css_class: "label-small",
                                 set_halign: gtk::Align::Start,
-                                set_label: "Where toasts appear — a screen edge or corner. Applies after restarting mshell (systemctl --user restart mshell).",
+                                set_label: "Where toasts appear — a screen edge or corner.",
                                 set_xalign: 0.0,
                                 set_wrap: true,
                                 set_natural_wrap_mode: gtk::NaturalWrapMode::None,
@@ -204,7 +204,7 @@ impl Component for ToastSettingsModel {
                             gtk::Label {
                                 add_css_class: "label-small",
                                 set_halign: gtk::Align::Start,
-                                set_label: "Margin from the docked edge(s). Applies after an mshell restart.",
+                                set_label: "Margin from the docked edge(s).",
                                 set_xalign: 0.0,
                                 set_wrap: true,
                                 set_natural_wrap_mode: gtk::NaturalWrapMode::None,

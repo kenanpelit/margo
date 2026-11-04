@@ -131,7 +131,7 @@ impl Component for OsdSettingsModel {
                             gtk::Label {
                                 add_css_class: "label-small",
                                 set_halign: gtk::Align::Start,
-                                set_label: "Which screen edge the capsule docks against. Applies after restarting mshell (systemctl --user restart mshell).",
+                                set_label: "Which screen edge the capsule docks against.",
                                 set_xalign: 0.0,
                                 set_wrap: true,
                                 set_natural_wrap_mode: gtk::NaturalWrapMode::None,
@@ -169,7 +169,7 @@ impl Component for OsdSettingsModel {
                             gtk::Label {
                                 add_css_class: "label-small",
                                 set_halign: gtk::Align::Start,
-                                set_label: "Margin from the docked edge. Ignored when Position is Center. Applies after an mshell restart.",
+                                set_label: "Margin from the docked edge. Ignored when Position is Center.",
                                 set_xalign: 0.0,
                                 set_wrap: true,
                                 set_natural_wrap_mode: gtk::NaturalWrapMode::None,
