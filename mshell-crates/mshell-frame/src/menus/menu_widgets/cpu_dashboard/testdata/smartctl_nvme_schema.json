@@ -1,0 +1,41 @@
+{
+  "json_format_version": [1, 0],
+  "smartctl": {
+    "version": [7, 5],
+    "svn_revision": "5714",
+    "argv": ["smartctl", "-j", "-a", "/dev/nvme0"],
+    "exit_status": 0
+  },
+  "device": {"name": "/dev/nvme0", "info_name": "/dev/nvme0", "type": "nvme", "protocol": "NVMe"},
+  "model_name": "Timetec 35TT2280GEN4E-2TB",
+  "serial_number": "QY250310F2T0001",
+  "firmware_version": "SN11795",
+  "nvme_total_capacity": 2048408248320,
+  "user_capacity": {"blocks": 4000797360, "bytes": 2048408248320},
+  "smart_support": {"available": true, "enabled": true},
+  "smart_status": {"passed": true, "nvme": {"value": 0}},
+  "nvme_smart_health_information_log": {
+    "nsid": -1,
+    "critical_warning": 0,
+    "temperature": 47,
+    "available_spare": 100,
+    "available_spare_threshold": 10,
+    "percentage_used": 3,
+    "data_units_read": 21734512,
+    "data_units_written": 30561203,
+    "host_reads": 254193883,
+    "host_writes": 401930121,
+    "controller_busy_time": 1032,
+    "power_cycles": 412,
+    "power_on_hours": 2961,
+    "unsafe_shutdowns": 37,
+    "media_errors": 0,
+    "num_err_log_entries": 0,
+    "warning_temp_time": 0,
+    "critical_comp_time": 0,
+    "temperature_sensors": [47, 52]
+  },
+  "temperature": {"current": 47},
+  "power_cycle_count": 412,
+  "power_on_time": {"hours": 2961}
+}
