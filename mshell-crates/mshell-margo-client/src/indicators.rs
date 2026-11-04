@@ -143,6 +143,40 @@ pub fn chip_label(app_id: &str, title: &str) -> String {
     }
 }
 
+/// One window of the active tag, for the tag row's app icons.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TagWindow {
+    pub id: u64,
+    pub app_id: String,
+    pub title: String,
+    pub focused: bool,
+}
+
+/// The windows on the focused output's active tag(s), in margo's client
+/// order (the order windows were opened / the layout strip). Minimised
+/// windows and tucked-away scratchpads are left out — clicking an icon
+/// focuses a window you can see come up; a shown scratchpad is included.
+pub fn active_tag_windows(state: &crate::state_json::StateJson) -> Vec<TagWindow> {
+    let Some(output) = state.outputs.iter().find(|o| o.name == state.active_output) else {
+        return Vec::new();
+    };
+    let mask = output.active_tag_mask;
+    let focused_idx = state.focused_idx.and_then(|i| usize::try_from(i).ok());
+    state
+        .clients
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| c.monitor == output.name && c.tags & mask != 0)
+        .filter(|(_, c)| !c.minimized && (!c.scratchpad || c.scratchpad_shown))
+        .map(|(i, c)| TagWindow {
+            id: c.id,
+            app_id: c.app_id.clone(),
+            title: c.title.clone(),
+            focused: Some(i) == focused_idx,
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -286,5 +320,83 @@ mod tests {
             chip_label("averyveryverylongappname", "").chars().count(),
             CHIP_LABEL_MAX
         );
+    }
+
+    #[test]
+    fn active_tag_windows_follow_the_focused_output_and_its_tag() {
+        use crate::state_json::{RawOutput, StateJson};
+        let out = |name: &str, mask: u32| RawOutput {
+            name: name.into(),
+            active: false,
+            active_tag_mask: mask,
+            occupied_tag_mask: mask,
+            focus_history: Vec::new(),
+            focus_history_v2: Vec::new(),
+            layout_idx: 0,
+            width: 1920,
+            height: 1080,
+            x: 0,
+            y: 0,
+            scale: 1.0,
+            logical_width: None,
+            logical_height: None,
+            exclusive_fullscreen: false,
+            mode: None,
+            wallpaper: String::new(),
+            wallpapers_by_tag: Vec::new(),
+            scroller: None,
+        };
+        let win = |id: u64, mon: &str, tags: u32| crate::state_json::RawClient {
+            id,
+            app_id: format!("app{id}"),
+            monitor: mon.into(),
+            tags,
+            ..Default::default()
+        };
+        let mut minimized = win(4, "DP-1", 0b1);
+        minimized.minimized = true;
+        let mut hidden_pad = win(5, "DP-1", 0b1);
+        hidden_pad.scratchpad = true;
+        let mut shown_pad = win(6, "DP-1", 0b1);
+        shown_pad.scratchpad = true;
+        shown_pad.scratchpad_shown = true;
+        let state = StateJson {
+            active_output: "DP-1".into(),
+            focused_idx: Some(2),
+            layouts: Vec::new(),
+            circle_layouts: Vec::new(),
+            outputs: vec![out("DP-1", 0b1), out("HDMI-A-1", 0b1)],
+            clients: vec![
+                win(1, "DP-1", 0b1),
+                win(2, "DP-1", 0b10),
+                win(3, "DP-1", 0b11),
+                win(7, "HDMI-A-1", 0b1),
+                minimized,
+                hidden_pad,
+                shown_pad,
+            ],
+            tag_count: 9,
+            keyboard_layout: String::new(),
+            session_locked: None,
+            lock_keys: None,
+            keymode: None,
+            config_errors: Vec::new(),
+        };
+        let wins = active_tag_windows(&state);
+        let ids: Vec<u64> = wins.iter().map(|w| w.id).collect();
+        assert_eq!(ids, [1, 3, 6], "tag 1 of DP-1, visible windows only");
+        assert_eq!(
+            wins.iter()
+                .filter(|w| w.focused)
+                .map(|w| w.id)
+                .collect::<Vec<_>>(),
+            [3],
+            "focused_idx 2 is window 3"
+        );
+        let elsewhere = StateJson {
+            active_output: "nope".into(),
+            ..state
+        };
+        assert!(active_tag_windows(&elsewhere).is_empty());
     }
 }

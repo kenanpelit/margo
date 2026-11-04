@@ -53,3 +53,19 @@
   background-color: var(--secondary-container);
   color: var(--on-secondary-container);
 }
+
+// ── Tag row window icons (margo_tags.window_icons) ──────────
+// Same capsule as a tag pill (`.margo-tag` base: size, radius, hover
+// wash); the focused window gets the selection-tint tier, not the
+// accent fill — the active tag pill already owns the accent (§13.2).
+.margo-tag-windows {
+  margin-left: var(--space-1);
+}
+
+.margo-tag-window-icon {
+  -gtk-icon-size: var(--icon-sm);
+}
+
+.margo-tag.margo-tag-window.focused {
+  background-color: var(--secondary-container);
+}

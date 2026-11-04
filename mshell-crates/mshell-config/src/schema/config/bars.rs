@@ -90,6 +90,9 @@ pub struct BarWidgets {
     pub hidden_bars: Vec<HiddenBarConfig>,
     /// Catwalk — the CPU-reactive animated cat pill.
     pub catwalk: CatwalkConfig,
+    /// Margo Tags — the tag row's optional extras.
+    #[serde(default)]
+    pub margo_tags: MargoTagsConfig,
     /// Privacy indicator — mic / camera / screen-share watchdog pill.
     #[serde(default)]
     pub privacy: PrivacyWidgetConfig,
@@ -251,6 +254,19 @@ impl PatchField for CatwalkDisplay {
             notify(path);
         }
     }
+}
+
+/// Settings for the [`crate::schema::bar_widgets::BarWidget::MargoTags`]
+/// tag row.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize, Store, Patch, JsonSchema,
+)]
+#[serde(default)]
+pub struct MargoTagsConfig {
+    /// Show the active tag's windows as clickable app icons after the tag
+    /// pills (click focuses that window). Off by default: the row stays
+    /// the plain 1–9 tags.
+    pub window_icons: bool,
 }
 
 /// Settings for the [`BarWidget::Catwalk`] animated-cat pill (port of the

@@ -30,6 +30,7 @@ pub(crate) mod margo_dock;
 pub(crate) mod margo_dock_item;
 pub(crate) mod margo_layout;
 pub(crate) mod margo_tag;
+pub(crate) mod margo_tag_windows;
 pub(crate) mod margo_tags;
 pub(crate) mod mdash;
 pub(crate) mod mdock_layout;

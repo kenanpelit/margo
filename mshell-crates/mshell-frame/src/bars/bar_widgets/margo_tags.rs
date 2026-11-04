@@ -1,4 +1,5 @@
 use crate::bars::bar_widgets::margo_tag::{MargoTagInput, MargoTagModel};
+use crate::bars::bar_widgets::margo_tag_windows::{MargoTagWindowsInit, MargoTagWindowsModel};
 use futures::StreamExt;
 use mshell_common::dynamic_box::dynamic_box::{
     DynamicBoxFactory, DynamicBoxInit, DynamicBoxInput, DynamicBoxModel,
@@ -29,6 +30,9 @@ pub enum WsRowKey {
 
 pub(crate) struct MargoTagsModel {
     dynamic_box: Controller<DynamicBoxModel<WsRow, WsRowKey>>,
+    /// The active tag's window icons (`bars.widgets.margo_tags.window_icons`;
+    /// hides itself while the option is off).
+    tag_windows: Controller<MargoTagWindowsModel>,
     orientation: Orientation,
 }
 
@@ -117,14 +121,22 @@ impl Component for MargoTagsModel {
             })
             .detach();
 
+        let tag_windows = MargoTagWindowsModel::builder()
+            .launch(MargoTagWindowsInit {
+                orientation: params.orientation,
+            })
+            .detach();
+
         let model = MargoTagsModel {
             dynamic_box: dynamic,
+            tag_windows,
             orientation: params.orientation,
         };
 
         let widgets = view_output!();
 
         widgets.workspace_box.append(model.dynamic_box.widget());
+        widgets.workspace_box.append(model.tag_windows.widget());
 
         let hyprland = margo_service();
         let workspaces = hyprland.workspaces.get();

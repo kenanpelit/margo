@@ -253,6 +253,13 @@ fn apply(service: &MargoService, state: &StateJson) {
         service.scratchpads.set(scratchpads);
     }
 
+    // Mirror the active tag's window list (change-only — a title edit on
+    // another tag must not repaint the tag row's icons).
+    let tag_windows = crate::indicators::active_tag_windows(state);
+    if service.active_tag_windows.get() != tag_windows {
+        service.active_tag_windows.set(tag_windows);
+    }
+
     // Mirror the focused output's layout (change-only).
     let layout = active_layout(state);
     if service.active_layout.get() != layout {
@@ -1107,6 +1114,7 @@ mod apply_tests {
             keymode: Reactive::new(None),
             scroller: Reactive::new(None),
             scratchpads: Reactive::new(Vec::new()),
+            active_tag_windows: Reactive::new(Vec::new()),
             config_errors: Reactive::new(Vec::new()),
             active_layout: Reactive::new(None),
             fullscreen_outputs: Reactive::new(Vec::new()),
@@ -1669,6 +1677,23 @@ mod apply_tests {
         let after = client_by_id(&svc, 3);
         assert!(Arc::ptr_eq(&before, &after), "same window, same Arc");
         assert!(!after.xwayland.get(), "updated in place");
+    }
+
+    #[test]
+    fn active_tag_windows_follow_the_focused_output() {
+        let svc = service();
+        let mut f = frame();
+        apply(&svc, &f);
+        let ids = |svc: &MargoService| -> Vec<u64> {
+            svc.active_tag_windows.get().iter().map(|w| w.id).collect()
+        };
+        assert_eq!(ids(&svc), [1, 2], "DP-1 tag 1: kitty + firefox");
+        assert!(svc.active_tag_windows.get()[0].focused, "kitty is focused");
+        // Focus moves to the other output: its tag's windows follow.
+        f.active_output = "HDMI-A-1".into();
+        f.focused_idx = Some(2);
+        apply(&svc, &f);
+        assert_eq!(ids(&svc), [3]);
     }
 
     /// A frame as margo serialises it (extra fields included), parsed and

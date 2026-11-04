@@ -12,6 +12,13 @@
 //! Updates, CPU Dashboard, Audio Route, …) are configured under
 //! Widgets → Menus instead, not here.
 
+use mshell_common::scoped_effects::EffectScope;
+use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{
+    BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, MargoTagsConfigStoreFields,
+};
+use reactive_graph::prelude::{Get, GetUntracked};
+use relm4::gtk::glib;
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
@@ -82,7 +89,7 @@ impl BarPillKind {
             }
             Self::Logout => "Logs out of the session. Confirms with a dialog.",
             Self::MargoTags => {
-                "1–9 tag pills with focus / occupied / urgent states. Click to switch tags, scroll to cycle."
+                "1–9 tag pills with focus / occupied / urgent states. Click to switch tags, scroll to cycle. Optionally followed by the active tag's windows as clickable app icons."
             }
             Self::ScrollerRibbon => {
                 "One small segment per column of the focused output's scroller strip: lit inside the viewport, accented for the focused column, dim when scrolled off, with ‹N / N› counts of the columns hidden on each side. Click a segment to focus that column; scroll over the pill to move focus left / right. Hidden outside the scroller layout."
@@ -101,10 +108,16 @@ impl BarPillKind {
 
 pub(crate) struct BarPillSettingsModel {
     kind: BarPillKind,
+    /// `bars.widgets.margo_tags.window_icons` (Margo Tags page only).
+    tag_window_icons: bool,
+    _effects: EffectScope,
 }
 
 #[derive(Debug)]
-pub(crate) enum BarPillSettingsInput {}
+pub(crate) enum BarPillSettingsInput {
+    TagWindowIconsChanged(bool),
+    TagWindowIconsEffect(bool),
+}
 
 #[derive(Debug)]
 pub(crate) enum BarPillSettingsOutput {}
@@ -181,6 +194,50 @@ impl Component for BarPillSettingsModel {
                     set_natural_wrap_mode: gtk::NaturalWrapMode::None,
                 },
 
+                // Margo Tags' one behaviour switch (other pills have none).
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_visible: model.kind == BarPillKind::MargoTags,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/bars/widgets/margo_tags/window_icons",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Window icons",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Show the active tag's windows as app icons after the tags. Click an icon to focus that window.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(tag_window_icons_handler)]
+                            set_active: model.tag_window_icons,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(BarPillSettingsInput::TagWindowIconsChanged(v));
+                                glib::Propagation::Proceed
+                            } @tag_window_icons_handler,
+                        },
+                    },
+                },
+
                 gtk::Separator {},
 
                 gtk::Label {
@@ -204,14 +261,43 @@ impl Component for BarPillSettingsModel {
     fn init(
         params: Self::Init,
         root: Self::Root,
-        _sender: ComponentSender<Self>,
+        sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let model = BarPillSettingsModel { kind: params.kind };
+        let mut effects = EffectScope::new();
+        if params.kind == BarPillKind::MargoTags {
+            let s = sender.clone();
+            effects.push(move |_| {
+                let v = config_manager()
+                    .config()
+                    .bars()
+                    .widgets()
+                    .margo_tags()
+                    .window_icons()
+                    .get();
+                s.input(BarPillSettingsInput::TagWindowIconsEffect(v));
+            });
+        }
+        let model = BarPillSettingsModel {
+            kind: params.kind,
+            tag_window_icons: config_manager()
+                .config()
+                .bars()
+                .widgets()
+                .margo_tags()
+                .window_icons()
+                .get_untracked(),
+            _effects: effects,
+        };
         let widgets = view_output!();
         ComponentParts { model, widgets }
     }
 
     fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
-        match message {}
+        match message {
+            BarPillSettingsInput::TagWindowIconsChanged(v) => {
+                config_manager().update_config(|c| c.bars.widgets.margo_tags.window_icons = v);
+            }
+            BarPillSettingsInput::TagWindowIconsEffect(v) => self.tag_window_icons = v,
+        }
     }
 }

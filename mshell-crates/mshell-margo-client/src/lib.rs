@@ -507,6 +507,9 @@ pub struct MargoService {
     /// when there are none or the running margo predates the fields. The
     /// scratchpad chips pill reads this.
     pub scratchpads: Reactive<Vec<crate::indicators::ScratchpadChip>>,
+    /// The windows on the focused output's active tag (visible ones, in
+    /// client order). The tag row's optional app icons read this.
+    pub active_tag_windows: Reactive<Vec<crate::indicators::TagWindow>>,
     /// The focused output's tiling layout. `None` until the first
     /// snapshot, or while the output's `layout_idx` is past the
     /// layouts list (transient during a config reload). The layout
@@ -559,6 +562,7 @@ impl MargoService {
             keymode: Reactive::new(None),
             scroller: Reactive::new(None),
             scratchpads: Reactive::new(Vec::new()),
+            active_tag_windows: Reactive::new(Vec::new()),
             active_layout: Reactive::new(None),
             config_errors: Reactive::new(Vec::new()),
             fullscreen_outputs: Reactive::new(Vec::new()),
