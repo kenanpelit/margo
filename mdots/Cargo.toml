@@ -34,8 +34,15 @@ chrono = { version = "0.4", features = ["serde"] }
 regex.workspace = true
 hostname = "0.4"
 indicatif = "0.18"
-ratatui = "0.28"
-crossterm = "0.28"
+# The 0.28 default feature set (crossterm backend, underline colour) plus
+# the layout cache 0.28 always had. Not the 0.30 defaults: those add the
+# ratatui-macros crate and the calendar widget, which nothing here uses.
+ratatui = { version = "0.30", default-features = false, features = [
+    "crossterm_0_29",
+    "layout-cache",
+    "underline-color",
+] }
+crossterm = "0.29"
 tempfile = "3.8"
 mlua = { version = "0.10", features = ["lua54", "vendored", "serialize"] }
 dirs = "6"
