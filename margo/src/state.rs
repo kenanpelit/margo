@@ -133,25 +133,13 @@ pub fn client_is_unrestricted(client: &smithay::reexports::wayland_server::Clien
         .is_none_or(|data| !data.restricted)
 }
 
-/// How long a live locker may hold the lock without a single lock surface
-/// before `force_unlock` treats the lock as stuck (black screen, no prompt).
-pub const FORCE_UNLOCK_NO_SURFACE_GRACE: std::time::Duration = std::time::Duration::from_secs(10);
-
-/// Whether `force_unlock` may tear down the current lock.
-///
-/// Allowed when the owning locker is gone, or when it is alive but has shown
-/// no lock surface for [`FORCE_UNLOCK_NO_SURFACE_GRACE`]. Refused while a live
-/// locker shows a surface: that is a working lock screen, and tearing it down
-/// would unlock the session without a password.
-pub fn force_unlock_allowed(
-    owner_alive: bool,
-    live_surfaces: usize,
-    locked_for: Option<std::time::Duration>,
-) -> bool {
-    if !owner_alive {
-        return true;
-    }
-    live_surfaces == 0 && locked_for.is_some_and(|d| d >= FORCE_UNLOCK_NO_SURFACE_GRACE)
+/// Whether `force_unlock` may tear down the current lock: only once the
+/// owning locker is gone. A live locker is never overridden, even with no
+/// lock surface left: unplugging every monitor drops all lock surfaces of a
+/// working lock, so "no surface" is no proof that the lock is stuck. A hung
+/// but live locker has to be killed (TTY, ssh) first.
+pub fn force_unlock_allowed(owner_alive: bool) -> bool {
+    !owner_alive
 }
 
 // One-line tag for focus targets; only used in tracing so we don't have to
@@ -590,12 +578,9 @@ pub struct MargoState {
     pub session_locked: bool,
     /// The `ext_session_lock_v1` object that owns the current lock. Kept so
     /// a second client can't take over a lock whose owner is still alive,
-    /// and so `force_unlock` can tell a stuck lock from a working one.
+    /// and so `force_unlock` only acts once that owner is gone.
     pub session_lock_owner:
         Option<smithay::reexports::wayland_protocols::ext::session_lock::v1::server::ext_session_lock_v1::ExtSessionLockV1>,
-    /// When the current lock was confirmed. `force_unlock` uses it to treat
-    /// a live locker that never shows a lock surface as stuck.
-    pub session_locked_at: Option<std::time::Instant>,
     /// Human-readable name of the keyboard's currently active xkb
     /// layout (e.g. "English (US)", "Turkish"). Cached here and
     /// published in state snapshot so the shell's keyboard-layout pill
@@ -844,7 +829,6 @@ impl MargoState {
             groups_locked: false,
             session_locked: false,
             session_lock_owner: None,
-            session_locked_at: None,
             current_kb_layout: String::new(),
             keyboard_shortcuts_inhibiting_surfaces: std::collections::HashMap::new(),
             idle_inhibitors: std::collections::HashSet::new(),
@@ -1046,11 +1030,10 @@ impl MargoState {
     /// the `force_unlock` action (keybind, whitelisted in `handle_keyboard`
     /// while locked, and `mctl dispatch`).
     ///
-    /// It only acts on a lock that is actually stuck (see
-    /// [`force_unlock_allowed`]): the owning locker is gone, or it has shown
-    /// no lock surface for [`FORCE_UNLOCK_NO_SURFACE_GRACE`]. While a live
-    /// locker shows its prompt the request is logged and ignored; otherwise
-    /// the action would be a password bypass.
+    /// It only acts once the owning locker is gone (see
+    /// [`force_unlock_allowed`]). While the locker lives the request is
+    /// logged and ignored, whatever its surfaces look like; otherwise the
+    /// action would be a password bypass.
     ///
     /// We don't try to nicely tell the locker to release; we just clear our
     /// state, drop the lock surfaces, and re-show toplevels.
@@ -1063,17 +1046,8 @@ impl MargoState {
             .session_lock_owner
             .as_ref()
             .is_some_and(|lock| lock.is_alive());
-        let live_surfaces = self
-            .lock_surfaces
-            .iter()
-            .filter(|(_, ls)| ls.alive())
-            .count();
-        let locked_for = self.session_locked_at.map(|t| t.elapsed());
-        if !force_unlock_allowed(owner_alive, live_surfaces, locked_for) {
-            tracing::warn!(
-                live_surfaces,
-                "force_unlock: ignored, a live locker holds the lock"
-            );
+        if !force_unlock_allowed(owner_alive) {
+            tracing::warn!("force_unlock: ignored, a live locker holds the lock");
             return;
         }
         tracing::warn!(
@@ -1082,7 +1056,6 @@ impl MargoState {
         );
         self.session_locked = false;
         self.session_lock_owner = None;
-        self.session_locked_at = None;
         self.lock_surfaces.clear();
         self.finish_lock_deferred_maps();
         self.arrange_all();

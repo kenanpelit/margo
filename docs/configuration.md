@@ -469,7 +469,7 @@ Every action below can be bound to a key (`bind`), a mouse button (`mousebind`),
 | `theme`, `set_theme` | `<preset>` | Live-swap the visual preset: `default` / `minimal` / `gaudy` (no config reload). |
 | `session_save` / `session_load` | | Save / restore per-monitor tag + layout state (`session.json`). |
 | `setkeymode` | `<MODE>` | Switch keymode (per-mode bind sets, like vim modes). |
-| `force_unlock` | | Tear down a stuck `ext_session_lock` from the compositor side. Only acts when the locker died or showed no lock surface for 10 s; ignored while a working lock screen is up. Not bound by default. |
+| `force_unlock` | | Tear down a stuck `ext_session_lock` from the compositor side. Only acts once the locker process is gone; ignored while the locker lives, even with no lock surface (for example after unplugging every monitor). Not bound by default. |
 | `quit` | | Exit the compositor cleanly. |
 | `debug_dump`, `diagnose` | | Dump compositor state (clients, monitors, layouts) to the log. |
 

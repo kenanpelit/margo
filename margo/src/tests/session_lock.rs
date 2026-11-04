@@ -175,10 +175,10 @@ fn force_unlock_recovers_once_the_locker_is_dead() {
 }
 
 #[test]
-fn force_unlock_recovers_a_live_locker_that_never_shows_a_surface() {
-    // A locker that locked but never created a lock surface leaves a black
-    // screen with no password prompt. After a grace period that counts as
-    // stuck too.
+fn force_unlock_is_refused_for_a_live_locker_without_a_surface() {
+    // A live locker without a lock surface is not proof of a stuck lock:
+    // unplugging every monitor drops all lock surfaces of a working lock.
+    // Only a dead locker may be torn down, however long the lock has run.
     let mut fx = Fixture::new();
     fx.add_output("DP-1", (1920, 1080));
     let id = fx.add_client();
@@ -187,15 +187,25 @@ fn force_unlock_recovers_a_live_locker_that_never_shows_a_surface() {
     assert!(fx.server.state.session_locked);
 
     fx.server.state.force_unlock();
+    assert!(fx.server.state.session_locked);
+}
+
+#[test]
+fn force_unlock_is_refused_after_every_output_is_unplugged() {
+    // Locked for longer than the old 10 s no-surface grace, then the only monitor is unplugged (desktop DP
+    // cable, docked laptop with the lid shut): the lock surfaces go with
+    // the output. The force_unlock bind must still not open the session.
+    let (mut fx, _id, _keep) = locked_by_live_client();
+    let output = fx.server.state.monitors[0].output.clone();
+    fx.server.state.remove_output(&output);
+    assert!(fx.server.state.lock_surfaces.is_empty());
+
+    fx.server.state.force_unlock();
+
     assert!(
         fx.server.state.session_locked,
-        "right after lock() the locker may still be creating its surfaces"
+        "a live locker keeps the lock with no output plugged in"
     );
-
-    fx.server.state.session_locked_at =
-        Some(std::time::Instant::now() - crate::state::FORCE_UNLOCK_NO_SURFACE_GRACE);
-    fx.server.state.force_unlock();
-    assert!(!fx.server.state.session_locked);
 }
 
 #[test]
@@ -241,25 +251,6 @@ fn a_new_locker_can_take_over_after_the_old_one_died() {
         !fx.server.state.session_locked,
         "a replacement locker owns the lock and can release it"
     );
-}
-
-#[test]
-fn force_unlock_allowed_policy() {
-    use crate::state::{FORCE_UNLOCK_NO_SURFACE_GRACE as GRACE, force_unlock_allowed};
-    use std::time::Duration;
-    // Dead owner: always recoverable.
-    assert!(force_unlock_allowed(false, 0, None));
-    assert!(force_unlock_allowed(false, 2, Some(Duration::ZERO)));
-    // Live owner showing a surface: never.
-    assert!(!force_unlock_allowed(true, 1, Some(GRACE * 100)));
-    // Live owner, no surface: only after the grace period.
-    assert!(!force_unlock_allowed(true, 0, None));
-    assert!(!force_unlock_allowed(
-        true,
-        0,
-        Some(GRACE - Duration::from_millis(1))
-    ));
-    assert!(force_unlock_allowed(true, 0, Some(GRACE)));
 }
 
 #[test]

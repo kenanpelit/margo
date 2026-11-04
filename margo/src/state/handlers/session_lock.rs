@@ -47,9 +47,6 @@ impl SessionLockHandler for MargoState {
         let lock = confirmation.ext_session_lock().clone();
         confirmation.lock();
         self.session_lock_owner = Some(lock);
-        // Restart the no-surface grace for a replacement locker too: it
-        // needs the same time to create its surfaces as the first one did.
-        self.session_locked_at = Some(std::time::Instant::now());
         self.session_locked = true;
         // The protocol is now locked even before the client creates its first
         // lock surface. Clear any desktop focus immediately so keys arriving
@@ -74,7 +71,6 @@ impl SessionLockHandler for MargoState {
         tracing::info!("session_lock: unlock() called");
         self.session_locked = false;
         self.session_lock_owner = None;
-        self.session_locked_at = None;
         self.lock_surfaces.clear();
         // Toplevels may have completed their initial configure while locked.
         // They stayed deliberately deferred so they could neither map nor
