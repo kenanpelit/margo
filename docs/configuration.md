@@ -469,6 +469,8 @@ Every action below can be bound to a key (`bind`), a mouse button (`mousebind`),
 | `cyclekblayout`, `cycle_kb_layout` | | Cycle the keyboard to the next configured xkb layout. |
 | `run_script`, `rhai-eval` | `<PATH>` | Evaluate a Rhai script against the live compositor. |
 | `screenshot` / `screenshot-window` / `screenshot-region` / `screenshot-output` | | Capture output / window / region → editor → file (via `mscreenshot`). |
+| `screenshot-ocr` | `[LANGS]` | Region → OCR (tesseract) → text on the clipboard; LANGS e.g. `eng+tur` (default `$MSCREENSHOT_OCR_LANG`, else eng+tur when installed). |
+| `screenshot-qr` / `screenshot-palette` | | Region → decoded QR / barcode, or the dominant colours as hex, on the clipboard. |
 | `reload`, `reload_config` | | Reload `~/.config/margo/config.conf` in place. |
 | `theme`, `set_theme` | `<preset>` | Live-swap the visual preset: `default` / `minimal` / `gaudy` (no config reload). |
 | `session_save` / `session_load` | | Save / restore per-monitor tag + layout state (`session.json`). |

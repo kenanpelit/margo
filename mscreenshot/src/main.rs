@@ -86,6 +86,7 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Cmd {
     /// Region select → edit → save + clipboard.
+    #[command(visible_alias = "region")]
     Rec,
     /// Region select → save (no clipboard, no edit).
     Area,
@@ -97,6 +98,7 @@ enum Cmd {
     Rf,
 
     /// Focused output → edit → save.
+    #[command(visible_alias = "output")]
     Screen,
     /// Focused output → save to clipboard.
     Sc,
@@ -117,6 +119,7 @@ enum Cmd {
     Wi,
 
     /// All outputs (whole layout) → edit → save.
+    #[command(visible_alias = "full")]
     All,
     /// All outputs → save to clipboard.
     Ac,
@@ -1198,6 +1201,23 @@ mod tests {
         for (name, source, mode) in table {
             let cli = parse(&[name]).unwrap_or_else(|e| panic!("{name}: {e}"));
             assert_eq!(capture_plan(&cli.cmd), Some((*source, *mode)), "{name}");
+        }
+    }
+
+    /// The launcher (`mscreenshot region` / `full`) and the README
+    /// (`region` / `output`) call these names; without the aliases clap
+    /// rejected them and the launcher entries did nothing.
+    #[test]
+    fn documented_aliases_parse() {
+        use CaptureSource::*;
+        use DeliveryMode::*;
+        for (name, plan) in [
+            ("region", (Region, EditSaveClip)),
+            ("output", (Screen, EditSave)),
+            ("full", (AllOutputs, EditSave)),
+        ] {
+            let cli = parse(&[name]).unwrap_or_else(|e| panic!("{name}: {e}"));
+            assert_eq!(capture_plan(&cli.cmd), Some(plan), "{name}");
         }
     }
 

@@ -179,6 +179,8 @@ Comma-separated aliases are interchangeable. Generated from the same source as
 | `spawn` | `<COMMAND>` | Run a shell command (`sh -c`). |
 | `run_script`, `rhai-eval` | `<PATH>` | Evaluate a Rhai script live. |
 | `screenshot` / `screenshot-window` / `screenshot-region` / `screenshot-output` | | Capture output / window / region → editor → file (via `mscreenshot`). |
+| `screenshot-ocr` | `[LANGS]` | Region → OCR (tesseract) → text on the clipboard; LANGS e.g. `eng+tur` (default `$MSCREENSHOT_OCR_LANG`, else eng+tur when installed). |
+| `screenshot-qr` / `screenshot-palette` | | Region → decoded QR / barcode, or the dominant colours as hex, on the clipboard. |
 | `reload`, `reload_config` | | Reload `config.conf` in place. |
 | `theme`, `set_theme` | `<preset>` | Live-swap preset: `default` / `minimal` / `gaudy`. |
 | `session_save` / `session_load` | | Save / restore per-monitor tag + layout state. |

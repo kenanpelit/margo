@@ -180,19 +180,19 @@ it stays installed as a self-contained capture tool and a `slurp`-free
 region fallback. Modes:
 
 ```bash
-mscreenshot rec       # region → editor → file + clipboard
-mscreenshot area      # region → file + clipboard (no editor)
-mscreenshot screen    # focused output → file + clipboard
-mscreenshot full      # all outputs (whole layout)
-mscreenshot window    # focused window → file + clipboard
+mscreenshot rec       # region → editor → file + clipboard (alias: region)
+mscreenshot area      # region → file (no editor, no clipboard)
+mscreenshot screen    # focused output → editor → file (alias: output)
+mscreenshot all       # all outputs (whole layout) → editor → file (alias: full)
+mscreenshot window    # focused window → editor → file
 mscreenshot ocr       # region → OCR → text on the clipboard (see Region tools)
 mscreenshot qr        # region → QR / barcode → clipboard
 mscreenshot palette   # region → dominant colours → clipboard
 mscreenshot open      # open ~/Pictures/Screenshots in the file manager
-mscreenshot dir       # print the screenshot dir
+mscreenshot dir       # open the screenshot dir
 ```
 
-Editor preference: `swappy` if installed, else `satty`, else skip the editor pass and just save+copy. Files land at `~/Pictures/Screenshots/screenshot-YYYYMMDD-HHMMSS.png`. For region capture it reuses the shell's selector via `mshellctl screenshot select-region` (falling back to `slurp`).
+Editor preference: `$SCREENSHOT_EDITOR`, else `satty`, `swappy`, `gimp`, `krita` (first installed), else skip the editor pass and just save+copy. Files land at `~/Pictures/Screenshots/screenshot-YYYYMMDD-HHMMSS.png`. For region capture it reuses the shell's selector via `mshellctl screenshot select-region` (falling back to `slurp`).
 
 ## Media & mpv companion — `mshellctl media` / `play`
 
