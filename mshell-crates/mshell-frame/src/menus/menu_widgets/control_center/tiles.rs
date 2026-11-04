@@ -46,6 +46,7 @@ use mshell_utils::battery::{
     get_battery_icon, get_charging_battery_icon, spawn_battery_online_watcher,
     spawn_battery_watcher,
 };
+use mshell_utils::denoise::{self, DenoiseStatus};
 use mshell_utils::hotspot::{self, HotspotStatus};
 use mshell_utils::idle::spawn_idle_inhibitor_watcher;
 use mshell_utils::notifications::spawn_dnd_watcher;
@@ -121,6 +122,9 @@ pub(crate) struct ControlCenterTilesModel {
     // flag so a second click while nmcli is starting the AP is ignored.
     hotspot: HotspotStatus,
     hotspot_busy: bool,
+    // Mic noise suppression (RNNoise filter-chain) + in-flight flag.
+    denoise: DenoiseStatus,
+    denoise_busy: bool,
     // Lazy-start guard — watchers only start on first reveal
     watchers_started: bool,
     // Shared with the subprocess pollers (twilight / ufw / podman): they
@@ -216,6 +220,8 @@ pub(crate) enum ControlCenterTilesInput {
     StopPodman,
     /// Hotspot tile click → start or stop the access point.
     ToggleHotspot,
+    /// Noise-suppression tile click → RNNoise virtual source on/off.
+    ToggleDenoise,
 
     /// Reactive dark-mode update from EffectScope.
     DarkModeChanged(MatugenMode),
@@ -256,6 +262,7 @@ pub(crate) enum TileId {
     Podman,
     Mirror,
     Hotspot,
+    MicDenoise,
 }
 
 impl TileId {
@@ -279,6 +286,7 @@ impl TileId {
             TileId::Ufw => "ufw",
             TileId::Podman => "podman",
             TileId::Mirror => "mirror",
+            TileId::MicDenoise => "mic_denoise",
             TileId::Hotspot => "hotspot",
         }
     }
@@ -303,6 +311,7 @@ impl TileId {
             "ufw" => Some(TileId::Ufw),
             "podman" => Some(TileId::Podman),
             "mirror" => Some(TileId::Mirror),
+            "mic_denoise" => Some(TileId::MicDenoise),
             "hotspot" => Some(TileId::Hotspot),
             _ => None,
         }
@@ -328,6 +337,7 @@ impl TileId {
             TileId::Ufw,
             TileId::Podman,
             TileId::Mirror,
+            TileId::MicDenoise,
             TileId::Hotspot,
         ]
     }
@@ -385,6 +395,8 @@ pub(crate) enum ControlCenterTilesCommandOutput {
     MirrorRefreshed(String, bool),
     /// Hotspot probe finished (after a poll or a start/stop).
     HotspotRefreshed(HotspotStatus),
+    /// Noise-suppression probe finished (poll or after a toggle).
+    DenoiseRefreshed(DenoiseStatus),
 }
 
 // ── Widgets struct (manual — we hold the tile handles) ────────────────────────
@@ -399,6 +411,7 @@ pub(crate) struct ControlCenterTilesWidgets {
     tile_valent: TileWidget,
     tile_ufw: TileWidget,
     tile_podman: TileWidget,
+    tile_mic_denoise: TileWidget,
     tile_hotspot: TileWidget,
     // Toggle / info tiles
     tile_keep_awake: TileWidget,
@@ -432,6 +445,7 @@ pub(crate) struct ControlCenterTilesWidgets {
     overlay_ufw: gtk::Overlay,
     overlay_podman: gtk::Overlay,
     overlay_mirror: gtk::Overlay,
+    overlay_mic_denoise: gtk::Overlay,
     overlay_hotspot: gtk::Overlay,
     // The CheckButton references — needed to update their state in apply_visuals.
     check_wifi: gtk::CheckButton,
@@ -451,6 +465,7 @@ pub(crate) struct ControlCenterTilesWidgets {
     check_ufw: gtk::CheckButton,
     check_podman: gtk::CheckButton,
     check_mirror: gtk::CheckButton,
+    check_mic_denoise: gtk::CheckButton,
     check_hotspot: gtk::CheckButton,
 }
 
@@ -475,6 +490,7 @@ impl ControlCenterTilesWidgets {
             TileId::Ufw => &self.overlay_ufw,
             TileId::Podman => &self.overlay_podman,
             TileId::Mirror => &self.overlay_mirror,
+            TileId::MicDenoise => &self.overlay_mic_denoise,
             TileId::Hotspot => &self.overlay_hotspot,
         }
     }
@@ -588,6 +604,11 @@ impl Component for ControlCenterTilesModel {
         let tile_airplane_mode = build_tile("airplane-mode-symbolic", "Airplane Mode", "Off");
         let tile_mirror = build_tile("video-display-symbolic", "Mirror", "Off");
         let tile_hotspot = build_tile("network-wireless-hotspot-symbolic", "Hotspot", "Off");
+        let tile_mic_denoise = build_tile(
+            "microphone-sensitivity-high-symbolic",
+            "Noise Suppression",
+            "Off",
+        );
 
         // Wire expandable tile clicks → outputs
         {
@@ -723,6 +744,12 @@ impl Component for ControlCenterTilesModel {
                 .button
                 .connect_clicked(move |_| s.input(ControlCenterTilesInput::ToggleHotspot));
         }
+        {
+            let s = sender.clone();
+            tile_mic_denoise
+                .button
+                .connect_clicked(move |_| s.input(ControlCenterTilesInput::ToggleDenoise));
+        }
         // Disk tile is info-only; no click handler needed.
 
         // ── Edit-mode overlays ───────────────────────────────────────────────
@@ -756,6 +783,8 @@ impl Component for ControlCenterTilesModel {
             build_edit_overlay(&tile_podman.button, &sender, TileId::Podman);
         let (overlay_mirror, check_mirror) =
             build_edit_overlay(&tile_mirror.button, &sender, TileId::Mirror);
+        let (overlay_mic_denoise, check_mic_denoise) =
+            build_edit_overlay(&tile_mic_denoise.button, &sender, TileId::MicDenoise);
         let (overlay_hotspot, check_hotspot) =
             build_edit_overlay(&tile_hotspot.button, &sender, TileId::Hotspot);
 
@@ -801,6 +830,7 @@ impl Component for ControlCenterTilesModel {
                 let _ = cm.config().control_center().ufw().get();
                 let _ = cm.config().control_center().podman().get();
                 let _ = cm.config().control_center().mirror().get();
+                let _ = cm.config().control_center().mic_denoise().get();
                 let _ = cm.config().control_center().hotspot().get();
                 let order = cm.config().control_center().tile_order().get();
                 let wide = cm.config().control_center().wide_tiles().get();
@@ -872,6 +902,8 @@ impl Component for ControlCenterTilesModel {
             mirror_active: false,
             hotspot: HotspotStatus::default(),
             hotspot_busy: false,
+            denoise: DenoiseStatus::default(),
+            denoise_busy: false,
             revealed: Arc::new(AtomicBool::new(false)),
             watchers_started: false,
             edit_mode: false,
@@ -889,6 +921,7 @@ impl Component for ControlCenterTilesModel {
             tile_valent,
             tile_ufw,
             tile_podman,
+            tile_mic_denoise,
             tile_hotspot,
             tile_keep_awake,
             tile_color_picker,
@@ -916,6 +949,7 @@ impl Component for ControlCenterTilesModel {
             overlay_ufw,
             overlay_podman,
             overlay_mirror,
+            overlay_mic_denoise,
             overlay_hotspot,
             check_wifi,
             check_bluetooth,
@@ -934,6 +968,7 @@ impl Component for ControlCenterTilesModel {
             check_ufw,
             check_podman,
             check_mirror,
+            check_mic_denoise,
             check_hotspot,
         };
 
@@ -1042,6 +1077,9 @@ impl Component for ControlCenterTilesModel {
                             ));
                             let _ = out.send(ControlCenterTilesCommandOutput::HotspotRefreshed(
                                 hotspot::probe(&hotspot::configured_interface()).await,
+                            ));
+                            let _ = out.send(ControlCenterTilesCommandOutput::DenoiseRefreshed(
+                                denoise::probe().await,
                             ));
                         }
                     });
@@ -1285,6 +1323,22 @@ impl Component for ControlCenterTilesModel {
                 });
             }
 
+            ControlCenterTilesInput::ToggleDenoise => {
+                if self.denoise_busy || !self.denoise.available() {
+                    return;
+                }
+                self.denoise_busy = true;
+                let enabled = self.denoise.enabled;
+                sender.command(move |out, _shutdown| async move {
+                    if let Err(e) = denoise::toggle(enabled).await {
+                        denoise::toast_failure(&e);
+                    }
+                    let _ = out.send(ControlCenterTilesCommandOutput::DenoiseRefreshed(
+                        denoise::probe().await,
+                    ));
+                });
+            }
+
             ControlCenterTilesInput::DarkModeChanged(mode) => {
                 self.dark = mode;
             }
@@ -1312,6 +1366,7 @@ impl Component for ControlCenterTilesModel {
                     TileId::Ufw => c.control_center.ufw = visible,
                     TileId::Podman => c.control_center.podman = visible,
                     TileId::Mirror => c.control_center.mirror = visible,
+                    TileId::MicDenoise => c.control_center.mic_denoise = visible,
                     TileId::Hotspot => c.control_center.hotspot = visible,
                 });
                 // The RebuildGrid effect will fire automatically from the config
@@ -1378,6 +1433,10 @@ impl Component for ControlCenterTilesModel {
             ControlCenterTilesCommandOutput::HotspotRefreshed(status) => {
                 self.hotspot = status;
                 self.hotspot_busy = false;
+            }
+            ControlCenterTilesCommandOutput::DenoiseRefreshed(status) => {
+                self.denoise = status;
+                self.denoise_busy = false;
             }
         }
 
@@ -1579,6 +1638,17 @@ fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets)
         &w.check_mirror,
         cfg_mirror,
     );
+    let cfg_mic_denoise = config_manager()
+        .config()
+        .control_center()
+        .mic_denoise()
+        .get_untracked();
+    update_tile_visibility(
+        &w.overlay_mic_denoise,
+        &w.tile_mic_denoise.button,
+        &w.check_mic_denoise,
+        cfg_mic_denoise,
+    );
     let cfg_hotspot = config_manager()
         .config()
         .control_center()
@@ -1708,6 +1778,17 @@ fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets)
     w.tile_hotspot
         .button
         .set_sensitive(model.hotspot.available && !model.hotspot_busy);
+
+    // Noise suppression
+    w.tile_mic_denoise.set_active(model.denoise.enabled);
+    w.tile_mic_denoise.set_subtitle(&if model.denoise_busy {
+        "…".to_string()
+    } else {
+        model.denoise.subtitle()
+    });
+    w.tile_mic_denoise
+        .button
+        .set_sensitive(model.denoise.available() && !model.denoise_busy);
 
     // Disk
     w.tile_disk.set_subtitle(&model.disk.format());

@@ -6,6 +6,7 @@ pub mod battery;
 pub mod bluetooth;
 pub mod brightness;
 pub mod clear_box;
+pub mod denoise;
 pub mod gtk;
 pub mod hotspot;
 pub mod hover_scroll;

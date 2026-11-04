@@ -59,6 +59,7 @@ fn tile_display_name(id: &str) -> &'static str {
         "ufw" => "Firewall (UFW)",
         "podman" => "Podman",
         "mirror" => "Mirror Display",
+        "mic_denoise" => "Noise Suppression",
         "hotspot" => "Hotspot",
         _ => "Unknown",
     }
@@ -85,6 +86,7 @@ fn tile_visible(id: &str) -> bool {
         "ufw" => cc.ufw().get_untracked(),
         "podman" => cc.podman().get_untracked(),
         "mirror" => cc.mirror().get_untracked(),
+        "mic_denoise" => cc.mic_denoise().get_untracked(),
         "hotspot" => cc.hotspot().get_untracked(),
         _ => true,
     }
@@ -136,6 +138,7 @@ fn set_tile_visible(id: &str, visible: bool) {
         "ufw" => c.control_center.ufw = visible,
         "podman" => c.control_center.podman = visible,
         "mirror" => c.control_center.mirror = visible,
+        "mic_denoise" => c.control_center.mic_denoise = visible,
         "hotspot" => c.control_center.hotspot = visible,
         _ => {}
     });
@@ -446,6 +449,7 @@ impl Component for CcTilesSettingsModel {
                 let _ = cm.config().control_center().valent().get();
                 let _ = cm.config().control_center().ufw().get();
                 let _ = cm.config().control_center().podman().get();
+                let _ = cm.config().control_center().mic_denoise().get();
                 let _ = cm.config().control_center().hotspot().get();
                 let _ = cm.config().control_center().wide_tiles().get();
                 let order = effective_order(&cm.config().control_center().tile_order().get());
