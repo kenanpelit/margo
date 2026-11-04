@@ -197,6 +197,12 @@ impl OutputManagementManagerState {
         }
     }
 
+    /// How many clients have state here (bound managers).
+    #[cfg(test)]
+    pub fn bound_clients(&self) -> usize {
+        self.clients.len()
+    }
+
     /// Refresh the compositor-side view of all outputs and notify
     /// every bound manager about the change. Call this whenever
     /// scale/position/transform/mode list changes, or when an
@@ -213,6 +219,10 @@ impl OutputManagementManagerState {
         // clients are required to handle as a state replacement.
         let serial = self.serial;
         let display = self.display.clone();
+        // Belt and braces next to `destroyed`: never publish to a dead
+        // manager.
+        self.clients
+            .retain(|_, data| data.manager.as_ref().is_some_and(|m| m.is_alive()));
         for (_client_id, data) in self.clients.iter_mut() {
             // Tear down the old heads that no longer exist or
             // changed identity. Simpler: finish them all and
@@ -382,6 +392,17 @@ where
             }
             _ => {}
         }
+    }
+
+    /// The manager went away without `stop` (the client exited, as
+    /// wlr-randr does): drop its heads, modes and configurations. Matched
+    /// by the manager object: on disconnect the `ClientId` handed in here
+    /// no longer equals the one the entry was stored under.
+    fn destroyed(state: &mut D, _client: ClientId, manager: &ZwlrOutputManagerV1, _data: &()) {
+        state
+            .output_management_state()
+            .clients
+            .retain(|_, c| c.manager.as_ref().is_some_and(|m| m != manager));
     }
 }
 

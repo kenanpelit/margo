@@ -366,3 +366,25 @@ fn custom_modes_are_refused() {
     );
     assert!(queued_modes(&fx).is_empty());
 }
+
+/// `wlr-randr` (which mshell's display settings run) binds, reads, applies
+/// and exits without `stop`. Its heads, modes and configurations were kept
+/// for the session's lifetime, and every later topology change walked the
+/// dead entries.
+#[test]
+fn a_client_that_disconnects_without_stop_leaves_nothing_behind() {
+    let (mut fx, id, manager) = wlr_desk(true);
+    assert_eq!(
+        fx.server.state.protocols.output_management.bound_clients(),
+        1
+    );
+
+    drop(manager);
+    fx.kill_client(id);
+    fx.dispatch();
+
+    assert_eq!(
+        fx.server.state.protocols.output_management.bound_clients(),
+        0
+    );
+}
