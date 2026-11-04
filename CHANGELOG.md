@@ -5,6 +5,21 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.7.1] – 2026-11-04
+
+**Restore shell compilation after 4.7.0 and let libclang discovery follow
+both Arch and Debian's library layout.**
+
+### Fixed
+
+- Fix the TOML loader's lifetime mismatch that prevented mshell-settings
+  from compiling on both the stable and minimum supported Rust toolchains.
+- Remove the Arch-specific libclang path override so bindgen can discover
+  Debian's LLVM libraries as well as Arch's system installation.
+- Update boot recovery tests for the shared XDG resolver and isolate
+  HOME-less checks in a subprocess instead of mutating the test runner's
+  environment.
+
 ## [4.7.0] – 2026-11-04
 
 **A safer session and a quieter shell: child processes receive signals again,
