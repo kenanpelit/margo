@@ -100,7 +100,6 @@ reload:
 # ratchet, the file-size gate, the design lint, the packaging parity and
 # completion-drift checks, and the example-config check. Not run here: the
 # separate machete / MSRV / cargo-deny / debian jobs.
-# The pre-push CI gate set (ci.yml `check` job).
 check:
     cargo fmt --all -- --check
     cargo clippy --workspace --all-targets --locked -- -D warnings
