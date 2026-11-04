@@ -462,14 +462,20 @@ fn summary_line(report: Option<&UpdateReport>) -> String {
     let Some(r) = report else {
         return String::new();
     };
-    [Source::Repo, Source::Aur, Source::Flatpak]
+    let mut parts: Vec<String> = [Source::Repo, Source::Aur, Source::Flatpak]
         .into_iter()
         .filter_map(|s| {
             let c = r.count(s);
             (c > 0).then(|| format!("{}: {c}", s.label()))
         })
-        .collect::<Vec<_>>()
-        .join("   ·   ")
+        .collect();
+    if let Some(bytes) = r.download_bytes.filter(|b| *b > 0) {
+        parts.push(format!(
+            "~{} to download",
+            system_update::size::human(bytes)
+        ));
+    }
+    parts.join("   ·   ")
 }
 
 /// Rebuild the grouped update table: a section header per source

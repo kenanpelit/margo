@@ -346,5 +346,11 @@ fn tooltip(report: Option<&UpdateReport>) -> String {
             lines.push(format!("  {}: {c}", src.label()));
         }
     }
+    if let Some(bytes) = r.download_bytes.filter(|b| *b > 0) {
+        lines.push(format!(
+            "  ~{} to download",
+            system_update::size::human(bytes)
+        ));
+    }
     format!("{}{footer}", lines.join("\n"))
 }

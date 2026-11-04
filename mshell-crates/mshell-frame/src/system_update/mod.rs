@@ -8,6 +8,7 @@
 //! count-only probe via dnf / apt (no per-package versions).
 
 pub(crate) mod news;
+pub(crate) mod size;
 
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
@@ -64,6 +65,10 @@ pub(crate) struct UpdateReport {
     /// missing AUR helper, no flatpak) are silent: that source just
     /// contributes nothing.
     pub(crate) error: Option<String>,
+    /// Estimated bytes pacman will download for the repo updates
+    /// (already-cached packages excluded). `None` = unknown.
+    #[serde(default)]
+    pub(crate) download_bytes: Option<u64>,
 }
 
 impl UpdateReport {
@@ -174,7 +179,13 @@ pub(crate) async fn probe(cfg: ProbeConfig) -> UpdateReport {
 
     if cfg.repo {
         match probe_repo().await {
-            Ok(mut entries) => report.entries.append(&mut entries),
+            Ok(mut entries) => {
+                let repo: Vec<&UpdateEntry> = entries.iter().collect();
+                if which("pacman").await {
+                    report.download_bytes = size::probe(&repo).await;
+                }
+                report.entries.append(&mut entries);
+            }
             Err(e) => report.error = Some(e),
         }
     }
@@ -595,7 +606,7 @@ mod tests {
                 entry(Source::Aur, "b", None, None),
                 entry(Source::Repo, "c", None, None),
             ],
-            error: None,
+            ..Default::default()
         };
         assert_eq!(report.total(), 3);
         assert_eq!(report.count(Source::Repo), 2);
@@ -612,6 +623,7 @@ mod tests {
             report: UpdateReport {
                 entries: vec![entry(Source::Flatpak, "x", Some("1"), None)],
                 error: Some("boom".into()),
+                download_bytes: Some(7),
             },
         };
         let back: UpdateCache =

@@ -1,0 +1,73 @@
+Repository      : extra
+Name            : electron43
+Version         : 43.8.6-1
+Description     : Build cross platform desktop apps with web technologies
+Architecture    : x86_64
+URL             : https://electronjs.org
+Licenses        : MIT  BSD-3-Clause
+Groups          : None
+Provides        : None
+Depends On      : c-ares  libgcc  glibc  gtk3  libgtk-3.so=0-64  libevent  libffi  libffi.so=8-64  libpulse  libpulse.so=0-64  nss  zlib  libz.so=1-64  fontconfig  libfontconfig.so=1-64  brotli  libjpeg-turbo  libjpeg.so=8-64  flac  libFLAC.so=14-64  libdrm  libxml2  libxml2.so=16-64  minizip  opus  libopus.so=0-64  libxslt  libxslt.so=1-64  harfbuzz  libharfbuzz.so=0-64  libharfbuzz-subset.so=0-64  freetype2  libfreetype.so=6-64
+Optional Deps   : kde-cli-tools: file deletion support (kioclient)
+                  pipewire: WebRTC desktop sharing under Wayland
+                  gtk4: for --gtk-version=4 (GTK4 IME might work better on Wayland)
+                  trash-cli: file deletion support (trash-put)
+                  xdg-utils: open URLs with desktop’s default (xdg-email, xdg-open)
+Conflicts With  : None
+Replaces        : None
+Download Size   : 95.98 MiB
+Installed Size  : 337.89 MiB
+Packager        : Caleb Maclennan <alerque@archlinux.org>
+Build Date      : Sat Oct 31 18:38:18 2026
+Validated By    : SHA-256 Sum  Signature
+
+Repository      : cachyos-extra-v3
+Name            : firefox
+Version         : 159.0-1.1
+Description     : Fast, Private & Safe Web Browser
+Architecture    : x86_64_v3
+URL             : https://www.firefox.com/
+Licenses        : MPL-2.0
+Groups          : None
+Provides        : None
+Depends On      : alsa-lib  at-spi2-core  bash  cairo  dbus  ffmpeg  fontconfig  freetype2  gdk-pixbuf2  glib2  glibc  gtk3  hicolor-icon-theme  libgcc  libpulse  libstdc++  libx11  libxcb  libxcomposite  libxdamage  libxext  libxfixes  libxrandr  libxss  libxt  mime-types  nspr  nss  pango  ttf-font
+Optional Deps   : firefox-i18n: Localizations
+                  hunspell-dictionary: Spell checking
+                  libnotify: Notification integration
+                  networkmanager: Location detection via available WiFi networks
+                  onnxruntime: Local machine learning features such as smart tab groups
+                  speech-dispatcher: Text-to-Speech
+                  xdg-desktop-portal: Screensharing with Wayland
+Conflicts With  : None
+Replaces        : None
+Download Size   : 85.59 MiB
+Installed Size  : 301.69 MiB
+Packager        : CachyOS <admin@cachyos.org>
+Build Date      : Wed Oct 28 00:17:55 2026
+Validated By    : SHA-256 Sum  Signature
+
+Repository      : extra
+Name            : firefox
+Version         : 159.0.1-1
+Description     : Fast, Private & Safe Web Browser
+Architecture    : x86_64
+URL             : https://www.firefox.com/
+Licenses        : MPL-2.0
+Groups          : None
+Provides        : None
+Depends On      : alsa-lib  at-spi2-core  bash  cairo  dbus  ffmpeg  fontconfig  freetype2  gdk-pixbuf2  glib2  glibc  gtk3  hicolor-icon-theme  libgcc  libpulse  libstdc++  libx11  libxcb  libxcomposite  libxdamage  libxext  libxfixes  libxrandr  libxss  libxt  mime-types  nspr  nss  pango  ttf-font
+Optional Deps   : firefox-i18n: Localizations
+                  hunspell-dictionary: Spell checking
+                  libnotify: Notification integration
+                  networkmanager: Location detection via available WiFi networks
+                  onnxruntime: Local machine learning features such as smart tab groups
+                  speech-dispatcher: Text-to-Speech
+                  xdg-desktop-portal: Screensharing with Wayland
+Conflicts With  : None
+Replaces        : None
+Download Size   : 85.93 MiB
+Installed Size  : 302.30 MiB
+Packager        : Jan Alexander Steffens (heftig) <heftig@archlinux.org>
+Build Date      : Tue Nov  3 15:34:26 2026
+Validated By    : SHA-256 Sum  Signature
+
