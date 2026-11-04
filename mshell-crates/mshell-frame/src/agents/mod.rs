@@ -1,5 +1,5 @@
 //! AI coding agents: plan limits (Claude, Codex), today's local Claude Code
-//! stats, and (see [`sessions`]) the live Claude Code sessions.
+//! stats, and the live Claude Code sessions ([`sessions`], [`SESSIONS_POLL`]).
 //!
 //! Replaces the `model-usage` WASM plugin, which only counted messages from
 //! Claude Code's stale `stats-cache.json`. One [`USAGE_POLL`] serves every
@@ -9,10 +9,12 @@
 
 pub(crate) mod limits;
 pub(crate) mod local_stats;
+pub(crate) mod sessions;
 
 use limits::{LimitWindow, LimitsError, PlanUsage, Provider, RateTracker, WindowKind};
 use local_stats::{LocalStats, StatsCache};
 use mshell_utils::shared_poll::SharedPoll;
+use sessions::{LiveSession, SavedSession};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
@@ -267,5 +269,77 @@ fn http_get(url: &str, headers: &[(&str, &str)]) -> Result<String, LimitsError> 
         Err(ureq::Error::Status(401, _)) => Err(LimitsError::Expired),
         Err(ureq::Error::Status(code, _)) => Err(LimitsError::Http(code)),
         Err(ureq::Error::Transport(t)) => Err(LimitsError::Network(t.kind().to_string())),
+    }
+}
+
+// ── Live sessions ──────────────────────────────────────────────────────
+
+/// Session status changes need to show quickly; reading a handful of small
+/// JSON files is cheap.
+const SESSIONS_TICK: Duration = Duration::from_secs(3);
+/// Recent saved sessions listed in the menu.
+const SAVED_LIMIT: usize = 12;
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct SessionsSnapshot {
+    /// `<config>/sessions` exists (Claude Code 2.1+ is installed and ran).
+    pub(crate) available: bool,
+    /// Running sessions, needs-you first.
+    pub(crate) live: Vec<LiveSession>,
+    /// Recent sessions to resume, newest first (running ones excluded).
+    pub(crate) saved: Vec<SavedSession>,
+}
+
+impl SessionsSnapshot {
+    pub(crate) fn count(&self, status: sessions::SessionStatus) -> usize {
+        self.live.iter().filter(|s| s.status == status).count()
+    }
+}
+
+pub(crate) static SESSIONS_POLL: LazyLock<SharedPoll<SessionsSnapshot>> =
+    LazyLock::new(|| SharedPoll::new(|| SESSIONS_TICK, || Box::pin(probe_sessions())));
+
+/// history.jsonl is megabytes; re-group it only when it changed.
+#[derive(Default)]
+struct SavedCache {
+    key: Option<(u64, std::time::SystemTime, Vec<String>)>,
+    saved: Vec<SavedSession>,
+}
+
+static SAVED: LazyLock<Mutex<SavedCache>> = LazyLock::new(Mutex::default);
+
+async fn probe_sessions() -> SessionsSnapshot {
+    tokio::task::spawn_blocking(probe_sessions_blocking)
+        .await
+        .unwrap_or_default()
+}
+
+fn probe_sessions_blocking() -> SessionsSnapshot {
+    let dir = limits::claude_config_dir();
+    let available = dir.join("sessions").is_dir();
+    let live = sessions::read_live_sessions(&dir);
+    let live_ids: Vec<String> = live.iter().map(|s| s.session_id.clone()).collect();
+    let history = dir.join("history.jsonl");
+    let saved = match (std::fs::metadata(&history), SAVED.lock()) {
+        (Ok(meta), Ok(mut cache)) => {
+            let key = (
+                meta.len(),
+                meta.modified().unwrap_or(std::time::UNIX_EPOCH),
+                live_ids.clone(),
+            );
+            if cache.key.as_ref() != Some(&key) {
+                let raw = std::fs::read_to_string(&history).unwrap_or_default();
+                let exclude: Vec<&str> = live_ids.iter().map(String::as_str).collect();
+                cache.saved = sessions::saved_sessions(&raw, &exclude, SAVED_LIMIT);
+                cache.key = Some(key);
+            }
+            cache.saved.clone()
+        }
+        _ => Vec::new(),
+    };
+    SessionsSnapshot {
+        available,
+        live,
+        saved,
     }
 }

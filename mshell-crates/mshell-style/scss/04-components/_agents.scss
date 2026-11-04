@@ -80,3 +80,73 @@
 .agents-stat-value {
   font-variant-numeric: tabular-nums;
 }
+
+// ── §12 segmented control: Usage | Sessions (as the clipboard panel's) ──
+.agents-tabs {
+  background-color: var(--surface-container-low);
+  border: var(--border-width) solid var(--outline-variant);
+  border-radius: var(--radius-pill);
+  padding: var(--space-1);
+
+  .agents-tab {
+    all: unset;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-2xs);
+    color: var(--on-surface-variant);
+    transition: background-color var(--motion-fast) var(--ease-standard),
+                color var(--motion-fast) var(--ease-standard);
+
+    label {
+      font-size: var(--font-2xs);
+    }
+
+    &:hover {
+      background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+    }
+
+    &.active {
+      background-color: var(--secondary-container);
+      color: var(--on-secondary-container);
+    }
+  }
+}
+
+// ── Session lamps (bar pill + session rows) ───────────────────
+// Needs-you uses the error tint (it is waiting on you), working the
+// primary accent (§3 live state), idle the dim variant tier.
+.agents-lamp {
+  min-width: 7px;
+  min-height: 7px;
+  border-radius: var(--radius-pill);
+  background-color: var(--on-surface-variant);
+  opacity: 0.45;
+  transition: background-color var(--motion-fast) var(--ease-standard);
+
+  &.busy {
+    background-color: var(--primary);
+    opacity: 1;
+  }
+  &.waiting {
+    background-color: var(--error);
+    opacity: 1;
+  }
+}
+
+// ── Session rows ──────────────────────────────────────────────
+// Rows are buttons inside the .ok-boxed-list card, which already gives
+// them padding, the hairline separator, the edge corners and the 14%
+// hover wash; only the theme's button chrome has to go.
+.ok-boxed-list > .agents-session-row {
+  background-image: none;
+  box-shadow: none;
+  outline: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+}
+
+.agents-session-go {
+  color: var(--on-surface-variant);
+  -gtk-icon-size: var(--icon-sm);
+}

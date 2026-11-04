@@ -82,7 +82,7 @@ pub enum MenuWidget {
     Notes,
     Notifications,
     Podman,
-    /// AI agents pill — Claude Code / Codex plan limits with burn-rate forecast and today's local stats.
+    /// AI agents pill — Claude Code / Codex plan limits with burn-rate forecast, today's local stats and the live Claude Code sessions.
     Agents,
     Power,
     /// `privacy` bar pill's panel — live "in use now" rows (mic /
