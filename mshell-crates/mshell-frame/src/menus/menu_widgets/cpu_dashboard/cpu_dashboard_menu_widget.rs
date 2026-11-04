@@ -18,13 +18,15 @@
 //! The page above is the **Overview** tab; the other tabs are child
 //! components that poll only while the menu is open and their tab is
 //! visible (`sync_tabs`): **Processes** (`processes_tab.rs`), **Ports**
-//! (`ports_tab.rs`), **Drives** (`drives_tab.rs`).
+//! (`ports_tab.rs`), **Drives** (`drives_tab.rs`). The Overview hosts
+//! the iGPU section (`gpu_section.rs`).
 //!
 //! Severity classes (calm / warn / danger) come from the same
 //! thresholds the bar pill uses so the menu's tint reads the same
 //! signal at the same time.
 
 use super::drives_tab::{DrivesTabInput, DrivesTabModel};
+use super::gpu_section::{GpuSectionInput, GpuSectionModel};
 use super::ports_tab::{PortsTabInput, PortsTabModel};
 use super::processes_tab::{ProcessesTabInput, ProcessesTabModel};
 use crate::bars::bar_widgets::sysstat::{
@@ -179,6 +181,7 @@ pub(crate) struct CpuDashboardMenuWidgetModel {
     processes: Controller<ProcessesTabModel>,
     ports: Controller<PortsTabModel>,
     drives: Controller<DrivesTabModel>,
+    gpu: Controller<GpuSectionModel>,
 }
 
 impl std::fmt::Debug for CpuDashboardMenuWidgetModel {
@@ -448,6 +451,14 @@ impl Component for CpuDashboardMenuWidgetModel {
                         },
                     },
 
+                    // Overview extras (iGPU, ThinkPad fan): child components
+                    // appended in `init`; each hides itself when absent.
+                    #[name = "extras_box"]
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_spacing: 14,
+                    },
+
                     // Memory + swap — symmetric labelled bar rows: caption,
                     // bar, "used / total", percent. Same row shape so RAM and
                     // Swap read as one consistent group.
@@ -665,6 +676,7 @@ impl Component for CpuDashboardMenuWidgetModel {
             processes: ProcessesTabModel::builder().launch(()).detach(),
             ports: PortsTabModel::builder().launch(()).detach(),
             drives: DrivesTabModel::builder().launch(()).detach(),
+            gpu: GpuSectionModel::builder().launch(()).detach(),
         };
 
         let widgets = view_output!();
@@ -677,6 +689,8 @@ impl Component for CpuDashboardMenuWidgetModel {
         widgets
             .stack
             .add_titled(model.drives.widget(), Some("drives"), "Drives");
+
+        widgets.extras_box.append(model.gpu.widget());
 
         // Sparkline: a filled area + line of the CPU history. The
         // DrawingArea's CSS `color` (var(--primary)) is read at paint
@@ -936,6 +950,9 @@ impl CpuDashboardMenuWidgetModel {
         ));
         self.drives.emit(DrivesTabInput::SetActive(
             self.revealed && self.tab == "drives",
+        ));
+        self.gpu.emit(GpuSectionInput::SetActive(
+            self.revealed && self.tab == "overview",
         ));
     }
 

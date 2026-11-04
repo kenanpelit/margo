@@ -1,0 +1,33 @@
+pos:	0
+flags:	02100002
+mnt_id:	39
+ino:	571
+drm-driver:	xe
+drm-client-id:	15
+drm-pdev:	0000:00:02.0
+drm-total-system:	0
+drm-shared-system:	0
+drm-active-system:	0
+drm-resident-system:	0
+drm-purgeable-system:	0
+drm-total-gtt:	209380 KiB
+drm-shared-gtt:	134688 KiB
+drm-active-gtt:	0
+drm-resident-gtt:	209380 KiB
+drm-purgeable-gtt:	0
+drm-total-stolen:	0
+drm-shared-stolen:	0
+drm-active-stolen:	0
+drm-resident-stolen:	0
+drm-purgeable-stolen:	0
+drm-cycles-rcs:	45880549
+drm-total-cycles-rcs:	33328881722
+drm-cycles-vcs:	0
+drm-total-cycles-vcs:	33328881722
+drm-engine-capacity-vcs:	2
+drm-cycles-vecs:	0
+drm-total-cycles-vecs:	33328881722
+drm-cycles-bcs:	0
+drm-total-cycles-bcs:	33328881722
+drm-cycles-ccs:	0
+drm-total-cycles-ccs:	33328881722
