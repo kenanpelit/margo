@@ -125,8 +125,16 @@ fn bar_strip(
     overlay.add_overlay(&outer);
     // The window takes the content's size, not just the draw widget's.
     overlay.set_measure_overlay(&outer, true);
-    window.set_child(Some(&overlay));
-    (draw, overlay, outer, content, filler, bar_box)
+    // The strip's height for the viewport is the window's real content
+    // height, measured around the whole overlay. `outer`'s own allocation can
+    // be shorter than the window (the bottom strip then sat its frame band a
+    // radius too high, leaving the output's last rows unpainted).
+    let sized = BoxWithResize::new();
+    overlay.set_hexpand(true);
+    overlay.set_vexpand(true);
+    sized.append(&overlay);
+    window.set_child(Some(&sized));
+    (draw, overlay, sized, content, filler, bar_box)
 }
 
 impl EdgeStrips {
