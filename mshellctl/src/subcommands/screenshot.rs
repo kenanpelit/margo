@@ -7,6 +7,7 @@
 //!
 //! ```text
 //! mshellctl screenshot region|window|output|full|repeat [EDITOR] [--copy|--save|--edit] [--delay N]
+//! mshellctl screenshot ocr [--lang eng+tur]
 //! ```
 //! Default delivery is file + clipboard. `--copy` = clipboard only,
 //! `--save` = file only, `--edit` = editor → save (no clipboard).
@@ -29,6 +30,14 @@ pub enum ScreenshotCommands {
     /// Re-capture the last selected region (no reselect). Falls back
     /// to a normal region select the first time it's used.
     Repeat(Capture),
+    /// Region select → OCR (tesseract) → copy the text. Runs the
+    /// `mscreenshot ocr` pipeline, which uses the in-shell selector.
+    Ocr {
+        /// tesseract languages joined with `+` (default:
+        /// $MSCREENSHOT_OCR_LANG, else eng+tur when installed).
+        #[arg(long, short = 'l')]
+        lang: Option<String>,
+    },
     /// (internal) Open the in-shell area selector and print the chosen
     /// region as "X,Y WxH" (slurp format). Used by the `mscreenshot` CLI's
     /// region bridge; not meant for direct use.
@@ -89,10 +98,30 @@ pub async fn execute(command: ScreenshotCommands) -> anyhow::Result<()> {
         ScreenshotCommands::Output(c) => capture("output", &c).await?,
         ScreenshotCommands::Full(c) => capture("full", &c).await?,
         ScreenshotCommands::Repeat(c) => capture("repeat", &c).await?,
+        ScreenshotCommands::Ocr { lang } => {
+            let mut args = vec!["ocr".to_string()];
+            if let Some(lang) = lang {
+                args.extend(["--lang".to_string(), lang]);
+            }
+            run_mscreenshot(&args)?;
+        }
         ScreenshotCommands::SelectRegion => {
             let geom: String = shell().await?.select_region().await?;
             println!("{}", geom);
         }
+    }
+    Ok(())
+}
+
+/// Region tools (OCR, …) are one pipeline in the `mscreenshot` binary; run
+/// it in the foreground so the exit status reaches the caller.
+fn run_mscreenshot(args: &[String]) -> anyhow::Result<()> {
+    let status = std::process::Command::new("mscreenshot")
+        .args(args)
+        .status()
+        .map_err(|e| anyhow::anyhow!("spawn mscreenshot: {e}"))?;
+    if !status.success() {
+        anyhow::bail!("mscreenshot {} exited {status}", args.join(" "));
     }
     Ok(())
 }

@@ -307,3 +307,19 @@ fn numeric_actions_survive_extreme_arguments() {
     assert_eq!(state.monitors[0].pertag.mfacts[curtag], before);
     assert!(state.clients[0].scroller_proportion.is_finite());
 }
+
+#[test]
+fn screenshot_ocr_passes_only_tessdata_characters_to_the_shell() {
+    use crate::dispatch::ocr_spawn_command;
+    assert_eq!(ocr_spawn_command(None), "mscreenshot ocr");
+    assert_eq!(ocr_spawn_command(Some("")), "mscreenshot ocr");
+    assert_eq!(
+        ocr_spawn_command(Some("eng+tur")),
+        "mscreenshot ocr --lang eng+tur"
+    );
+    assert_eq!(
+        ocr_spawn_command(Some("eng; rm -rf ~")),
+        "mscreenshot ocr --lang engrm-rf"
+    );
+    assert_eq!(ocr_spawn_command(Some("$(x)")), "mscreenshot ocr --lang x");
+}

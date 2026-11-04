@@ -28,6 +28,8 @@
 //! `margo/src/dispatch/mod.rs` now calls `mscreenshot <mode>`
 //! instead of `margo-screenshot <mode>`.
 
+mod ocr;
+
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -48,11 +50,16 @@ use clap::{Parser, Subcommand};
                     SCREENSHOT_SAVE_DIR    override save directory\n  \
                     SCREENSHOT_EDITOR      force editor (swappy/satty/...)\n  \
                     SCREENSHOT_NO_EDIT     skip the edit step (1/true)\n  \
+                    MSCREENSHOT_OCR_LANG   OCR languages (eng+tur; default\n  \
+                                           eng+tur when installed)\n  \
+                    MSCREENSHOT_OCR_PSM    tesseract --psm (default 6)\n  \
                   \n\
                   REQUIRED RUNTIME TOOLS:\n  \
                     grim slurp wl-clipboard\n  \
                   OPTIONAL EDITOR:\n  \
-                    swappy / satty / gimp / krita"
+                    swappy / satty / gimp / krita\n\
+                  OPTIONAL TOOLS:\n  \
+                    tesseract + tesseract-data-<lang> (ocr)"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -112,6 +119,24 @@ enum Cmd {
     /// All outputs → save to disk.
     Af,
 
+    /// Region select → OCR with tesseract → copy the text.
+    ///
+    /// Languages: `--lang`, else `MSCREENSHOT_OCR_LANG`, else `eng+tur`
+    /// narrowed to the installed tessdata packs. Nothing is saved; the
+    /// temporary capture is deleted once the text is read.
+    Ocr {
+        /// tesseract languages, `+`-joined (e.g. `eng+tur`).
+        #[arg(long, short = 'l')]
+        lang: Option<String>,
+        /// tesseract page segmentation mode (0-13, default 6 = one
+        /// uniform block of text).
+        #[arg(long)]
+        psm: Option<String>,
+        /// OCR the focused output instead of a selected region.
+        #[arg(long)]
+        screen: bool,
+    },
+
     /// Open the most recently saved screenshot via xdg-open.
     Open,
     /// Open the screenshot save directory via xdg-open.
@@ -169,24 +194,17 @@ fn run() -> Result<()> {
         Cmd::NotifyHandle { title, body, path } => {
             return run_notify_handle(title, body, path);
         }
+        Cmd::Ocr { lang, psm, screen } => {
+            return run_ocr(&cli, lang.as_deref(), psm.as_deref(), *screen);
+        }
         _ => {}
     }
 
     let Some((source, mode)) = capture_plan(&cli.cmd) else {
-        unreachable!("Open/Dir/NotifyHandle handled earlier and short-circuit before this match")
+        unreachable!("non-capture commands are handled earlier and short-circuit before this match")
     };
 
-    require("grim")?;
-    if matches!(source, CaptureSource::Region) {
-        // slurp is only required when MARGO_REGION_GEOM isn't set —
-        // margo's W2.1 in-compositor selector pre-fills the env so
-        // we skip slurp entirely. Outside margo (or with the env
-        // unset) the legacy slurp-spawning path applies.
-        let pre_geom = std::env::var("MARGO_REGION_GEOM").unwrap_or_default();
-        if pre_geom.trim().is_empty() {
-            require("slurp")?;
-        }
-    }
+    require_capture_tools(source)?;
     if matches!(mode, DeliveryMode::ClipOnly | DeliveryMode::EditSaveClip) {
         require("wl-copy")?;
     }
@@ -198,11 +216,40 @@ fn run() -> Result<()> {
         CaptureSource::AllOutputs => "Full screenshot",
     };
 
-    // `--delay N` countdown: pop one notification announcing the
-    // delay (so the user knows the capture isn't frozen), sleep,
-    // then proceed. We don't tick down per-second — that floods
-    // the notification stack and is louder than useful.
-    if let Some(seconds) = cli.delay
+    countdown(cli.delay);
+
+    // Step 1: capture into a temp file.
+    let temp = make_temp_png()?;
+    capture(source, &temp, cli.output.as_deref())
+        .with_context(|| format!("capture ({:?})", source))?;
+
+    // Step 2: deliver per mode.
+    deliver(mode, label, &temp)
+}
+
+/// grim always; slurp for a region unless a geometry source that doesn't
+/// need it is available.
+fn require_capture_tools(source: CaptureSource) -> Result<()> {
+    require("grim")?;
+    if matches!(source, CaptureSource::Region) {
+        // slurp is only required when MARGO_REGION_GEOM isn't set —
+        // margo's W2.1 in-compositor selector pre-fills the env so
+        // we skip slurp entirely. Outside margo (or with the env
+        // unset) the legacy slurp-spawning path applies.
+        let pre_geom = std::env::var("MARGO_REGION_GEOM").unwrap_or_default();
+        if pre_geom.trim().is_empty() && !which("mshellctl") {
+            require("slurp")?;
+        }
+    }
+    Ok(())
+}
+
+/// `--delay N` countdown: pop one notification announcing the delay (so
+/// the user knows the capture isn't frozen), sleep, then proceed. We don't
+/// tick down per-second — that floods the notification stack and is
+/// louder than useful.
+fn countdown(delay: Option<u32>) {
+    if let Some(seconds) = delay
         && seconds > 0
     {
         notify(
@@ -211,38 +258,34 @@ fn run() -> Result<()> {
         );
         std::thread::sleep(std::time::Duration::from_secs(seconds as u64));
     }
+}
 
-    // Step 1: capture into a temp file.
-    let temp = make_temp_png()?;
-    capture(source, &temp, cli.output.as_deref())
-        .with_context(|| format!("capture ({:?})", source))?;
-
-    // Step 2: deliver per mode.
+fn deliver(mode: DeliveryMode, label: &str, temp: &Path) -> Result<()> {
     match mode {
         DeliveryMode::SaveOnly => {
-            let final_path = save_final(&temp)?;
+            let final_path = save_final(temp)?;
             notify_save(label, &final_path);
         }
         DeliveryMode::ClipOnly => {
-            copy_to_clipboard(&temp)?;
+            copy_to_clipboard(temp)?;
             notify_clip(label);
             // temp dropped; clipboard worker holds the bytes
             // until the next selection replaces it.
         }
         DeliveryMode::EditSave => {
-            let final_path = match edit(&temp)? {
+            let final_path = match edit(temp)? {
                 Some(p) => p,
                 None => {
                     // No editor available — just save raw.
-                    save_final(&temp)?
+                    save_final(temp)?
                 }
             };
             notify_save(label, &final_path);
         }
         DeliveryMode::EditSaveClip => {
-            let final_path = match edit(&temp)? {
+            let final_path = match edit(temp)? {
                 Some(p) => p,
-                None => save_final(&temp)?,
+                None => save_final(temp)?,
             };
             copy_to_clipboard(&final_path)?;
             notify_save_clip(label, &final_path);
@@ -272,8 +315,87 @@ fn capture_plan(cmd: &Cmd) -> Option<(CaptureSource, DeliveryMode)> {
         Cmd::All => (CaptureSource::AllOutputs, DeliveryMode::EditSave),
         Cmd::Ac => (CaptureSource::AllOutputs, DeliveryMode::ClipOnly),
         Cmd::Af => (CaptureSource::AllOutputs, DeliveryMode::SaveOnly),
-        Cmd::Open | Cmd::Dir | Cmd::NotifyHandle { .. } => return None,
+        Cmd::Ocr { .. } | Cmd::Open | Cmd::Dir | Cmd::NotifyHandle { .. } => return None,
     })
+}
+
+// ── Region tools (OCR) ──────────────────────────────────────
+
+/// A capture that only feeds a tool (OCR, …): it is never the deliverable,
+/// so it is deleted on every path — success, failure, or an early `?`.
+/// Region contents can be sensitive (a password manager, a chat), so
+/// leaving them in `$XDG_RUNTIME_DIR` is not an option.
+struct ToolCapture(PathBuf);
+
+impl Drop for ToolCapture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+fn capture_for_tool(cli: &Cli, source: CaptureSource) -> Result<ToolCapture> {
+    require_capture_tools(source)?;
+    countdown(cli.delay);
+    let shot = ToolCapture(make_temp_png()?);
+    capture(source, &shot.0, cli.output.as_deref())
+        .with_context(|| format!("capture ({source:?})"))?;
+    Ok(shot)
+}
+
+fn run_ocr(cli: &Cli, lang: Option<&str>, psm: Option<&str>, screen: bool) -> Result<()> {
+    if !which("tesseract") {
+        bail!("OCR needs `tesseract` (pacman -S tesseract tesseract-data-eng)");
+    }
+    require("wl-copy")?;
+    let env_lang = std::env::var("MSCREENSHOT_OCR_LANG").ok();
+    let requested = lang.or(env_lang.as_deref());
+    let installed = Command::new("tesseract")
+        .arg("--list-langs")
+        .output()
+        .map(|o| ocr::parse_list_langs(&String::from_utf8_lossy(&o.stdout)))
+        .unwrap_or_default();
+    let langs = ocr::resolve_langs(requested, &installed).map_err(|missing| {
+        let pkgs: Vec<String> = missing.iter().map(|l| ocr::tessdata_package(l)).collect();
+        anyhow!(
+            "OCR language data not installed: {} (pacman -S {})",
+            missing.join(", "),
+            pkgs.join(" ")
+        )
+    })?;
+    let env_psm = std::env::var("MSCREENSHOT_OCR_PSM").ok();
+    let psm = ocr::resolve_psm(psm.or(env_psm.as_deref()));
+
+    let source = if screen {
+        CaptureSource::Screen
+    } else {
+        CaptureSource::Region
+    };
+    let shot = capture_for_tool(cli, source)?;
+    let out = Command::new("tesseract")
+        .args(ocr::tesseract_argv(&shot.0.to_string_lossy(), &langs, psm))
+        .stdin(Stdio::null())
+        .output()
+        .context("spawn tesseract")?;
+    drop(shot);
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        bail!(
+            "tesseract exited {}: {}",
+            out.status,
+            err.lines().last().unwrap_or("").trim()
+        );
+    }
+    let text = ocr::clean_text(&String::from_utf8_lossy(&out.stdout));
+    if text.is_empty() {
+        notify_tool("Text recognition", "No text recognised in the selection");
+        return Ok(());
+    }
+    copy_text_to_clipboard(&text)?;
+    notify_tool(
+        &format!("Text copied ({langs})"),
+        &ocr::escape_markup(&ocr::preview(&text, ocr::PREVIEW_CHARS)),
+    );
+    Ok(())
 }
 
 // ── Capture step ────────────────────────────────────────────
@@ -589,6 +711,26 @@ fn copy_to_clipboard(file: &Path) -> Result<()> {
     Ok(())
 }
 
+fn copy_text_to_clipboard(text: &str) -> Result<()> {
+    use std::io::Write;
+    let mut child = Command::new("wl-copy")
+        .args(["--type", "text/plain;charset=utf-8"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .context("spawn wl-copy")?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(text.as_bytes())
+            .context("write to wl-copy")?;
+    }
+    // wl-copy forks a daemon that serves the selection and exits the
+    // foreground process once stdin is closed; reap it.
+    let _ = child.wait();
+    Ok(())
+}
+
 fn make_temp_png() -> Result<PathBuf> {
     let runtime_dir = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
@@ -834,6 +976,11 @@ fn notify_failure(msg: &str) {
     notify_with_urgency("Screenshot failed", msg, "critical", "dialog-error");
 }
 
+/// Result notification for the region tools (OCR, …).
+fn notify_tool(title: &str, body: &str) {
+    notify_with_urgency(title, body, "normal", "edit-paste-symbolic");
+}
+
 fn notify(title: &str, body: &str) {
     notify_with_urgency(title, body, "normal", "image-x-generic");
 }
@@ -896,6 +1043,8 @@ mod tests {
             &["open"][..],
             &["dir"][..],
             &["notify-handle", "t", "b", "/tmp/x.png"][..],
+            &["ocr"][..],
+            &["ocr", "--lang", "eng+tur", "--psm", "7", "--screen"][..],
         ] {
             let cli = parse(args).unwrap();
             assert_eq!(capture_plan(&cli.cmd), None, "{args:?}");

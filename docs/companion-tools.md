@@ -108,12 +108,40 @@ mshellctl screenshot region satty    # force satty (positional editor ⇒ implie
 #   positional EDITOR: satty | swappy | gimp | krita — overrides the default
 #   chain ($SCREENSHOT_EDITOR env, then satty → swappy → gimp → krita)
 
+mshellctl screenshot ocr             # region → OCR (tesseract) → text on the clipboard
+mshellctl screenshot ocr --lang tur  #   override the languages for one run
+
 mshellctl screenrecord start full    # start recording (region|window|output|full)
 mshellctl screenrecord toggle region --audio <pw-source>
 mshellctl screenrecord stop
 ```
 
 Bind them however you like, e.g. `bind = NONE,Print,spawn,mshellctl screenshot region`. The recording-indicator bar pill shows an active recording and stops it on click.
+
+### Region tools
+
+The screenshot menu's **Extract from area** row and the matching commands
+select an area with the in-shell selector, run a tool on it and put the
+result on the clipboard with a notification preview. The capture is a
+temporary file that is deleted as soon as the tool has read it.
+
+| Tool | Command | Compositor action | Needs |
+|---|---|---|---|
+| Text (OCR) | `mscreenshot ocr` · `mshellctl screenshot ocr` | `screenshot-ocr [LANGS]` | `tesseract` + `tesseract-data-<lang>` |
+
+OCR languages: `--lang` / the action argument, else
+`MSCREENSHOT_OCR_LANG` (set it once with `env = MSCREENSHOT_OCR_LANG,eng+tur`
+in the margo config), else `eng+tur` narrowed to the installed tessdata
+packs (plain `eng` without `tesseract-data-tur`). Asking for a language
+whose pack is missing fails with the package to install instead of
+silently falling back to English. `MSCREENSHOT_OCR_PSM` / `--psm` sets
+tesseract's page segmentation (default 6, one block of text);
+`mscreenshot ocr --screen` reads the focused output instead of a region.
+
+```
+bind = SUPER,Print,screenshot-ocr
+bind = SUPER+SHIFT,Print,screenshot-ocr,tur
+```
 
 ## `mscreenshot`
 
@@ -128,6 +156,7 @@ mscreenshot area      # region → file + clipboard (no editor)
 mscreenshot screen    # focused output → file + clipboard
 mscreenshot full      # all outputs (whole layout)
 mscreenshot window    # focused window → file + clipboard
+mscreenshot ocr       # region → OCR → text on the clipboard (see Region tools)
 mscreenshot open      # open ~/Pictures/Screenshots in the file manager
 mscreenshot dir       # print the screenshot dir
 ```

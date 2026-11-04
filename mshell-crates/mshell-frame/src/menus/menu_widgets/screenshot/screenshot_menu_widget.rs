@@ -7,6 +7,7 @@ use crate::common_widgets::revealer_row::revealer_row_label::{
     RevealerRowLabelInit, RevealerRowLabelInput, RevealerRowLabelModel,
 };
 use crate::menus::menu_widgets::screenshot::delay_option::{DelayOption, DelayOptionsList};
+use crate::menus::menu_widgets::screenshot::region_tools::{self, RegionTool};
 use crate::menus::menu_widgets::screenshot::save_option::{SaveOptionRow, SaveOptionsList};
 use mshell_screenshot::{
     CaptureArea, OutputTarget, ScreenshotRequest, ScreenshotResult, take_screenshot,
@@ -23,6 +24,8 @@ pub(crate) struct ScreenshotMenuWidgetModel {
     delay_row: Controller<RevealerRowModel<RevealerRowLabelModel, DelayOptionsList>>,
     save_option: OutputTarget,
     save_row: Controller<RevealerRowModel<RevealerRowLabelModel, SaveOptionsList>>,
+    /// `(sensitive, tooltip)` per region tool, probed once at build.
+    ocr_tool: (bool, String),
 }
 
 #[derive(Debug)]
@@ -33,6 +36,7 @@ pub(crate) enum ScreenshotMenuWidgetInput {
     MonitorClicked,
     WindowClicked,
     AreaClicked,
+    ToolClicked(RegionTool),
 }
 
 #[derive(Debug)]
@@ -163,11 +167,44 @@ impl Component for ScreenshotMenuWidgetModel {
                 },
             },
 
+            // ── Region tools: select an area → extract from it ──
+            gtk::Label {
+                add_css_class: "section-label-menu-widget",
+                set_label: "Extract from area",
+                set_xalign: 0.0,
+                set_margin_top: 16,
+            },
+
+            gtk::Box {
+                set_margin_top: 8,
+                set_orientation: gtk::Orientation::Horizontal,
+                set_halign: gtk::Align::Center,
+                set_spacing: 32,
+
+                #[template]
+                BigButton {
+                    set_sensitive: model.ocr_tool.0,
+                    set_tooltip_text: Some(&model.ocr_tool.1),
+                    connect_clicked[sender] => move |_| {
+                        sender.input(ScreenshotMenuWidgetInput::ToolClicked(RegionTool::Ocr));
+                    },
+
+                    #[template_child]
+                    icon {
+                        set_icon_name: Some("screenshot-text-symbolic"),
+                    },
+                    #[template_child]
+                    label {
+                        set_label: "Text",
+                    },
+                },
+            },
+
             // Keyboard-shortcut hint (the keys are wired in `init`).
             gtk::Label {
                 add_css_class: "label-small",
                 add_css_class: "dim-label",
-                set_label: "A all · M monitor · W window · R area · Esc close",
+                set_label: "A all · M monitor · W window · R area · T text · Esc close",
                 set_halign: gtk::Align::Center,
                 set_margin_top: 12,
             },
@@ -266,6 +303,7 @@ impl Component for ScreenshotMenuWidgetModel {
             delay_row,
             save_option: OutputTarget::FileAndClipboard,
             save_row: save_option_row,
+            ocr_tool: region_tools::availability(RegionTool::Ocr, region_tools::on_path),
         };
 
         let widgets = view_output!();
@@ -276,6 +314,7 @@ impl Component for ScreenshotMenuWidgetModel {
         // Capture-phase controller on the root sees the keys.
         {
             let sender = sender.clone();
+            let ocr_ok = model.ocr_tool.0;
             let kc = gtk::EventControllerKey::new();
             kc.set_propagation_phase(gtk::PropagationPhase::Capture);
             kc.connect_key_pressed(move |_, keyval, _, _| {
@@ -289,6 +328,9 @@ impl Component for ScreenshotMenuWidgetModel {
                     Some('m' | 'M') => Some(ScreenshotMenuWidgetInput::MonitorClicked),
                     Some('w' | 'W') => Some(ScreenshotMenuWidgetInput::WindowClicked),
                     Some('r' | 'R' | 's' | 'S') => Some(ScreenshotMenuWidgetInput::AreaClicked),
+                    Some('t' | 'T') if ocr_ok => {
+                        Some(ScreenshotMenuWidgetInput::ToolClicked(RegionTool::Ocr))
+                    }
                     _ => None,
                 };
                 if let Some(i) = input {
@@ -380,6 +422,10 @@ impl Component for ScreenshotMenuWidgetModel {
                         Err(e) => eprintln!("screenshot failed: {e}"),
                     },
                 );
+            }
+            ScreenshotMenuWidgetInput::ToolClicked(tool) => {
+                let _ = sender.output(ScreenshotMenuWidgetOutput::CloseMenu);
+                region_tools::launch(tool);
             }
             ScreenshotMenuWidgetInput::AreaClicked => {
                 let _ = sender.output(ScreenshotMenuWidgetOutput::CloseMenu);

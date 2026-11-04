@@ -925,6 +925,17 @@ pub const ACTIONS: &[Action] = &[
                  captures whatever is focused.",
     },
     Action {
+        name: "screenshot-ocr",
+        aliases: &["screenshot_ocr"],
+        args: "[LANGS]",
+        group: Group::System,
+        summary: "Drag a region → OCR (tesseract) → copy the text.",
+        detail: "Spawns `mscreenshot ocr`. Optional arg = tesseract \
+                 languages joined with `+` (e.g. `eng+tur`); default is \
+                 $MSCREENSHOT_OCR_LANG, else eng+tur narrowed to the \
+                 installed tesseract-data-* packs.",
+    },
+    Action {
         name: "reload",
         aliases: &["reload_config"],
         args: "[force]",

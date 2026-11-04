@@ -489,6 +489,13 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
                 tracing::error!(error = ?e, "spawn mscreenshot failed");
             }
         }
+        // Region tools: OCR → clipboard (optional arg = tesseract
+        // languages, e.g. `eng+tur`).
+        "screenshot-ocr" | "screenshot_ocr" => {
+            if let Err(e) = crate::utils::spawn_shell(&ocr_spawn_command(arg.v.as_deref())) {
+                tracing::error!(error = ?e, "spawn mscreenshot failed");
+            }
+        }
         "killclient" => state.kill_focused(),
         "smartkillclient" => state.smart_kill_client(),
         // Focus a specific window by its `state snapshot` client index, jumping
@@ -902,5 +909,21 @@ fn direction4(arg: &Arg) -> margo_config::Direction {
         "up" | "u" => Direction::Up,
         "down" | "d" => Direction::Down,
         _ => Direction::None,
+    }
+}
+
+/// `sh -c` command line for the `screenshot-ocr` action. The optional
+/// language arg is filtered to tessdata-name characters (`[A-Za-z0-9_+-]`)
+/// because the line goes through a shell.
+pub(crate) fn ocr_spawn_command(langs: Option<&str>) -> String {
+    let lang: String = langs
+        .unwrap_or("")
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '_' | '-'))
+        .collect();
+    if lang.is_empty() {
+        "mscreenshot ocr".to_string()
+    } else {
+        format!("mscreenshot ocr --lang {lang}")
     }
 }

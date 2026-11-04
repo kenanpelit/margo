@@ -10,12 +10,17 @@ editor.
 mscreenshot region        # interactive region select (in-compositor selector)
 mscreenshot window        # the focused / picked window
 mscreenshot output        # the whole monitor
+mscreenshot ocr           # region → OCR (tesseract) → text on the clipboard
 mscreenshot --help
 ```
 
 Captures land as a file **and** on the clipboard. With `satty` or `swappy`
 installed, mscreenshot can pipe the capture straight into the annotation
 editor.
+
+`ocr` reads the languages from `--lang`, then `MSCREENSHOT_OCR_LANG`, then
+defaults to `eng+tur` narrowed to the installed `tesseract-data-*` packs.
+See *Region tools* in `docs/companion-tools.md`.
 
 Bind in `config.conf`:
 
