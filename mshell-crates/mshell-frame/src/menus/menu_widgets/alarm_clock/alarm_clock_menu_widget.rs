@@ -414,29 +414,28 @@ impl Component for AlarmClockMenuWidgetModel {
         sync_stopwatch(&model);
         sync_ringing(&model);
 
-        // Heartbeat — only relayouts GTK while something is moving
-        // (stopwatch running or tone ringing), so a parked menu costs
-        // nothing.
+        // Event-driven heartbeat: sleep until the stopwatch or the alarm
+        // tone changes state, and tick the centisecond readout only while
+        // the stopwatch runs. Ringing alone needs no ticks: its start/stop
+        // arrives as a change. (This used to wake at 10 Hz for the life of
+        // the menu, once per monitor.)
+        mshell_sounds::set_alarm_state_listener(stopwatch::notify_changed);
         sender.command(|out, shutdown| async move {
             let shutdown_fut = shutdown.wait();
             tokio::pin!(shutdown_fut);
-            let mut tick = tokio::time::interval(Duration::from_millis(100));
-            // Send one trailing tick after activity stops so the
-            // readout settles (e.g. the banner hides when the tone
-            // stops from the notification rather than the banner).
-            let mut was_active = false;
+            let mut changes = stopwatch::changes();
             loop {
+                let tick = readout_tick(stopwatch::state() == StopwatchState::Running);
                 tokio::select! {
                     () = &mut shutdown_fut => break,
-                    _ = tick.tick() => {
-                        let active =
-                            stopwatch::state() == StopwatchState::Running || alarm_is_ringing();
-                        if active || was_active {
-                            let _ = out.send(());
+                    changed = changes.changed() => {
+                        if changed.is_err() {
+                            break;
                         }
-                        was_active = active;
                     }
+                    () = sleep_or_forever(tick) => {}
                 }
+                let _ = out.send(());
             }
         });
 
@@ -785,6 +784,32 @@ fn sync_stopwatch(model: &AlarmClockMenuWidgetModel) {
 }
 
 /// Toggle the "Stop ringing" banner to match the tone state.
+/// The live stopwatch readout shows centiseconds: refresh it every
+/// [`READOUT_TICK`] while running, never otherwise.
+const READOUT_TICK: Duration = Duration::from_millis(100);
+
+fn readout_tick(running: bool) -> Option<Duration> {
+    running.then_some(READOUT_TICK)
+}
+
+async fn sleep_or_forever(delay: Option<Duration>) {
+    match delay {
+        Some(d) => tokio::time::sleep(d).await,
+        None => std::future::pending().await,
+    }
+}
+
 fn sync_ringing(model: &AlarmClockMenuWidgetModel) {
     model.ringing_banner.set_visible(alarm_is_ringing());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_menu_ticks_only_while_the_stopwatch_runs() {
+        assert_eq!(readout_tick(true), Some(Duration::from_millis(100)));
+        assert_eq!(readout_tick(false), None);
+    }
 }
