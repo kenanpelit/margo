@@ -292,6 +292,19 @@ impl MargoState {
         self.repaint_ping = Some(ping);
     }
 
+    /// The cursor image changed: repaint the output(s) the pointer is on,
+    /// the only ones that draw it, instead of every output.
+    pub(crate) fn request_cursor_image_repaint(&mut self) {
+        let pos = smithay::utils::Point::<f64, smithay::utils::Logical>::from((
+            self.input_pointer.x,
+            self.input_pointer.y,
+        ));
+        let outputs: Vec<Output> = self.space.output_under(pos).cloned().collect();
+        for output in outputs {
+            self.request_repaint_output(&output);
+        }
+    }
+
     /// Clone of the repaint-ping handle, for the per-output frame clock
     /// to wake the redraw scheduler from a present-timer callback
     /// without going through `request_repaint` (which would re-dirty

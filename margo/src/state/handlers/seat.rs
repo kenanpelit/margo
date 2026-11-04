@@ -57,6 +57,12 @@ impl SeatHandler for MargoState {
         set_primary_focus(dh, seat, client);
     }
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
+        // Browsers re-send the same shape on every hover; an identical named
+        // or hidden cursor changes no pixel. A surface cursor always counts:
+        // `set_cursor` with the same surface may carry a new hotspot.
+        if image == self.cursor_status && !matches!(image, CursorImageStatus::Surface(_)) {
+            return;
+        }
         // A named request (wp_cursor_shape_v1 / set_cursor → e.g. the `pointer`
         // hand over a link) only changes anything if we point the cursor
         // manager at that icon — the `Named` render path draws whatever it
@@ -68,7 +74,7 @@ impl SeatHandler for MargoState {
             self.send_pointer_output_scale_transform(surface);
         }
         self.cursor_status = image;
-        self.request_repaint();
+        self.request_cursor_image_repaint();
     }
 }
 

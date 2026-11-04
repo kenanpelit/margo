@@ -40,6 +40,7 @@ mod bootstrap;
 mod client_removal;
 mod color_management;
 mod disabled_output;
+mod cursor_repaint;
 mod dispatch;
 mod dmabuf;
 mod floating_layout;
