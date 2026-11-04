@@ -184,5 +184,20 @@ whole pill:
 Output that is not a JSON object keeps the pill visible with its `icon` and a
 tooltip saying so.
 
+## Crashes menu
+
+`mshellctl menu crashes` (or `MenuWidget::Crashes` in any menu) opens the
+crash history: core dumps of **your own** processes from systemd-coredump,
+newest first (program, signal, PID, time, whether the core file still
+exists), each with a bell button that mutes crash notifications for that
+program (`crashes.muted`). The **Journal errors** tab lists this boot's
+journal at `crashes.journal_priority` (`err` by default) and above.
+
+Turn on **Settings → Notifications → Crash notifications**
+(`crashes.notify`) for a critical notification when one of your programs
+dumps core. The very first run only records the crashes already on disk, so
+turning it on never floods you with old ones.
+Needs `coredumpctl` / `journalctl` (systemd).
+
 See [Configuration](configuration.md) for the full profile layout, and
 [Scripting](scripting.md) for driving the shell and compositor from scripts.

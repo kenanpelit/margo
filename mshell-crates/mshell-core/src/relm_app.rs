@@ -199,6 +199,7 @@ pub(crate) enum ShellInput {
     ToggleSshSessionsMenu(Option<String>),
     ToggleUsbMenu(Option<String>),
     ToggleDiscordVoiceMenu(Option<String>),
+    ToggleCrashesMenu(Option<String>),
     ToggleVpnMenu(Option<String>),
     ToggleAiMenu(Option<String>),
     ToggleDnsMenu(Option<String>),
@@ -861,6 +862,11 @@ impl Component for Shell {
             ShellInput::ToggleControlCenterMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
                     frame.emit(FrameInput::ToggleMenu(MenuId::ControlCenter));
+                }
+            }
+            ShellInput::ToggleCrashesMenu(monitor_name) => {
+                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Crashes));
                 }
             }
             ShellInput::ToggleSshSessionsMenu(monitor_name) => {

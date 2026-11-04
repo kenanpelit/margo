@@ -102,6 +102,8 @@ pub enum MenuCommands {
     Usb,
     /// Toggle the Discord voice menu (call controls + participants)
     DiscordVoice,
+    /// Toggle the Crashes menu (your core dumps + this boot's journal errors)
+    Crashes,
     /// Toggle the DNS / VPN menu (Mullvad controls + a collapsible DNS section)
     Vpn,
     /// Toggle the DNS / VPN menu (alias for `vpn`)
@@ -237,6 +239,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::ControlCenter => {
             shell().await?.control_center().await?;
+        }
+        MenuCommands::Crashes => {
+            shell().await?.crashes().await?;
         }
         MenuCommands::SshSessions => {
             shell().await?.ssh_sessions().await?;

@@ -320,6 +320,7 @@ pub(super) fn menu_position(name: &str) -> Position {
         SSH_MENU => pos!(ssh_menu),
         USB_MENU => pos!(usb_menu),
         DISCORD_MENU => pos!(discord_voice_menu),
+        CRASHES_MENU => pos!(crashes_menu),
         NDNS_MENU => pos!(dns_menu),
         NVPN_MENU => pos!(vpn_menu),
         NAI_MENU => pos!(ai_menu),

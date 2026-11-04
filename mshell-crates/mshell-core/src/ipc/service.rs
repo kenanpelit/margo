@@ -454,6 +454,10 @@ impl IPCService {
     async fn custom_refresh(&self, name: String) -> fdo::Result<u32> {
         Ok(mshell_common::custom_refresh::request(&name) as u32)
     }
+    /// Toggle the Crashes menu (crash history + journal errors).
+    async fn crashes(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Crashes)
+    }
     async fn ssh_sessions(&self) -> fdo::Result<()> {
         self.send(IPCCommand::SshSessions)
     }

@@ -38,6 +38,9 @@ use crate::menus::menu_widgets::cpu_dashboard::cpu_dashboard_menu_widget::{
 use crate::menus::menu_widgets::discord_voice::discord_voice_menu_widget::{
     DiscordVoiceMenuWidgetInit, DiscordVoiceMenuWidgetModel,
 };
+use crate::menus::menu_widgets::crashes::crashes_menu_widget::{
+    CrashesMenuWidgetInit, CrashesMenuWidgetModel,
+};
 use crate::menus::menu_widgets::divider::{DividerMenuWidgetInit, DividerMenuWidgetModel};
 use crate::menus::menu_widgets::dns::dns_menu_widget::{DnsMenuWidgetInit, DnsMenuWidgetModel};
 use crate::menus::menu_widgets::ip::ip_menu_widget::{IpMenuWidgetInit, IpMenuWidgetModel};
@@ -237,6 +240,11 @@ pub fn build_widget(
         MenuWidget::Keybinds => Box::new(
             KeybindsMenuWidgetModel::builder()
                 .launch(KeybindsMenuWidgetInit {})
+                .detach(),
+        ),
+        MenuWidget::Crashes => Box::new(
+            CrashesMenuWidgetModel::builder()
+                .launch(CrashesMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::SshSessions => Box::new(

@@ -94,6 +94,7 @@ pub trait Shell {
     fn ssh_sessions(&self) -> zbus::Result<()>;
     fn usb(&self) -> zbus::Result<()>;
     fn discord_voice(&self) -> zbus::Result<()>;
+    fn crashes(&self) -> zbus::Result<()>;
     fn vpn(&self) -> zbus::Result<()>;
     fn ai(&self) -> zbus::Result<()>;
     fn dns(&self) -> zbus::Result<()>;

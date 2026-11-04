@@ -53,6 +53,8 @@ pub struct Menus {
     pub usb_menu: Menu,
     #[serde(default = "default_discord_voice_menu")]
     pub discord_voice_menu: Menu,
+    #[serde(default = "default_crashes_menu")]
+    pub crashes_menu: Menu,
     #[serde(default = "default_privacy_menu")]
     pub privacy_menu: Menu,
     /// Generic-VPN detail menu opened by the `vpn_indicator` bar pill.
@@ -357,6 +359,15 @@ pub(super) fn default_usb_menu() -> Menu {
     }
 }
 
+pub(super) fn default_crashes_menu() -> Menu {
+    Menu {
+        position: Position::TopRight,
+        widgets: vec![MenuWidget::Crashes],
+        minimum_width: 460,
+        maximum_height: 640,
+    }
+}
+
 pub(super) fn default_ssh_menu() -> Menu {
     Menu {
         position: Position::TopRight,
@@ -533,6 +544,7 @@ impl Default for Menus {
             ssh_menu: default_ssh_menu(),
             usb_menu: default_usb_menu(),
             discord_voice_menu: default_discord_voice_menu(),
+            crashes_menu: default_crashes_menu(),
             privacy_menu: default_privacy_menu(),
             vpn_indicator_menu: default_vpn_indicator_menu(),
             translate_menu: default_translate_menu(),

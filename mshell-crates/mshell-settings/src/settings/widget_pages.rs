@@ -250,6 +250,12 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
             icon: "call-start-symbolic",
         },
         WidgetEntry::Menu {
+            kind: MenuKind::Crashes,
+            stack_name: "crashes",
+            label: "Crashes",
+            icon: "dialog-warning-symbolic",
+        },
+        WidgetEntry::Menu {
             kind: MenuKind::MargoLayout,
             stack_name: "margo_layout",
             label: "Margo Layout Switcher",

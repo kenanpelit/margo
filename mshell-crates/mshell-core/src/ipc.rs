@@ -259,6 +259,9 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::HiddenBar(verb, target) => {
                     app_sender.emit(ShellInput::HiddenBar(verb, target));
                 }
+                IPCCommand::Crashes => {
+                    app_sender.emit(ShellInput::ToggleCrashesMenu(active_monitor().await));
+                }
                 IPCCommand::SshSessions => {
                     app_sender.emit(ShellInput::ToggleSshSessionsMenu(active_monitor().await));
                 }
@@ -721,6 +724,7 @@ enum IPCCommand {
     SshSessions,
     Usb,
     DiscordVoice,
+    Crashes,
     Vpn,
     Ai,
     Dns,

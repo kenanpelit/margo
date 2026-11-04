@@ -23,6 +23,9 @@ use crate::menus::menu_widgets::control_center::control_center_menu_widget::{
 use crate::menus::menu_widgets::cpu_dashboard::cpu_dashboard_menu_widget::{
     CpuDashboardMenuWidgetInput, CpuDashboardMenuWidgetModel,
 };
+use crate::menus::menu_widgets::crashes::crashes_menu_widget::{
+    CrashesMenuWidgetInput, CrashesMenuWidgetModel,
+};
 use crate::menus::menu_widgets::dns::dns_menu_widget::{DnsMenuWidgetInput, DnsMenuWidgetModel};
 use crate::menus::menu_widgets::ip::ip_menu_widget::{IpMenuWidgetInput, IpMenuWidgetModel};
 use crate::menus::menu_widgets::keep_awake::keep_awake_menu_widget::{
@@ -147,6 +150,8 @@ pub(crate) enum MenuType {
     /// `usb` bar pill's panel — removable drives (udisks2).
     Usb,
     DiscordVoice,
+    /// Crash history + this boot's journal errors (`crashes` menu).
+    Crashes,
     /// `privacy` bar pill's panel — live "in use now" rows + a
     /// clearable mic / camera / screen-share access log.
     Privacy,
@@ -595,6 +600,12 @@ impl Component for MenuModel {
                 effect_min_width!(effects, base_config, sender, control_center_menu);
                 effect_max_height!(effects, base_config, sender, control_center_menu);
             }
+            MenuType::Crashes => {
+                css_class = "quick-settings-menu crashes-menu".to_string();
+                effect_widgets!(effects, base_config, sender, crashes_menu);
+                effect_min_width!(effects, base_config, sender, crashes_menu);
+                effect_max_height!(effects, base_config, sender, crashes_menu);
+            }
             MenuType::SshSessions => {
                 css_class = "ssh-sessions-menu".to_string();
                 effect_widgets!(effects, base_config, sender, ssh_menu);
@@ -905,6 +916,14 @@ impl Component for MenuModel {
                         controller
                             .sender()
                             .send(NotificationsInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<CrashesMenuWidgetModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(CrashesMenuWidgetInput::ParentRevealChanged(visible))
                             .ok();
                     }
                     if let Some(controller) =

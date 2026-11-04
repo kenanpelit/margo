@@ -1,0 +1,66 @@
+// Crashes menu — panel header (§12), a segmented Crashes · Journal errors
+// switch (`.ok-button-surface.selected`, like the VPN mode row), and the
+// rows in one boxed-list card (§5). Tokens only (§1); severity per §2.
+
+.crashes-menu-widget {
+  padding: var(--space-1);
+}
+
+// Size-equal segments; the selected one is filled by the primitive.
+.crashes-tabs > button {
+  min-width: 0;
+}
+
+// Keep the list + scroller transparent so a short list doesn't paint a
+// dark band (§5 "dark band" rule).
+.crashes-menu scrolledwindow,
+.crashes-list {
+  background-color: transparent;
+}
+.crashes-list.ok-boxed-list {
+  background-color: var(--card-bg);
+}
+
+.crashes-row-title {
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
+.crashes-row-subtitle {
+  font-size: var(--font-xs);
+  color: var(--on-surface-variant);
+}
+
+// Loading / empty / no-service line (§17): calm and dim. An error tints
+// with the danger ladder instead.
+.crashes-status {
+  color: var(--on-surface-variant);
+  padding: var(--space-2);
+
+  &.danger {
+    color: var(--error);
+  }
+}
+
+// Journal priority chip — severity ladder (§2).
+.crashes-priority {
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  background-color: var(--surface-container-high);
+  color: var(--on-surface-variant);
+
+  &.warn {
+    color: var(--warning);
+  }
+  &.danger {
+    color: var(--error);
+  }
+}
+
+// Per-program mute: a quiet icon button; muted = selected fill.
+.crashes-mute {
+  min-width: 0;
+  padding: var(--space-1);
+}

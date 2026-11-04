@@ -137,6 +137,9 @@ pub enum MenuWidget {
     /// LUKS unlock / lock and safe removal (udisks2).
     Usb,
     DiscordVoice,
+    /// Crash history (systemd-coredump, your own processes) with
+    /// per-program mute, plus this boot's journal errors.
+    Crashes,
     ThemePicker,
     /// `translate` bar pill's panel — source/target language picker +
     /// swap, manual entry, result card, and a short history list.
@@ -214,6 +217,7 @@ impl MenuWidget {
             MenuWidget::SshSessions => "SSH Sessions",
             MenuWidget::Usb => "USB Drives",
             MenuWidget::DiscordVoice => "Discord Voice",
+            MenuWidget::Crashes => "Crashes",
             MenuWidget::ThemePicker => "Theme Picker",
             MenuWidget::Translate => "Translate",
             MenuWidget::Wallpaper => "Wallpaper",
@@ -285,6 +289,7 @@ impl MenuWidget {
             MenuWidget::SshSessions,
             MenuWidget::Usb,
             MenuWidget::DiscordVoice,
+            MenuWidget::Crashes,
             MenuWidget::ThemePicker,
             MenuWidget::Translate,
             MenuWidget::Wallpaper,

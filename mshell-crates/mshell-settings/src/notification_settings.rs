@@ -1,7 +1,8 @@
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
-    ConfigStoreFields, MenuStoreFields, MenusStoreFields, NotificationsStoreFields,
+    ConfigStoreFields, CrashesConfigStoreFields, MenuStoreFields, MenusStoreFields,
+    NotificationsStoreFields,
 };
 use mshell_config::schema::position::NotificationPosition;
 use reactive_graph::prelude::{Get, GetUntracked};
@@ -26,6 +27,7 @@ pub(crate) struct NotificationSettingsModel {
     inline_reply: bool,
     show_progress: bool,
     auto_dnd: bool,
+    crash_notify: bool,
     sound_enabled: bool,
     sound_low: bool,
     sound_normal: bool,
@@ -65,6 +67,8 @@ pub(crate) enum NotificationSettingsInput {
     ShowProgressChanged(bool),
     AutoDndChanged(bool),
     AutoDndEffect(bool),
+    CrashNotifyChanged(bool),
+    CrashNotifyEffect(bool),
     SoundEnabledChanged(bool),
     SoundLowChanged(bool),
     SoundNormalChanged(bool),
@@ -531,6 +535,44 @@ impl Component for NotificationSettingsModel {
                             connect_active_notify[sender] => move |s| {
                                 sender.input(NotificationSettingsInput::AutoDndChanged(s.is_active()));
                             } @auto_dnd_handler,
+                        },
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/crashes/notify",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Crash notifications",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Notify when one of your programs crashes (systemd-coredump). The Crashes menu lists them and mutes single programs.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        #[name = "crash_notify_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(crash_notify_handler)]
+                            set_active: model.crash_notify,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(NotificationSettingsInput::CrashNotifyChanged(s.is_active()));
+                            } @crash_notify_handler,
                         },
                     },
 
@@ -1150,12 +1192,18 @@ impl Component for NotificationSettingsModel {
                 .get();
             sender_clone.input(NotificationSettingsInput::AutoDndEffect(v));
         });
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let v = config_manager().config().crashes().notify().get();
+            sender_clone.input(NotificationSettingsInput::CrashNotifyEffect(v));
+        });
 
         let (sound_rules_section, sound_rules_effects) =
             crate::notification_sound_rules::build_sound_rules_section();
 
         let model = NotificationSettingsModel {
             _sound_rules_effects: sound_rules_effects,
+            crash_notify: config_manager().config().crashes().notify().get_untracked(),
             auto_dnd: config_manager()
                 .config()
                 .notifications()
@@ -1414,6 +1462,13 @@ impl Component for NotificationSettingsModel {
             }
             NotificationSettingsInput::AutoDndEffect(v) => {
                 self.auto_dnd = v;
+            }
+            NotificationSettingsInput::CrashNotifyChanged(v) => {
+                self.crash_notify = v;
+                config_manager().update_config(|c| c.crashes.notify = v);
+            }
+            NotificationSettingsInput::CrashNotifyEffect(v) => {
+                self.crash_notify = v;
             }
             NotificationSettingsInput::ShowProgressChanged(v) => {
                 self.show_progress = v;

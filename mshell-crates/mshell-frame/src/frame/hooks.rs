@@ -16,4 +16,11 @@ pub(super) fn push_background_hooks(effects: &mut EffectScope) {
             crate::bars::bar_widgets::privacy::auto_dnd::ensure_started();
         }
     });
+
+    // Crash notifications (systemd-coredump watcher).
+    effects.push(move |_| {
+        if config_manager().config().crashes().notify().get() {
+            crate::crashes::ensure_watcher();
+        }
+    });
 }

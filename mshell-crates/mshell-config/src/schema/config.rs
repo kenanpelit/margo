@@ -17,12 +17,14 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 mod bars;
+mod crashes;
 mod dock;
 mod menus;
 mod notifications;
 mod system;
 mod theme;
 pub use bars::*;
+pub use crashes::*;
 pub use dock::*;
 pub use menus::*;
 pub use notifications::*;
@@ -38,6 +40,7 @@ pub struct Config {
     pub bars: Bars,
     pub menus: Menus,
     pub notifications: Notifications,
+    pub crashes: CrashesConfig,
     pub wallpaper: Wallpaper,
     pub tempo: Tempo,
     pub idle: Idle,
