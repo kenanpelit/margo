@@ -1353,6 +1353,7 @@ fn main() -> Result<()> {
             line_text: String::new(),
         }];
     }
+    margo.check_config_at_boot();
 
     // Hidden workspaces do not participate in an output's normal vblank walk,
     // but frame-throttled clients still need callback-only liveness. This one

@@ -415,10 +415,11 @@ enum Command {
         action: ConfigCmd,
     },
 
-    /// Show config diagnostics from the last reload (niri-style)
+    /// Show the running compositor's config diagnostics (niri-style)
     ///
-    /// Hyprland's `hyprctl configerrors` analogue. Empty when the
-    /// last reload was clean. Reads from the live compositor (via
+    /// Hyprland's `hyprctl configerrors` analogue: what margo's config
+    /// check found at startup, then after each reload. Empty when the
+    /// config is clean. Reads from the live compositor (via
     /// the same state snapshot IPC `mctl status` uses), so it reflects
     /// what the compositor actually applied — not what
     /// `check-config` thinks about the file on disk right now.

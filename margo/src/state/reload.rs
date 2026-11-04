@@ -55,6 +55,44 @@ impl MargoState {
         }
     }
 
+    /// Run the config checker once after boot: its diagnostics go into
+    /// `last_reload_diagnostics` (so `mctl config-errors` lists them right
+    /// away, after any `E-BOOT` entry), errors arm the config-error banner,
+    /// and a notification with the counts follows a few seconds later, once
+    /// the shell's notification daemon is likely up. Without this, warnings
+    /// stayed invisible until the first reload.
+    pub fn check_config_at_boot(&mut self) {
+        let diagnostics = margo_config::validator::boot_diagnostics(self.config_path.as_deref());
+        if diagnostics.iter().any(|d| d.is_error()) {
+            self.config_error_overlay_until =
+                Some(std::time::Instant::now() + std::time::Duration::from_secs(10));
+            self.request_repaint();
+        }
+        if let Some((summary, body)) = margo_config::diagnostics::problem_notification(&diagnostics)
+        {
+            tracing::warn!("{summary}: {body}");
+            let timer = calloop::timer::Timer::from_duration(std::time::Duration::from_secs(8));
+            let inserted = self.loop_handle.insert_source(timer, move |_, _, _| {
+                let _ = crate::utils::spawn([
+                    "notify-send",
+                    "-a",
+                    "margo",
+                    "-i",
+                    "dialog-warning",
+                    "-t",
+                    "8000",
+                    summary.as_str(),
+                    body.as_str(),
+                ]);
+                calloop::timer::TimeoutAction::Drop
+            });
+            if let Err(error) = inserted {
+                tracing::warn!(?error, "boot config notification: timer insert failed");
+            }
+        }
+        self.last_reload_diagnostics.extend(diagnostics);
+    }
+
     /// Explicit reload (`mctl reload`, the reload keybind).
     pub fn reload_config(&mut self) -> Result<()> {
         self.reload_config_inner(false, false)

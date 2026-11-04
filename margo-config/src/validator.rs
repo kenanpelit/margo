@@ -98,6 +98,23 @@ pub fn validate_config(path: Option<&Path>) -> std::io::Result<DiagnosticReport>
     Ok(report)
 }
 
+/// The validator's report on the config margo just booted with, for
+/// `mctl config-errors` and the banner — so the diagnostics are visible
+/// right after login, not only after the first reload. Empty when the file
+/// doesn't exist or can't be read: margo then runs on defaults or a saved
+/// generation and reports that on its own (`E-BOOT`).
+pub fn boot_diagnostics(path: Option<&Path>) -> Vec<ConfigDiagnostic> {
+    let Ok(resolved) = resolve_config_path(path) else {
+        return Vec::new();
+    };
+    if std::fs::File::open(&resolved).is_err() {
+        return Vec::new();
+    }
+    validate_config(Some(&resolved))
+        .map(|r| r.diagnostics)
+        .unwrap_or_default()
+}
+
 /// W004: flag every bind entry that is shadowed by an earlier one with
 /// the same normalised MODS+KEY combo.
 fn check_bind_conflicts(binds: &[BindEntry], report: &mut DiagnosticReport) {
@@ -1968,5 +1985,15 @@ mod tests {
                 "code {c} is emitted but not documented in the module docs"
             );
         }
+    }
+
+    #[test]
+    fn boot_diagnostics_reports_the_booted_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let main = dir.path().join("config.conf");
+        std::fs::write(&main, "borderpx = 2\nwindowrule = opacity:1.0\n").unwrap();
+        let d = boot_diagnostics(Some(&main));
+        assert!(d.iter().any(|d| d.code == "W008"), "{d:?}");
+        assert!(boot_diagnostics(Some(&dir.path().join("missing.conf"))).is_empty());
     }
 }

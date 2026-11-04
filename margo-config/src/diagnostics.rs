@@ -235,6 +235,31 @@ pub fn reload_force_requested(arg: Option<&str>) -> bool {
     arg.is_some_and(|a| a.trim().eq_ignore_ascii_case("force"))
 }
 
+/// The desktop notification for a set of diagnostics — `(summary, body)`,
+/// or `None` when there is nothing to report. Used after boot, where the
+/// errors and warnings would otherwise only be found by running
+/// `mctl config-errors` on a hunch.
+pub fn problem_notification(diagnostics: &[ConfigDiagnostic]) -> Option<(String, String)> {
+    let errors = diagnostics.iter().filter(|d| d.is_error()).count();
+    let warnings = diagnostics.len() - errors;
+    let plural = |n: usize| if n == 1 { "" } else { "s" };
+    match (errors, warnings) {
+        (0, 0) => None,
+        (0, w) => Some((
+            "Margo: config has warnings".to_string(),
+            format!("{w} warning{} — run `mctl config-errors`", plural(w)),
+        )),
+        (e, w) => Some((
+            "Margo: config has errors".to_string(),
+            format!(
+                "{e} error{}, {w} warning{} — run `mctl config-errors`",
+                plural(e),
+                plural(w)
+            ),
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -286,5 +311,21 @@ mod tests {
         assert!(!reload_force_requested(None));
         assert!(!reload_force_requested(Some("")));
         assert!(!reload_force_requested(Some("1")));
+    }
+
+    #[test]
+    fn notification_counts_errors_and_warnings() {
+        assert_eq!(problem_notification(&[]), None);
+        let (title, body) = problem_notification(&[diag(Severity::Warning)]).unwrap();
+        assert!(title.contains("warnings"), "{title}");
+        assert_eq!(body, "1 warning — run `mctl config-errors`");
+        let (title, body) = problem_notification(&[
+            diag(Severity::Error),
+            diag(Severity::Warning),
+            diag(Severity::Warning),
+        ])
+        .unwrap();
+        assert!(title.contains("errors"), "{title}");
+        assert_eq!(body, "1 error, 2 warnings — run `mctl config-errors`");
     }
 }
