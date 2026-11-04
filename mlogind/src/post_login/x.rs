@@ -7,6 +7,7 @@ use std::env;
 use std::error::Error;
 use std::fmt::Display;
 use std::fs::remove_file;
+use std::io::Write;
 use std::process::{Command, Stdio};
 use std::sync::atomic::AtomicBool;
 use std::{thread, time};
@@ -71,6 +72,23 @@ fn split_command(configured: &str) -> Option<(String, Vec<String>)> {
     Some((program, words.collect()))
 }
 
+/// How to write the session's MIT cookie into `xauth_file`: program, argv and
+/// the script fed to its stdin.
+///
+/// The cookie goes through stdin (`xauth -q -f <file> source -`), as startx and
+/// xinit do. On the command line it was readable by every local account in
+/// `/proc/<pid>/cmdline` for as long as xauth ran.
+fn xauth_invocation(
+    configured: &str,
+    xauth_file: &str,
+    display: &str,
+    cookie: &str,
+) -> Option<(String, Vec<String>, String)> {
+    let (program, mut args) = split_command(configured)?;
+    args.extend(["-q", "-f", xauth_file, "source", "-"].map(str::to_string));
+    Some((program, args, format!("add {display} . {cookie}\n")))
+}
+
 static X_HAS_STARTED: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
 
 fn handle_sigusr1(_: i32) {
@@ -102,30 +120,38 @@ pub fn setup_x(user_info: &UserInfo, config: &Config) -> Result<SessionChild, XS
     // a `root` permission `.Xauthority` file there.
     let _ = remove_file(&xauth_path);
 
-    let (xauth, mut xauth_args) =
-        split_command(&config.x11.xauth_path).ok_or(XSetupError::FillingXAuth)?;
-    xauth_args.extend([
-        "add".to_string(),
-        display_value.clone(),
-        ".".to_string(),
-        mcookie(),
-    ]);
-    Command::new(xauth)
+    let xauth_path = xauth_path.to_str().ok_or(XSetupError::InvalidUTF8Path)?;
+    let (xauth, xauth_args, xauth_script) = xauth_invocation(
+        &config.x11.xauth_path,
+        xauth_path,
+        &display_value,
+        &mcookie(),
+    )
+    .ok_or(XSetupError::FillingXAuth)?;
+    let fill_failed = |reason: &dyn Display| {
+        error!("Failed to fill Xauthority file with `xauth`. Reason: {reason}");
+        XSetupError::FillingXAuth
+    };
+    let mut xauth_child = Command::new(xauth)
         .args(&xauth_args)
         .uid(user_info.uid)
         .gid(user_info.primary_gid)
+        .stdin(Stdio::piped())
         .stdout(Stdio::null()) // TODO: Maybe this should be logged or something?
         .stderr(Stdio::null()) // TODO: Maybe this should be logged or something?
-        .status()
-        .map_err(|err| {
-            error!(
-                "Failed to fill Xauthority file with `xauth`. Reason: {}",
-                err
-            );
-            XSetupError::FillingXAuth
-        })?;
+        .spawn()
+        .map_err(|err| fill_failed(&err))?;
+    // Write the script, then drop the pipe so xauth sees EOF.
+    let written = match xauth_child.stdin.take() {
+        Some(mut stdin) => stdin.write_all(xauth_script.as_bytes()),
+        None => Err(std::io::Error::other("no stdin pipe")),
+    };
+    let status = xauth_child.wait().map_err(|err| fill_failed(&err))?;
+    written.map_err(|err| fill_failed(&err))?;
+    if !status.success() {
+        return Err(fill_failed(&status));
+    }
 
-    let xauth_path = xauth_path.to_str().ok_or(XSetupError::InvalidUTF8Path)?;
     // SAFETY: mlogind is single-threaded, so no other thread can be reading
     // the environment while this writes it.
     unsafe { std::env::set_var("XAUTHORITY", xauth_path) };
@@ -218,7 +244,25 @@ pub fn setup_x(user_info: &UserInfo, config: &Config) -> Result<SessionChild, XS
 
 #[cfg(test)]
 mod tests {
-    use super::split_command;
+    use super::{split_command, xauth_invocation};
+
+    #[test]
+    fn the_cookie_goes_to_xauth_on_stdin_never_in_argv() {
+        let cookie = "0123456789abcdef0123456789abcdef";
+        let (program, args, script) =
+            xauth_invocation("/usr/bin/xauth", "/home/u/.Xauthority", ":1", cookie).unwrap();
+        assert_eq!(program, "/usr/bin/xauth");
+        assert_eq!(args, ["-q", "-f", "/home/u/.Xauthority", "source", "-"]);
+        assert!(args.iter().all(|a| !a.contains(cookie)));
+        assert_eq!(script, format!("add :1 . {cookie}\n"));
+    }
+
+    #[test]
+    fn configured_xauth_flags_come_before_the_script() {
+        let (_, args, _) = xauth_invocation("xauth -v", "/f", ":0", "c").unwrap();
+        assert_eq!(args, ["-v", "-q", "-f", "/f", "source", "-"]);
+        assert!(xauth_invocation("  ", "/f", ":0", "c").is_none());
+    }
 
     #[test]
     fn a_plain_path_is_the_program_with_no_arguments() {
