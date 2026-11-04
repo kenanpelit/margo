@@ -8,6 +8,7 @@
 //! count-only probe via dnf / apt (no per-package versions).
 
 pub(crate) mod news;
+pub(crate) mod run;
 pub(crate) mod size;
 
 use mshell_config::config_manager::config_manager;
@@ -404,6 +405,77 @@ pub(crate) async fn which(binary: &str) -> bool {
         .await
         .map(|s| s.success())
         .unwrap_or(false)
+}
+
+// ── Fresh reports (published after a background run) ────────────
+
+fn fresh_channel() -> &'static (
+    tokio::sync::watch::Sender<Option<UpdateReport>>,
+    tokio::sync::watch::Receiver<Option<UpdateReport>>,
+) {
+    static CH: std::sync::OnceLock<(
+        tokio::sync::watch::Sender<Option<UpdateReport>>,
+        tokio::sync::watch::Receiver<Option<UpdateReport>>,
+    )> = std::sync::OnceLock::new();
+    CH.get_or_init(|| tokio::sync::watch::channel(None))
+}
+
+/// Every pill + panel listens here so one re-probe after a run updates
+/// all monitors (instead of each one probing — and prompting — again).
+pub(crate) fn subscribe_reports() -> tokio::sync::watch::Receiver<Option<UpdateReport>> {
+    fresh_channel().1.clone()
+}
+
+pub(crate) fn publish_report(report: UpdateReport) {
+    save_cache(&report);
+    let _ = fresh_channel().0.send(Some(report));
+}
+
+// ── Upgrade dispatch ────────────────────────────────────────────
+
+/// Which upgrade steps apply on this machine for the enabled sources.
+pub(crate) async fn upgrade_plan(cfg: ProbeConfig) -> run::UpgradePlan {
+    let system = (cfg.repo || cfg.aur) && which("pacman").await;
+    let aur_helper = if !cfg.aur {
+        None
+    } else if which("paru").await {
+        Some("paru".to_string())
+    } else if which("yay").await {
+        Some("yay".to_string())
+    } else {
+        None
+    };
+    run::UpgradePlan {
+        aur_helper,
+        system,
+        flatpak: cfg.flatpak && which("flatpak").await,
+    }
+}
+
+/// Run the upgrade the configured way. `expected` (the pending count)
+/// sizes the background progress bar.
+pub(crate) async fn launch_upgrade(cfg: ProbeConfig, expected: usize) -> Result<(), String> {
+    use mshell_config::schema::config::SystemUpdateMode;
+    let mode = config_manager()
+        .config()
+        .bars()
+        .widgets()
+        .system_update()
+        .update_mode()
+        .get_untracked();
+    match mode {
+        SystemUpdateMode::Terminal => {
+            launch_terminal_upgrade(cfg).await;
+            Ok(())
+        }
+        SystemUpdateMode::Background => {
+            if !which("pkexec").await {
+                return Err("pkexec (polkit) is not installed".into());
+            }
+            let plan = upgrade_plan(cfg).await;
+            run::start(run::background_steps(&plan), expected)
+        }
+    }
 }
 
 // ── Upgrade: open a terminal running the full upgrade ───────────

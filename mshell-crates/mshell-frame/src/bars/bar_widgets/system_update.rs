@@ -166,12 +166,23 @@ impl Component for SystemUpdateModel {
                 let shutdown_fut = shutdown.wait();
                 tokio::pin!(shutdown_fut);
                 let mut next_delay = first_delay;
+                // Re-checks published by the background-upgrade watcher.
+                let mut fresh = system_update::subscribe_reports();
                 loop {
                     let manual;
                     tokio::select! {
                         () = &mut shutdown_fut => break,
                         _ = tokio::time::sleep(next_delay) => { manual = false; }
                         _ = notify.notified() => { manual = true; }
+                        Ok(()) = fresh.changed() => {
+                            let report = fresh.borrow_and_update().clone();
+                            if let Some(report) = report {
+                                LAST_PROBE_SECS.store(system_update::now_secs(), Ordering::Relaxed);
+                                let _ = out.send(SystemUpdateCommandOutput::Refreshed(report));
+                            }
+                            next_delay = configured_interval();
+                            continue;
+                        }
                     }
 
                     let interval = configured_interval().as_secs();

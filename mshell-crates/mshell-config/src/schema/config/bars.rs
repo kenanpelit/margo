@@ -432,6 +432,38 @@ pub struct SystemUpdateBarWidget {
     /// Fetch the Arch Linux news feed when the panel opens and flag
     /// posts published since the last full upgrade before upgrading.
     pub check_news: bool,
+    /// How the panel's Update button runs the upgrade: in a terminal
+    /// (interactive, the default) or in the background through polkit
+    /// with a live log + result notification.
+    pub update_mode: SystemUpdateMode,
+}
+
+/// How [`SystemUpdateBarWidget`] runs an upgrade.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SystemUpdateMode {
+    /// A terminal window with the usual interactive `-Syu` (prompts,
+    /// PKGBUILD review and sudo work as on the command line).
+    #[default]
+    Terminal,
+    /// Detached and non-interactive: `pkexec` asks for the password,
+    /// the panel tails the log, a notification reports the result.
+    Background,
+}
+
+impl PatchField for SystemUpdateMode {
+    fn patch_field(
+        &mut self,
+        new: Self,
+        path: &StorePath,
+        notify: &mut dyn FnMut(&StorePath),
+        _keys: Option<&KeyMap>,
+    ) {
+        if *self != new {
+            *self = new;
+            notify(path);
+        }
+    }
 }
 
 impl Default for SystemUpdateBarWidget {
@@ -442,6 +474,7 @@ impl Default for SystemUpdateBarWidget {
             check_aur: true,
             check_flatpak: true,
             check_news: true,
+            update_mode: SystemUpdateMode::default(),
         }
     }
 }

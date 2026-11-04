@@ -107,3 +107,21 @@
     color: var(--warning);
   }
 }
+
+// Background upgrade card: status line, progress bar, and the last
+// lines of the log in the same monospace tier as the version column.
+.system-update-run {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container);
+
+  label.danger {
+    color: var(--error);
+  }
+}
+
+.system-update-log {
+  font-family: monospace;
+  font-size: var(--font-2xs);
+  color: var(--on-surface-variant);
+}

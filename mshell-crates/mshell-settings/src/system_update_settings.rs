@@ -10,6 +10,7 @@
 //! last check across restarts).
 
 use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::SystemUpdateMode;
 use mshell_config::schema::position::Position;
 use reactive_graph::traits::GetUntracked;
 use relm4::gtk::glib;
@@ -33,6 +34,7 @@ pub(crate) enum SystemUpdateSettingsInput {
     SetCheckAur(bool),
     SetCheckFlatpak(bool),
     SetCheckNews(bool),
+    SetUpdateMode(u32),
 }
 
 #[derive(Debug)]
@@ -243,6 +245,34 @@ impl Component for SystemUpdateSettingsModel {
                             },
                         },
                     },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/bars/widgets/system_update/update_mode",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_hexpand: true,
+                            gtk::Label { set_label: "Run upgrades", set_halign: gtk::Align::Start },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                add_css_class: "dim-label",
+                                set_label: "Background: polkit asks for the password, the panel shows the live log, a notification reports the result.",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                            },
+                        },
+                        #[name = "mode_dd"]
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&gtk::StringList::new(&["In a terminal", "In the background"])),
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(SystemUpdateSettingsInput::SetUpdateMode(d.selected()));
+                            },
+                        },
+                    },
                 },
             },
         }
@@ -279,6 +309,10 @@ impl Component for SystemUpdateSettingsModel {
         widgets.su_aur.set_active(su.check_aur);
         widgets.su_flatpak.set_active(su.check_flatpak);
         widgets.su_news.set_active(su.check_news);
+        widgets.mode_dd.set_selected(match su.update_mode {
+            SystemUpdateMode::Terminal => 0,
+            SystemUpdateMode::Background => 1,
+        });
 
         let _ = root;
         ComponentParts { model, widgets }
@@ -313,6 +347,15 @@ impl Component for SystemUpdateSettingsModel {
             }
             SystemUpdateSettingsInput::SetCheckFlatpak(on) => {
                 config_manager().update_config(|c| c.bars.widgets.system_update.check_flatpak = on);
+            }
+            SystemUpdateSettingsInput::SetUpdateMode(i) => {
+                let mode = if i == 1 {
+                    SystemUpdateMode::Background
+                } else {
+                    SystemUpdateMode::Terminal
+                };
+                config_manager()
+                    .update_config(move |c| c.bars.widgets.system_update.update_mode = mode);
             }
             SystemUpdateSettingsInput::SetCheckNews(on) => {
                 config_manager().update_config(|c| c.bars.widgets.system_update.check_news = on);

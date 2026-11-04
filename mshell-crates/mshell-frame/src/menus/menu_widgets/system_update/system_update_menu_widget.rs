@@ -5,10 +5,12 @@
 //! Update buttons. Probing lives in [`crate::system_update`].
 
 use crate::system_update::news::{self, NewsItem};
+use crate::system_update::run::{self, RunStatus};
 use crate::system_update::{self, ProbeConfig, Source, UpdateReport};
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
     BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, SystemUpdateBarWidgetStoreFields,
+    SystemUpdateMode,
 };
 use mshell_process::SpawnReaped;
 use reactive_graph::traits::GetUntracked;
@@ -30,6 +32,10 @@ pub(crate) struct SystemUpdateMenuWidgetModel {
     /// Update was pressed while news was unread: the news card is
     /// raised and the button now reads "Upgrade anyway".
     news_confirm: bool,
+    /// Background upgrade state (shared by every panel instance).
+    run: RunStatus,
+    /// Why the last background start failed (no pkexec, …).
+    run_error: Option<String>,
 }
 
 #[derive(Debug)]
@@ -50,6 +56,8 @@ pub(crate) enum SystemUpdateMenuWidgetInput {
     MarkNewsRead,
     /// Open a news post (or the news page) in the browser.
     OpenUrl(String),
+    /// Hide a finished background run's card.
+    DismissRun,
 }
 
 #[derive(Debug)]
@@ -65,6 +73,10 @@ pub(crate) enum SystemUpdateMenuWidgetCommandOutput {
     /// Unread Arch news (empty on a fetch error — the heads-up is
     /// advisory, a failed fetch must not block the upgrade).
     News(Vec<NewsItem>),
+    /// Background-run status changed.
+    Run(RunStatus),
+    /// A background start failed.
+    LaunchFailed(String),
 }
 
 #[relm4::component(pub(crate))]
@@ -233,12 +245,76 @@ impl Component for SystemUpdateMenuWidgetModel {
                 },
             },
 
-            // Update button — runs the upgrade in a terminal.
+            // Background upgrade: status, progress, live log tail.
+            gtk::Box {
+                add_css_class: "system-update-run",
+                set_orientation: gtk::Orientation::Vertical,
+                set_spacing: 6,
+                #[watch]
+                set_visible: model.run != RunStatus::Idle || model.run_error.is_some(),
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 8,
+                    gtk::Label {
+                        set_hexpand: true,
+                        set_xalign: 0.0,
+                        set_wrap: true,
+                        #[watch]
+                        set_css_classes: &run_title_classes(&model.run, model.run_error.is_some()),
+                        #[watch]
+                        set_label: &run_title(&model.run, model.run_error.as_deref()),
+                    },
+                    gtk::Button {
+                        add_css_class: "ok-button-flat",
+                        set_valign: gtk::Align::Center,
+                        set_label: "Open log",
+                        #[watch]
+                        set_visible: model.run != RunStatus::Idle,
+                        connect_clicked[sender] => move |_| {
+                            sender.input(SystemUpdateMenuWidgetInput::OpenUrl(
+                                run::log_path().to_string_lossy().into_owned(),
+                            ));
+                        },
+                    },
+                    gtk::Button {
+                        add_css_class: "ok-button-flat",
+                        set_valign: gtk::Align::Center,
+                        set_label: "Dismiss",
+                        #[watch]
+                        set_visible: !matches!(model.run, RunStatus::Running { .. }),
+                        connect_clicked[sender] => move |_| {
+                            sender.input(SystemUpdateMenuWidgetInput::DismissRun);
+                        },
+                    },
+                },
+
+                gtk::ProgressBar {
+                    #[watch]
+                    set_visible: model.run != RunStatus::Idle,
+                    #[watch]
+                    set_fraction: run_fraction(&model.run),
+                },
+
+                gtk::Label {
+                    add_css_class: "system-update-log",
+                    set_xalign: 0.0,
+                    set_selectable: true,
+                    set_ellipsize: gtk::pango::EllipsizeMode::End,
+                    #[watch]
+                    set_visible: model.run != RunStatus::Idle,
+                    #[watch]
+                    set_label: &run_tail(&model.run),
+                },
+            },
+
+            // Update button — terminal or background, per update_mode.
             gtk::Button {
                 add_css_class: "ok-button-primary",
                 set_halign: gtk::Align::Fill,
                 #[watch]
-                set_sensitive: model.report.as_ref().is_some_and(|r| !r.is_empty()),
+                set_sensitive: model.report.as_ref().is_some_and(|r| !r.is_empty())
+                    && !matches!(model.run, RunStatus::Running { .. }),
                 connect_clicked[sender] => move |_| {
                     sender.input(SystemUpdateMenuWidgetInput::Update);
                 },
@@ -273,8 +349,36 @@ impl Component for SystemUpdateMenuWidgetModel {
             sources: ProbeConfig::from_config(),
             news: Vec::new(),
             news_confirm: false,
+            run: run::status(),
+            run_error: None,
         };
         let widgets = view_output!();
+
+        // Follow the (single, process-wide) background-run watcher and
+        // the re-check it publishes when a run ends.
+        run::ensure_watcher();
+        sender.command(|out, shutdown| async move {
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            let mut status = run::subscribe();
+            let mut fresh = system_update::subscribe_reports();
+            loop {
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    Ok(()) = status.changed() => {
+                        let s = status.borrow_and_update().clone();
+                        let _ = out.send(SystemUpdateMenuWidgetCommandOutput::Run(s));
+                    }
+                    Ok(()) = fresh.changed() => {
+                        let r = fresh.borrow_and_update().clone();
+                        if let Some(r) = r {
+                            let _ = out.send(SystemUpdateMenuWidgetCommandOutput::Loaded(r));
+                        }
+                    }
+                    else => break,
+                }
+            }
+        });
         ComponentParts { model, widgets }
     }
 
@@ -325,12 +429,27 @@ impl Component for SystemUpdateMenuWidgetModel {
                     .arg(url)
                     .spawn_reaped();
             }
+            SystemUpdateMenuWidgetInput::DismissRun => {
+                self.run_error = None;
+                run::dismiss();
+            }
             SystemUpdateMenuWidgetInput::Update => {
                 self.news_confirm = false;
-                relm4::spawn(async {
-                    system_update::launch_terminal_upgrade(ProbeConfig::from_config()).await;
+                self.run_error = None;
+                let expected = self.report.as_ref().map_or(0, |r| r.total());
+                let background = update_mode() == SystemUpdateMode::Background;
+                sender.oneshot_command(async move {
+                    match system_update::launch_upgrade(ProbeConfig::from_config(), expected).await
+                    {
+                        Ok(()) => SystemUpdateMenuWidgetCommandOutput::Run(run::status()),
+                        Err(e) => SystemUpdateMenuWidgetCommandOutput::LaunchFailed(e),
+                    }
                 });
-                let _ = sender.output(SystemUpdateMenuWidgetOutput::CloseMenu);
+                // Terminal mode hands off to the terminal window; the
+                // background mode keeps the panel open on the live log.
+                if !background {
+                    let _ = sender.output(SystemUpdateMenuWidgetOutput::CloseMenu);
+                }
             }
             SystemUpdateMenuWidgetInput::ToggleSource(source, active) => {
                 let current = match source {
@@ -372,12 +491,65 @@ impl Component for SystemUpdateMenuWidgetModel {
                 rebuild_list(&widgets.list, &report);
                 self.report = Some(report);
             }
+            SystemUpdateMenuWidgetCommandOutput::Run(status) => self.run = status,
+            SystemUpdateMenuWidgetCommandOutput::LaunchFailed(e) => self.run_error = Some(e),
             SystemUpdateMenuWidgetCommandOutput::News(items) => {
                 rebuild_news(&widgets.news_list, &items, &sender);
                 self.news = items;
             }
         }
         self.update_view(widgets, sender);
+    }
+}
+
+fn update_mode() -> SystemUpdateMode {
+    config_manager()
+        .config()
+        .bars()
+        .widgets()
+        .system_update()
+        .update_mode()
+        .get_untracked()
+}
+
+fn run_title(run: &RunStatus, error: Option<&str>) -> String {
+    if let Some(e) = error {
+        return format!("Couldn't start the upgrade: {e}");
+    }
+    match run {
+        RunStatus::Idle => String::new(),
+        RunStatus::Running { log, expected } if *expected > 0 => {
+            format!("Upgrading… {}/{expected}", log.done.min(*expected))
+        }
+        RunStatus::Running { .. } => "Upgrading…".to_string(),
+        RunStatus::Finished { log, .. } => run::result_message(log.exit.unwrap_or(-1), log.done).0,
+    }
+}
+
+fn run_title_classes(run: &RunStatus, error: bool) -> Vec<&'static str> {
+    let failed = error || matches!(run, RunStatus::Finished { log, .. } if log.exit != Some(0));
+    if failed {
+        vec!["label-medium-bold", "danger"]
+    } else {
+        vec!["label-medium-bold"]
+    }
+}
+
+fn run_fraction(run: &RunStatus) -> f64 {
+    match run {
+        RunStatus::Idle => 0.0,
+        RunStatus::Running { log, expected } => run::fraction(log.done, *expected),
+        RunStatus::Finished { .. } => 1.0,
+    }
+}
+
+fn run_tail(run: &RunStatus) -> String {
+    match run {
+        RunStatus::Running { log, .. } | RunStatus::Finished { log, .. } => {
+            let n = log.tail.len();
+            log.tail[n.saturating_sub(6)..].join("\n")
+        }
+        RunStatus::Idle => String::new(),
     }
 }
 
