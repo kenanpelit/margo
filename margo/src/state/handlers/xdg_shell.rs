@@ -38,7 +38,10 @@ use smithay::{
     input::Seat,
     reexports::{
         wayland_protocols::xdg::shell::server::xdg_toplevel,
-        wayland_server::protocol::{wl_output::WlOutput, wl_seat::WlSeat},
+        wayland_server::{
+            Resource,
+            protocol::{wl_output::WlOutput, wl_seat::WlSeat},
+        },
     },
     utils::{Logical, Point, Serial, Size},
     wayland::{
@@ -69,6 +72,15 @@ impl XdgShellHandler for MargoState {
         let mut client = MargoClient::new(window.clone(), mon_idx, initial_tags, &self.config);
         client.app_id = app_id.clone();
         client.title = title.clone();
+        // The owning process, from the socket's SO_PEERCRED. state.json /
+        // `mctl clients` publish it so tools can map a process (say, the
+        // terminal hosting a Claude Code session) to its window.
+        client.pid = surface
+            .wl_surface()
+            .client()
+            .and_then(|c| c.get_credentials(&self.display_handle).ok())
+            .and_then(|cred| u32::try_from(cred.pid).ok())
+            .unwrap_or(0);
 
         // Defer the actual map / rule-application / arrange / focus
         // until the first commit. Qt clients (CopyQ, KeePassXC, the

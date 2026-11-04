@@ -31,6 +31,8 @@ impl MargoState {
         client.surface_type = crate::SurfaceType::X11;
         client.title = window.x11_surface().map(|s| s.title()).unwrap_or_default();
         client.app_id = window.x11_surface().map(|s| s.class()).unwrap_or_default();
+        // _NET_WM_PID, as XWayland reports it (unset for some clients).
+        client.pid = window.x11_surface().and_then(|s| s.pid()).unwrap_or(0);
         // XWayland toplevels opt out of the tiling slide/move animation by
         // default. Animating an X11 window's slot — the tag-switch slide in
         // particular — drives some X11 clients (notably TigerVNC's vncviewer)

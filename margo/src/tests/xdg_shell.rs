@@ -347,3 +347,19 @@ fn focusing_after_monitor_move_rehomes_history_id() {
         Some(&client_id),
     );
 }
+
+#[test]
+fn new_toplevel_records_the_client_pid() {
+    // `pid` feeds state.json / `mctl clients --json`, which shell
+    // features use to map a process (a terminal hosting a Claude Code
+    // session, say) to its window. It used to stay 0 for every window.
+    // The fixture's client is this test process over a socketpair, so
+    // SO_PEERCRED reports our own pid.
+    let mut fx = Fixture::new();
+    let id = fx.add_client();
+
+    let (_toplevel, _surface) = fx.client(id).create_toplevel();
+    fx.roundtrip(id);
+
+    assert_eq!(fx.server.state.clients[0].pid, std::process::id());
+}
