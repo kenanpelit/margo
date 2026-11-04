@@ -51,6 +51,8 @@ pub struct Menus {
     pub ssh_menu: Menu,
     #[serde(default = "default_usb_menu")]
     pub usb_menu: Menu,
+    #[serde(default = "default_discord_voice_menu")]
+    pub discord_voice_menu: Menu,
     #[serde(default = "default_privacy_menu")]
     pub privacy_menu: Menu,
     /// Generic-VPN detail menu opened by the `vpn_indicator` bar pill.
@@ -366,6 +368,17 @@ pub(super) fn default_ssh_menu() -> Menu {
     }
 }
 
+/// Discord voice panel: header, call controls and a participant list
+/// with per-user volume sliders.
+pub(super) fn default_discord_voice_menu() -> Menu {
+    Menu {
+        position: Position::TopRight,
+        widgets: vec![MenuWidget::DiscordVoice],
+        minimum_width: 420,
+        maximum_height: 640,
+    }
+}
+
 pub(super) fn default_privacy_menu() -> Menu {
     Menu {
         position: Position::TopRight,
@@ -519,6 +532,7 @@ impl Default for Menus {
             control_center_menu: default_control_center_menu(),
             ssh_menu: default_ssh_menu(),
             usb_menu: default_usb_menu(),
+            discord_voice_menu: default_discord_voice_menu(),
             privacy_menu: default_privacy_menu(),
             vpn_indicator_menu: default_vpn_indicator_menu(),
             translate_menu: default_translate_menu(),

@@ -92,6 +92,7 @@ pub enum BarWidget {
     /// a volume is mounted; hidden while nothing is plugged in. Click
     /// opens the drive panel, right-click removes every drive safely.
     Usb,
+    DiscordVoice,
     LockKeys,
     /// Keyboard-layout pill — shows the active xkb layout (e.g. "US",
     /// "TR") read from margo's state.json. Click cycles to the next
@@ -202,6 +203,7 @@ impl BarWidget {
             BarWidget::Keybinds => "Keyboard Shortcuts",
             BarWidget::SshSessions => "SSH Sessions",
             BarWidget::Usb => "USB Drives",
+            BarWidget::DiscordVoice => "Discord Voice",
             BarWidget::LockKeys => "Lock Keys (Caps/Num/Scroll)",
             BarWidget::KeyboardLayout => "Keyboard Layout",
             BarWidget::Keymode => "Keymode",
@@ -271,6 +273,7 @@ impl BarWidget {
             BarWidget::Keybinds,
             BarWidget::SshSessions,
             BarWidget::Usb,
+            BarWidget::DiscordVoice,
             BarWidget::LockKeys,
             BarWidget::KeyboardLayout,
             BarWidget::Keymode,

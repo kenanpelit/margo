@@ -35,6 +35,9 @@ use crate::menus::menu_widgets::control_center::control_center_menu_widget::{
 use crate::menus::menu_widgets::cpu_dashboard::cpu_dashboard_menu_widget::{
     CpuDashboardMenuWidgetInit, CpuDashboardMenuWidgetModel,
 };
+use crate::menus::menu_widgets::discord_voice::discord_voice_menu_widget::{
+    DiscordVoiceMenuWidgetInit, DiscordVoiceMenuWidgetModel,
+};
 use crate::menus::menu_widgets::divider::{DividerMenuWidgetInit, DividerMenuWidgetModel};
 use crate::menus::menu_widgets::dns::dns_menu_widget::{DnsMenuWidgetInit, DnsMenuWidgetModel};
 use crate::menus::menu_widgets::ip::ip_menu_widget::{IpMenuWidgetInit, IpMenuWidgetModel};
@@ -244,6 +247,11 @@ pub fn build_widget(
         MenuWidget::Usb => Box::new(
             UsbMenuWidgetModel::builder()
                 .launch(UsbMenuWidgetInit {})
+                .detach(),
+        ),
+        MenuWidget::DiscordVoice => Box::new(
+            DiscordVoiceMenuWidgetModel::builder()
+                .launch(DiscordVoiceMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::Divider => Box::new(

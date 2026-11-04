@@ -146,6 +146,7 @@ pub(crate) enum MenuType {
     SshSessions,
     /// `usb` bar pill's panel — removable drives (udisks2).
     Usb,
+    DiscordVoice,
     /// `privacy` bar pill's panel — live "in use now" rows + a
     /// clearable mic / camera / screen-share access log.
     Privacy,
@@ -605,6 +606,12 @@ impl Component for MenuModel {
                 effect_widgets!(effects, base_config, sender, usb_menu);
                 effect_min_width!(effects, base_config, sender, usb_menu);
                 effect_max_height!(effects, base_config, sender, usb_menu);
+            }
+            MenuType::DiscordVoice => {
+                css_class = "quick-settings-menu discord-voice-menu".to_string();
+                effect_widgets!(effects, base_config, sender, discord_voice_menu);
+                effect_min_width!(effects, base_config, sender, discord_voice_menu);
+                effect_max_height!(effects, base_config, sender, discord_voice_menu);
             }
             MenuType::Power => {
                 css_class = "power-menu".to_string();

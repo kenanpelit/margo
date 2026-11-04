@@ -16,6 +16,7 @@ pub(crate) mod connectivity;
 pub(crate) mod container;
 pub(crate) mod control_center;
 pub(crate) mod cpu_dashboard;
+pub(crate) mod discord_voice;
 pub(crate) mod divider;
 pub(crate) mod dns;
 pub(crate) mod ip;

@@ -8,6 +8,7 @@ pub mod brightness;
 pub mod bt_audio;
 pub mod clear_box;
 pub mod denoise;
+pub mod discord;
 pub mod gtk;
 pub mod hotspot;
 pub mod hover_scroll;

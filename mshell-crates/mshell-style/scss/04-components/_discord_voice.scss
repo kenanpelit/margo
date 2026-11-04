@@ -1,0 +1,42 @@
+// Discord voice — bar pill + call panel (local Discord RPC).
+// DESIGN.md: §3 active = primary tint; §5 boxed-list rows; §12 header.
+
+// ── Bar pill ──────────────────────────────────────────────
+.discord-voice-bar-label {
+  font-size: var(--font-bar);
+  font-weight: 500;
+  color: var(--primary);
+}
+.discord-voice-bar-widget.active image {
+  color: var(--primary);
+}
+
+// ── Panel ─────────────────────────────────────────────────
+.discord-voice-menu-widget {
+  padding: var(--space-1);
+}
+
+.discord-voice-menu scrolledwindow,
+.discord-voice-participants {
+  background-color: transparent;
+}
+
+// Speaking indicator: a dim dot that lights up --primary while the
+// participant talks (eased, so a flickering VAD doesn't strobe).
+.discord-voice-speaking-dot {
+  -gtk-icon-size: 10px;
+  color: var(--on-surface-variant);
+  opacity: 0.35;
+  transition: opacity var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+
+  &.speaking {
+    color: var(--primary);
+    opacity: 1;
+  }
+}
+
+// Leave = the danger action of the row (§2 ladder).
+.discord-voice-leave {
+  color: var(--error);
+}

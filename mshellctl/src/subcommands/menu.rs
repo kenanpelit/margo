@@ -100,6 +100,8 @@ pub enum MenuCommands {
     SshSessions,
     /// Toggle the USB Drives menu (removable drives: mount, unlock, safe removal)
     Usb,
+    /// Toggle the Discord voice menu (call controls + participants)
+    DiscordVoice,
     /// Toggle the DNS / VPN menu (Mullvad controls + a collapsible DNS section)
     Vpn,
     /// Toggle the DNS / VPN menu (alias for `vpn`)
@@ -241,6 +243,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Usb => {
             shell().await?.usb().await?;
+        }
+        MenuCommands::DiscordVoice => {
+            shell().await?.discord_voice().await?;
         }
         MenuCommands::Vpn => {
             shell().await?.vpn().await?;

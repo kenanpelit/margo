@@ -9,6 +9,7 @@ use crate::bars::bar_widgets::control_center::{ControlCenterInit, ControlCenterM
 use crate::bars::bar_widgets::cpu_dashboard::{CpuDashboardInit, CpuDashboardModel};
 use crate::bars::bar_widgets::custom::{CustomWidgetInit, CustomWidgetModel, CustomWidgetOutput};
 use crate::bars::bar_widgets::dark_mode::{DarkModeInit, DarkModeModel};
+use crate::bars::bar_widgets::discord_voice::{DiscordVoiceInit, DiscordVoiceModel};
 use crate::bars::bar_widgets::ip::{IpInit, IpModel};
 use crate::bars::bar_widgets::keep_awake::{KeepAwakeInit, KeepAwakeModel};
 use crate::bars::bar_widgets::keybinds::{KeybindsInit, KeybindsModel};
@@ -229,6 +230,7 @@ pub(crate) enum BarOutput {
     ControlCenterClicked,
     SshSessionsClicked,
     UsbClicked,
+    DiscordVoiceClicked,
     AudioDashboardClicked,
     VpnClicked,
     AiClicked,
@@ -1169,6 +1171,15 @@ impl BarModel {
                     },
                 ))
             }
+            BarWidget::DiscordVoice => Box::new(
+                DiscordVoiceModel::builder()
+                    .launch(DiscordVoiceInit { orientation })
+                    .forward(sender.output_sender(), |msg| match msg {
+                        crate::bars::bar_widgets::discord_voice::DiscordVoiceOutput::Clicked => {
+                            BarOutput::DiscordVoiceClicked
+                        }
+                    }),
+            ),
             BarWidget::LockKeys => Box::new(
                 LockKeysModel::builder()
                     .launch(LockKeysInit { orientation })

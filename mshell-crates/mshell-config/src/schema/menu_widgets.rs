@@ -136,6 +136,7 @@ pub enum MenuWidget {
     /// `usb` bar pill's panel — removable drives with mount / open,
     /// LUKS unlock / lock and safe removal (udisks2).
     Usb,
+    DiscordVoice,
     ThemePicker,
     /// `translate` bar pill's panel — source/target language picker +
     /// swap, manual entry, result card, and a short history list.
@@ -212,6 +213,7 @@ impl MenuWidget {
             MenuWidget::Keybinds => "Keyboard Shortcuts",
             MenuWidget::SshSessions => "SSH Sessions",
             MenuWidget::Usb => "USB Drives",
+            MenuWidget::DiscordVoice => "Discord Voice",
             MenuWidget::ThemePicker => "Theme Picker",
             MenuWidget::Translate => "Translate",
             MenuWidget::Wallpaper => "Wallpaper",
@@ -282,6 +284,7 @@ impl MenuWidget {
             MenuWidget::Keybinds,
             MenuWidget::SshSessions,
             MenuWidget::Usb,
+            MenuWidget::DiscordVoice,
             MenuWidget::ThemePicker,
             MenuWidget::Translate,
             MenuWidget::Wallpaper,

@@ -69,6 +69,7 @@ pub(crate) enum MenuKind {
     ControlCenter,
     SshSessions,
     Usb,
+    DiscordVoice,
     Ufw,
     Wallpaper,
     /// The Translate menu (`translate_menu`), opened by the Translate
@@ -118,6 +119,7 @@ macro_rules! menu_read {
             MenuKind::ControlCenter => m.control_center_menu().$field().$g(),
             MenuKind::SshSessions => m.ssh_menu().$field().$g(),
             MenuKind::Usb => m.usb_menu().$field().$g(),
+            MenuKind::DiscordVoice => m.discord_voice_menu().$field().$g(),
             MenuKind::MargoLayout => m.margo_layout_menu().$field().$g(),
             MenuKind::Translate => m.translate_menu().$field().$g(),
         }
@@ -160,6 +162,7 @@ macro_rules! menu_write {
             MenuKind::ControlCenter => c.menus.control_center_menu.$field = $val,
             MenuKind::SshSessions => c.menus.ssh_menu.$field = $val,
             MenuKind::Usb => c.menus.usb_menu.$field = $val,
+            MenuKind::DiscordVoice => c.menus.discord_voice_menu.$field = $val,
             MenuKind::MargoLayout => c.menus.margo_layout_menu.$field = $val,
             MenuKind::Translate => c.menus.translate_menu.$field = $val,
         });
@@ -201,6 +204,7 @@ impl MenuKind {
             Self::ControlCenter => "Control Center",
             Self::SshSessions => "SSH Sessions",
             Self::Usb => "USB Drives",
+            Self::DiscordVoice => "Discord Voice",
             Self::Ufw => "UFW Firewall",
             Self::Wallpaper => "Wallpaper",
             Self::Translate => "Translate",
@@ -236,6 +240,7 @@ impl MenuKind {
             MenuKind::ControlCenter,
             MenuKind::SshSessions,
             MenuKind::Usb,
+            MenuKind::DiscordVoice,
             MenuKind::Ufw,
             MenuKind::Vpn,
             MenuKind::Dns,

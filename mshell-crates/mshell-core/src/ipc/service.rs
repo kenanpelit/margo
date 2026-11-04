@@ -455,6 +455,9 @@ impl IPCService {
     async fn usb(&self) -> fdo::Result<()> {
         self.send(IPCCommand::Usb)
     }
+    async fn discord_voice(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::DiscordVoice)
+    }
     async fn vpn(&self) -> fdo::Result<()> {
         self.send(IPCCommand::Vpn)
     }

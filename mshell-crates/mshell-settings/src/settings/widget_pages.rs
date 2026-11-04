@@ -244,6 +244,12 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
             icon: "drive-removable-media-symbolic",
         },
         WidgetEntry::Menu {
+            kind: MenuKind::DiscordVoice,
+            stack_name: "discord_voice",
+            label: "Discord Voice",
+            icon: "call-start-symbolic",
+        },
+        WidgetEntry::Menu {
             kind: MenuKind::MargoLayout,
             stack_name: "margo_layout",
             label: "Margo Layout Switcher",

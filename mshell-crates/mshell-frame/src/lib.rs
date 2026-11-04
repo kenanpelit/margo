@@ -2,6 +2,7 @@ pub mod audio_inhibit;
 mod bars;
 mod common_widgets;
 mod countdown;
+mod discord;
 pub mod frame;
 mod frame_draw_widget;
 mod frame_spacer;

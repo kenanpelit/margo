@@ -14,6 +14,7 @@ pub(crate) mod countdown;
 pub(crate) mod cpu_dashboard;
 pub(crate) mod custom;
 pub(crate) mod dark_mode;
+pub(crate) mod discord_voice;
 pub(crate) mod dns;
 pub(crate) mod hidden_bar;
 pub(crate) mod ip;
