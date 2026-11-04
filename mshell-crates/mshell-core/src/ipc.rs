@@ -571,19 +571,11 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     // event-loop tick after the user commits, and
                     // the reply channel delivers it back to the
                     // mshellctl client.
-                    mshell_screenshot::select_screen(
-                        mshell_screenshot::ScreenSelectAreaRequest::SelectRegion,
-                        move |result| {
-                            let geom = match result {
-                                Ok(mshell_screenshot::ScreenSelection::Region(region)) => format!(
-                                    "{},{} {}x{}",
-                                    region.x, region.y, region.width, region.height
-                                ),
-                                _ => String::new(),
-                            };
-                            let _ = reply.send(geom);
-                        },
-                    );
+                    // Global layout coordinates — grim takes those; the
+                    // selector's own are output-local.
+                    mshell_screenshot::select_region_geometry(move |geom| {
+                        let _ = reply.send(geom);
+                    });
                 }
                 IPCCommand::ThemeSet(theme) => {
                     // Identical to the GUI's ThemeSelected handler: write the

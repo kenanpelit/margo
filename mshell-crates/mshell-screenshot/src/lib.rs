@@ -134,6 +134,35 @@ where
     }
 }
 
+/// Open the area selector and hand back the committed region as a
+/// `grim -g` / slurp geometry (`"X,Y WxH"`) in **global** layout
+/// coordinates — empty on cancel or error. Backs `mshellctl screenshot
+/// select-region`, the region bridge `mscreenshot` uses; the selector
+/// itself reports coordinates local to the output the region is on, which
+/// grim would read as a rectangle on the output at the layout origin.
+pub fn select_region_geometry<F>(on_done: F)
+where
+    F: FnOnce(String) + Send + 'static,
+{
+    let outputs = match query_outputs() {
+        Ok(o) => o,
+        Err(_) => return on_done(String::new()),
+    };
+    let layout = outputs.clone();
+    select_region(&outputs, move |result| {
+        on_done(match result {
+            Ok((region, _override)) => region_geometry(&region, &layout),
+            Err(_) => String::new(),
+        })
+    });
+}
+
+/// `"X,Y WxH"` for `region` in global layout coordinates.
+fn region_geometry(region: &RegionSelection, outputs: &[OutputInfo]) -> String {
+    let (x, y) = region_global_origin(region, outputs);
+    format!("{x},{y} {}x{}", region.width, region.height)
+}
+
 pub fn record_screen<S, D>(
     request: ScreenRecordRequest,
     _delay: Duration,
@@ -590,6 +619,24 @@ mod tests {
             (2020, -150)
         );
         assert_eq!(region_global_origin(&region("gone"), &outputs), (100, 50));
+    }
+
+    /// The owner's layout: DP-3 at the origin, eDP-1 below it offset to
+    /// x=320. A region the selector reports on eDP-1 must reach grim with
+    /// eDP-1's origin added, or grim captures the matching rectangle of
+    /// DP-3 instead.
+    #[test]
+    fn bridge_geometry_is_global() {
+        let outputs = [output("DP-3", 0, 0), output("eDP-1", 320, 1440)];
+        let on = |name: &str| RegionSelection {
+            output: name.into(),
+            x: 10,
+            y: 20,
+            width: 300,
+            height: 200,
+        };
+        assert_eq!(region_geometry(&on("eDP-1"), &outputs), "330,1460 300x200");
+        assert_eq!(region_geometry(&on("DP-3"), &outputs), "10,20 300x200");
     }
 
     #[test]
