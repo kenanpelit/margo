@@ -224,6 +224,15 @@ impl OutputManagementManagerState {
         self.clients
             .retain(|_, data| data.manager.as_ref().is_some_and(|m| m.is_alive()));
         for (_client_id, data) in self.clients.iter_mut() {
+            // A configuration still being built refers to the old
+            // topology: cancel it, so it can't be applied against the new
+            // one (the client re-reads the heads and starts over).
+            for (cfg, cfg_state) in data.configs.iter_mut() {
+                if matches!(cfg_state, ConfigurationState::Ongoing(_)) {
+                    cfg.cancelled();
+                    *cfg_state = ConfigurationState::Finished;
+                }
+            }
             // Tear down the old heads that no longer exist or
             // changed identity. Simpler: finish them all and
             // republish, the protocol allows that.

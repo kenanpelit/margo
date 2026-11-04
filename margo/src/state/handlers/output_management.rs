@@ -37,6 +37,16 @@ impl OutputManagementHandler for MargoState {
             return false;
         }
 
+        // Every head must name a live output; a stale name means the
+        // client's view is out of date.
+        if let Some(name) = pending
+            .keys()
+            .find(|name| !self.monitors.iter().any(|m| m.name == **name))
+        {
+            tracing::warn!("output_management: rejecting configuration for unknown output {name}");
+            return false;
+        }
+
         // Disable / re-enable handled BEFORE the geometry-update
         // loop — toggling `monitor.enabled` is cheap, but if a
         // pending head says "disable + change mode" we'd want the
@@ -91,9 +101,6 @@ impl OutputManagementHandler for MargoState {
         // events to clients.
         for (name, p) in &pending {
             let Some(mon_idx) = self.monitors.iter().position(|m| m.name == *name) else {
-                tracing::warn!(
-                    "output_management: ignoring pending head for unknown output {name}"
-                );
                 continue;
             };
             if !self.monitors[mon_idx].enabled {
@@ -168,7 +175,9 @@ impl OutputManagementHandler for MargoState {
             // the new state.
             self.publish_output_topology();
         }
-        changed
+        // Success also when nothing changed: enabling an output that is
+        // already on (`wlr-randr --output X --on`) is a valid no-op.
+        true
     }
 
     fn supports_mode_changes(&self) -> bool {

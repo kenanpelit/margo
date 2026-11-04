@@ -306,17 +306,46 @@ fn set_mode_with_another_heads_mode_fails() {
 #[test]
 fn set_mode_with_a_stale_mode_fails() {
     let (mut fx, id, manager) = wlr_desk(true);
+    let om = &fx.client(id).state.output_management;
+    let head = om.head("DP-1");
+    let stale = om.mode(&head, (1920, 1080, 120_000));
+    // The topology changes: every head and mode is re-announced and the
+    // old mode objects are finished.
+    fx.server.state.monitors[0].output.add_mode(OutputMode {
+        size: (1280, 720).into(),
+        refresh: 60_000,
+    });
+    fx.server.state.publish_output_topology();
+    fx.roundtrip(id);
+
+    // A configuration on the new serial that still names an old mode.
+    let c = fx.client(id);
+    let serial = c.state.output_management.serial.unwrap();
+    let head = c.state.output_management.head("DP-1");
+    let cfg = manager.create_configuration(serial, &c.qh, ());
+    cfg.enable_head(&head, &c.qh, ()).set_mode(&stale);
+    cfg.apply();
+    c.flush();
+    fx.roundtrip(id);
+    assert_eq!(
+        fx.client(id).state.output_management.outcome(&cfg),
+        Some(ConfigOutcome::Failed)
+    );
+    assert!(queued_modes(&fx).is_empty());
+}
+
+#[test]
+fn a_mode_change_built_before_a_topology_change_is_cancelled() {
+    let (mut fx, id, manager) = wlr_desk(true);
     let c = fx.client(id);
     let om = &c.state.output_management;
     let head = om.head("DP-1");
-    let stale = om.mode(&head, (1920, 1080, 120_000));
+    let mode = om.mode(&head, (1920, 1080, 120_000));
     let serial = om.serial.unwrap();
     let cfg = manager.create_configuration(serial, &c.qh, ());
     let cfg_head = cfg.enable_head(&head, &c.qh, ());
     c.flush();
     fx.roundtrip(id);
-    // The topology changes under the configuration: every head and mode
-    // is re-announced and the old mode objects are finished.
     fx.server.state.monitors[0].output.add_mode(OutputMode {
         size: (1280, 720).into(),
         refresh: 60_000,
@@ -325,13 +354,13 @@ fn set_mode_with_a_stale_mode_fails() {
     fx.roundtrip(id);
 
     let c = fx.client(id);
-    cfg_head.set_mode(&stale);
+    cfg_head.set_mode(&mode);
     cfg.apply();
     c.flush();
     fx.roundtrip(id);
     assert_eq!(
         fx.client(id).state.output_management.outcome(&cfg),
-        Some(ConfigOutcome::Failed)
+        Some(ConfigOutcome::Cancelled)
     );
     assert!(queued_modes(&fx).is_empty());
 }
@@ -387,4 +416,52 @@ fn a_client_that_disconnects_without_stop_leaves_nothing_behind() {
         fx.server.state.protocols.output_management.bound_clients(),
         0
     );
+}
+
+/// `wlr-randr --output DP-1 --on` on an output that is already on, or a
+/// kanshi profile that only lists `enable`, changes nothing and must
+/// still succeed (it was answered `failed`).
+#[test]
+fn a_configuration_that_changes_nothing_succeeds() {
+    let (mut fx, id, manager) = wlr_desk(true);
+    let c = fx.client(id);
+    let serial = c.state.output_management.serial.unwrap();
+    let head = c.state.output_management.head("DP-1");
+    let cfg = manager.create_configuration(serial, &c.qh, ());
+    let _cfg_head = cfg.enable_head(&head, &c.qh, ());
+    cfg.apply();
+    c.flush();
+    fx.roundtrip(id);
+    assert_eq!(
+        fx.client(id).state.output_management.outcome(&cfg),
+        Some(ConfigOutcome::Succeeded)
+    );
+}
+
+/// A configuration built against a topology that changed before `apply`
+/// (a monitor plugged in meanwhile) is cancelled, not applied against the
+/// new layout.
+#[test]
+fn a_topology_change_before_apply_cancels_the_configuration() {
+    let (mut fx, id, manager) = wlr_desk(true);
+    let c = fx.client(id);
+    let serial = c.state.output_management.serial.unwrap();
+    let head = c.state.output_management.head("DP-2");
+    let cfg = manager.create_configuration(serial, &c.qh, ());
+    cfg.enable_head(&head, &c.qh, ()).set_position(4000, 0);
+    c.flush();
+    fx.roundtrip(id);
+
+    fx.add_output("DP-3", (1920, 1080));
+    fx.server.state.publish_output_topology();
+    fx.roundtrip(id);
+
+    cfg.apply();
+    fx.client(id).flush();
+    fx.roundtrip(id);
+    assert_eq!(
+        fx.client(id).state.output_management.outcome(&cfg),
+        Some(ConfigOutcome::Cancelled)
+    );
+    assert_ne!(fx.server.state.monitors[1].monitor_area.x, 4000);
 }
