@@ -192,6 +192,12 @@ mod tests {
         let listener = UnixListener::bind(&path).unwrap();
         let srv = thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
+            // Read the request first: replying and closing before the
+            // client has written raced it into a BrokenPipe on the write.
+            let mut line = String::new();
+            BufReader::new(stream.try_clone().unwrap())
+                .read_line(&mut line)
+                .unwrap();
             stream.write_all(b"not json at all\n").unwrap();
         });
 
