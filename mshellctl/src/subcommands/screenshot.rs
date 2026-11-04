@@ -8,6 +8,7 @@
 //! ```text
 //! mshellctl screenshot region|window|output|full|repeat [EDITOR] [--copy|--save|--edit] [--delay N]
 //! mshellctl screenshot ocr [--lang eng+tur]
+//! mshellctl screenshot qr
 //! ```
 //! Default delivery is file + clipboard. `--copy` = clipboard only,
 //! `--save` = file only, `--edit` = editor → save (no clipboard).
@@ -38,6 +39,8 @@ pub enum ScreenshotCommands {
         #[arg(long, short = 'l')]
         lang: Option<String>,
     },
+    /// Region select → decode QR codes / barcodes (zbarimg) → copy.
+    Qr,
     /// (internal) Open the in-shell area selector and print the chosen
     /// region as "X,Y WxH" (slurp format). Used by the `mscreenshot` CLI's
     /// region bridge; not meant for direct use.
@@ -105,6 +108,7 @@ pub async fn execute(command: ScreenshotCommands) -> anyhow::Result<()> {
             }
             run_mscreenshot(&args)?;
         }
+        ScreenshotCommands::Qr => run_mscreenshot(&["qr".to_string()])?,
         ScreenshotCommands::SelectRegion => {
             let geom: String = shell().await?.select_region().await?;
             println!("{}", geom);

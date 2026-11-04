@@ -12,6 +12,7 @@ use std::process::{Command, Stdio};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RegionTool {
     Ocr,
+    Qr,
 }
 
 impl RegionTool {
@@ -19,6 +20,7 @@ impl RegionTool {
     pub(crate) fn mode(self) -> &'static str {
         match self {
             RegionTool::Ocr => "ocr",
+            RegionTool::Qr => "qr",
         }
     }
 
@@ -26,6 +28,7 @@ impl RegionTool {
     fn requires(self) -> &'static [&'static str] {
         match self {
             RegionTool::Ocr => &["tesseract"],
+            RegionTool::Qr => &["zbarimg"],
         }
     }
 
@@ -33,6 +36,7 @@ impl RegionTool {
     fn summary(self) -> &'static str {
         match self {
             RegionTool::Ocr => "Select an area and copy its text (T)",
+            RegionTool::Qr => "Select an area and decode a QR code or barcode (Q)",
         }
     }
 
@@ -40,6 +44,7 @@ impl RegionTool {
     fn packages(self) -> &'static str {
         match self {
             RegionTool::Ocr => "tesseract tesseract-data-eng",
+            RegionTool::Qr => "zbar",
         }
     }
 }
@@ -113,5 +118,9 @@ mod tests {
     #[test]
     fn modes_are_mscreenshot_subcommands() {
         assert_eq!(RegionTool::Ocr.mode(), "ocr");
+        assert_eq!(RegionTool::Qr.mode(), "qr");
+        let (ok, tip) = availability(RegionTool::Qr, |b: &str| b != "zbarimg");
+        assert!(!ok);
+        assert_eq!(tip, "Needs zbarimg — install: zbar");
     }
 }

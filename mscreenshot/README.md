@@ -11,6 +11,7 @@ mscreenshot region        # interactive region select (in-compositor selector)
 mscreenshot window        # the focused / picked window
 mscreenshot output        # the whole monitor
 mscreenshot ocr           # region → OCR (tesseract) → text on the clipboard
+mscreenshot qr            # region → QR code / barcode (zbarimg) → clipboard
 mscreenshot --help
 ```
 

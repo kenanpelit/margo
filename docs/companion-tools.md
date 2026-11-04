@@ -110,6 +110,7 @@ mshellctl screenshot region satty    # force satty (positional editor ⇒ implie
 
 mshellctl screenshot ocr             # region → OCR (tesseract) → text on the clipboard
 mshellctl screenshot ocr --lang tur  #   override the languages for one run
+mshellctl screenshot qr              # region → decode QR / barcode → clipboard
 
 mshellctl screenrecord start full    # start recording (region|window|output|full)
 mshellctl screenrecord toggle region --audio <pw-source>
@@ -128,6 +129,7 @@ temporary file that is deleted as soon as the tool has read it.
 | Tool | Command | Compositor action | Needs |
 |---|---|---|---|
 | Text (OCR) | `mscreenshot ocr` · `mshellctl screenshot ocr` | `screenshot-ocr [LANGS]` | `tesseract` + `tesseract-data-<lang>` |
+| QR / barcode | `mscreenshot qr` · `mshellctl screenshot qr` | `screenshot-qr` | `zbarimg` (zbar) |
 
 OCR languages: `--lang` / the action argument, else
 `MSCREENSHOT_OCR_LANG` (set it once with `env = MSCREENSHOT_OCR_LANG,eng+tur`
@@ -137,6 +139,12 @@ whose pack is missing fails with the package to install instead of
 silently falling back to English. `MSCREENSHOT_OCR_PSM` / `--psm` sets
 tesseract's page segmentation (default 6, one block of text);
 `mscreenshot ocr --screen` reads the focused output instead of a region.
+
+QR / barcode: every decoded payload is copied, one per line (multi-line
+payloads stay intact). When exactly one code was found and it is a plain
+`http(s)://` link, the notification offers **Open link**; other schemes
+(`file:`, `javascript:`, Wi-Fi configs, …) are only copied — a code on
+screen is untrusted input.
 
 ```
 bind = SUPER,Print,screenshot-ocr
@@ -157,6 +165,7 @@ mscreenshot screen    # focused output → file + clipboard
 mscreenshot full      # all outputs (whole layout)
 mscreenshot window    # focused window → file + clipboard
 mscreenshot ocr       # region → OCR → text on the clipboard (see Region tools)
+mscreenshot qr        # region → QR / barcode → clipboard
 mscreenshot open      # open ~/Pictures/Screenshots in the file manager
 mscreenshot dir       # print the screenshot dir
 ```

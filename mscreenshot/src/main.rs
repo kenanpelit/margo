@@ -29,6 +29,7 @@
 //! instead of `margo-screenshot <mode>`.
 
 mod ocr;
+mod scan;
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -59,7 +60,8 @@ use clap::{Parser, Subcommand};
                   OPTIONAL EDITOR:\n  \
                     swappy / satty / gimp / krita\n\
                   OPTIONAL TOOLS:\n  \
-                    tesseract + tesseract-data-<lang> (ocr)"
+                    tesseract + tesseract-data-<lang> (ocr)\n  \
+                    zbar (qr)"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -137,6 +139,10 @@ enum Cmd {
         screen: bool,
     },
 
+    /// Region select → decode QR codes / barcodes (zbarimg) → copy the
+    /// payload. A single http(s) URL gets an "Open" notification action.
+    Qr,
+
     /// Open the most recently saved screenshot via xdg-open.
     Open,
     /// Open the screenshot save directory via xdg-open.
@@ -154,6 +160,14 @@ enum Cmd {
         /// Path of the saved screenshot — passed to xdg-open
         /// on "Open" and rm on "Delete".
         path: String,
+    },
+    /// Internal: detached helper for the QR result notification; opens
+    /// `url` when the user clicks "Open". Not for direct invocation.
+    #[command(hide = true)]
+    NotifyUrl {
+        title: String,
+        body: String,
+        url: String,
     },
 }
 
@@ -178,24 +192,40 @@ enum DeliveryMode {
 }
 
 fn main() {
-    if let Err(err) = run() {
+    let cli = Cli::parse();
+    if let Err(err) = run(&cli) {
         eprintln!("mscreenshot: {err:#}");
-        notify_failure(&format!("{err:#}"));
+        notify_with_urgency(
+            failure_title(&cli.cmd),
+            &format!("{err:#}"),
+            "critical",
+            "dialog-error",
+        );
         std::process::exit(1);
     }
 }
 
-fn run() -> Result<()> {
-    let cli = Cli::parse();
+/// Title of the error notification — names the tool the user ran, so an
+/// OCR or scan failure doesn't read as a failed screenshot.
+fn failure_title(cmd: &Cmd) -> &'static str {
+    match cmd {
+        Cmd::Ocr { .. } => "Text recognition failed",
+        Cmd::Qr => "Code scan failed",
+        _ => "Screenshot failed",
+    }
+}
 
+fn run(cli: &Cli) -> Result<()> {
     match &cli.cmd {
         Cmd::Open => return open_latest(),
         Cmd::Dir => return open_save_dir(),
         Cmd::NotifyHandle { title, body, path } => {
             return run_notify_handle(title, body, path);
         }
+        Cmd::NotifyUrl { title, body, url } => return run_notify_url(title, body, url),
+        Cmd::Qr => return run_qr(cli),
         Cmd::Ocr { lang, psm, screen } => {
-            return run_ocr(&cli, lang.as_deref(), psm.as_deref(), *screen);
+            return run_ocr(cli, lang.as_deref(), psm.as_deref(), *screen);
         }
         _ => {}
     }
@@ -315,7 +345,12 @@ fn capture_plan(cmd: &Cmd) -> Option<(CaptureSource, DeliveryMode)> {
         Cmd::All => (CaptureSource::AllOutputs, DeliveryMode::EditSave),
         Cmd::Ac => (CaptureSource::AllOutputs, DeliveryMode::ClipOnly),
         Cmd::Af => (CaptureSource::AllOutputs, DeliveryMode::SaveOnly),
-        Cmd::Ocr { .. } | Cmd::Open | Cmd::Dir | Cmd::NotifyHandle { .. } => return None,
+        Cmd::Ocr { .. }
+        | Cmd::Qr
+        | Cmd::NotifyUrl { .. }
+        | Cmd::Open
+        | Cmd::Dir
+        | Cmd::NotifyHandle { .. } => return None,
     })
 }
 
@@ -395,6 +430,94 @@ fn run_ocr(cli: &Cli, lang: Option<&str>, psm: Option<&str>, screen: bool) -> Re
         &format!("Text copied ({langs})"),
         &ocr::escape_markup(&ocr::preview(&text, ocr::PREVIEW_CHARS)),
     );
+    Ok(())
+}
+
+fn run_qr(cli: &Cli) -> Result<()> {
+    if !which("zbarimg") {
+        bail!("QR / barcode scan needs `zbarimg` (pacman -S zbar)");
+    }
+    require("wl-copy")?;
+    let shot = capture_for_tool(cli, CaptureSource::Region)?;
+    // `-q` drops the "scanned N barcode symbols" summary; no `--raw`, so
+    // the `TYPE:` prefixes keep the boundary between codes.
+    let out = Command::new("zbarimg")
+        .arg("-q")
+        .arg(&shot.0)
+        .stdin(Stdio::null())
+        .output()
+        .context("spawn zbarimg")?;
+    drop(shot);
+    if out.status.code() == Some(scan::ZBAR_NOTHING_FOUND) {
+        notify_tool("Code scan", "No QR code or barcode found in the selection");
+        return Ok(());
+    }
+    if !out.status.success() {
+        bail!(
+            "zbarimg exited {}: {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr)
+                .lines()
+                .last()
+                .unwrap_or("")
+                .trim()
+        );
+    }
+    let symbols = scan::parse_zbarimg(&String::from_utf8_lossy(&out.stdout));
+    if symbols.is_empty() {
+        notify_tool("Code scan", "No QR code or barcode found in the selection");
+        return Ok(());
+    }
+    let text = scan::clipboard_text(&symbols);
+    copy_text_to_clipboard(&text)?;
+    let title = scan::title(&symbols);
+    let body = ocr::escape_markup(&ocr::preview(&text, ocr::PREVIEW_CHARS));
+    match scan::openable_url(&symbols) {
+        Some(url) => spawn_notify_url(&title, &body, url),
+        None => notify_tool(&title, &body),
+    }
+    Ok(())
+}
+
+/// Detached `mscreenshot notify-url` so the scan returns at once while the
+/// notification waits for its "Open" click.
+fn spawn_notify_url(title: &str, body: &str, url: &str) {
+    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("mscreenshot"));
+    let _ = Command::new(&exe)
+        .args(["notify-url", title, body, url])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
+}
+
+fn run_notify_url(title: &str, body: &str, url: &str) -> Result<()> {
+    let output = Command::new("notify-send")
+        .args(["-a", "mscreenshot"])
+        .args(["-i", "edit-paste-symbolic"])
+        .args(["-u", "normal"])
+        .args(["-t", "8000"])
+        .args(["--wait"])
+        .args(["-A", "open=Open link"])
+        .arg(title)
+        .arg(body)
+        .output()
+        .context("spawn notify-send")?;
+    // Re-check: the URL came through argv, and only plain http(s) may
+    // reach xdg-open.
+    let symbols = [scan::Symbol {
+        kind: String::new(),
+        data: url.to_string(),
+    }];
+    if String::from_utf8_lossy(&output.stdout).trim() == "open"
+        && let Some(url) = scan::openable_url(&symbols)
+    {
+        let _ = Command::new("xdg-open")
+            .arg(url)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+    }
     Ok(())
 }
 
@@ -972,10 +1095,6 @@ fn notify_clip(label: &str) {
     notify("Screenshot", &format!("{label} copied to clipboard"));
 }
 
-fn notify_failure(msg: &str) {
-    notify_with_urgency("Screenshot failed", msg, "critical", "dialog-error");
-}
-
 /// Result notification for the region tools (OCR, …).
 fn notify_tool(title: &str, body: &str) {
     notify_with_urgency(title, body, "normal", "edit-paste-symbolic");
@@ -1044,11 +1163,21 @@ mod tests {
             &["dir"][..],
             &["notify-handle", "t", "b", "/tmp/x.png"][..],
             &["ocr"][..],
+            &["qr"][..],
+            &["notify-url", "t", "b", "https://x.y"][..],
             &["ocr", "--lang", "eng+tur", "--psm", "7", "--screen"][..],
         ] {
             let cli = parse(args).unwrap();
             assert_eq!(capture_plan(&cli.cmd), None, "{args:?}");
         }
+    }
+
+    #[test]
+    fn failures_are_titled_after_the_tool() {
+        let title = |args: &[&str]| failure_title(&parse(args).unwrap().cmd);
+        assert_eq!(title(&["ocr"]), "Text recognition failed");
+        assert_eq!(title(&["qr"]), "Code scan failed");
+        assert_eq!(title(&["rc"]), "Screenshot failed");
     }
 
     #[test]

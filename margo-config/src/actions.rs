@@ -936,6 +936,16 @@ pub const ACTIONS: &[Action] = &[
                  installed tesseract-data-* packs.",
     },
     Action {
+        name: "screenshot-qr",
+        aliases: &["screenshot_qr"],
+        args: "",
+        group: Group::System,
+        summary: "Drag a region → decode QR codes / barcodes → copy.",
+        detail: "Spawns `mscreenshot qr` (needs `zbarimg`, package zbar). \
+                 A single http(s) link gets an \"Open link\" notification \
+                 button; other payloads are only copied.",
+    },
+    Action {
         name: "reload",
         aliases: &["reload_config"],
         args: "[force]",
