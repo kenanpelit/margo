@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 margo-config = { path = "../margo-config" }
+margo-fs.workspace = true
 margo-logging = { path = "../margo-logging" }
 margo-layouts = { path = "../margo-layouts" }
 

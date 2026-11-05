@@ -21,20 +21,34 @@ use std::path::PathBuf;
 /// `MARGO_SOCKET` would silently bind (and clobber, since we
 /// `remove_file` first) the *live* session's socket. Without the
 /// override it's `$XDG_RUNTIME_DIR/margo/margo-ipc.sock`, falling back
-/// to `/run/user/<uid>/margo/...` when XDG is unset — the same base
-/// dir the old state snapshot used.
+/// to `/run/user/<uid>/margo/...` when XDG is unset, empty or relative
+/// (`margo_fs::xdg::runtime_dir`) — the same base dir the old state
+/// snapshot used.
 pub fn socket_path() -> PathBuf {
-    if let Some(p) = std::env::var_os("MARGO_SOCKET") {
+    // SAFETY: getuid() has no preconditions and cannot fail.
+    let uid = unsafe { libc::getuid() };
+    socket_path_from(
+        std::env::var_os("MARGO_SOCKET"),
+        std::env::var_os("XDG_RUNTIME_DIR"),
+        uid,
+    )
+}
+
+/// [`socket_path`] from explicit inputs (the testable core).
+fn socket_path_from(
+    margo_socket: Option<std::ffi::OsString>,
+    xdg_runtime_dir: Option<std::ffi::OsString>,
+    uid: u32,
+) -> PathBuf {
+    if let Some(p) = margo_socket {
         return PathBuf::from(p);
     }
-    let runtime = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            // SAFETY: getuid() has no preconditions and cannot fail.
-            let uid = unsafe { libc::getuid() };
-            PathBuf::from(format!("/run/user/{uid}"))
-        });
-    runtime.join("margo").join("margo-ipc.sock")
+    // Unset, empty or relative falls back (margo_fs::xdg::runtime_dir,
+    // the same rule the shell's client uses).
+    margo_fs::xdg::runtime_dir_from(xdg_runtime_dir)
+        .unwrap_or_else(|| PathBuf::from(format!("/run/user/{uid}")))
+        .join("margo")
+        .join("margo-ipc.sock")
 }
 
 /// Export `MARGO_SOCKET` so clients and spawned children can find the
@@ -83,6 +97,30 @@ mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
     use std::os::unix::net::UnixListener;
+
+    #[test]
+    fn socket_path_ignores_a_relative_runtime_dir() {
+        let p = |sock: Option<&str>, rt: Option<&str>| {
+            socket_path_from(sock.map(Into::into), rt.map(Into::into), 1000)
+        };
+        assert_eq!(
+            p(Some("/tmp/x.sock"), Some("/run/user/1000")),
+            std::path::PathBuf::from("/tmp/x.sock")
+        );
+        assert_eq!(
+            p(None, Some("/run/user/1000")),
+            std::path::PathBuf::from("/run/user/1000/margo/margo-ipc.sock")
+        );
+        // Unset, empty or relative: a relative socket path would bind /
+        // connect under whatever the cwd is.
+        for bad in [None, Some(""), Some("relative/run"), Some("run")] {
+            assert_eq!(
+                p(None, bad),
+                std::path::PathBuf::from("/run/user/1000/margo/margo-ipc.sock"),
+                "{bad:?}"
+            );
+        }
+    }
 
     fn temp_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("margo-ipc-{tag}-{}", std::process::id()));

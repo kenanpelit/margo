@@ -4578,6 +4578,7 @@ dependencies = [
  "lcms2",
  "libc",
  "margo-config",
+ "margo-fs",
  "margo-layouts",
  "margo-logging",
  "notify",

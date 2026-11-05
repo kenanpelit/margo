@@ -6,19 +6,33 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 
 /// Resolve the socket path: `$MARGO_SOCKET` if set, else
-/// `$XDG_RUNTIME_DIR/margo/margo-ipc.sock`.
+/// `$XDG_RUNTIME_DIR/margo/margo-ipc.sock` (set and absolute, see
+/// `margo_fs::xdg::runtime_dir`; else `/run/user/<uid>`).
 pub fn socket_path() -> PathBuf {
-    if let Some(p) = std::env::var_os("MARGO_SOCKET") {
+    // SAFETY: getuid() has no preconditions and cannot fail.
+    let uid = unsafe { libc::getuid() };
+    socket_path_from(
+        std::env::var_os("MARGO_SOCKET"),
+        std::env::var_os("XDG_RUNTIME_DIR"),
+        uid,
+    )
+}
+
+/// [`socket_path`] from explicit inputs (the testable core).
+fn socket_path_from(
+    margo_socket: Option<std::ffi::OsString>,
+    xdg_runtime_dir: Option<std::ffi::OsString>,
+    uid: u32,
+) -> PathBuf {
+    if let Some(p) = margo_socket {
         return PathBuf::from(p);
     }
-    let runtime = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            // SAFETY: getuid() has no preconditions and cannot fail.
-            let uid = unsafe { libc::getuid() };
-            PathBuf::from(format!("/run/user/{uid}"))
-        });
-    runtime.join("margo").join("margo-ipc.sock")
+    // Unset, empty or relative falls back (margo_fs::xdg::runtime_dir,
+    // the same rule the shell's client uses).
+    margo_fs::xdg::runtime_dir_from(xdg_runtime_dir)
+        .unwrap_or_else(|| PathBuf::from(format!("/run/user/{uid}")))
+        .join("margo")
+        .join("margo-ipc.sock")
 }
 
 pub fn connect() -> std::io::Result<UnixStream> {
@@ -131,6 +145,30 @@ mod tests {
     use std::io::{BufRead, BufReader, Write};
     use std::os::unix::net::UnixListener;
     use std::thread;
+
+    #[test]
+    fn socket_path_ignores_a_relative_runtime_dir() {
+        let p = |sock: Option<&str>, rt: Option<&str>| {
+            socket_path_from(sock.map(Into::into), rt.map(Into::into), 1000)
+        };
+        assert_eq!(
+            p(Some("/tmp/x.sock"), Some("/run/user/1000")),
+            std::path::PathBuf::from("/tmp/x.sock")
+        );
+        assert_eq!(
+            p(None, Some("/run/user/1000")),
+            std::path::PathBuf::from("/run/user/1000/margo/margo-ipc.sock")
+        );
+        // Unset, empty or relative: a relative socket path would bind /
+        // connect under whatever the cwd is.
+        for bad in [None, Some(""), Some("relative/run"), Some("run")] {
+            assert_eq!(
+                p(None, bad),
+                std::path::PathBuf::from("/run/user/1000/margo/margo-ipc.sock"),
+                "{bad:?}"
+            );
+        }
+    }
 
     /// Bind a throwaway socket under a unique temp path.
     fn temp_sock(tag: &str) -> PathBuf {

@@ -61,9 +61,13 @@ pub fn cache_home() -> PathBuf {
 /// `$XDG_RUNTIME_DIR` when set and absolute. No home fallback: the spec
 /// gives none, and callers differ (temp dir, skip, warn).
 pub fn runtime_dir() -> Option<PathBuf> {
-    std::env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute())
+    runtime_dir_from(std::env::var_os("XDG_RUNTIME_DIR"))
+}
+
+/// [`runtime_dir`] from a given `$XDG_RUNTIME_DIR` value (for callers
+/// that resolve from explicit inputs, and their tests).
+pub fn runtime_dir_from(var: Option<std::ffi::OsString>) -> Option<PathBuf> {
+    var.map(PathBuf::from).filter(|p| p.is_absolute())
 }
 
 /// `$XDG_RUNTIME_DIR`, or the system temp dir when it is unset.
