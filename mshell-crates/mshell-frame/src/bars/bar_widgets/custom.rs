@@ -14,20 +14,28 @@
 //!
 //! The exec runs only while the pill is mapped (not in a collapsed drawer
 //! or on a hidden bar); a pill its own JSON hid keeps polling so it can
-//! come back. Art images are decoded off the GTK thread, and only when the
-//! file (path or mtime) changed.
+//! come back. Pills with the same exec source (one per monitor) share one
+//! loop (see [`exec`]). Art images are decoded off the GTK thread, and only
+//! when the file (path or mtime) changed.
 
-use crate::menus::reveal_poll::RevealGate;
+mod exec;
+
 use crate::plugin_cmd::{run_capture, run_detached};
+use exec::{ExecHub, ExecKey, ExecSubscription, Producer};
 use mshell_config::schema::config::{CustomMenuRow, CustomWidgetConfig};
 use relm4::gtk::prelude::{
-    BoxExt, ButtonExt, GestureExt, GestureSingleExt, OrientableExt, WidgetExt,
+    BoxExt, ButtonExt, Cast, GestureExt, GestureSingleExt, OrientableExt, WidgetExt,
 };
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::rc::{Rc, Weak};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 /// Leading icon / image pixel size in the pill.
 const ICON_SIZE: i32 = 16;
+
+/// The exec sources of every bar's custom pills.
+static EXEC_HUB: ExecHub<ExecKey, ExecOutput> = ExecHub::new();
 
 pub(crate) struct CustomWidgetModel {
     label: String,
@@ -45,9 +53,10 @@ pub(crate) struct CustomWidgetModel {
     json_glyph: Option<String>,
     /// The configured static tooltip (restored when JSON sends none).
     tooltip: String,
-    /// Open while the exec should run: the pill is mapped, or its own JSON
-    /// hid it (so the next poll can show it again).
-    shown: RevealGate,
+    /// The pill's handle on its shared exec source (`None` without an
+    /// `exec`). Active while the exec should run: the pill is mapped, or
+    /// its own JSON hid it (so the next poll can show it again).
+    exec: Option<Rc<ExecSubscription<ExecOutput>>>,
     /// Art mode: the image widget showing the current art, kept across
     /// polls (`None` while the fallback icon shows).
     art_image: Option<gtk::Image>,
@@ -88,18 +97,26 @@ pub(crate) struct CustomWidgetInit {
 
 #[derive(Debug)]
 pub(crate) enum CustomWidgetCommandOutput {
-    /// New rendered label + optional live image path + paused flag from the
-    /// `exec` poller. `paused` dims the pill (media-style) and is derived from
-    /// the helper's optional status line (`art` widgets only).
-    ExecResult {
-        art: ArtUpdate,
+    /// The latest result of the pill's exec source.
+    Exec(ExecOutput),
+}
+
+/// One `exec` run, as every pill on the source shows it.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ExecOutput {
+    /// Rendered label + the art image + paused flag. `paused` dims the pill
+    /// (media-style) and is derived from the helper's optional status line
+    /// (`art` widgets only).
+    Plain {
+        /// `art` mode: the decoded image (`None`: show the fallback icon).
+        art: Option<gtk::gdk::Texture>,
         label: String,
         paused: bool,
         /// Optional state CSS class parsed from a `#<state>` first line.
         state_class: Option<String>,
     },
     /// A JSON-mode poll result (`None` = the output wasn't a JSON object).
-    JsonResult(Option<JsonOutput>),
+    Json(Option<JsonOutput>),
 }
 
 #[relm4::component(pub)]
@@ -161,7 +178,16 @@ impl Component for CustomWidgetModel {
             json_classes: Vec::new(),
             json_glyph: None,
             tooltip: config.tooltip.clone(),
-            shown: RevealGate::new(root.is_mapped()),
+            exec: (!config.exec.trim().is_empty()).then(|| {
+                let key = ExecKey::of(&config);
+                let sub = EXEC_HUB.subscribe(
+                    key.clone(),
+                    || exec_producer(key),
+                    |fut| mshell_services::tokio_rt().spawn(fut).abort_handle(),
+                );
+                sub.set_active(root.is_mapped());
+                Rc::new(sub)
+            }),
             art_image: None,
         };
 
@@ -211,15 +237,14 @@ impl Component for CustomWidgetModel {
         }
 
         // Right click → on_click_right; without one, an `exec` pill re-runs
-        // its command right away (force refresh).
-        let refresh = std::sync::Arc::new(tokio::sync::Notify::new());
-        if config.on_click_right.trim().is_empty() && !config.exec.trim().is_empty() {
+        // its command right away, for its pills on every monitor.
+        if let (true, Some(sub)) = (config.on_click_right.trim().is_empty(), &model.exec) {
             let gesture = gtk::GestureClick::new();
             gesture.set_button(gtk::gdk::BUTTON_SECONDARY);
-            let refresh = refresh.clone();
+            let sub = Rc::downgrade(sub);
             gesture.connect_pressed(move |g, _, _, _| {
                 g.set_state(gtk::EventSequenceState::Claimed);
-                refresh.notify_one();
+                with_sub(&sub, ExecSubscription::refresh);
             });
             widgets.root.add_controller(gesture);
         }
@@ -237,85 +262,30 @@ impl Component for CustomWidgetModel {
 
         // The exec runs while the pill is mapped. An unmap because the
         // pill's own JSON hid it keeps it running (see `apply_json`).
-        let g = model.shown.clone();
-        widgets.root.connect_map(move |_| g.set(true));
-        let g = model.shown.clone();
-        widgets.root.connect_unmap(move |w| g.set(!w.is_visible()));
+        if let Some(sub) = &model.exec {
+            let weak = Rc::downgrade(sub);
+            widgets
+                .root
+                .connect_map(move |_| with_sub(&weak, |s| s.set_active(true)));
+            let weak = Rc::downgrade(sub);
+            widgets
+                .root
+                .connect_unmap(move |w| with_sub(&weak, |s| s.set_active(!w.is_visible())));
 
-        // `exec` poller fills the label from command stdout.
-        if !config.exec.trim().is_empty() {
-            let shown = model.shown.clone();
-            let exec = config.exec.clone();
-            let env = config.secret_env.clone();
-            let template = config.template.clone();
-            let max_chars = config.max_chars;
-            let interval = config.interval;
-            let art = config.art;
-            let json = config.json;
-            let name = config.name.clone();
-            let mut ipc_refresh = mshell_common::custom_refresh::subscribe();
+            // Show every result of the shared source (the current one at
+            // once, when another monitor's pill already ran it).
+            let mut results = sub.watch();
             sender.command(move |out, shutdown| async move {
                 let shutdown_fut = shutdown.wait();
                 tokio::pin!(shutdown_fut);
-                let mut art_seen = ArtTracker::default();
                 loop {
-                    // Not shown (collapsed drawer, hidden bar): no exec and
-                    // no timer until it is.
+                    let latest = results.borrow_and_update().clone();
+                    if let Some(latest) = latest {
+                        let _ = out.send(CustomWidgetCommandOutput::Exec(latest));
+                    }
                     tokio::select! {
                         () = &mut shutdown_fut => return,
-                        () = shown.until_revealed() => {}
-                    }
-                    if json {
-                        if let Some(stdout) = run_capture(&exec, &env).await {
-                            let parsed = JsonOutput::parse(&stdout).map(|mut j| {
-                                j.text = truncate(&render(&j.text, &template), max_chars);
-                                j
-                            });
-                            let _ = out.send(CustomWidgetCommandOutput::JsonResult(parsed));
-                        }
-                    } else if let Some(stdout) = run_capture(&exec, &env).await {
-                        let (art_update, body, paused, state_class) = if art {
-                            let (cand, label, paused) = split_art_output(&stdout);
-                            (art_update(&mut art_seen, cand).await, label, paused, None)
-                        } else {
-                            let (state, label) = split_state_output(&stdout);
-                            (ArtUpdate::Unchanged, label, false, state)
-                        };
-                        let rendered = truncate(&render(&body, &template), max_chars);
-                        let _ = out.send(CustomWidgetCommandOutput::ExecResult {
-                            art: art_update,
-                            label: rendered,
-                            paused,
-                            state_class,
-                        });
-                    }
-                    // Wait for the next interval (of shown time; a pill that
-                    // comes back re-runs at once), a right-click, or an IPC
-                    // refresh aimed at this pill. `interval == 0` runs once
-                    // and then only on a forced refresh.
-                    let sleep = async {
-                        if interval == 0 {
-                            std::future::pending::<()>().await;
-                        } else {
-                            shown.tick(Duration::from_secs(interval)).await;
-                        }
-                    };
-                    tokio::pin!(sleep);
-                    loop {
-                        tokio::select! {
-                            () = &mut shutdown_fut => return,
-                            () = &mut sleep => break,
-                            () = refresh.notified() => break,
-                            msg = ipc_refresh.recv() => match msg {
-                                Ok(target) if mshell_common::custom_refresh::targets(&target, &name) => break,
-                                // Lagged: skip. Closed can't happen (the
-                                // sender is a static), but don't spin on it.
-                                Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
-                                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                                    ipc_refresh = mshell_common::custom_refresh::subscribe();
-                                }
-                            },
-                        }
+                        changed = results.changed() => if changed.is_err() { return },
                     }
                 }
             });
@@ -341,8 +311,9 @@ impl Component for CustomWidgetModel {
         sender: ComponentSender<Self>,
         _root: &Self::Root,
     ) {
-        match message {
-            CustomWidgetCommandOutput::ExecResult {
+        let CustomWidgetCommandOutput::Exec(result) = message;
+        match result {
+            ExecOutput::Plain {
                 art,
                 label,
                 paused,
@@ -368,7 +339,7 @@ impl Component for CustomWidgetModel {
                     self.apply_art(widgets, art);
                 }
             }
-            CustomWidgetCommandOutput::JsonResult(parsed) => {
+            ExecOutput::Json(parsed) => {
                 self.apply_json(widgets, parsed);
             }
         }
@@ -377,12 +348,11 @@ impl Component for CustomWidgetModel {
 }
 
 impl CustomWidgetModel {
-    /// Show a new art image (already decoded off the GTK thread) or the
-    /// fallback icon; an unchanged file costs nothing.
-    fn apply_art(&mut self, widgets: &CustomWidgetModelWidgets, art: ArtUpdate) {
+    /// Show the art image (already decoded off the GTK thread) or the
+    /// fallback icon; the image already shown costs nothing.
+    fn apply_art(&mut self, widgets: &CustomWidgetModelWidgets, art: Option<gtk::gdk::Texture>) {
         match art {
-            ArtUpdate::Unchanged => {}
-            ArtUpdate::Image(texture) => {
+            Some(texture) => {
                 if self.art_image.is_none() {
                     clear_box(&widgets.icon_box);
                     let img = gtk::Image::new();
@@ -390,11 +360,13 @@ impl CustomWidgetModel {
                     widgets.icon_box.append(&img);
                     self.art_image = Some(img);
                 }
-                if let Some(img) = &self.art_image {
+                if let Some(img) = &self.art_image
+                    && img.paintable().as_ref() != Some(texture.upcast_ref())
+                {
                     img.set_paintable(Some(&texture));
                 }
             }
-            ArtUpdate::Fallback => {
+            None => {
                 if self.art_image.take().is_some() || widgets.icon_box.first_child().is_none() {
                     clear_box(&widgets.icon_box);
                     if !self.icon.trim().is_empty() {
@@ -421,9 +393,11 @@ impl CustomWidgetModel {
             return;
         };
         root.set_visible(j.visible);
-        if !j.visible {
+        if !j.visible
+            && let Some(sub) = &self.exec
+        {
             // Hidden by its own output: keep polling so it can come back.
-            self.shown.set(true);
+            sub.set_active(true);
         }
         self.label = j.text.clone();
         self.set_json_glyph(widgets, j.glyph.clone());
@@ -624,6 +598,68 @@ fn wire_panel(
     }
 }
 
+/// Run `f` on the subscription while the pill still holds it.
+fn with_sub(
+    sub: &Weak<ExecSubscription<ExecOutput>>,
+    f: impl FnOnce(&ExecSubscription<ExecOutput>),
+) {
+    if let Some(sub) = sub.upgrade() {
+        f(&sub);
+    }
+}
+
+/// The shared loop's run for the source `key`: the command once, its
+/// stdout parsed the way the pills' config says. The art file last decoded
+/// is remembered across runs, so an unchanged one isn't decoded again.
+fn exec_producer(key: ExecKey) -> Producer<ExecOutput> {
+    let name = key.name.clone();
+    let period = (key.interval > 0).then(|| Duration::from_secs(key.interval));
+    let key = Arc::new(key);
+    let art: Arc<ArtState> = Arc::default();
+    Producer {
+        probe: Arc::new(move || {
+            let (key, art) = (key.clone(), art.clone());
+            Box::pin(async move { run_exec(&key, &art).await })
+        }),
+        period,
+        name,
+    }
+}
+
+/// The art tracker and the image it last decoded.
+type ArtState = tokio::sync::Mutex<(ArtTracker, Option<gtk::gdk::Texture>)>;
+
+async fn run_exec(key: &ExecKey, art: &ArtState) -> Option<ExecOutput> {
+    let stdout = run_capture(&key.exec, &key.secret_env).await?;
+    if key.json {
+        let parsed = JsonOutput::parse(&stdout).map(|mut j| {
+            j.text = truncate(&render(&j.text, &key.template), key.max_chars);
+            j
+        });
+        return Some(ExecOutput::Json(parsed));
+    }
+    let (texture, body, paused, state_class) = if key.art {
+        let (cand, label, paused) = split_art_output(&stdout);
+        let mut art = art.lock().await;
+        let (seen, shown) = &mut *art;
+        match art_update(seen, cand).await {
+            ArtUpdate::Unchanged => {}
+            ArtUpdate::Image(t) => *shown = Some(t),
+            ArtUpdate::Fallback => *shown = None,
+        }
+        (shown.clone(), label, paused, None)
+    } else {
+        let (state, label) = split_state_output(&stdout);
+        (None, label, false, state)
+    };
+    Some(ExecOutput::Plain {
+        art: texture,
+        label: truncate(&render(&body, &key.template), key.max_chars),
+        paused,
+        state_class,
+    })
+}
+
 /// Split an `art` widget's exec stdout into its three fields:
 /// `(image-path candidate, label, paused)`. Line 1 is the image path (empty →
 /// `None`), line 2 the label, line 3 the status (`paused`/`stopped` → dim).
@@ -651,7 +687,7 @@ fn split_state_output(stdout: &str) -> (Option<String>, String) {
 
 /// What a poll does to the art image.
 #[derive(Debug)]
-pub(crate) enum ArtUpdate {
+enum ArtUpdate {
     /// Same file as shown (path and mtime): keep it.
     Unchanged,
     /// A new image, decoded on a blocking thread.
@@ -750,8 +786,88 @@ fn truncate(s: &str, max: u32) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{ArtTracker, JsonOutput, render, split_art_output, truncate};
+    use super::exec::{ExecHub, ExecKey};
+    use super::{
+        ArtTracker, ExecOutput, JsonOutput, exec_producer, render, split_art_output, truncate,
+    };
+    use mshell_config::schema::config::CustomWidgetConfig;
     use std::time::{Duration, SystemTime};
+
+    /// One pill per monitor, a fake command that counts its runs: one
+    /// spawn per poll or refresh, whatever the number of monitors.
+    #[tokio::test]
+    async fn monitors_share_one_spawn_of_the_command() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let runs = dir.path().join("runs");
+        let config = CustomWidgetConfig {
+            name: "custom-exec-share-test".into(),
+            exec: format!(
+                "echo x >> '{f}'; echo '#on'; wc -l < '{f}'",
+                f = runs.display()
+            ),
+            template: "<{output}>".into(),
+            ..Default::default()
+        };
+        let count = || {
+            std::fs::read_to_string(&runs)
+                .map(|s| s.lines().count())
+                .unwrap_or(0)
+        };
+        let hub: ExecHub<ExecKey, ExecOutput> = ExecHub::new();
+        let spawn = |fut| tokio::spawn(fut).abort_handle();
+        let pills: Vec<_> = (0..3)
+            .map(|_| {
+                let key = ExecKey::of(&config);
+                hub.subscribe(key.clone(), || exec_producer(key), spawn)
+            })
+            .collect();
+        for p in &pills {
+            p.set_active(true);
+        }
+        let label = |n: usize| ExecOutput::Plain {
+            art: None,
+            label: format!("<{n}>"),
+            paused: false,
+            state_class: Some("on".into()),
+        };
+        let mut rx = pills[2].watch();
+        let first = label(1);
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            rx.wait_for(|v| v.as_ref() == Some(&first)),
+        )
+        .await
+        .expect("first run")
+        .expect("source alive");
+        assert_eq!(count(), 1);
+        // Right-click on another monitor: one more run, seen by every pill.
+        pills[0].refresh();
+        let second = label(2);
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            rx.wait_for(|v| v.as_ref() == Some(&second)),
+        )
+        .await
+        .expect("refresh")
+        .expect("source alive");
+        assert_eq!(*pills[1].watch().borrow(), Some(label(2)));
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert_eq!(count(), 2);
+        // Another template is another source: its own run.
+        let other = CustomWidgetConfig {
+            template: "{output}!".into(),
+            ..config.clone()
+        };
+        let key = ExecKey::of(&other);
+        let p = hub.subscribe(key.clone(), || exec_producer(key), spawn);
+        p.set_active(true);
+        let mut rx = p.watch();
+        tokio::time::timeout(Duration::from_secs(10), rx.wait_for(Option::is_some))
+            .await
+            .expect("other run")
+            .expect("source alive");
+        assert_eq!(count(), 3);
+    }
 
     #[test]
     fn art_reloads_only_when_the_file_changes() {

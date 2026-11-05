@@ -165,6 +165,10 @@ Right-click an `exec` pill that has no `on_click_right` to re-run its command
 now; `mshellctl custom-refresh [name]` does the same from a script or keybind
 (no name = every custom pill).
 
+The `exec` runs only while the pill is shown, and once per poll however many
+monitors show it: copies of a pill share one run (pills whose `exec`,
+`interval`, `template`, `max_chars`, `json` or `art` differ never do).
+
 ### JSON mode
 
 With `json: true` the `exec` prints one JSON object per poll and drives the

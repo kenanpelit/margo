@@ -1,8 +1,9 @@
 //! Force-refresh bus for `exec`-driven custom bar pills.
 //!
-//! `mshellctl custom-refresh [name]` (IPC) calls [`request`]; every custom
-//! pill holds a [`subscribe`] receiver and re-runs its `exec` at once when
-//! the request targets it (an empty name reaches every pill).
+//! `mshellctl custom-refresh [name]` (IPC) calls [`request`]; every exec
+//! source (one per distinct pill config, shared by that pill's copies on
+//! every monitor) holds a [`subscribe`] receiver and re-runs its `exec`
+//! once when the request targets it (an empty name reaches every pill).
 
 use std::sync::LazyLock;
 use tokio::sync::broadcast;
@@ -10,7 +11,8 @@ use tokio::sync::broadcast;
 static BUS: LazyLock<broadcast::Sender<String>> = LazyLock::new(|| broadcast::channel(16).0);
 
 /// Ask the pill called `name` (or every pill, for an empty name) to re-run
-/// its `exec` now. Returns how many pills are listening.
+/// its `exec` now. Returns how many exec sources are listening (a pill
+/// shown on several monitors counts once).
 pub fn request(name: &str) -> usize {
     BUS.send(name.trim().to_string()).unwrap_or(0)
 }
