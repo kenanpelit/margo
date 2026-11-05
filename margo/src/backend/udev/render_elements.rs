@@ -2421,25 +2421,22 @@ fn push_client_elements(
                 // surface elements so it sits at a higher index in the
                 // Vec → drawn earlier (painter's algorithm) → beneath
                 // the translucent window, which then composites over it.
-                // Where the surface is opaque the blur is fully hidden
-                // (wasted GPU only); where it's translucent the blur
-                // shows through — Hyprland's `blur` policy. Gated on
-                // `Config::blur`, excluded for `no_blur` / scratchpad
-                // clients (a blur there would bleed past edges that
-                // should feel locked to the screen). Fullscreen skips it
-                // only when the window is opaque — the blur would be
-                // hidden and would cost the direct-scanout path — while a
-                // translucent fullscreen window (kitty with an alpha
-                // background, wp_alpha_modifier) keeps it (mango a30fa7e4).
+                // Only where it can show (see `window_blur_wanted`):
+                // never under an opaque window, and never for `no_blur` /
+                // scratchpad clients (a blur there would bleed past edges
+                // that should feel locked to the screen).
                 if let Some(client) = client {
-                    if state.config.blur
-                        && !client.no_blur
-                        && (!client.is_fullscreen
-                            || window
-                                .wl_surface()
-                                .is_some_and(|s| surface_is_translucent(&s)))
-                        && !client.is_in_scratchpad
-                    {
+                    if window_blur_wanted(
+                        state.config.blur,
+                        client.no_blur,
+                        client.is_in_scratchpad,
+                        window_alpha,
+                        || {
+                            window.wl_surface().is_some_and(|s| {
+                                surface_hides_backdrop(&s, Some(window.geometry()))
+                            })
+                        },
+                    ) {
                         if let (Some(geo), true) = (
                             clip_geometry,
                             crate::render::blur::shader(renderer).is_some(),
@@ -2671,8 +2668,8 @@ fn push_layer_elements(
         // is on and no matching `layerrule = noblur:1` excludes it.
         // Pushed AFTER the surface elements → drawn beneath it (same
         // painter-order reasoning as the window path). Skipped while the
-        // layer is mid open-animation (alpha < full) to avoid a blur
-        // flashing in ahead of the surface.
+        // layer is mid open-animation and under a fully opaque layer
+        // (see `layer_blur_wanted`).
         if state.config.blur_layer {
             let namespace = surface.namespace();
             let no_blur = state
@@ -2686,7 +2683,10 @@ fn push_layer_elements(
                 .get(&key)
                 .map(|a| !a.is_close && a.progress < 1.0)
                 .unwrap_or(false);
-            if !no_blur && !mid_anim && crate::render::blur::shader(renderer).is_some() {
+            if layer_blur_wanted(true, no_blur, mid_anim, layer_alpha, || {
+                surface_hides_backdrop(surface.wl_surface(), None)
+            }) && crate::render::blur::shader(renderer).is_some()
+            {
                 let rect = Rectangle::<i32, Logical>::new(
                     (geo.loc.x, geo.loc.y).into(),
                     (geo.size.w.max(1), geo.size.h.max(1)).into(),
@@ -2787,11 +2787,13 @@ fn color_commit(color: [f32; 4]) -> smithay::backend::renderer::utils::CommitCou
 /// list to render, so that `selected` always falls inside it (centred when
 /// there's room, clamped at either end otherwise). Pure so it's testable
 /// without a renderer — see [`build_mru_switcher_elements`]'s call site.
-/// Whether `surface` shows what's beneath it: a `wp_alpha_modifier_v1`
-/// multiplier below 1, or a committed buffer whose opaque region doesn't
-/// cover the whole surface (an alpha buffer with no full `opaque_region`).
-fn surface_is_translucent(
+/// Whether `surface` hides everything beneath `rect` (surface-local
+/// logical coords): no `wp_alpha_modifier_v1` multiplier below 1, and a
+/// committed buffer whose opaque region covers all of `rect` (`None`: the
+/// whole surface). An unknown state (no buffer yet) counts as see-through.
+fn surface_hides_backdrop(
     surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    rect: Option<Rectangle<i32, Logical>>,
 ) -> bool {
     use smithay::wayland::alpha_modifier::AlphaModifierSurfaceCachedState;
     let faded = smithay::wayland::compositor::with_states(surface, |states| {
@@ -2803,19 +2805,52 @@ fn surface_is_translucent(
             .is_some_and(|m| m < u32::MAX)
     });
     if faded {
-        return true;
+        return false;
     }
     smithay::backend::renderer::utils::with_renderer_surface_state(surface, |rs| {
         let Some(size) = rs.surface_size() else {
             return false;
         };
-        !rs.opaque_regions().is_some_and(|regions| {
-            regions
-                .iter()
-                .any(|r| r.contains_rect(Rectangle::from_size(size)))
+        let rect = rect.unwrap_or_else(|| Rectangle::from_size(size));
+        rs.opaque_regions().is_some_and(|regions| {
+            Rectangle::subtract_rects_many([rect], regions.iter().copied()).is_empty()
         })
     })
     .unwrap_or(false)
+}
+
+/// Whether a window gets a blur element under it. The blur only shows
+/// where the window lets the backdrop through: a window drawn below full
+/// opacity, or one whose surface is not opaque over its whole geometry
+/// (`hides_backdrop`, probed only when the alpha doesn't already decide).
+/// Under an opaque window the blur would be invisible yet still re-run its
+/// whole capture + Kawase chain whenever something behind the window
+/// changes (its rounded clip keeps the window's opaque region from letting
+/// the damage tracker cull it). Holds for fullscreen windows too: a
+/// translucent fullscreen terminal keeps its blur (mango a30fa7e4), an
+/// opaque one keeps the direct-scanout path.
+fn window_blur_wanted(
+    blur_on: bool,
+    no_blur: bool,
+    in_scratchpad: bool,
+    window_alpha: f32,
+    hides_backdrop: impl FnOnce() -> bool,
+) -> bool {
+    blur_on && !no_blur && !in_scratchpad && (window_alpha < 1.0 || !hides_backdrop())
+}
+
+/// Whether a layer surface gets a blur element under it: `blur_layer` on,
+/// no `layerrule = noblur:1`, not mid open-animation (the blur would flash
+/// in ahead of the fading surface), and the layer lets the backdrop
+/// through somewhere (drawn below full alpha, or not opaque everywhere).
+fn layer_blur_wanted(
+    blur_layer_on: bool,
+    no_blur_rule: bool,
+    mid_open_anim: bool,
+    layer_alpha: f32,
+    hides_backdrop: impl FnOnce() -> bool,
+) -> bool {
+    blur_layer_on && !no_blur_rule && !mid_open_anim && (layer_alpha < 1.0 || !hides_backdrop())
 }
 
 fn mru_window_start(selected: usize, total: usize, max: usize) -> usize {
@@ -2871,6 +2906,48 @@ mod mru_window_tests {
             );
             assert!(start + max <= total, "window must not run past `total`");
         }
+    }
+}
+
+#[cfg(test)]
+mod blur_gate_tests {
+    use super::{layer_blur_wanted, window_blur_wanted};
+
+    fn never() -> bool {
+        panic!("opacity probed when the answer was already known")
+    }
+
+    #[test]
+    fn an_opaque_window_gets_no_blur() {
+        // A focused, fully opaque browser: the blur would be invisible
+        // and re-run its whole Kawase chain every time the page changes.
+        assert!(!window_blur_wanted(true, false, false, 1.0, || true));
+    }
+
+    #[test]
+    fn a_translucent_or_faded_window_keeps_its_blur() {
+        // Alpha buffer (terminal with a transparent background).
+        assert!(window_blur_wanted(true, false, false, 1.0, || false));
+        // Opaque buffer drawn at `unfocused_opacity` / overview dim.
+        assert!(window_blur_wanted(true, false, false, 0.8, never));
+    }
+
+    #[test]
+    fn rules_and_the_global_switch_win() {
+        assert!(!window_blur_wanted(false, false, false, 0.5, never));
+        assert!(!window_blur_wanted(true, true, false, 0.5, never));
+        assert!(!window_blur_wanted(true, false, true, 0.5, never));
+    }
+
+    #[test]
+    fn an_opaque_layer_gets_no_blur() {
+        assert!(!layer_blur_wanted(true, false, false, 1.0, || true));
+        assert!(layer_blur_wanted(true, false, false, 1.0, || false));
+        // An opaque bar faded by the caller's alpha shows the backdrop.
+        assert!(layer_blur_wanted(true, false, false, 0.7, never));
+        assert!(!layer_blur_wanted(true, true, false, 0.7, never));
+        assert!(!layer_blur_wanted(true, false, true, 0.7, never));
+        assert!(!layer_blur_wanted(false, false, false, 0.7, never));
     }
 }
 

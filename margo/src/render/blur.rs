@@ -375,6 +375,23 @@ pub fn damage_in_framebuffer(
         .collect()
 }
 
+/// The rounded-corner radius in framebuffer pixels for an element whose
+/// own physical size is `own` but which is drawn at `drawn` (smaller when a
+/// mirror target shows it scaled by the letterbox fit).
+pub fn drawn_corner_px(
+    corner_radius: f32,
+    scale: f64,
+    own: Size<i32, Physical>,
+    drawn: Size<i32, Physical>,
+) -> f32 {
+    let px = corner_radius * scale as f32;
+    if own.w > 0 && drawn.w > 0 {
+        px * drawn.w as f32 / own.w as f32
+    } else {
+        px
+    }
+}
+
 /// A blur draw under one translucent surface.
 ///
 /// A smithay *framebuffer effect*: the damage tracker calls
@@ -578,7 +595,12 @@ impl RenderElement<GlesRenderer> for BlurRenderElement {
         if clip.is_empty() {
             return Ok(());
         }
-        let corner_px = self.corner_radius * self.scale.x as f32;
+        let corner_px = drawn_corner_px(
+            self.corner_radius,
+            self.scale.x,
+            self.geometry(self.scale).size,
+            dst.size,
+        );
         let params = self.params;
         // The backdrop the tracker had us capture. Without one (drawn by a
         // caller that renders everything from scratch, not through a
@@ -1379,6 +1401,18 @@ mod tests {
             framebuffer_rect(bar, Transform::_270, fb),
             Rectangle::new((0, 780).into(), (40, 300).into())
         );
+    }
+
+    #[test]
+    fn corner_radius_follows_the_drawn_size() {
+        let own: Size<i32, Physical> = (400, 300).into();
+        // Drawn at its own size: logical radius times the output scale.
+        assert_eq!(drawn_corner_px(8.0, 1.5, own, own), 12.0);
+        // A mirror target showing it at half size: half the radius, so
+        // the blur's corners stay under the (also halved) window corners.
+        assert_eq!(drawn_corner_px(8.0, 1.5, own, (200, 150).into()), 6.0);
+        // Degenerate sizes never divide by zero.
+        assert_eq!(drawn_corner_px(8.0, 1.0, (0, 0).into(), (0, 0).into()), 8.0);
     }
 
     #[test]
