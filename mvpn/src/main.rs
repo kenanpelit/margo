@@ -182,6 +182,23 @@ enum FavCmd {
 
 #[derive(Subcommand, Debug)]
 enum AccountCmd {
+    /// Show the device, the paid-until date and whether it expired.
+    Show {
+        #[arg(long)]
+        json: bool,
+    },
+    /// List the account's devices (this one marked).
+    Devices {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Revoke another device by name (refuses this one).
+    Revoke { device: String },
+    /// Redeem a voucher code, read from stdin (a prompt on a terminal) so it
+    /// is not in mvpn's argv.
+    Redeem,
+    /// Log out of the account on this device.
+    Logout,
     /// Log in. The account number comes from stdin when it is not a
     /// terminal (`--stdin` forces it), else `$MULLVAD_ACCOUNT_NUMBER` or
     /// `pass show mullvad/account`; it reaches `mullvad` on stdin, never
@@ -549,7 +566,105 @@ fn spawn_held_recycle(dry_run: bool) -> bool {
 }
 
 fn run_account(action: AccountCmd) -> bool {
+    use engine::account;
+    let done = |r: Result<(), String>, ok: &str, verb: &str| match r {
+        Ok(()) => {
+            println!("{ok}");
+            true
+        }
+        Err(e) => {
+            eprintln!("mvpn account {verb}: {e}");
+            false
+        }
+    };
     match action {
+        AccountCmd::Show { json } => {
+            let a = account::query();
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string(&a).unwrap_or_else(|_| "{}".into())
+                );
+                return true;
+            }
+            match a {
+                account::Account::LoggedIn {
+                    device,
+                    expiry,
+                    expired,
+                } => {
+                    println!("device:     {device}");
+                    println!(
+                        "paid until: {expiry}{}",
+                        if expired { " (expired)" } else { "" }
+                    );
+                    true
+                }
+                account::Account::LoggedOut => {
+                    println!("not logged in");
+                    false
+                }
+                account::Account::Revoked => {
+                    println!("this device was revoked; log in again");
+                    false
+                }
+                account::Account::Unknown => {
+                    println!("account unknown (is the Mullvad service running?)");
+                    false
+                }
+            }
+        }
+        AccountCmd::Devices { json } => match account::devices() {
+            Ok(list) if json => {
+                println!(
+                    "{}",
+                    serde_json::to_string(&list).unwrap_or_else(|_| "[]".into())
+                );
+                true
+            }
+            Ok(list) => {
+                for d in list {
+                    println!(
+                        "{}{}",
+                        d.name,
+                        if d.current { "  (this device)" } else { "" }
+                    );
+                }
+                true
+            }
+            Err(e) => {
+                eprintln!("mvpn account devices: {e}");
+                false
+            }
+        },
+        AccountCmd::Revoke { device } => done(
+            account::revoke(&device),
+            &format!("revoked: {device}"),
+            "revoke",
+        ),
+        AccountCmd::Redeem => {
+            use std::io::IsTerminal as _;
+            if std::io::stdin().is_terminal() {
+                eprint!("Voucher code: ");
+            }
+            let mut code = String::new();
+            let _ = std::io::stdin().read_line(&mut code);
+            match account::redeem(&code) {
+                Ok(expiry) if expiry.is_empty() => {
+                    println!("voucher redeemed");
+                    true
+                }
+                Ok(expiry) => {
+                    println!("voucher redeemed · paid until {expiry}");
+                    true
+                }
+                Err(e) => {
+                    eprintln!("mvpn account redeem: {e}");
+                    false
+                }
+            }
+        }
+        AccountCmd::Logout => done(account::logout(), "logged out", "logout"),
         AccountCmd::Login { stdin } => {
             use std::io::IsTerminal as _;
             let number = if stdin || !std::io::stdin().is_terminal() {

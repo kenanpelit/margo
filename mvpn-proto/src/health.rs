@@ -38,6 +38,25 @@ pub enum Account {
     Unknown,
 }
 
+/// One device on the account (`mvpn account devices --json`).
+#[derive(Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Device {
+    pub name: String,
+    /// The device this machine is logged in as.
+    pub current: bool,
+}
+
+/// Parse `mvpn account devices --json`; unreadable output is `None`.
+pub fn parse_devices(json: &str) -> Option<Vec<Device>> {
+    serde_json::from_str(json.trim()).ok()
+}
+
+/// Parse `mvpn account show --json`; unreadable output is `Unknown`.
+pub fn parse_account(json: &str) -> Account {
+    serde_json::from_str(json.trim()).unwrap_or_default()
+}
+
 /// The facts [`diagnose`] reads.
 #[derive(Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -449,6 +468,32 @@ mod tests {
         assert_eq!(Fix::OpenAccountPage.mvpn_args(), None);
         assert_eq!(Fix::ShowAccount.mvpn_args(), None);
         assert_eq!(Fix::EnableService.label(), "Start at boot");
+    }
+
+    #[test]
+    fn account_and_devices_json() {
+        let a = ok().account;
+        assert_eq!(parse_account(&serde_json::to_string(&a).expect("json")), a);
+        assert_eq!(
+            parse_account(r#"{"state":"logged_out"}"#),
+            Account::LoggedOut
+        );
+        assert_eq!(parse_account(""), Account::Unknown);
+        let d = vec![
+            Device {
+                name: "Fast Goat".into(),
+                current: true,
+            },
+            Device {
+                name: "Dreamy Hen".into(),
+                current: false,
+            },
+        ];
+        assert_eq!(
+            parse_devices(&serde_json::to_string(&d).expect("json")),
+            Some(d)
+        );
+        assert_eq!(parse_devices("Error"), None);
     }
 
     #[test]

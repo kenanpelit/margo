@@ -442,6 +442,7 @@ mvpn test          ;  mvpn split       # leak test · split-tunnel processes
 mvpn health [--json]                   # what is wrong with Mullvad + the fix
 mvpn service [start|enable|restart]    # the system service, via systemd's polkit prompt
 mvpn account login                     # number on stdin / $MULLVAD_ACCOUNT_NUMBER / pass
+mvpn account show|devices|revoke <dev>|redeem|logout   # redeem reads the voucher on stdin
 mvpn ensure                            # drive the blocky DNS guard from VPN state
 ```
 
@@ -455,6 +456,11 @@ mvpn ensure                            # drive the blocky DNS guard from VPN sta
   guard and DNS presets), right-click toggles the tunnel. Open it from a
   terminal with `mshellctl menu vpn`. Full relay management also lives in
   **Settings → VPN**.
+- **Account.** The menu's **Account** section shows this device and the
+  paid-until date, lists the other devices with **Revoke** (click twice),
+  redeems a voucher, logs out (click twice) and opens the account page; when
+  logged out it takes the account number in a masked field (or uses the
+  saved one). The number is never shown and reaches `mullvad` on stdin.
 - **Says what is wrong.** The VPN menu opens with an error header when
   something is: the service is stopped (**Start service** / **Start at
   boot**), the firewall failed after a kernel update without a reboot

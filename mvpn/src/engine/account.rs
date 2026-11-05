@@ -1,11 +1,13 @@
-//! The Mullvad account: who is logged in and until when.
+//! The Mullvad account: who is logged in, until when, on which devices —
+//! and log out / redeem a voucher / list devices.
 //!
 //! `mullvad account get` prints the account number; it is parsed away
-//! here and never kept, printed or logged.
+//! here and never kept, printed or logged. Logging in takes the number
+//! on stdin (see `slot::login_with`), never in an argv.
 
-use mvpn_proto::health::Account;
+pub use mvpn_proto::health::{Account, Device};
 
-use super::sys;
+use super::{slot, sys};
 
 /// `account get` (mullvad-cli 2026.5) → the account without its number.
 ///
@@ -89,9 +91,134 @@ pub fn query() -> Account {
     parse_account(&out.text(), now_unix())
 }
 
+/// `account list-devices` names with the current one marked.
+pub fn devices() -> Result<Vec<Device>, String> {
+    let current = slot::current_device();
+    let out = sys::run("mullvad", &["account", "list-devices"], None);
+    if !out.success {
+        return Err(command_error(&out));
+    }
+    Ok(slot::parse_devices(&out.stdout)
+        .into_iter()
+        .map(|name| Device {
+            current: name == current,
+            name,
+        })
+        .collect())
+}
+
+/// A failed `mullvad account …` → the sentence to show. Never echoes
+/// the output itself (it can hold the account number).
+pub fn command_error(out: &sys::Output) -> String {
+    let text = out.text();
+    let known = [
+        (
+            "There is no such device",
+            "That device is not on this account.",
+        ),
+        (
+            "This voucher code is invalid",
+            "That voucher code is not valid.",
+        ),
+        (
+            "This voucher code has already been used",
+            "That voucher code has already been used.",
+        ),
+        (
+            "There are too many devices on the account",
+            "This account already has the most devices it can have. Revoke one first.",
+        ),
+        (
+            "The account does not exist",
+            "There is no Mullvad account with that number.",
+        ),
+        ("Not logged in", "You are not logged in."),
+        (
+            "Management RPC server or client error",
+            "The Mullvad service is not running.",
+        ),
+        (
+            "Failed to connect to mullvad-daemon",
+            "The Mullvad service is not running.",
+        ),
+    ];
+    if !out.spawned {
+        return "The mullvad command is not installed.".into();
+    }
+    known
+        .iter()
+        .find(|(needle, _)| text.contains(needle))
+        .map_or_else(
+            || "The Mullvad command failed.".into(),
+            |(_, s)| s.to_string(),
+        )
+}
+
+/// A voucher code as Mullvad prints them: letters / digits in groups,
+/// dashes or spaces allowed, 16 characters without separators.
+pub fn valid_voucher(code: &str) -> bool {
+    let bare: String = code.chars().filter(|c| !matches!(c, '-' | ' ')).collect();
+    bare.len() == 16 && bare.chars().all(|c| c.is_ascii_alphanumeric())
+}
+
+/// Redeem a voucher. `mullvad account redeem` only takes the code as an
+/// argument (no stdin form), so the code is in that one argv while it runs;
+/// it is validated first and never printed. Returns the new expiry date.
+pub fn redeem(voucher: &str) -> Result<String, String> {
+    redeem_with("mullvad", voucher)
+}
+
+pub(crate) fn redeem_with(program: &str, voucher: &str) -> Result<String, String> {
+    let code = voucher.trim();
+    if !valid_voucher(code) {
+        return Err("A voucher code has 16 letters and digits.".into());
+    }
+    let out = sys::run(program, &["account", "redeem", code], None);
+    if !out.success {
+        return Err(command_error(&out));
+    }
+    // A redeemed voucher moves the expiry: read it back.
+    Ok(
+        match parse_account(
+            &sys::run(program, &["account", "get"], None).text(),
+            now_unix(),
+        ) {
+            Account::LoggedIn { expiry, .. } => expiry,
+            _ => String::new(),
+        },
+    )
+}
+
+/// Revoke another device by name (never this machine's own).
+pub fn revoke(name: &str) -> Result<(), String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("No device name.".into());
+    }
+    if name == slot::current_device() {
+        return Err("That is this device; log out instead.".into());
+    }
+    let out = sys::run("mullvad", &["account", "revoke-device", name], None);
+    if out.success {
+        Ok(())
+    } else {
+        Err(command_error(&out))
+    }
+}
+
+pub fn logout() -> Result<(), String> {
+    let out = sys::run("mullvad", &["account", "logout"], None);
+    if out.success {
+        Ok(())
+    } else {
+        Err(command_error(&out))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::testutil::Fake;
 
     /// `mullvad account get` captured here, the number replaced.
     const GET: &str = include_str!("../../tests/fixtures/account-get.txt");
@@ -147,5 +274,50 @@ mod tests {
         assert_eq!(expires_at("2027-02-06"), None);
         assert_eq!(expires_at("garbage"), None);
         assert_eq!(expires_at("2027-13-01 00:00:00 +00:00"), None);
+    }
+
+    #[test]
+    fn account_errors_are_sentences() {
+        let failed = |stderr: &str| sys::Output {
+            spawned: true,
+            success: false,
+            stdout: String::new(),
+            stderr: stderr.into(),
+        };
+        assert_eq!(
+            command_error(&failed("Error: This voucher code is invalid")),
+            "That voucher code is not valid."
+        );
+        assert_eq!(
+            command_error(&failed("Error: There is no such device")),
+            "That device is not on this account."
+        );
+        assert_eq!(
+            command_error(&failed("Error: boom 1234123412341234")),
+            "The Mullvad command failed."
+        );
+        assert_eq!(
+            command_error(&sys::Output::default()),
+            "The mullvad command is not installed."
+        );
+    }
+
+    #[test]
+    fn vouchers_are_validated_before_reaching_mullvad() {
+        assert!(valid_voucher("ABCD-EFGH-1234-5678"));
+        assert!(valid_voucher("abcd efgh 1234 5678"));
+        assert!(!valid_voucher("ABCD-EFGH-1234"));
+        assert!(!valid_voucher("--help"));
+        assert!(!valid_voucher("ABCD-EFGH-1234-567;"));
+        let fake = Fake::new("redeem-bad", 1, "", "Error: This voucher code is invalid");
+        assert_eq!(
+            redeem_with(fake.program(), "ABCD-EFGH-1234-5678"),
+            Err("That voucher code is not valid.".into())
+        );
+        assert_eq!(fake.argv(), "account\nredeem\nABCD-EFGH-1234-5678\n");
+        drop(fake);
+        let fake = Fake::new("redeem-short", 0, "", "");
+        assert!(redeem_with(fake.program(), "nope").is_err());
+        assert_eq!(fake.argv(), "", "an invalid code never runs mullvad");
     }
 }

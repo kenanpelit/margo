@@ -253,3 +253,22 @@ row.active.ok-button-surface,
 .vpn-problem-message {
   font-weight: 600;
 }
+
+// ── Account section ─────────────────────────────────────────
+// Log out / Revoke swap to "Confirm…" on the first click: pin a width so
+// the swap never reflows the row (DESIGN.md §5), and turn the armed state
+// danger-red (the ladder's --error tier) so the second click is deliberate.
+.vpn-confirm-btn {
+  min-width: 96px;
+}
+.vpn-confirm-btn.armed {
+  background-color: var(--error);
+  color: var(--on-error);
+}
+// The last action's outcome under the section.
+.vpn-account-ok {
+  color: var(--success);
+}
+.vpn-account-error {
+  color: var(--error);
+}

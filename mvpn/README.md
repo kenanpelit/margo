@@ -31,6 +31,8 @@ mvpn test                  # leak check (am.i.mullvad.net)
 mvpn health [--json]       # what is wrong (service, tunnel error, lockdown, account) + the fix
 mvpn service [start|enable|restart]   # mullvad-daemon.service via systemd's polkit prompt
 mvpn account login [--stdin]          # number from stdin / $MULLVAD_ACCOUNT_NUMBER / pass
+mvpn account show|devices [--json]    # device + paid-until · the account's devices
+mvpn account revoke <device> | redeem | logout   # redeem reads the voucher from stdin
 mvpn split                 # split-tunnel excluded processes
 mvpn ensure                # blocky DNS-guard fail-safe
 mvpn menu                  # open the GTK panel

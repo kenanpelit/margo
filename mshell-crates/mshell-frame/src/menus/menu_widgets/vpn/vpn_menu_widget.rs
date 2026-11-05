@@ -17,6 +17,7 @@ use super::super::dns::dns_menu_widget::{
     DnsMenuWidgetInit, DnsMenuWidgetInput, DnsMenuWidgetModel,
 };
 use super::super::dns::state::{Mode, probe_dns_state};
+use super::account::{self, AccountAction, AccountState};
 use super::locations::{self, LocationAction, LocationList};
 use super::multihop::{self, Entry};
 use super::problem::ProblemBanner;
@@ -30,6 +31,9 @@ use std::time::Duration;
 /// Safety-net full reload while open (favourites / toggles changed from
 /// outside, e.g. the CLI). The status itself comes from the live feed.
 const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
+
+/// How long a first click on Log out / Revoke stays armed.
+const ACCOUNT_CONFIRM_WINDOW: Duration = Duration::from_secs(5);
 
 /// Built-in height cap of the location list's scroller (used when the
 /// menu has no configured height, see `list_fit`).
@@ -58,6 +62,13 @@ pub(crate) struct VpnMenuWidgetModel {
     favs: Vec<Fav>,
     /// Widget refs synced imperatively (avoids `#[watch] set_model` churn on
     /// the dropdown, and lets the favourites list rebuild in place).
+    /// Account section: its expander (opened by the header's Account /
+    /// Log in fixes), the rows box, and what it shows.
+    account_expander: gtk::Expander,
+    account_box: gtk::Box,
+    account: AccountState,
+    /// Bumped on every arm, so an old disarm timer leaves a newer arm alone.
+    account_arm: u64,
     /// Error header above the hero: the problem `mvpn health` finds, with
     /// its fixes; hidden while all is well.
     problem: ProblemBanner,
@@ -162,6 +173,12 @@ pub(crate) enum VpnMenuWidgetInput {
     DnsExpanded(bool),
     /// The Locations section's expander toggled (loads the tree on first open).
     CountriesExpanded(bool),
+    /// The Account section's expander toggled (loads it on open).
+    AccountExpanded(bool),
+    /// A click in the Account section.
+    Account(AccountAction),
+    /// Drop an armed Log out / Revoke that wasn't confirmed in time.
+    AccountDisarm(u64),
     /// A click in the location list: open a country, or connect to a
     /// country / city.
     Location(LocationAction),
@@ -183,6 +200,13 @@ pub(crate) enum VpnMenuWidgetCommandOutput {
     /// Mullvad's country → city tree — loaded lazily when the Locations
     /// section is first expanded.
     CountriesLoaded(Vec<Country>),
+    /// `mvpn account show` / `devices` answered.
+    AccountLoaded {
+        account: mshell_utils::mvpn::health::Account,
+        devices: Result<Vec<mshell_utils::mvpn::health::Device>, String>,
+    },
+    /// An account action finished: (worked, the sentence to show).
+    AccountDone(bool, String),
     /// What `mvpn health` diagnosed (`None` = all well).
     Health(Option<Problem>),
     /// A connection change from the shared VPN feed (no `mvpn` spawn).
@@ -454,6 +478,31 @@ impl Component for VpnMenuWidgetModel {
                     },
                 },
 
+                // Account — device, paid-until, other devices, voucher, log
+                // in / out. Built imperatively (`account.rs`); lazy on open.
+                #[local_ref]
+                account_expander_widget -> gtk::Expander {
+                    add_css_class: "vpn-dns-expander",
+                    set_expanded: false,
+                    connect_expanded_notify[sender] => move |e| {
+                        sender.input(VpnMenuWidgetInput::AccountExpanded(e.is_expanded()));
+                    },
+                    #[wrap(Some)]
+                    set_label_widget = &gtk::Box {
+                        add_css_class: "vpn-section-head",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 10,
+                        gtk::Image {
+                            add_css_class: "vpn-section-icon",
+                            set_icon_name: Some("avatar-default-symbolic"),
+                        },
+                        gtk::Label {
+                            add_css_class: "vpn-section-name",
+                            set_label: "Account",
+                        },
+                    },
+                },
+
                 // DNS section (Blocky / Default / presets) — the embedded
                 // DnsMenuWidget's child is attached + its expand signal wired
                 // in `init`.
@@ -549,6 +598,10 @@ impl Component for VpnMenuWidgetModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        let account_expander_widget = gtk::Expander::new(None);
+        let account_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
+        account_box.set_margin_top(6);
+        account_expander_widget.set_child(Some(&account_box));
         let problem = ProblemBanner::new();
         let problem_widget = problem.widget().clone();
         // Hero status card refs — driven imperatively from `sync_view`.
@@ -698,6 +751,10 @@ impl Component for VpnMenuWidgetModel {
             quantum: false,
             obf: "auto".to_string(),
             favs: Vec::new(),
+            account_expander: account_expander_widget.clone(),
+            account_box,
+            account: AccountState::default(),
+            account_arm: 0,
             problem,
             hero: hero_widget.clone(),
             state_label: state_label_widget.clone(),
@@ -885,14 +942,35 @@ impl Component for VpnMenuWidgetModel {
                 }
             }
             VpnMenuWidgetInput::RefreshNow => reload(&sender),
+            VpnMenuWidgetInput::Fix(Fix::ShowAccount) => self.account_expander.set_expanded(true),
+            VpnMenuWidgetInput::Fix(Fix::Login) => {
+                // Try the saved number; the section shows the outcome and,
+                // if that fails, the field to type one.
+                self.account_expander.set_expanded(true);
+                sender.input(VpnMenuWidgetInput::Account(AccountAction::Login(
+                    String::new(),
+                )));
+            }
             VpnMenuWidgetInput::Fix(fix) => match fix.mvpn_args() {
                 Some(args) => act(&sender, args.iter().map(|a| a.to_string()).collect()),
-                None => {
-                    if let Err(e) = mshell_process::desktop::open(health::ACCOUNT_URL) {
-                        tracing::warn!("vpn: opening the account page failed: {e}");
-                    }
-                }
+                None => open_account_page(),
             },
+            VpnMenuWidgetInput::AccountExpanded(expanded) => {
+                if expanded {
+                    self.account.notice = None;
+                    load_account(&sender);
+                }
+            }
+            VpnMenuWidgetInput::Account(action) => self.account_action(action, &sender),
+            VpnMenuWidgetInput::AccountDisarm(arm) => {
+                if arm == self.account_arm
+                    && (self.account.confirm_logout || self.account.confirm_revoke.is_some())
+                {
+                    self.account.confirm_logout = false;
+                    self.account.confirm_revoke = None;
+                    self.rebuild_account(&sender);
+                }
+            }
             VpnMenuWidgetInput::ParentRevealChanged(visible) => {
                 self.visible.set(visible);
                 self.vpn_poll.set_active(visible);
@@ -924,6 +1002,20 @@ impl Component for VpnMenuWidgetModel {
     ) {
         let snap = match message {
             VpnMenuWidgetCommandOutput::Loaded(snap) => *snap,
+            VpnMenuWidgetCommandOutput::AccountLoaded { account, devices } => {
+                self.account.account = Some(account);
+                self.account.devices = Some(devices);
+                self.rebuild_account(&sender);
+                return;
+            }
+            VpnMenuWidgetCommandOutput::AccountDone(ok, text) => {
+                self.account.busy = false;
+                self.account.notice = Some((ok, text));
+                self.rebuild_account(&sender);
+                load_account(&sender);
+                reload(&sender);
+                return;
+            }
             VpnMenuWidgetCommandOutput::Health(problem) => {
                 let s = sender.clone();
                 self.problem.show(
@@ -1103,6 +1195,54 @@ impl VpnMenuWidgetModel {
         }
         self.toggle_btn
             .set_label(if connected { "Disconnect" } else { "Connect" });
+    }
+
+    /// Run (or arm) an Account-section action.
+    fn account_action(&mut self, action: AccountAction, sender: &ComponentSender<Self>) {
+        if action == AccountAction::OpenPage {
+            open_account_page();
+            return;
+        }
+        match account::command(&action, &self.account) {
+            Some((args, stdin)) => {
+                self.account.confirm_logout = false;
+                self.account.confirm_revoke = None;
+                self.account.busy = true;
+                self.account.notice = None;
+                self.rebuild_account(sender);
+                sender.command(|out, _shutdown| async move {
+                    let (ok, stdout, stderr) = run_mvpn(&args, stdin).await;
+                    let _ = out.send(VpnMenuWidgetCommandOutput::AccountDone(
+                        ok,
+                        account::outcome(ok, &stdout, &stderr),
+                    ));
+                });
+            }
+            None => {
+                // The first click on Log out / Revoke arms it for a few seconds.
+                match action {
+                    AccountAction::Logout => self.account.confirm_logout = true,
+                    AccountAction::Revoke(name) => self.account.confirm_revoke = Some(name),
+                    _ => return,
+                }
+                self.account_arm += 1;
+                let arm = self.account_arm;
+                self.rebuild_account(sender);
+                let s = sender.clone();
+                gtk::glib::timeout_add_local_once(ACCOUNT_CONFIRM_WINDOW, move || {
+                    s.input(VpnMenuWidgetInput::AccountDisarm(arm));
+                });
+            }
+        }
+    }
+
+    fn rebuild_account(&self, sender: &ComponentSender<Self>) {
+        let s = sender.clone();
+        account::rebuild(
+            &self.account_box,
+            &self.account,
+            std::rc::Rc::new(move |a| s.input(VpnMenuWidgetInput::Account(a))),
+        );
     }
 
     /// Fetch the location tree once (Locations list + entry pickers).
@@ -1312,6 +1452,57 @@ fn reload(sender: &ComponentSender<VpnMenuWidgetModel>) {
         let _ = out.send(load().await);
         let _ = out.send(VpnMenuWidgetCommandOutput::Health(load_health().await));
     });
+}
+
+/// Read the Account section's data off-thread.
+fn load_account(sender: &ComponentSender<VpnMenuWidgetModel>) {
+    use mshell_utils::mvpn::health::{parse_account, parse_devices};
+    sender.command(|out, _shutdown| async move {
+        let account = parse_account(&capture(&["account", "show", "--json"]).await);
+        let devices = match parse_devices(&capture(&["account", "devices", "--json"]).await) {
+            Some(list) => Ok(list),
+            None => Err("The device list can't be read right now.".to_string()),
+        };
+        let _ = out.send(VpnMenuWidgetCommandOutput::AccountLoaded { account, devices });
+    });
+}
+
+/// Run `mvpn <args>`, writing `stdin` (a secret: the account number, a
+/// voucher) to its stdin; (worked, stdout, stderr).
+async fn run_mvpn(args: &[String], stdin: Option<String>) -> (bool, String, String) {
+    use std::process::Stdio;
+    use tokio::io::AsyncWriteExt as _;
+    let child = tokio::process::Command::new("mvpn")
+        .args(args)
+        .stdin(if stdin.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn();
+    let Ok(mut child) = child else {
+        return (false, String::new(), "mvpn is not installed".into());
+    };
+    if let (Some(text), Some(mut pipe)) = (stdin, child.stdin.take()) {
+        let _ = pipe.write_all(text.as_bytes()).await;
+        drop(pipe);
+    }
+    match child.wait_with_output().await {
+        Ok(o) => (
+            o.status.success(),
+            String::from_utf8_lossy(&o.stdout).into_owned(),
+            String::from_utf8_lossy(&o.stderr).into_owned(),
+        ),
+        Err(_) => (false, String::new(), String::new()),
+    }
+}
+
+fn open_account_page() {
+    if let Err(e) = mshell_process::desktop::open(health::ACCOUNT_URL) {
+        tracing::warn!("vpn: opening the account page failed: {e}");
+    }
 }
 
 fn check_health(sender: &ComponentSender<VpnMenuWidgetModel>) {
