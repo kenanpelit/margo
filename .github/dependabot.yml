@@ -1,0 +1,12 @@
+# Keeps the GitHub Actions the workflows use up to date. Third-party actions
+# are pinned to a commit SHA (with the release in a comment); dependabot bumps
+# the SHA and the comment together in one PR.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

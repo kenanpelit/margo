@@ -21,6 +21,10 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# Read-only token: no job here writes to the repo, issues or packages.
+permissions:
+  contents: read
+
 jobs:
   winit:
     name: smoke-winit (xvfb, arch)
@@ -42,18 +46,20 @@ jobs:
             wayland wayland-protocols libinput libxkbcommon \
             mesa libdrm seatd pixman libgudev systemd-libs \
             pcre2 pam cairo pango dbus pipewire
-          rustup default stable
 
       - uses: actions/checkout@v5
 
+      - name: Rust (rust-toolchain.toml pin)
+        run: rustup toolchain install
+
       - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       # Clean-room release build of the binaries the smoke script probes
       # for (target/release/{margo,mctl}) — distinct from ci.yml's cached
       # workspace build.
       - name: cargo build (release)
-        run: cargo build --release -p margo -p mctl
+        run: cargo build --locked --release -p margo -p mctl
 
       - name: smoke (build + launch + config, headless)
         run: scripts/smoke-winit.sh

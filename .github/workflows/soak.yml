@@ -40,6 +40,10 @@ env:
   CARGO_PROFILE_TEST_DEBUG: "0"
   CARGO_INCREMENTAL: "0"
 
+# Read-only token: no job here writes to the repo, issues or packages.
+permissions:
+  contents: read
+
 jobs:
   soak:
     # One job per crate, in parallel. They were steps of a single job until
@@ -68,12 +72,14 @@ jobs:
         run: |
           pacman -Syu --noconfirm --needed \
             git rustup clang pkgconf pcre2 libxkbcommon
-          rustup default stable
 
       - uses: actions/checkout@v5
 
+      - name: Rust (rust-toolchain.toml pin)
+        run: rustup toolchain install
+
       - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Soak ${{ matrix.crate }}
         env:
@@ -110,7 +116,7 @@ jobs:
 
       - uses: actions/checkout@v5
 
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
         with:
           tool: cargo-fuzz
 

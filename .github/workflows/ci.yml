@@ -32,6 +32,16 @@ env:
   CARGO_PROFILE_TEST_DEBUG: "0"
   CARGO_INCREMENTAL: "0"
 
+# Read-only token: no job here writes to the repo, issues or packages.
+permissions:
+  contents: read
+
+# A newer push to the same branch or PR cancels the run still going for the
+# older one, instead of stacking 30-60 minute jobs.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     name: build / test / clippy / config (arch)
@@ -44,9 +54,9 @@ jobs:
       # smithay's native stack (wayland, libinput, libxkbcommon, libseat,
       # mesa, libdrm, libgudev, systemd-libs), the regex crate's PCRE2
       # backend, PAM/cairo/pango for mlock, and the full GTK4 + GStreamer
-      # + audio stack for mshell. `rustup` provides a current toolchain
-      # with clippy (margo is Rust edition 2024, needs >= 1.85). git is
-      # required by actions/checkout inside the container.
+      # + audio stack for mshell. `rustup` installs the pinned toolchain
+      # (rust-toolchain.toml) after the checkout. git is required by
+      # actions/checkout inside the container.
       - name: System dependencies (pacman)
         run: |
           pacman -Syu --noconfirm --needed \
@@ -58,8 +68,6 @@ jobs:
             gtk4 gtk4-layer-shell libadwaita gdk-pixbuf2 graphene fontconfig freetype2 \
             gstreamer gst-plugins-base gst-plugins-base-libs gst-plugins-good \
             alsa-lib libpulse pipewire
-          rustup default stable
-          rustup component add clippy
 
       - uses: actions/checkout@v5
         with:
@@ -67,8 +75,14 @@ jobs:
           # to check every baseline raise carries its reason trailer.
           fetch-depth: 0
 
+      # The toolchain rust-toolchain.toml pins, with the clippy and rustfmt
+      # it lists. cargo uses that pin whatever the default is, so no other
+      # (`stable`) toolchain is installed.
+      - name: Rust (rust-toolchain.toml pin)
+        run: rustup toolchain install
+
       - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       # Build the two PKGBUILD groups separately — NOT `--workspace`.
       # Building the compositor and the GTK/tokio shell stack in one
@@ -244,7 +258,7 @@ jobs:
           rustup target add wasm32-wasip2
 
       - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: wasm
 
@@ -300,7 +314,7 @@ jobs:
           . "$HOME/.cargo/env"
           rustup toolchain install --profile minimal "$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: debian
       - name: cargo check (install.sh build groups)
@@ -320,14 +334,17 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
         with:
           tool: cargo-machete
       - name: cargo machete (workspace members)
         run: |
           dirs=$(cargo metadata --no-deps --format-version 1 --locked \
             | jq -r '.packages[].manifest_path | sub("/Cargo.toml$"; "")')
-          cargo machete $dirs
+          # One directory per metadata line; preserve paths containing spaces.
+          printf '%s\n' "$dirs" | while IFS= read -r dir; do
+            cargo machete "$dir" || exit 1
+          done
 
   # The declared MSRV (Cargo.toml `rust-version`) must actually build: the
   # pinned toolchain in rust-toolchain.toml is newer, so nothing else would
@@ -356,7 +373,7 @@ jobs:
           msrv=$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)
           rustup toolchain install --profile minimal "$msrv"
           echo "MSRV=$msrv" >> "$GITHUB_ENV"
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: msrv
       - name: cargo check on the MSRV (same groups as the build)
@@ -381,7 +398,7 @@ jobs:
       # (deny.toml `multiple-versions = "warn"`). These only change when we
       # change deps, so they won't flip red on unrelated rolling churn.
       - name: cargo-deny (bans / licenses / sources)
-        uses: EmbarkStudios/cargo-deny-action@v2
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           command: check bans licenses sources
       # Report-only — RUSTSEC advisories. Upstream advisory-db updates flag
@@ -390,7 +407,7 @@ jobs:
       # deny.toml's ignore list (bumped if a fix exists, parked with a note if
       # not).
       - name: cargo-deny (advisories, report-only)
-        uses: EmbarkStudios/cargo-deny-action@v2
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         continue-on-error: true
         with:
           command: check advisories
