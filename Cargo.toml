@@ -238,7 +238,15 @@ memmap2 = "0.9"
 # Native async MPD client (tokio) — idle-based push updates + album_art.
 mpd_client = "1.4"
 nix = { version = "0.31", features = ["signal", "user"] }
-notify = "9.0.0-rc.1"
+# Pre-release on purpose: margo's config watcher filters events in the kernel
+# with `Config::with_event_kinds` / `EventKindMask` (the fix for auto-reload
+# re-triggering itself), which only 9.0 has; 8.2.1, the newest stable, does
+# not. Pinned exactly because cargo treats every 9.0.0-rc as compatible with
+# the next, and the RCs change watcher behaviour (rc.5-rc.7 alone rework
+# recursive inotify watches and deleted-path handling), so a plain
+# `cargo update` must not move it.
+# Bump it deliberately, and move to "9.0" once 9.0.0 is released.
+notify = "=9.0.0-rc.4"
 notify-rust = "4"
 pam = "0.8"
 regex = "1"
