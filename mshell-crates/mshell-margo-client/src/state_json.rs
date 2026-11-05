@@ -238,19 +238,32 @@ pub struct RawClient {
 }
 
 /// Resolve margo's IPC socket: `$MARGO_SOCKET` if set, else
-/// `$XDG_RUNTIME_DIR/margo/margo-ipc.sock`. This is the live state
+/// `$XDG_RUNTIME_DIR/margo/margo-ipc.sock` (`margo_fs::xdg::runtime_dir`:
+/// set and absolute, else `/run/user/<uid>`). This is the live state
 /// source — the shell subscribes to `watch state` over it.
 pub fn socket_path() -> std::path::PathBuf {
-    if let Some(p) = std::env::var_os("MARGO_SOCKET") {
+    // SAFETY: getuid() has no preconditions and cannot fail.
+    let uid = unsafe { libc::getuid() };
+    socket_path_from(
+        std::env::var_os("MARGO_SOCKET"),
+        margo_fs::xdg::runtime_dir(),
+        uid,
+    )
+}
+
+/// [`socket_path`] from explicit inputs (the testable core).
+fn socket_path_from(
+    margo_socket: Option<std::ffi::OsString>,
+    runtime_dir: Option<std::path::PathBuf>,
+    uid: u32,
+) -> std::path::PathBuf {
+    if let Some(p) = margo_socket {
         return std::path::PathBuf::from(p);
     }
-    let runtime = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| {
-            let uid = unsafe { libc::getuid() };
-            std::path::PathBuf::from(format!("/run/user/{uid}"))
-        });
-    runtime.join("margo").join("margo-ipc.sock")
+    runtime_dir
+        .unwrap_or_else(|| std::path::PathBuf::from(format!("/run/user/{uid}")))
+        .join("margo")
+        .join("margo-ipc.sock")
 }
 
 /// Hard cap on a single synchronous `get state` round-trip. A healthy
@@ -339,6 +352,23 @@ pub fn monitor_id(name: &str) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn socket_path_prefers_margo_socket_then_runtime_dir_then_run_user() {
+        use std::path::PathBuf;
+        assert_eq!(
+            socket_path_from(Some("/x/s.sock".into()), Some(PathBuf::from("/rt")), 7),
+            PathBuf::from("/x/s.sock")
+        );
+        assert_eq!(
+            socket_path_from(None, Some(PathBuf::from("/rt")), 7),
+            PathBuf::from("/rt/margo/margo-ipc.sock")
+        );
+        assert_eq!(
+            socket_path_from(None, None, 7),
+            PathBuf::from("/run/user/7/margo/margo-ipc.sock")
+        );
+    }
 
     #[test]
     fn lowest_tag_maps_lowest_set_bit() {

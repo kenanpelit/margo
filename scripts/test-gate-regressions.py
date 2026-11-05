@@ -41,8 +41,41 @@ class GateTests(unittest.TestCase):
     def gate(self, script):
         result = subprocess.run(['bash', f'scripts/{script}', self.base],
                                 cwd=self.root, text=True, capture_output=True,
-                                env={**os.environ, 'PANIC_RATCHET_BASE': self.base})
+                                stdin=subprocess.DEVNULL, env={**os.environ, 'PANIC_RATCHET_BASE': self.base})
         return result
+
+    def test_design_scans_production_after_test_items(self):
+        # Exercise each affected rule separately so one hit cannot hide another.
+        for violation, rule in [('let c = "#ff0000";', 'L10'),
+                                ('std::env::var("XDG_RUNTIME_DIR");', 'L11'),
+                                ('let b = Button::from_icon_name("x");', 'L12')]:
+            for test_item in ('#[cfg(test)]\nfn helper() {\n}\n',
+                              '#[cfg(test)] fn helper() {}\n',
+                              '#[cfg(test)]\nuse foo::bar;\n',
+                              '#[cfg(test)]\nuse foo::{bar, baz};\n',
+                              '#[cfg(test)]\nmod tests;\n',
+                              '#[cfg(test)]\nmod tests {\nfn helper() {}\n}\n'):
+                with self.subTest(rule=rule, item=test_item):
+                    self.write('mshell-crates/mshell-frame/src/probe.rs',
+                               test_item + 'fn production() {\n' + violation + '\n}\n')
+                    result = self.gate('design-lint.sh')
+                    self.assertIn('FAIL ' + rule, result.stdout)
+
+    def test_design_still_skips_test_modules(self):
+        for violation in ('let c = "#ff0000";', 'std::env::var("XDG_RUNTIME_DIR");',
+                          'let b = Button::from_icon_name("x");'):
+            for wrapper in ('#[cfg(test)]\nmod tests {\nfn t() {\n%s\n}\n}\n',
+                            '#[cfg(test)]\nmod tests\n{\n%s\n}\n',
+                            '#[test]\nfn t() {\n%s\n}\n'):
+                with self.subTest(violation=violation, wrapper=wrapper):
+                    self.write('mshell-crates/mshell-frame/src/probe.rs',
+                               'fn production() {}\n' + wrapper % violation)
+                    result = self.gate('design-lint.sh')
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_panic_scans_after_inline_test_item(self):
+        self.write('demo.rs', '#[cfg(test)] fn helper() {}\nfn f() { a.unwrap(); }\n')
+        self.assertNotEqual(self.gate('panic-ratchet.sh').returncode, 0)
 
     def test_size_rejects_malformed_rules(self):
         for rule in ('demo.rs abc', 'demo.rs -1', 'demo.rs 2 extra',

@@ -60,7 +60,7 @@ jobs:
       - name: System dependencies (pacman)
         run: |
           pacman -Syu --noconfirm --needed \
-            git rustup clang pkgconf \
+            git rustup clang pkgconf python \
             wayland wayland-protocols libinput libxkbcommon \
             mesa libdrm seatd pixman libgudev systemd-libs \
             pcre2 pam cairo pango dbus \
@@ -158,7 +158,11 @@ jobs:
         # spacing/radius/font, --radius-widget only in bar/frame styles,
         # no literal transition durations, no Popover primary surfaces,
         # no add_css_class(""), no DragSource/DropTarget row reorder.
-        run: ./scripts/design-lint.sh
+        # test-gate-regressions.py exercises this lint, the panic ratchet and
+        # the file-size gate against throwaway repositories.
+        run: |
+          ./scripts/design-lint.sh
+          python3 scripts/test-gate-regressions.py
 
       - name: panic ratchet (gate)
         # Non-test .unwrap()/.expect()/panic!() count may only go down.

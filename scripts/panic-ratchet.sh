@@ -24,8 +24,8 @@
 #   * benchmark trees (any path containing /benches/) — dev-only, never
 #     shipped; a panic in a bench can't take down the desktop
 #   * build.rs (compile-time, panicking is fine)
-#   * the braced item introduced by each `#[cfg(test)]` attribute (the in-file
-#     unit-test module or a test-only fn), tracked by brace depth so production
+#   * the item introduced by each `#[cfg(test)]` attribute (the in-file
+#     unit-test module or a test-only fn — scripts/lib/skip-cfg-test.awk), tracked by brace depth so production
 #     code that follows the module — even mid-file — is still counted. A
 #     `#[cfg(test)]` on a non-braced item (e.g. `use super::*;`) skips just that
 #     statement.
@@ -81,27 +81,10 @@ if [ -n "$gated_test_files" ]; then
     rs_files=$(printf '%s\n' "$rs_files" | grep -vxF "$gated_test_files" || true)
 fi
 
-count=$(printf '%s\n' "$rs_files" | tr '\n' '\0' | xargs -0 awk '
-      FNR == 1 { in_test = 0; depth = 0; arming = 0 }
-      # Inside a #[cfg(test)] braced item: skip and track depth to its close.
-      in_test {
-        depth += gsub(/{/, "{") - gsub(/}/, "}")
-        if (depth <= 0) in_test = 0
-        next
-      }
-      # After a #[cfg(test)] attribute, wait for the items opening brace (a `{`)
-      # or bail on a `;` (a non-braced test-only statement like `use super::*;`).
-      arming {
-        if (/{/) {
-          depth = gsub(/{/, "{") - gsub(/}/, "}")
-          arming = 0
-          if (depth > 0) in_test = 1
-          next
-        }
-        if (/;/) { arming = 0 }
-        next
-      }
-      /#\[cfg\(test\)\]|#\[test\]|#\[tokio::test\]/ { arming = 1; next }
+# The test-item skipping lives in scripts/lib/skip-cfg-test.awk, shared with
+# design-lint.sh so both gates agree on what is test code.
+skip_cfg_test=$(< scripts/lib/skip-cfg-test.awk)
+count=$(printf '%s\n' "$rs_files" | tr '\n' '\0' | xargs -0 awk "$skip_cfg_test"'
       /\.unwrap\(\)|\.expect\(|panic!\(|unreachable!\(|todo!\(|unimplemented!\(/ { n += gsub(/\.unwrap\(\)|\.expect\(|panic!\(|unreachable!\(|todo!\(|unimplemented!\(/, "&") }
       END { print n + 0 }
     ')

@@ -5365,6 +5365,7 @@ dependencies = [
  "anyhow",
  "futures",
  "libc",
+ "margo-fs",
  "serde",
  "serde_json",
  "tempfile",

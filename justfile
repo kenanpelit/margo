@@ -119,6 +119,7 @@ check:
     MARGO_REQUIRE_WASM_FIXTURES=1 cargo test --locked -p mshell-plugin-host --features wasm
     MARGO_REQUIRE_WASM_FIXTURES=1 cargo test --locked -p mshell-frame -p mshell-plugin-ui --features mshell-frame/wasm-plugins,mshell-plugin-ui/wasm
     ./scripts/design-lint.sh
+    python3 scripts/test-gate-regressions.py
     ./scripts/test-panic-baseline-guard.sh
     ./scripts/panic-ratchet.sh
     ./scripts/test-file-size-gate.sh

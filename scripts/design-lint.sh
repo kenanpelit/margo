@@ -18,6 +18,9 @@ cd "$(dirname "$0")/.."
 scss_styled="mshell-crates/mshell-style/scss/03-primitives mshell-crates/mshell-style/scss/04-components"
 scss_all="mshell-crates/mshell-style/scss"
 fail=0
+# L10–L12 skip test-only items (cfg(test) modules/fns, #[test] fns) exactly
+# the way panic-ratchet.sh does: just the item's span, never the rest of the file.
+skip_cfg_test=$(< scripts/lib/skip-cfg-test.awk)
 
 # Strip line comments (// … and single-line /* … */) so commented-out
 # examples and rule discussions never trip the gates.
@@ -99,16 +102,13 @@ report "L7" "DragSource/DropTarget row reorder (use reorder_dnd)" "$hits"
 # L10 — no hardcoded colours in mshell Rust (matugen owns colour; read the
 # theme from CSS instead). Flags RGBA::new(<literal>…), "#rrggbb[aa]" string
 # literals and cairo set_source_rgb[a](<literals>). Exceptions: the palette
-# crates (mshell-matugen, mshell-style), unit tests (everything after a
-# file's first #[cfg(test)]), comments, and lines carrying an explicit
+# crates (mshell-matugen, mshell-style), test-only items (cfg(test)
+# modules/fns and #[test] fns — their span only), comments, and lines carrying an explicit
 # `design-lint: allow-colour <why>` marker (e.g. a black scrim over
 # arbitrary screen content, a value written to another tool's config).
 hits=$(find mshell-crates -path '*/target' -prune -o -name '*.rs' -print 2>/dev/null \
     | grep -vE '^mshell-crates/(mshell-matugen|mshell-style)/' \
-    | xargs awk '
-        FNR == 1 { in_test = 0 }
-        /#\[cfg\(test\)\]/ { in_test = 1 }
-        in_test { next }
+    | xargs awk "$skip_cfg_test"'
         /design-lint: allow-colour/ { next }
         { line = $0; sub(/\/\/.*/, "", line) }
         line ~ /RGBA::new\([[:space:]]*[0-9]/ \
@@ -120,17 +120,11 @@ report "L10" "hardcoded colour in mshell Rust (use a theme colour)" "$hits"
 
 # L11 — no hand-rolled XDG base-dir lookups; use margo_fs::xdg (one rule:
 # absolute + non-empty, else the $HOME default — the one margo uses too).
-# Exceptions: margo-fs itself, unit tests (after a file's first
-# #[cfg(test)]), comments, a `design-lint: allow-xdg <why>` marker on the
-# line above (testable `_from(var, home)` seams), and the allowlist below.
-#   mshell-margo-client/src/state_json.rs: review3/shellperf has it open;
-#   switch it to margo_fs::xdg::runtime_dir() after that merge.
+# Exceptions: margo-fs itself, test-only items (their span only),
+# comments, a `design-lint: allow-xdg <why>` marker on the
+# line above (testable `_from(var, home)` seams).
 hits=$(find mshell-crates mshell mshellctl mshellshare -path '*/target' -prune -o -name '*.rs' -print 2>/dev/null \
-    | grep -vE '^mshell-crates/mshell-margo-client/src/state_json\.rs$' \
-    | xargs awk '
-        FNR == 1 { in_test = 0; allow = 0 }
-        /#\[cfg\(test\)\]/ { in_test = 1 }
-        in_test { next }
+    | xargs awk 'FNR == 1 { allow = 0 }'"$skip_cfg_test"'
         /design-lint: allow-xdg/ { allow = 1; next }
         { line = $0; sub(/\/\/.*/, "", line) }
         line ~ /env::var(_os)?\("XDG_(CONFIG_HOME|DATA_HOME|STATE_HOME|CACHE_HOME|RUNTIME_DIR)"/ {
@@ -144,10 +138,7 @@ report "L11" "hand-rolled XDG lookup (use margo_fs::xdg)" "$hits"
 # within the next 8 lines. Bar pills are named centrally in bar.rs. Marker
 # `design-lint: allow-unnamed <why>` on the line skips it.
 hits=$(find mshell-crates/mshell-frame/src -name '*.rs' 2>/dev/null \
-    | xargs awk '
-        FNR == 1 { if (pending > 0) print where; in_test = 0; pending = 0 }
-        /#\[cfg\(test\)\]/ { in_test = 1 }
-        in_test { next }
+    | xargs awk 'FNR == 1 { if (pending > 0) print where; pending = 0 }'"$skip_cfg_test"'
         pending > 0 && /a11y::name/ { pending = 0 }
         pending > 0 { pending--; if (pending == 0) print where }
         /Button::from_icon_name\(/ && !/design-lint: allow-unnamed/ {
