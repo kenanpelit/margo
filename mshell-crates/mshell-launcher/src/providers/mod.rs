@@ -16,6 +16,7 @@ pub mod file_search;
 pub mod mctl;
 pub mod nvim;
 pub mod pass;
+pub mod pass_autotype;
 pub mod playerctl;
 pub mod provider_list;
 pub mod scripts;

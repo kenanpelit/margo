@@ -2,6 +2,7 @@
 //! scripts, favourite websites, provider options) and `pass:` (the GNU
 //! pass provider). Split out of `config.rs` to keep it under its size cap.
 
+use super::default_true;
 use reactive_stores::{KeyMap, Patch, PatchField, Store, StorePath};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -67,15 +68,82 @@ impl Default for Launcher {
 }
 
 /// GNU pass (password-store) launcher provider. Surfaced under
-/// Settings → Launcher → Storage paths.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize, Store, Patch, JsonSchema,
-)]
+/// Settings → Launcher → Password store (pass).
+///
+/// Hand-written `Default` (not derived) for the same reason as
+/// [`super::Valent`]: a profile without a `pass:` block takes the whole-struct
+/// default, so the non-zero defaults below must live there too.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
 pub struct Pass {
     /// Password-store directory. Empty = follow `$PASSWORD_STORE_DIR`,
     /// else `~/.password-store` (pass's own resolution order).
     pub store_path: String,
+    /// Seconds a copied password / field stays on the clipboard before it
+    /// is cleared (if nothing else was copied since). pass's own default.
+    #[serde(default = "default_pass_clip_timeout_secs")]
+    pub clip_timeout_secs: u32,
+    /// Milliseconds to wait after the launcher closes before typing, so
+    /// focus is back in the field you were in.
+    #[serde(default = "default_pass_type_delay_ms")]
+    pub type_delay_ms: u32,
+    /// Milliseconds between typed keystrokes (`wtype -d`). Raise it when
+    /// a slow app drops characters. 0 = as fast as possible.
+    pub key_delay_ms: u32,
+    /// Key autotype presses between the username and the password.
+    pub autotype_separator: PassAutotypeSeparator,
+    /// Autotype presses Enter after the last value (the password, or the
+    /// OTP code when the entry has one) to submit the form.
+    #[serde(default = "default_true")]
+    pub autotype_submit: bool,
+}
+
+impl Default for Pass {
+    fn default() -> Self {
+        Self {
+            store_path: String::new(),
+            clip_timeout_secs: default_pass_clip_timeout_secs(),
+            type_delay_ms: default_pass_type_delay_ms(),
+            key_delay_ms: 0,
+            autotype_separator: PassAutotypeSeparator::default(),
+            autotype_submit: true,
+        }
+    }
+}
+
+fn default_pass_clip_timeout_secs() -> u32 {
+    45
+}
+
+fn default_pass_type_delay_ms() -> u32 {
+    250
+}
+
+/// The key the pass provider's autotype presses between username and
+/// password.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, Store, JsonSchema)]
+pub enum PassAutotypeSeparator {
+    /// Tab — the usual next-field key.
+    #[default]
+    Tab,
+    /// Enter — for two-step logins that show the password field only
+    /// after the username is submitted.
+    Enter,
+}
+
+impl PatchField for PassAutotypeSeparator {
+    fn patch_field(
+        &mut self,
+        new: Self,
+        path: &StorePath,
+        notify: &mut dyn FnMut(&StorePath),
+        _keys: Option<&KeyMap>,
+    ) {
+        if *self != new {
+            *self = new;
+            notify(path);
+        }
+    }
 }
 
 /// One `>start` script's autostart configuration.

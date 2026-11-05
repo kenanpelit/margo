@@ -40,13 +40,28 @@
 //! `wl-copy` has no password-manager hint): mshell's clipboard history
 //! skips `--sensitive` copies while `clipboard.skip_sensitive` is on (the
 //! default). Ctrl+Enter types instead and never touches the clipboard.
+//!
+//! The detail view also carries two whole-entry actions:
+//!
+//! * **Autotype login** (when `wtype` is installed) — types username, a
+//!   separator key (Tab, or Enter for two-step logins), the password, the
+//!   OTP code when the entry has one, then Enter to submit; see
+//!   [`super::pass_autotype`].
+//! * **Edit entry** (when a terminal resolves) — `pass edit <entry>` in
+//!   the user's terminal.
+//!
+//! Clipboard timeout, type delay, keystroke delay and the autotype
+//! separator / submit key come from Settings → Launcher → Password store
+//! ([`PassOptions`]), re-read on every launcher open.
 
+use crate::providers::pass_autotype::{PassOptions, TypeStep, autotype_steps, run_steps};
 use crate::{
     item::LauncherItem,
     notify::toast,
     provider::{Provider, RefreshNotifier},
 };
-use std::cell::RefCell;
+use mshell_process::SpawnReaped;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -72,6 +87,10 @@ pub struct PassProvider {
     /// thread for the `pass <entry>:` detail view; dropped on open.
     details: Arc<Mutex<HashMap<String, DetailState>>>,
     notifier: Arc<Mutex<Option<RefreshNotifier>>>,
+    /// Typing / clipboard behaviour; re-read from `options_resolver` on
+    /// each open.
+    options: Cell<PassOptions>,
+    options_resolver: Option<Box<dyn Fn() -> PassOptions>>,
 }
 
 /// `$PASSWORD_STORE_DIR` (if absolute), else `~/.password-store` — pass's
@@ -96,9 +115,18 @@ impl PassProvider {
             entries: RefCell::new(Vec::new()),
             details: Arc::default(),
             notifier: Arc::default(),
+            options: Cell::new(PassOptions::default()),
+            options_resolver: None,
         };
         me.refresh();
         me
+    }
+
+    /// Follow live typing / clipboard options (re-read on every open).
+    pub fn with_options(mut self, resolver: Box<dyn Fn() -> PassOptions>) -> Self {
+        self.options.set(resolver());
+        self.options_resolver = Some(resolver);
+        self
     }
 
     /// Construct with a live path resolver, re-read on every launcher open.
@@ -109,6 +137,8 @@ impl PassProvider {
             entries: RefCell::new(Vec::new()),
             details: Arc::default(),
             notifier: Arc::default(),
+            options: Cell::new(PassOptions::default()),
+            options_resolver: None,
         };
         me.refresh();
         me
@@ -195,12 +225,47 @@ impl PassProvider {
         let otp_ok = otp_extension_installed();
         let needle = filter.to_lowercase();
         let store = self.store_dir.borrow().clone();
-        let mut rows: Vec<LauncherItem> = detail
-            .fields(otp_ok)
+        let opts = self.options.get();
+        let actions = EntryActions {
+            autotype: margo_fs::path::on_path("wtype"),
+            edit: mshell_process::terminal::pick().is_some(),
+        };
+        let mut rows: Vec<LauncherItem> = detail_rows_order(&detail, otp_ok, actions)
             .into_iter()
-            .filter(|f| needle.is_empty() || f.label().to_lowercase().contains(&needle))
+            .filter(|r| needle.is_empty() || r.label().to_lowercase().contains(&needle))
             .enumerate()
-            .map(|(idx, field)| {
+            .map(|(idx, row)| {
+                let field = match row {
+                    DetailRow::Field(f) => f,
+                    DetailRow::Autotype => {
+                        return action_row(
+                            entry,
+                            "autotype",
+                            format!("Autotype login — {entry}"),
+                            autotype_description(&opts, detail.has_otp && otp_ok),
+                            "input-keyboard-symbolic",
+                            200.0 - idx as f64,
+                            {
+                                let (store, entry) = (store.clone(), entry.to_string());
+                                Rc::new(move || run_autotype(store.clone(), entry.clone(), opts))
+                            },
+                        );
+                    }
+                    DetailRow::Edit => {
+                        return action_row(
+                            entry,
+                            "edit",
+                            format!("Edit entry — {entry}"),
+                            "Open `pass edit` in the terminal".into(),
+                            "document-edit-symbolic",
+                            200.0 - idx as f64,
+                            {
+                                let (store, entry) = (store.clone(), entry.to_string());
+                                Rc::new(move || spawn_edit(&store, &entry))
+                            },
+                        );
+                    }
+                };
                 let label = field.label();
                 let store = store.clone();
                 let entry_owned = entry.to_string();
@@ -227,6 +292,7 @@ impl PassProvider {
                             entry_owned.clone(),
                             field_for_action.clone(),
                             false,
+                            opts,
                         )
                     }),
                 }
@@ -287,8 +353,6 @@ fn scan(root: &Path, dir: &Path, out: &mut Vec<String>, depth: usize) {
 
 // ── Entry fields ─────────────────────────────────────────────────────────
 
-/// Seconds a copied field stays on the clipboard (pass's own default).
-const CLIP_SECS: u64 = 45;
 /// Keys whose value is the entry's username (case-insensitive).
 const USERNAME_KEYS: &[&str] = &["login", "user", "username"];
 /// Separator between the field tag and the entry in detail-row ids
@@ -425,6 +489,91 @@ impl Detail {
     }
 }
 
+/// Whole-entry actions available on this machine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EntryActions {
+    /// `wtype` installed.
+    pub autotype: bool,
+    /// A terminal resolves for `pass edit`.
+    pub edit: bool,
+}
+
+/// One row of the detail view.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DetailRow {
+    Field(Field),
+    Autotype,
+    Edit,
+}
+
+impl DetailRow {
+    fn label(&self) -> String {
+        match self {
+            DetailRow::Field(f) => f.label(),
+            DetailRow::Autotype => "Autotype login".into(),
+            DetailRow::Edit => "Edit entry".into(),
+        }
+    }
+}
+
+/// Detail rows in display order: password, OTP, username, autotype (right
+/// after the username, like the plugin), the other fields, then edit.
+pub fn detail_rows_order(
+    detail: &Detail,
+    otp_available: bool,
+    actions: EntryActions,
+) -> Vec<DetailRow> {
+    let mut rows = Vec::new();
+    for field in detail.fields(otp_available) {
+        let after = field == Field::Username;
+        rows.push(DetailRow::Field(field));
+        if after && actions.autotype {
+            rows.push(DetailRow::Autotype);
+        }
+    }
+    if actions.edit {
+        rows.push(DetailRow::Edit);
+    }
+    rows
+}
+
+fn autotype_description(opts: &PassOptions, otp: bool) -> String {
+    let sep = match opts.separator {
+        crate::providers::pass_autotype::Separator::Tab => "Tab",
+        crate::providers::pass_autotype::Separator::Enter => "Enter",
+    };
+    let mut s = format!("Types username · {sep} · password");
+    if otp {
+        s.push_str(" · Enter · OTP");
+    }
+    if opts.submit {
+        s.push_str(" · Enter");
+    }
+    s
+}
+
+fn action_row(
+    entry: &str,
+    tag: &str,
+    name: String,
+    description: String,
+    icon: &str,
+    score: f64,
+    on_activate: Rc<dyn Fn() + 'static>,
+) -> LauncherItem {
+    LauncherItem {
+        id: format!("pass:{tag}{ID_SEP}{entry}"),
+        name,
+        description,
+        icon: icon.into(),
+        icon_is_path: false,
+        score,
+        provider_name: "Pass".into(),
+        usage_key: None,
+        on_activate,
+    }
+}
+
 #[derive(Debug, Clone)]
 enum DetailState {
     Loading,
@@ -521,12 +670,12 @@ fn pipe_to(argv: &[&str], value: &str) -> Result<(), String> {
 }
 
 /// Copy `value` (sensitive hint, so clipboard managers may skip it) and
-/// clear it after `CLIP_SECS` unless something else was copied since.
-fn copy_secret(value: &str) -> Result<(), String> {
+/// clear it after `clip_secs` unless something else was copied since.
+fn copy_secret(value: &str, clip_secs: u32) -> Result<(), String> {
     pipe_to(&["wl-copy", "--sensitive", "--trim-newline"], value)?;
     let value = value.to_string();
     std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_secs(CLIP_SECS));
+        std::thread::sleep(Duration::from_secs(u64::from(clip_secs)));
         let current = Command::new("wl-paste")
             .args(["--no-newline"])
             .output()
@@ -540,9 +689,50 @@ fn copy_secret(value: &str) -> Result<(), String> {
 }
 
 /// Type `value` into the focused window (after the launcher closes).
-fn type_secret(value: &str) -> Result<(), String> {
-    std::thread::sleep(Duration::from_millis(250));
-    pipe_to(&["wtype", "-"], value)
+fn type_secret(value: &str, opts: &PassOptions) -> Result<(), String> {
+    run_steps(&[TypeStep::Text(value.to_string())], opts)
+}
+
+/// The autotype login for `entry`: decrypt once (and fetch the OTP code
+/// when the entry has one and pass-otp is installed) on a worker thread,
+/// then type the sequence. Values never leave the worker thread.
+fn run_autotype(store: PathBuf, entry: String, opts: PassOptions) {
+    std::thread::spawn(move || {
+        let result = pass_show(&store, &entry).and_then(|body| {
+            let parsed = parse_entry(&body);
+            let password = field_value(&parsed, &entry, &Field::Password)
+                .ok_or_else(|| format!("{entry} has no password"))?;
+            let username = field_value(&parsed, &entry, &Field::Username).unwrap_or_default();
+            let otp = if parsed.has_otp && otp_extension_installed() {
+                Some(pass_otp(&store, &entry)?)
+            } else {
+                None
+            };
+            let steps = autotype_steps(&username, &password, otp.as_deref(), &opts);
+            run_steps(&steps, &opts)
+        });
+        match result {
+            Ok(()) => toast("Pass", format!("Autotyped login for {entry}")),
+            Err(err) => {
+                tracing::warn!(entry, %err, "pass: autotype failed");
+                toast("Pass", format!("Autotype {entry}: {err}"));
+            }
+        }
+    });
+}
+
+/// `pass edit <entry>` in the user's terminal (pass re-encrypts on save).
+fn spawn_edit(store: &Path, entry: &str) {
+    match mshell_process::terminal::command(&["pass", "edit", entry], "pass-edit") {
+        Ok((terminal, mut cmd)) => {
+            cmd.env("PASSWORD_STORE_DIR", store);
+            if let Err(err) = cmd.spawn_reaped() {
+                tracing::warn!(?err, %terminal, entry, "pass: edit terminal spawn failed");
+                toast("Pass", format!("Could not start {terminal}"));
+            }
+        }
+        Err(err) => toast("Pass", err.to_string()),
+    }
 }
 
 /// Copy (`typing == false`) or type one field, the password included:
@@ -554,7 +744,7 @@ fn type_secret(value: &str) -> Result<(), String> {
 /// `PASSWORD_STORE_DIR` is forced to the store the provider scanned
 /// (`pass_show`): mshell runs as a systemd user service and usually does
 /// NOT inherit the shell's `$PASSWORD_STORE_DIR`.
-fn run_field_action(store: PathBuf, entry: String, field: Field, typing: bool) {
+fn run_field_action(store: PathBuf, entry: String, field: Field, typing: bool, opts: PassOptions) {
     std::thread::spawn(move || {
         let value = match &field {
             Field::Otp => pass_otp(&store, &entry),
@@ -566,16 +756,19 @@ fn run_field_action(store: PathBuf, entry: String, field: Field, typing: bool) {
         let label = field.label();
         let result = value.and_then(|v| {
             if typing {
-                type_secret(&v)
+                type_secret(&v, &opts)
             } else {
-                copy_secret(&v)
+                copy_secret(&v, opts.clip_timeout_secs)
             }
         });
         match result {
             Ok(()) if typing => toast("Pass", format!("Typed {label} of {entry}")),
             Ok(()) => toast(
                 "Pass",
-                format!("Copied {label} of {entry} (clears in {CLIP_SECS}s)"),
+                format!(
+                    "Copied {label} of {entry} (clears in {}s)",
+                    opts.clip_timeout_secs
+                ),
             ),
             Err(err) => {
                 tracing::warn!(entry, %label, %err, "pass: field action failed");
@@ -654,6 +847,7 @@ impl Provider for PassProvider {
         }
 
         let store_dir = self.store_dir.borrow().clone();
+        let opts = self.options.get();
         entries
             .iter()
             .filter(|e| {
@@ -677,7 +871,7 @@ impl Provider for PassProvider {
                     provider_name: "Pass".into(),
                     usage_key: Some(format!("pass:{e}")),
                     on_activate: Rc::new(move || {
-                        run_field_action(store.clone(), entry.clone(), Field::Password, false)
+                        run_field_action(store.clone(), entry.clone(), Field::Password, false, opts)
                     }),
                 }
             })
@@ -686,10 +880,11 @@ impl Provider for PassProvider {
 
     /// Ctrl+Enter on an entry → type it via wtype (no clipboard).
     fn alt_action(&self, item: &LauncherItem) -> Option<Rc<dyn Fn() + 'static>> {
+        let opts = self.options.get();
         if let Some((entry, field)) = parse_detail_id(&item.id) {
             let store = self.store_dir.borrow().clone();
             return Some(Rc::new(move || {
-                run_field_action(store.clone(), entry.clone(), field.clone(), true)
+                run_field_action(store.clone(), entry.clone(), field.clone(), true, opts)
             }));
         }
         let entry = item.id.strip_prefix("pass:entry:")?.to_string();
@@ -698,7 +893,7 @@ impl Provider for PassProvider {
         }
         let store = self.store_dir.borrow().clone();
         Some(Rc::new(move || {
-            run_field_action(store.clone(), entry.clone(), Field::Password, true)
+            run_field_action(store.clone(), entry.clone(), Field::Password, true, opts)
         }))
     }
 
@@ -707,6 +902,9 @@ impl Provider for PassProvider {
         // pick up new/removed entries. Cheap.
         if let Some(resolver) = &self.resolver {
             *self.store_dir.borrow_mut() = resolver();
+        }
+        if let Some(resolver) = &self.options_resolver {
+            self.options.set(resolver());
         }
         self.refresh();
         // Field lists are re-learnt per session (entries may have changed).
@@ -953,6 +1151,85 @@ mod tests {
             "pass.rs still pipes a secret through sh"
         );
         assert!(prod.contains("\"wl-copy\", \"--sensitive\""));
+    }
+
+    #[test]
+    fn autotype_sits_after_username_and_edit_comes_last() {
+        let d = Detail::from_parsed(&parse_entry(BODY));
+        let both = EntryActions {
+            autotype: true,
+            edit: true,
+        };
+        assert_eq!(
+            detail_rows_order(&d, true, both),
+            vec![
+                DetailRow::Field(Field::Password),
+                DetailRow::Field(Field::Otp),
+                DetailRow::Field(Field::Username),
+                DetailRow::Autotype,
+                DetailRow::Field(Field::Key("url".into())),
+                DetailRow::Field(Field::Key("recovery".into())),
+                DetailRow::Edit,
+            ]
+        );
+        // No wtype / no terminal → the action rows are hidden.
+        let none = EntryActions {
+            autotype: false,
+            edit: false,
+        };
+        let rows = detail_rows_order(&d, true, none);
+        assert!(!rows.contains(&DetailRow::Autotype) && !rows.contains(&DetailRow::Edit));
+    }
+
+    #[test]
+    fn autotype_description_follows_the_options() {
+        use crate::providers::pass_autotype::Separator;
+        let mut o = PassOptions::default();
+        assert_eq!(
+            autotype_description(&o, false),
+            "Types username · Tab · password · Enter"
+        );
+        o.separator = Separator::Enter;
+        o.submit = false;
+        assert_eq!(
+            autotype_description(&o, true),
+            "Types username · Enter · password · Enter · OTP"
+        );
+    }
+
+    #[test]
+    fn options_are_re_read_on_open() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static CLIP: AtomicU32 = AtomicU32::new(10);
+        let mut p =
+            PassProvider::with_dir(PathBuf::from("/nonexistent")).with_options(Box::new(|| {
+                PassOptions {
+                    clip_timeout_secs: CLIP.load(Ordering::Relaxed),
+                    ..PassOptions::default()
+                }
+            }));
+        assert_eq!(p.options.get().clip_timeout_secs, 10);
+        CLIP.store(90, Ordering::Relaxed);
+        p.on_opened();
+        assert_eq!(p.options.get().clip_timeout_secs, 90);
+    }
+
+    #[test]
+    fn action_rows_have_no_type_alt_action() {
+        // Ctrl+Enter on Autotype / Edit falls back to Enter (no "type" of
+        // an action row).
+        let p = PassProvider::with_dir(PathBuf::from("/nonexistent"));
+        let row = action_row(
+            "web/github",
+            "autotype",
+            "x".into(),
+            String::new(),
+            ICON,
+            1.0,
+            Rc::new(|| {}),
+        );
+        assert!(p.alt_action(&row).is_none());
+        assert_eq!(parse_detail_id(&row.id), None);
     }
 
     #[test]

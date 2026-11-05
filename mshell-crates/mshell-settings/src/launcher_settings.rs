@@ -12,7 +12,8 @@
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
-    ConfigStoreFields, LauncherStoreFields, MenuStoreFields, MenusStoreFields, PassStoreFields,
+    ConfigStoreFields, LauncherStoreFields, MenuStoreFields, MenusStoreFields,
+    PassAutotypeSeparator, PassStoreFields,
 };
 use mshell_config::schema::position::Position;
 use mshell_launcher::providers::websearch::parse_sites;
@@ -504,6 +505,199 @@ impl Component for LauncherSettingsModel {
                     set_hexpand: true,
                     connect_changed[sender] => move |e| {
                         sender.input(LauncherSettingsInput::SetPassStorePath(e.text().to_string()));
+                    },
+                },
+
+                gtk::Label {
+                    add_css_class: "label-small",
+                    set_label: "In the launcher, `pass <entry>:` lists an entry's fields plus Autotype login (types username, separator, password, OTP) and Edit entry (`pass edit` in your terminal).",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                    set_margin_top: 4,
+                },
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/pass/clip_timeout_secs",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_label: "Clear clipboard after",
+                                set_halign: gtk::Align::Start,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_label: "Seconds a copied password or field stays on the clipboard (if nothing else was copied since).",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (5.0, 600.0),
+                            set_increments: (5.0, 30.0),
+                            set_digits: 0,
+                            set_value: config_manager().config().pass().clip_timeout_secs().get_untracked() as f64,
+                            connect_value_changed => move |s| {
+                                let v = s.value() as u32;
+                                config_manager().update_config(move |c| c.pass.clip_timeout_secs = v);
+                            },
+                        },
+                    },
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/pass/type_delay_ms",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_label: "Typing delay",
+                                set_halign: gtk::Align::Start,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_label: "Milliseconds to wait after the launcher closes before typing, so focus is back in your field.",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 5000.0),
+                            set_increments: (50.0, 250.0),
+                            set_digits: 0,
+                            set_value: config_manager().config().pass().type_delay_ms().get_untracked() as f64,
+                            connect_value_changed => move |s| {
+                                let v = s.value() as u32;
+                                config_manager().update_config(move |c| c.pass.type_delay_ms = v);
+                            },
+                        },
+                    },
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/pass/key_delay_ms",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_label: "Keystroke delay",
+                                set_halign: gtk::Align::Start,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_label: "Milliseconds between typed keys. Raise it if an app drops characters; 0 types as fast as possible.",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 500.0),
+                            set_increments: (5.0, 25.0),
+                            set_digits: 0,
+                            set_value: config_manager().config().pass().key_delay_ms().get_untracked() as f64,
+                            connect_value_changed => move |s| {
+                                let v = s.value() as u32;
+                                config_manager().update_config(move |c| c.pass.key_delay_ms = v);
+                            },
+                        },
+                    },
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/pass/autotype_separator",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_label: "Autotype separator",
+                                set_halign: gtk::Align::Start,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_label: "Key pressed between the username and the password. Enter suits two-step logins that ask for the password on a second page.",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::DropDown {
+                            set_width_request: 140,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&gtk::StringList::new(&["Tab", "Enter"])),
+                            set_selected: match config_manager().config().pass().autotype_separator().get_untracked() {
+                                PassAutotypeSeparator::Tab => 0,
+                                PassAutotypeSeparator::Enter => 1,
+                            },
+                            connect_selected_notify => move |dd| {
+                                let v = if dd.selected() == 1 {
+                                    PassAutotypeSeparator::Enter
+                                } else {
+                                    PassAutotypeSeparator::Tab
+                                };
+                                config_manager().update_config(move |c| c.pass.autotype_separator = v);
+                            },
+                        },
+                    },
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/pass/autotype_submit",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_label: "Autotype submits",
+                                set_halign: gtk::Align::Start,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_label: "Press Enter after the last value (the password, or the OTP code when the entry has one).",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: config_manager().config().pass().autotype_submit().get_untracked(),
+                            connect_active_notify => move |sw| {
+                                let v = sw.is_active();
+                                config_manager().update_config(move |c| c.pass.autotype_submit = v);
+                            },
+                        },
                     },
                 },
 

@@ -561,23 +561,28 @@ impl Component for AppLauncherModel {
         // pass: store path follows Settings → Launcher (else
         // $PASSWORD_STORE_DIR / ~/.password-store). Resolver re-reads on
         // each open, so the setting applies without a shell restart.
-        runtime.register(Box::new(PassProvider::with_resolver(Box::new(|| {
-            let configured = config_manager()
-                .config()
-                .pass()
-                .store_path()
-                .get_untracked();
-            let trimmed = configured.trim();
-            if trimmed.is_empty() {
-                mshell_launcher::providers::pass::default_store_dir()
-            } else if let Some(rest) = trimmed.strip_prefix("~/") {
-                std::env::var_os("HOME")
-                    .map(|h| std::path::PathBuf::from(h).join(rest))
-                    .unwrap_or_else(|| std::path::PathBuf::from(trimmed))
-            } else {
-                std::path::PathBuf::from(trimmed)
-            }
-        }))));
+        runtime.register(Box::new(
+            PassProvider::with_resolver(Box::new(|| {
+                let configured = config_manager()
+                    .config()
+                    .pass()
+                    .store_path()
+                    .get_untracked();
+                let trimmed = configured.trim();
+                if trimmed.is_empty() {
+                    mshell_launcher::providers::pass::default_store_dir()
+                } else if let Some(rest) = trimmed.strip_prefix("~/") {
+                    std::env::var_os("HOME")
+                        .map(|h| std::path::PathBuf::from(h).join(rest))
+                        .unwrap_or_else(|| std::path::PathBuf::from(trimmed))
+                } else {
+                    std::path::PathBuf::from(trimmed)
+                }
+            }))
+            // Clipboard timeout / typing delays / autotype keys follow
+            // Settings → Launcher → Password store; re-read on each open.
+            .with_options(Box::new(pass_options)),
+        ));
         runtime.register(Box::new(
             CommandProvider::new().with_search_setter(make_search_setter()),
         ));
@@ -1772,6 +1777,23 @@ fn make_section_header(section: &str) -> DisplayItem {
         hidden: false,
         match_indices: Vec::new(),
         zebra_odd: false,
+    }
+}
+
+/// The pass provider's typing / clipboard options from the live config.
+fn pass_options() -> mshell_launcher::providers::pass_autotype::PassOptions {
+    use mshell_config::schema::config::PassAutotypeSeparator;
+    use mshell_launcher::providers::pass_autotype::{PassOptions, Separator};
+    let pass = config_manager().config().pass();
+    PassOptions {
+        clip_timeout_secs: pass.clone().clip_timeout_secs().get_untracked().max(1),
+        type_delay_ms: pass.clone().type_delay_ms().get_untracked(),
+        key_delay_ms: pass.clone().key_delay_ms().get_untracked(),
+        separator: match pass.clone().autotype_separator().get_untracked() {
+            PassAutotypeSeparator::Tab => Separator::Tab,
+            PassAutotypeSeparator::Enter => Separator::Enter,
+        },
+        submit: pass.autotype_submit().get_untracked(),
     }
 }
 

@@ -169,7 +169,7 @@ const ENTRIES: &[Entry] = &[
     Entry {
         prefix: "pass <query>",
         example: "pass github",
-        description: "GNU pass — Enter copies, Ctrl+Enter types; `entry:` lists OTP/user/fields",
+        description: "GNU pass — Enter copies, Ctrl+Enter types; `entry:` lists fields, autotype login, edit",
         icon: "dialog-password-symbolic",
     },
     Entry {
