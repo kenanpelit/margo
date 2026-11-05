@@ -5,8 +5,9 @@
 //! again. The panel lists them, shows the diff against the live file —
 //! a 3-way `diff3 -m` merge when the previous default (the *base*) can
 //! be pulled out of a cached package with `bsdtar` — and offers merge,
-//! replace and delete. Writes go through one `pkexec` call that keeps
-//! the live file's mode and owner and leaves a `.mshell-bak` copy.
+//! replace and delete. Writes go through one `pkexec mshell-privileged
+//! pacnew-*` call that keeps the live file's mode and owner and leaves
+//! a `.mshell-bak` copy.
 
 use std::path::{Path, PathBuf};
 
@@ -219,8 +220,9 @@ pub(crate) fn pick_base(candidates: &[Vec<u8>], theirs: &[u8]) -> Option<usize> 
 
 // ── privileged actions ───────────────────────────────────────────
 
-/// The argv (after `pkexec`) for an action. Paths are passed as
-/// positional args to a fixed `sh -c` script, never spliced into it.
+/// A privileged pacnew action. Each runs as one fixed verb of the
+/// root helper (`mshell-privileged`), which re-validates the paths and
+/// refuses symlinks itself; [`op_is_safe`] is the same check up front.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Op {
     /// Replace the live file with new content, keeping the live
@@ -240,60 +242,44 @@ pub(crate) enum Op {
 pub(crate) enum InstallFrom {
     /// The review file itself: "take new" / "restore".
     Review,
-    /// A merge resolved in the panel. Piped to the root script on
-    /// stdin (script arg `-`), never staged in a user-writable file a
+    /// A merge resolved in the panel. Piped to the helper on stdin
+    /// (`pacnew-merge`), never staged in a user-writable file a
     /// same-uid process could swap while the password prompt is up.
     Merged(String),
 }
 
-const INSTALL_SH: &str = r#"set -e
-src="$1"; live="$2"; review="$3"
-# Never write through a symlink: `stat` would read the link itself
-# (mode 777) and `install` would replace it with a world-writable
-# file (systemd-resolved's /etc/resolv.conf is one). Same for a
-# directory on the way (a dotfiles dir linked into /etc).
-if [ -L "$live" ] || [ -L "$review" ] || [ -L "$src" ]; then
-  echo "refusing a symlink" >&2; exit 3
-fi
-dir=$(dirname -- "$live")
-if [ "$(cd -P -- "$dir" && pwd)" != "$dir" ]; then
-  echo "refusing a path through a symlinked directory" >&2; exit 3
-fi
-# `-`: the merged text arrives on stdin; copy it into a root-owned
-# 0600 temp file first so nothing the user can write is installed.
-if [ "$src" = - ]; then
-  tmp=$(mktemp); trap 'rm -f -- "$tmp"' EXIT
-  cat >"$tmp"; src="$tmp"
-fi
-if [ -e "$live" ]; then
-  cp -a -- "$live" "$live.mshell-bak"
-  mode=$(stat -c %a -- "$live"); own=$(stat -c %u:%g -- "$live")
-else
-  mode=644; own=0:0
-fi
-install -m "$mode" -o "${own%%:*}" -g "${own##*:}" -T -- "$src" "$live"
-rm -f -- "$review""#;
-
-pub(crate) fn op_argv(op: &Op) -> Vec<String> {
-    let s = |p: &Path| p.to_string_lossy().into_owned();
+/// The helper request for an op (`mshell-privileged pacnew-*`).
+pub(crate) fn op_request(op: &Op) -> mshell_privileged::Request {
+    use mshell_privileged::Request;
     match op {
-        Op::Install { from, live, review } => vec![
-            "sh".into(),
-            "-c".into(),
-            INSTALL_SH.into(),
-            "sh".into(),
-            match from {
-                InstallFrom::Review => s(review),
-                InstallFrom::Merged(_) => "-".into(),
-            },
-            s(live),
-            s(review),
-        ],
-        Op::Remove { review } => vec!["rm".into(), "-f".into(), "--".into(), s(review)],
+        Op::Install {
+            from: InstallFrom::Review,
+            live,
+            review,
+        } => Request::PacnewInstall {
+            live: live.clone(),
+            review: review.clone(),
+        },
+        Op::Install {
+            from: InstallFrom::Merged(_),
+            live,
+            review,
+        } => Request::PacnewMerge {
+            live: live.clone(),
+            review: review.clone(),
+        },
+        Op::Remove { review } => Request::PacnewRemove {
+            review: review.clone(),
+        },
     }
 }
 
-/// What the op feeds the root script on stdin (the merged text).
+/// The argv after `pkexec`: the fixed helper, its verb, the paths.
+pub(crate) fn op_argv(op: &Op) -> Vec<std::ffi::OsString> {
+    op_request(op).argv()
+}
+
+/// What the op feeds the helper on stdin (the merged text).
 pub(crate) fn op_stdin(op: &Op) -> Option<&[u8]> {
     match op {
         Op::Install {
@@ -311,7 +297,7 @@ pub(crate) fn op_stdin(op: &Op) -> Option<&[u8]> {
 pub(crate) fn op_is_safe(op: &Op) -> bool {
     let root = Path::new(SEARCH_ROOT);
     let under = |p: &Path| p.starts_with(root) && !p.components().any(|c| c.as_os_str() == "..");
-    match op {
+    let shape = match op {
         Op::Install { live, review, .. } => {
             under(live)
                 && under(review)
@@ -320,7 +306,9 @@ pub(crate) fn op_is_safe(op: &Op) -> bool {
                 && no_symlink_below(root, review)
         }
         Op::Remove { review } => under(review) && classify(review).is_some(),
-    }
+    };
+    // What the helper would refuse anyway (`.`/`//` components, …).
+    shape && op_request(op).validated().is_ok()
 }
 
 /// No component of `p` below `root` is a symlink. Components that
@@ -348,6 +336,9 @@ pub(crate) async fn apply(op: Op) -> Result<(), String> {
     if !op_is_safe(&op) {
         return Err("refusing a path outside /etc or through a symlink".into());
     }
+    if !mshell_privileged::installed() {
+        return Err(mshell_privileged::MISSING.into());
+    }
     let input = op_stdin(&op);
     let mut child = tokio::process::Command::new("pkexec")
         .args(op_argv(&op))
@@ -356,6 +347,8 @@ pub(crate) async fn apply(op: Op) -> Result<(), String> {
         } else {
             std::process::Stdio::null()
         })
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| format!("pkexec: {e}"))?;
     if let (Some(bytes), Some(mut stdin)) = (input, child.stdin.take()) {
@@ -364,15 +357,28 @@ pub(crate) async fn apply(op: Op) -> Result<(), String> {
         // below says why, so a write error here is not reported.
         let _ = stdin.write_all(bytes).await;
     }
-    let status = child.wait().await.map_err(|e| format!("pkexec: {e}"))?;
-    if !status.success() {
-        return Err(match status.code() {
-            Some(126) | Some(127) => "authentication dismissed".into(),
-            Some(c) => format!("exit {c}"),
-            None => "killed".into(),
-        });
+    let out = child
+        .wait_with_output()
+        .await
+        .map_err(|e| format!("pkexec: {e}"))?;
+    apply_outcome(out.status.code(), &String::from_utf8_lossy(&out.stderr))
+}
+
+/// The panel's message for a finished helper run: pkexec's 126/127
+/// are the dialog, anything else is the helper's own last stderr line
+/// (e.g. "refusing /etc/resolv.conf: a symlink").
+pub(crate) fn apply_outcome(code: Option<i32>, stderr: &str) -> Result<(), String> {
+    match code {
+        Some(0) => Ok(()),
+        Some(126) | Some(127) => Err("authentication dismissed".into()),
+        Some(c) => Err(stderr
+            .lines()
+            .rev()
+            .map(str::trim)
+            .find(|l| !l.is_empty())
+            .map_or_else(|| format!("exit {c}"), str::to_string)),
+        None => Err("killed".into()),
     }
-    Ok(())
 }
 
 /// Everything the detail view needs for one file.
@@ -633,12 +639,12 @@ mod tests {
             review: "/etc/locale.gen.pacnew".into(),
         };
         assert!(op_is_safe(&ok));
-        let argv = op_argv(&ok);
-        assert_eq!(&argv[..2], ["sh", "-c"]);
+        // The fixed helper, never a shell: the polkit dialog names it.
         assert_eq!(
-            &argv[4..],
+            op_argv(&ok),
             [
-                "/etc/locale.gen.pacnew",
+                mshell_privileged::HELPER,
+                "pacnew-install",
                 "/etc/locale.gen",
                 "/etc/locale.gen.pacnew"
             ]
@@ -668,7 +674,7 @@ mod tests {
             op_argv(&Op::Remove {
                 review: "/etc/a.pacnew".into()
             }),
-            ["rm", "-f", "--", "/etc/a.pacnew"]
+            [mshell_privileged::HELPER, "pacnew-remove", "/etc/a.pacnew"]
         );
     }
 
@@ -676,140 +682,53 @@ mod tests {
     fn a_merge_reaches_root_on_stdin_not_through_a_user_file() {
         // The merged text used to be staged in ~/.cache (user-writable)
         // and root installed whatever that file held after the password
-        // prompt. It is piped to the script now.
+        // prompt. It is piped to the helper now (its own tests run the
+        // real binary on a fixture tree).
         let op = Op::Install {
             from: InstallFrom::Merged("merged\n".into()),
             live: "/etc/locale.gen".into(),
             review: "/etc/locale.gen.pacnew".into(),
         };
         assert!(op_is_safe(&op));
-        let argv = op_argv(&op);
         assert_eq!(
-            &argv[4..],
-            ["-", "/etc/locale.gen", "/etc/locale.gen.pacnew"]
+            op_argv(&op),
+            [
+                mshell_privileged::HELPER,
+                "pacnew-merge",
+                "/etc/locale.gen",
+                "/etc/locale.gen.pacnew"
+            ]
         );
         assert_eq!(op_stdin(&op), Some(&b"merged\n"[..]));
-
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path().canonicalize().unwrap();
-        let live = root.join("f.conf");
-        let review = root.join("f.conf.pacnew");
-        std::fs::write(&live, "mine\n").unwrap();
-        std::fs::write(&review, "theirs\n").unwrap();
-        let mut child = std::process::Command::new("sh")
-            .args(["-c", INSTALL_SH, "sh", "-"])
-            .arg(&live)
-            .arg(&review)
-            .stdin(std::process::Stdio::piped())
-            .spawn()
-            .unwrap();
-        use std::io::Write;
-        child.stdin.take().unwrap().write_all(b"merged\n").unwrap();
-        assert!(child.wait().unwrap().success());
-        assert_eq!(std::fs::read_to_string(&live).unwrap(), "merged\n");
-        assert!(!review.exists());
     }
 
     #[test]
-    fn install_script_keeps_mode_and_backs_up() {
-        // Exercise the real script without root on a temp tree (owner =
-        // us, so `install -o/-g` with our own ids succeeds).
-        let dir = tempfile::tempdir().unwrap();
-        // The script refuses a path through a symlinked dir; use the
-        // physical path in case $TMPDIR is reached through one.
-        let root = dir.path().canonicalize().unwrap();
-        let live = root.join("f.conf");
-        let review = root.join("f.conf.pacnew");
-        std::fs::write(&live, "mine\n").unwrap();
-        std::fs::write(&review, "theirs\n").unwrap();
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&live, std::fs::Permissions::from_mode(0o600)).unwrap();
-        let st = std::process::Command::new("sh")
-            .args(["-c", INSTALL_SH, "sh"])
-            .arg(&review)
-            .arg(&live)
-            .arg(&review)
-            .status()
-            .unwrap();
-        assert!(st.success());
-        assert_eq!(std::fs::read_to_string(&live).unwrap(), "theirs\n");
+    fn a_refusal_reads_as_the_helpers_reason() {
+        assert_eq!(apply_outcome(Some(0), ""), Ok(()));
         assert_eq!(
-            std::fs::read_to_string(root.join("f.conf.mshell-bak")).unwrap(),
-            "mine\n"
+            apply_outcome(Some(126), "x"),
+            Err("authentication dismissed".into())
         );
-        let mode = std::fs::metadata(&live).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600);
-        assert!(!review.exists(), "the .pacnew is consumed");
-    }
-
-    fn run_install(src: &Path, live: &Path, review: &Path) -> std::process::ExitStatus {
-        std::process::Command::new("sh")
-            .args(["-c", INSTALL_SH, "sh"])
-            .arg(src)
-            .arg(live)
-            .arg(review)
-            .stderr(std::process::Stdio::null())
-            .status()
-            .unwrap()
+        assert_eq!(
+            apply_outcome(Some(3), "refusing /etc/resolv.conf: a symlink\n"),
+            Err("refusing /etc/resolv.conf: a symlink".into())
+        );
+        assert_eq!(apply_outcome(Some(1), ""), Err("exit 1".into()));
+        assert!(apply_outcome(None, "").is_err());
     }
 
     #[test]
-    fn install_script_refuses_a_symlinked_live_file() {
-        // systemd-resolved's /etc/resolv.conf is a symlink and is in
-        // filesystem's backup list. `stat` without -L reads the link
-        // (mode 777) and `install` would replace it with a 0777 file.
-        use std::os::unix::fs::PermissionsExt;
-        let dir = tempfile::tempdir().unwrap();
-        let target = dir.path().join("stub-resolv.conf");
-        std::fs::write(&target, "nameserver 127.0.0.53\n").unwrap();
-        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644)).unwrap();
-        let live = dir.path().join("resolv.conf");
-        std::os::unix::fs::symlink(&target, &live).unwrap();
-        let review = dir.path().join("resolv.conf.pacnew");
-        std::fs::write(&review, "# new default\n").unwrap();
-
-        assert!(!run_install(&review, &live, &review).success());
-        assert!(
-            std::fs::symlink_metadata(&live)
-                .unwrap()
-                .file_type()
-                .is_symlink(),
-            "the symlink is left alone"
-        );
-        assert_eq!(
-            std::fs::read_to_string(&target).unwrap(),
-            "nameserver 127.0.0.53\n"
-        );
-        assert!(review.exists(), "nothing was consumed");
-    }
-
-    #[test]
-    fn install_script_refuses_a_symlinked_parent_or_review() {
-        let dir = tempfile::tempdir().unwrap();
-        // A dotfiles dir linked into /etc: live sits under a symlink.
-        let real = dir.path().join("dotfiles");
-        std::fs::create_dir(&real).unwrap();
-        std::fs::write(real.join("pacman.conf"), "mine\n").unwrap();
-        std::fs::write(real.join("pacman.conf.pacnew"), "theirs\n").unwrap();
-        let linked = dir.path().join("etc-pacman");
-        std::os::unix::fs::symlink(&real, &linked).unwrap();
-        let live = linked.join("pacman.conf");
-        let review = linked.join("pacman.conf.pacnew");
-        assert!(!run_install(&review, &live, &review).success());
-        assert_eq!(
-            std::fs::read_to_string(real.join("pacman.conf")).unwrap(),
-            "mine\n"
-        );
-
-        // A review file that is a symlink (to a secret) is not copied.
-        let secret = dir.path().join("shadow");
-        std::fs::write(&secret, "root:hash\n").unwrap();
-        let live = dir.path().join("x.conf");
-        std::fs::write(&live, "mine\n").unwrap();
-        let review = dir.path().join("x.conf.pacnew");
-        std::os::unix::fs::symlink(&secret, &review).unwrap();
-        assert!(!run_install(&review, &live, &review).success());
-        assert_eq!(std::fs::read_to_string(&live).unwrap(), "mine\n");
+    fn what_the_helper_would_refuse_never_raises_a_prompt() {
+        // classify() takes any .pacnew under /etc; the helper also wants
+        // plain components (no `.`/`//`), so the panel checks the same.
+        assert!(!op_is_safe(&Op::Remove {
+            review: "/etc/./a.pacnew".into()
+        }));
+        assert!(!op_is_safe(&Op::Install {
+            from: InstallFrom::Review,
+            live: "/etc//a".into(),
+            review: "/etc//a.pacnew".into(),
+        }));
     }
 
     #[test]

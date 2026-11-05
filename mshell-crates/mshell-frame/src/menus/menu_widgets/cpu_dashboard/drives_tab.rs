@@ -80,6 +80,9 @@ async fn unprivileged_read() -> Option<(Vec<String>, Vec<SmartRead>)> {
 
 async fn admin_read(devices: Vec<String>) -> Result<Vec<SmartRead>, String> {
     let argv = privileged_argv(&devices).ok_or("No drives to read")?;
+    if !mshell_privileged::installed() {
+        return Err(mshell_privileged::MISSING.to_string());
+    }
     let out = tokio::process::Command::new("pkexec")
         .args(&argv)
         .output()

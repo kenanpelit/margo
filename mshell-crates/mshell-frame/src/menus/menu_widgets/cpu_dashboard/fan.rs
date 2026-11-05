@@ -3,7 +3,7 @@
 //! `fan_control=1` parameter (off by default — and off on the owner's
 //! machine), so the UI shows a hint instead of controls in that case and
 //! never fails. When control is on but the file is root-only, a level
-//! change goes through one `pkexec` call.
+//! change goes through one `pkexec mshell-privileged fan-set` call.
 
 use std::path::Path;
 
@@ -151,17 +151,16 @@ pub(crate) fn probe() -> (Option<FanState>, FanControl) {
     (state, mode)
 }
 
-/// pkexec argv writing `cmd` to the fan file. `cmd` comes from
-/// `FanLevel::command` (a fixed vocabulary) and is passed as a positional
-/// argument, never spliced into the script.
+/// pkexec argv setting `level`: the helper's fixed `fan-set` verb,
+/// which takes only `auto`, `full-speed` or `0`–`7` and writes
+/// `level <keyword>` to [`FAN_PATH`] (and nothing else).
 pub(crate) fn pkexec_argv(level: FanLevel) -> Vec<String> {
-    vec![
-        "/bin/sh".to_string(),
-        "-c".to_string(),
-        format!(r#"printf '%s\n' "$1" > {FAN_PATH}"#),
-        "sh".to_string(),
-        level.command(),
-    ]
+    let level = match level {
+        FanLevel::Auto => mshell_privileged::FanLevel::Auto,
+        FanLevel::Level(n) => mshell_privileged::FanLevel::Level(n.min(7)),
+        FanLevel::FullSpeed => mshell_privileged::FanLevel::FullSpeed,
+    };
+    mshell_privileged::lossy(&mshell_privileged::Request::FanSet { level }.argv())
 }
 
 #[cfg(test)]
@@ -224,11 +223,18 @@ mod tests {
         assert!(FanLevel::Level(7).matches("7"));
         assert!(FanLevel::FullSpeed.matches("disengaged"));
         assert!(!FanLevel::Level(1).matches("auto"));
-        let argv = pkexec_argv(FanLevel::Level(2));
-        assert_eq!(argv.last().map(String::as_str), Some("level 2"));
-        assert!(
-            !argv[2].contains("level 2"),
-            "level is positional, not spliced"
+        assert_eq!(
+            pkexec_argv(FanLevel::Level(2)),
+            [mshell_privileged::HELPER, "fan-set", "2"]
+        );
+        assert_eq!(
+            pkexec_argv(FanLevel::FullSpeed),
+            [mshell_privileged::HELPER, "fan-set", "full-speed"]
+        );
+        assert_eq!(
+            pkexec_argv(FanLevel::Level(9)),
+            [mshell_privileged::HELPER, "fan-set", "7"],
+            "clamped"
         );
     }
 }

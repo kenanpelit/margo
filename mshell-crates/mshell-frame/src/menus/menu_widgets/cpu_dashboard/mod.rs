@@ -32,26 +32,29 @@ pub(crate) fn pkexec_outcome(code: Option<i32>, stderr: &str) -> Result<(), Stri
     }
 }
 
-/// The root side of [`pkexec_kill`] (`sh -c SCRIPT sh <pid> <start>
-/// <sig>`): signal `pid` only if it still started at `start` (stat field
-/// 22), so a pid reused while the polkit dialog was open is never hit.
-/// `comm` (field 2) may hold spaces and `)`, so the fields are split after
-/// the last `) `; field 22 is the 20th from there.
-const KILL_SCRIPT: &str = r#"pid=$1 start=$2 sig=$3
-stat=$(cat "/proc/$pid/stat" 2>/dev/null) || { echo "Process $pid has already exited" >&2; exit 3; }
-rest=${stat##*) }
-set -f
-set -- $rest
-[ "${20}" = "$start" ] || { echo "Process $pid has already exited" >&2; exit 3; }
-exec kill -s "$sig" -- "$pid""#;
+/// The pkexec argv signalling `pid` as root: the helper's fixed `kill`
+/// verb, which (as root) pins the pid with a pidfd and re-checks its
+/// start time (stat field 22) before signalling, so a pid reused while
+/// the polkit dialog was open is never hit.
+pub(crate) fn kill_argv(pid: i32, start: u64, sig: &str) -> Result<Vec<String>, String> {
+    let signal = mshell_privileged::Signal::parse(std::ffi::OsStr::new(sig))
+        .map_err(|e| e.message().to_string())?;
+    let req = mshell_privileged::Request::Kill { pid, start, signal }
+        .validated()
+        .map_err(|e| e.message().to_string())?;
+    Ok(mshell_privileged::lossy(&req.argv()))
+}
 
-/// `kill -s <sig> -- <pid>` as root through pkexec for a process owned by
-/// another user (RULES: root goes through polkit, never sudo), checked
-/// against its start time first.
+/// Signal a process owned by another user as root through pkexec
+/// (RULES: root goes through polkit, never sudo), checked against its
+/// start time first.
 pub(crate) async fn pkexec_kill(pid: i32, start: u64, sig: &'static str) -> Result<(), String> {
+    let argv = kill_argv(pid, start, sig)?;
+    if !mshell_privileged::installed() {
+        return Err(mshell_privileged::MISSING.to_string());
+    }
     let out = tokio::process::Command::new("pkexec")
-        .args(["/bin/sh", "-c", KILL_SCRIPT, "sh"])
-        .args([pid.to_string(), start.to_string(), sig.to_string()])
+        .args(&argv)
         .output()
         .await
         .map_err(|e| format!("pkexec unavailable: {e}"))?;
@@ -60,42 +63,19 @@ pub(crate) async fn pkexec_kill(pid: i32, start: u64, sig: &'static str) -> Resu
 
 #[cfg(test)]
 mod tests {
-    use super::{KILL_SCRIPT, pkexec_outcome};
-    use std::path::Path;
-
-    /// Run the root script as ourselves (no pkexec) against a child.
-    fn run_script(pid: u32, start: u64) -> std::process::Output {
-        std::process::Command::new("/bin/sh")
-            .args(["-c", KILL_SCRIPT, "sh"])
-            .args([pid.to_string(), start.to_string(), "TERM".to_string()])
-            .output()
-            .expect("sh")
-    }
+    use super::{kill_argv, pkexec_outcome};
 
     #[test]
-    fn root_kill_script_checks_the_start_time() {
-        let mut child = std::process::Command::new("sleep")
-            .arg("30")
-            .spawn()
-            .expect("spawn sleep");
-        let pid = child.id();
-        let start = super::procs::proc_start(Path::new("/proc"), pid as i32).expect("start");
-
-        let reused = run_script(pid, start + 1);
-        assert_eq!(reused.status.code(), Some(3), "a reused pid is refused");
+    fn root_kill_goes_through_the_helper_with_a_fixed_argv() {
+        // The start-time re-check now runs as root inside the helper
+        // (mshell-privileged's own tests signal a real child with it).
         assert_eq!(
-            pkexec_outcome(
-                reused.status.code(),
-                &String::from_utf8_lossy(&reused.stderr)
-            ),
-            Err(format!("Process {pid} has already exited"))
+            kill_argv(4242, 777, "TERM").expect("argv"),
+            [mshell_privileged::HELPER, "kill", "4242", "777", "TERM"]
         );
-        assert!(child.try_wait().expect("wait").is_none(), "not signalled");
-
-        let ok = run_script(pid, start);
-        assert_eq!(ok.status.code(), Some(0));
-        assert!(!child.wait().expect("wait").success(), "terminated");
-        assert_eq!(run_script(pid, start).status.code(), Some(3), "gone now");
+        assert_eq!(kill_argv(4242, 777, "KILL").expect("argv")[4], "KILL");
+        assert!(kill_argv(4242, 777, "HUP").is_err());
+        assert!(kill_argv(1, 777, "TERM").is_err(), "never init");
     }
 
     #[test]

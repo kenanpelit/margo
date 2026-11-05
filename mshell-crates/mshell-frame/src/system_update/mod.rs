@@ -673,6 +673,9 @@ pub(crate) async fn launch_upgrade(cfg: ProbeConfig, expected: usize) -> Result<
             if !which("pkexec").await {
                 return Err("pkexec (polkit) is not installed".into());
             }
+            if !mshell_privileged::installed() {
+                return Err(mshell_privileged::MISSING.into());
+            }
             let plan = upgrade_plan(cfg).await;
             run::start(run::background_steps(&plan), expected)
         }

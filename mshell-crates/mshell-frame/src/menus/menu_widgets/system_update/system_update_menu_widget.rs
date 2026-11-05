@@ -741,6 +741,9 @@ impl Component for SystemUpdateMenuWidgetModel {
                     self.armed_rollback = None;
                     self.run_error = None;
                     match history::rollback_step(&file) {
+                        Some(_) if !mshell_privileged::installed() => {
+                            self.run_error = Some(mshell_privileged::MISSING.to_string())
+                        }
                         Some(step) => {
                             if let Err(e) = run::start(vec![run::Step::new("rollback", step)], 1) {
                                 self.run_error = Some(e);

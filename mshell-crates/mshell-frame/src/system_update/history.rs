@@ -7,7 +7,7 @@
 //! with the previous version taken from the pacman cache.
 //!
 //! Rollback reinstalls the old file straight from the cache with
-//! `pkexec pacman -U` (run through the background runner, so it gets
+//! `pkexec mshell-privileged rollback` (`pacman -U`, run through the background runner, so it gets
 //! the same log/progress/notification). `--nodeps` is never passed: a
 //! downgrade that breaks another package's versioned dependency makes
 //! pacman refuse the transaction before anything changes.
@@ -215,21 +215,16 @@ pub(crate) fn history_from_db(
     out
 }
 
-/// The `pacman -U` step that puts `change.old` back.
+/// The step that puts `change.old` back: the helper's fixed `rollback`
+/// verb (`pacman -U --noconfirm` on a file it re-checks is a regular
+/// package file in the pacman cache). `None` for a name the helper
+/// would refuse.
 pub(crate) fn rollback_step(file: &str) -> Option<String> {
-    let path = Path::new(PKG_CACHE).join(file);
-    let p = path.to_str()?;
-    // Cache names are `[A-Za-z0-9@._+:-]`; refuse anything else
-    // rather than quote it into a root shell.
-    if !file
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || "@._+:-".contains(c))
-    {
-        return None;
-    }
-    Some(format!(
-        "pkexec pacman -U --noconfirm --noprogressbar --color never {p}"
-    ))
+    let package = Path::new(PKG_CACHE).join(file);
+    let req = mshell_privileged::Request::Rollback { package }
+        .validated()
+        .ok()?;
+    Some(req.pkexec_command())
 }
 
 // ── IO ───────────────────────────────────────────────────────────
@@ -407,9 +402,14 @@ mod tests {
         let f = find_cached("mkinitcpio", "42.1-1", &files).unwrap();
         assert_eq!(
             rollback_step(f).unwrap(),
-            "pkexec pacman -U --noconfirm --noprogressbar --color never \
-             /var/cache/pacman/pkg/mkinitcpio-42.1-1-any.pkg.tar.zst"
+            format!(
+                "pkexec '{}' 'rollback' \
+                 '/var/cache/pacman/pkg/mkinitcpio-42.1-1-any.pkg.tar.zst'",
+                mshell_privileged::HELPER
+            )
         );
+        assert!(rollback_step("a-1-1-any.pkg.tar.zst.sig").is_none());
+        assert!(rollback_step("../a-1-1-any.pkg.tar.zst").is_none());
         assert!(find_cached("mkinitcpio", "41-1", &files).is_none());
         assert!(rollback_step("x;reboot.pkg.tar.zst").is_none());
     }

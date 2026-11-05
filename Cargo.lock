@@ -5229,6 +5229,7 @@ dependencies = [
  "mshell-plugin-host",
  "mshell-plugin-ui",
  "mshell-plugins",
+ "mshell-privileged",
  "mshell-process",
  "mshell-screenshot",
  "mshell-services",

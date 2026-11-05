@@ -245,6 +245,19 @@ impl Request {
         })
     }
 
+    /// The request as one `pkexec …` command for a shell step (the
+    /// background runner's `sh`): every word single-quoted, so nothing
+    /// in it is shell syntax.
+    pub fn pkexec_command(&self) -> String {
+        let mut words = vec!["pkexec".to_string()];
+        words.extend(
+            self.argv()
+                .iter()
+                .map(|w| format!("'{}'", w.to_string_lossy().replace('\'', "'\\''"))),
+        );
+        words.join(" ")
+    }
+
     /// [`Request::parse`] on this request's own argv: what the root
     /// side will decide, checked before the prompt.
     pub fn validated(self) -> Result<Request, Error> {
@@ -313,6 +326,32 @@ mod tests {
         );
         assert_eq!(argv, [HELPER, "kill", "7", "1", "TERM"]);
         assert!(!argv.iter().any(|a| a == "-c" || a.ends_with("/sh")));
+    }
+
+    #[test]
+    fn the_shell_step_quotes_every_word() {
+        let cmd = Request::Rollback {
+            package: "/var/cache/pacman/pkg/a-1-1-any.pkg.tar.zst".into(),
+        }
+        .pkexec_command();
+        assert_eq!(
+            cmd,
+            format!("pkexec '{HELPER}' 'rollback' '/var/cache/pacman/pkg/a-1-1-any.pkg.tar.zst'")
+        );
+        let out = std::process::Command::new("sh")
+            .args([
+                "-c",
+                &format!(
+                    "set -- {}; printf '%s|' \"$@\"",
+                    Request::Upgrade.pkexec_command()
+                ),
+            ])
+            .output()
+            .unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&out.stdout),
+            format!("pkexec|{HELPER}|upgrade|")
+        );
     }
 
     #[test]

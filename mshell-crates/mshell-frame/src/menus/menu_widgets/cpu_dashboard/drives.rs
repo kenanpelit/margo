@@ -252,21 +252,20 @@ pub(crate) fn assess(r: &SmartReport) -> Health {
     }
 }
 
-/// The single privileged invocation: `pkexec sh -c 'for d …' sh <devs>`.
-/// Device paths are passed as positional arguments (never spliced into
-/// the script) and validated by `valid_device` first.
+/// The single privileged invocation: `pkexec mshell-privileged
+/// smart-read <devs>`. The helper re-validates every device as root
+/// (a drive node right under /dev, never a symlink) and runs a fixed
+/// `smartctl -j -a` per device; `valid_device` filters them here first.
 pub(crate) fn privileged_argv(devs: &[String]) -> Option<Vec<String>> {
     if devs.is_empty() || !devs.iter().all(|d| valid_device(d)) {
         return None;
     }
-    let mut argv = vec![
-        "/bin/sh".to_string(),
-        "-c".to_string(),
-        r#"for d do smartctl -j -a "$d"; done; exit 0"#.to_string(),
-        "sh".to_string(),
-    ];
-    argv.extend(devs.iter().cloned());
-    Some(argv)
+    let req = mshell_privileged::Request::SmartRead {
+        devices: devs.to_vec(),
+    }
+    .validated()
+    .ok()?;
+    Some(mshell_privileged::lossy(&req.argv()))
 }
 
 #[cfg(test)]
@@ -384,8 +383,15 @@ mod tests {
         assert_eq!(privileged_argv(&["/dev/x y".to_string()]), None);
         let argv =
             privileged_argv(&["/dev/nvme0".to_string(), "/dev/nvme1".to_string()]).expect("argv");
-        assert_eq!(argv[0], "/bin/sh");
-        assert_eq!(&argv[4..], ["/dev/nvme0", "/dev/nvme1"]);
+        assert_eq!(
+            argv,
+            [
+                mshell_privileged::HELPER,
+                "smart-read",
+                "/dev/nvme0",
+                "/dev/nvme1"
+            ]
+        );
     }
 
     #[test]

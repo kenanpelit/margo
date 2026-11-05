@@ -150,6 +150,9 @@ impl Component for FanSectionModel {
                 FanControl::Pkexec => {
                     self.status = "Waiting for authorization…".to_string();
                     sender.oneshot_command(async move {
+                        if !mshell_privileged::installed() {
+                            return Err(mshell_privileged::MISSING.to_string());
+                        }
                         let out = tokio::process::Command::new("pkexec")
                             .args(pkexec_argv(level))
                             .output()

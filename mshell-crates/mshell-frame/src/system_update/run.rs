@@ -114,7 +114,9 @@ fn outcome_text(o: StepOutcome) -> String {
 }
 
 /// The non-interactive background command: pkexec raises the polkit
-/// dialog and `--noconfirm` takes every default answer. Official repos
+/// dialog for the helper's `upgrade` verb, which runs
+/// `pacman -Syu --noconfirm --noprogressbar --color never` (every
+/// default answer taken). Official repos
 /// and Flatpak only: an AUR helper would build and install, as root,
 /// a PKGBUILD nobody reviewed (`--skipreview` / `--answerdiff None`),
 /// so pending AUR updates are left to [`aur_review_step`] in a
@@ -123,10 +125,14 @@ fn outcome_text(o: StepOutcome) -> String {
 /// (holding a package back is a partial upgrade, which Arch doesn't
 /// support).
 pub(crate) fn background_steps(plan: &UpgradePlan) -> Vec<Step> {
-    let quiet = " --noconfirm --noprogressbar --color never";
     let mut steps = Vec::new();
     if plan.system {
-        steps.push(Step::new("pacman", format!("pkexec pacman -Syu{quiet}")));
+        // The helper's fixed `upgrade` verb runs `pacman -Syu{quiet}`
+        // (its own polkit action and message).
+        steps.push(Step::new(
+            "pacman",
+            mshell_privileged::Request::Upgrade.pkexec_command(),
+        ));
     }
     if plan.flatpak {
         steps.push(Step::new("flatpak", "flatpak update -y --noninteractive"));
@@ -883,12 +889,12 @@ mod tests {
             system: true,
             flatpak: true,
         };
+        // pacman runs as the helper's fixed `upgrade` verb (its own
+        // polkit action), not a bare `pkexec pacman` with any argv.
+        let upgrade = format!("pkexec '{}' 'upgrade'", mshell_privileged::HELPER);
         assert_eq!(
             cmds(&plan),
-            [
-                "pkexec pacman -Syu --noconfirm --noprogressbar --color never",
-                "flatpak update -y --noninteractive"
-            ]
+            [upgrade.as_str(), "flatpak update -y --noninteractive"]
         );
         assert_eq!(
             background_steps(&plan)
@@ -909,10 +915,7 @@ mod tests {
             }
         }
         plan.flatpak = false;
-        assert_eq!(
-            cmds(&plan),
-            ["pkexec pacman -Syu --noconfirm --noprogressbar --color never"]
-        );
+        assert_eq!(cmds(&plan), [upgrade]);
         plan.system = false;
         assert!(background_steps(&plan).is_empty());
     }
