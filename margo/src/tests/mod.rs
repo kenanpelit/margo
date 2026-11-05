@@ -74,6 +74,7 @@ mod preferred_scale;
 mod present_timer;
 mod reload;
 mod repaint;
+mod scratchpad;
 mod screencopy;
 mod scripting;
 mod security_context;
