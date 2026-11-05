@@ -155,30 +155,19 @@ fn parse_targets(text: &str) -> Vec<String> {
         if line.is_empty() {
             continue;
         }
-        // Non-client ssh processes + proxy/launcher sub-lines.
-        if [
-            "sshd",
-            "ssh-agent",
-            "ssh-add",
-            "ssh-keygen",
-            "ssh-copy-id",
-            "autossh",
-            "pgrep",
-            "-e ssh",
-            " -W ",
-        ]
-        .iter()
-        .any(|needle| line.contains(needle))
-        {
-            continue;
-        }
-        // `<pid> <argv...>`: only an `ssh` program counts, not a shell
-        // or editor whose command line merely contains the word.
+        // `<pid> <argv...>`: only an `ssh` program counts — not sshd,
+        // ssh-agent, a `kitty -e ssh` launcher, or a shell / editor whose
+        // command line merely contains the word (the program name is
+        // checked, so a host called `sshd-box` still counts).
         let mut args = line.split_whitespace().skip(1);
         let Some(argv0) = args.next() else {
             continue;
         };
         if argv0 != "ssh" && !argv0.ends_with("/ssh") {
+            continue;
+        }
+        // `ssh -W host:port jump` is a ProxyJump helper, not a session.
+        if line.split_whitespace().any(|a| a.starts_with("-W")) {
             continue;
         }
         let target = destination(args).map(str::to_string);

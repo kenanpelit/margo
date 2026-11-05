@@ -113,6 +113,11 @@ fn target_is_the_destination_not_the_remote_command() {
         ["git@github.com"]
     );
     assert!(parse_targets("1 ssh -V\n").is_empty());
+    // Host names that contain a filtered program's name still count.
+    assert_eq!(
+        parse_targets("1 ssh admin@sshd-box\n2 ssh pgrep-host\n"),
+        ["admin@sshd-box", "pgrep-host"]
+    );
 }
 
 #[test]
