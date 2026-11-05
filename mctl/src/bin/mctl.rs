@@ -7,7 +7,7 @@ use anyhow::{Context, Result, bail};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 
-use mctl::actions::{ACTIONS, Group};
+use mctl::actions::ACTIONS;
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
@@ -1444,18 +1444,7 @@ fn cmd_actions(verbose: bool, group_filter: Option<&str>, names_only: bool) -> R
     let filter_label = group_filter.map(|s| s.to_lowercase());
     let mut matched_any = false;
 
-    let groups = [
-        Group::Tag,
-        Group::Focus,
-        Group::Layout,
-        Group::Scroller,
-        Group::Window,
-        Group::Scratchpad,
-        Group::Overview,
-        Group::System,
-    ];
-
-    for g in groups {
+    for g in mctl::actions::GROUPS {
         if let Some(filter) = filter_label.as_deref() {
             let label_lc = g.label().to_lowercase();
             if !label_lc.contains(filter) {

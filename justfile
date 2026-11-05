@@ -77,6 +77,12 @@ mtune:
 completions:
     ./contrib/completions/generate.sh
 
+# Regenerate the dispatch-action tables in docs/configuration.md and
+# wiki/Configuration.md from the catalogue (margo-config/src/actions.rs).
+# Run after adding/renaming an action; `cargo test -p mctl` fails until then.
+docs-actions:
+    MARGO_BLESS_DOCS=1 cargo test -q -p mctl --lib actions::tests::docs_embed_the_current_action_reference
+
 # PKGBUILD build groups (compositor-side crates apart from the tokio/GTK
 # shell stack). mlogind/mgreet/mlock take effect at the next login / lock,
 # start-margo and margo-portal at the next session.
