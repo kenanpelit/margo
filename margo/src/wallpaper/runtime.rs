@@ -1275,8 +1275,9 @@ mod tests {
 
     fn image(w: u32, h: u32) -> Rc<Image> {
         let path = PathBuf::from(format!("/w-{w}x{h}.raw"));
-        let pixels =
-            WallpaperState::from_decoded(crate::wallpaper::DecodedImage::solid_for_test(w, h));
+        let pixels = WallpaperState::from_decoded(crate::wallpaper::DecodedImage::filled_for_test(
+            w, h, [255; 4],
+        ));
         Rc::new(Image::new(pixels, path))
     }
 
@@ -1517,5 +1518,147 @@ mod tests {
         assert_eq!(after.len(), 2, "the previous image is gone");
         assert_ne!(after[0], settled[0], "a new image is a new element");
         assert_eq!(after[1], settled[1], "the fill element stays");
+    }
+
+    fn coloured(w: u32, h: u32, rgba: [u8; 4], name: &str) -> Rc<Image> {
+        let pixels = WallpaperState::from_decoded(crate::wallpaper::DecodedImage::filled_for_test(
+            w, h, rgba,
+        ));
+        Rc::new(Image::new(pixels, PathBuf::from(name)))
+    }
+
+    smithay::backend::renderer::element::render_elements! {
+        Scene<=GlesRenderer>;
+        Texture=TextureRenderElement<GlesTexture>,
+        Solid=SolidColorRenderElement,
+    }
+
+    /// Render `rt`'s wallpaper for an 8x4 output into an offscreen buffer
+    /// through `tracker`; returns the RGBA pixels and whether anything was
+    /// damaged.
+    fn render_frame(
+        renderer: &mut GlesRenderer,
+        tracker: &mut smithay::backend::renderer::damage::OutputDamageTracker,
+        target: &mut GlesTexture,
+        rt: &RuntimeWallpapers,
+        now: Instant,
+        age: usize,
+    ) -> (Vec<u8>, bool) {
+        use smithay::backend::allocator::Fourcc;
+        use smithay::backend::renderer::{Bind, ExportMem};
+        let place = Placement {
+            origin: Point::from((0.0, 0.0)),
+            zoom: 1.0,
+            cell: None,
+        };
+        let elements: Vec<Scene> = rt
+            .elements(renderer, "DP-1", Size::from((8, 4)), 1.0, &place, now)
+            .expect("covered")
+            .into_iter()
+            .map(|e| match e {
+                WallpaperElement::Texture(t) => Scene::Texture(t),
+                WallpaperElement::Solid(s) => Scene::Solid(s),
+            })
+            .collect();
+        let mut fb = renderer.bind(target).expect("bind");
+        let damaged = tracker
+            .render_output(renderer, &mut fb, age, &elements, [0.0, 0.0, 0.0, 1.0])
+            .expect("render")
+            .damage
+            .is_some_and(|d| !d.is_empty());
+        let mapping = renderer
+            .copy_framebuffer(&fb, Rectangle::from_size((8, 4).into()), Fourcc::Abgr8888)
+            .expect("copy");
+        (
+            renderer.map_texture(&mapping).expect("map").to_vec(),
+            damaged,
+        )
+    }
+
+    #[test]
+    fn a_contained_crossfade_renders_like_gtk_and_a_settled_frame_damages_nothing() {
+        use smithay::backend::allocator::Fourcc;
+        use smithay::backend::renderer::Offscreen;
+        use smithay::backend::renderer::damage::OutputDamageTracker;
+        let Some(mut renderer) = crate::render::blur::gpu_tests::renderer() else {
+            eprintln!("skipped: no render node / EGL");
+            return;
+        };
+        let mut target: GlesTexture = renderer
+            .create_buffer(Fourcc::Abgr8888, (8, 4).into())
+            .expect("offscreen buffer");
+        let mut tracker = OutputDamageTracker::new((8, 4), 1.0, smithay::utils::Transform::Normal);
+        let t0 = Instant::now();
+        // Old: a wide red image contained (rows 1-2); new: a tall blue one
+        // contained (columns 3-4); the window background is green. Both
+        // are symmetric about the middle, so the read-back's row order
+        // doesn't matter.
+        let mut rt = RuntimeWallpapers::default();
+        let req = parse_set("* fit=contain bg=#00ff00 /old").unwrap();
+        let generation = rt.begin(&req.targets);
+        rt.install(
+            &req.targets,
+            &req.options,
+            generation,
+            coloured(4, 1, [255, 0, 0, 255], "/old"),
+            t0,
+        );
+        let req = parse_set("* fade=200 /new").unwrap();
+        let generation = rt.begin(&req.targets);
+        rt.install(
+            &req.targets,
+            &req.options,
+            generation,
+            coloured(1, 2, [0, 0, 255, 255], "/new"),
+            t0,
+        );
+
+        let at = t0 + Duration::from_millis(100);
+        let p = eased(Duration::from_millis(100), Duration::from_millis(200)) as f32;
+        let (pixels, _) = render_frame(&mut renderer, &mut tracker, &mut target, &rt, at, 0);
+        let new_dst = (3.0, 0.0, 2.0, 4.0);
+        let old_dst = (0.0, 1.0, 8.0, 2.0);
+        for y in 0..4 {
+            for x in 0..8 {
+                let (cx, cy) = (x as f64 + 0.5, y as f64 + 0.5);
+                let i = (y * 8 + x) * 4;
+                for (c, (bg, new, old)) in [(0.0, 0.0, 1.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)]
+                    .into_iter()
+                    .enumerate()
+                {
+                    let want = gtk_at(new_dst, old_dst, p, bg, new, old, cx, cy);
+                    let got = f32::from(pixels[i + c]) / 255.0;
+                    assert!(
+                        (got - want).abs() <= 2.0 / 255.0,
+                        "({x}, {y}) channel {c}: {got} vs GTK {want}"
+                    );
+                }
+            }
+        }
+
+        // Settled: the same scene again repaints nothing...
+        rt.tick(t0 + Duration::from_millis(200));
+        let settled = t0 + Duration::from_millis(250);
+        let (_, damaged) = render_frame(&mut renderer, &mut tracker, &mut target, &rt, settled, 1);
+        assert!(damaged, "the fade's end is a change");
+        let (pixels, damaged) =
+            render_frame(&mut renderer, &mut tracker, &mut target, &rt, settled, 1);
+        assert!(!damaged, "a static wallpaper damages nothing");
+        assert_eq!(
+            &pixels[..4],
+            &[0, 255, 0, 255],
+            "background beside the image"
+        );
+        assert_eq!(
+            &pixels[(8 + 3) * 4..(8 + 3) * 4 + 4],
+            &[0, 0, 255, 255],
+            "the new image"
+        );
+        // ...and a new background colour is one damaged frame.
+        assert_eq!(rt.update(&parse_update("* bg=#ffffff").unwrap()), 1);
+        let (pixels, damaged) =
+            render_frame(&mut renderer, &mut tracker, &mut target, &rt, settled, 1);
+        assert!(damaged);
+        assert_eq!(&pixels[..4], &[255, 255, 255, 255]);
     }
 }

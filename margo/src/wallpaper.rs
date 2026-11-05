@@ -178,11 +178,11 @@ impl DecodedImage {
 }
 
 impl DecodedImage {
-    /// An opaque white `w`×`h` image (tests).
+    /// A `w`×`h` image of one premultiplied `rgba` colour (tests).
     #[cfg(test)]
-    pub(crate) fn solid_for_test(w: u32, h: u32) -> Self {
+    pub(crate) fn filled_for_test(w: u32, h: u32, rgba: [u8; 4]) -> Self {
         Self {
-            rgba: vec![255; w as usize * h as usize * 4],
+            rgba: rgba.repeat(w as usize * h as usize),
             size: (w, h),
             source: None,
         }
