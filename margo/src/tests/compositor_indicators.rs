@@ -229,3 +229,20 @@ fn resetmfact_prefers_the_tag_rule_mfact() {
     dispatch_action(&mut fx.server.state, "resetmfact", &Arg::default());
     assert!((fx.server.state.monitors[0].current_mfact() - 0.7).abs() < 1e-6);
 }
+
+#[test]
+fn resetmfact_with_an_unknown_monitor_changes_nothing() {
+    // The bar's layout menu names a monitor that was just unplugged (or a
+    // typo): the split of the monitor you work on must not be reset.
+    let config = Config {
+        default_mfact: 0.6,
+        ..Config::default()
+    };
+    let mut fx = Fixture::with_config(config);
+    fx.add_output("DP-1", (1920, 1080));
+    fx.add_keyboard();
+    let tag = fx.server.state.monitors[0].pertag.curtag;
+    fx.server.state.monitors[0].pertag.mfacts[tag] = 0.8;
+    dispatch_action(&mut fx.server.state, "resetmfact", &arg_v("HDMI-A-9"));
+    assert!((fx.server.state.monitors[0].current_mfact() - 0.8).abs() < 1e-6);
+}

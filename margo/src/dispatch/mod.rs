@@ -766,13 +766,20 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
         // Put the master/stack split back to its configured value. An
         // optional monitor name (a lone non-numeric dispatch arg fills
         // `v`) targets that output — the shell's per-bar layout menu.
+        // A name that matches no output (just unplugged, a typo) resets
+        // nothing — not the monitor you happen to work on.
         "resetmfact" | "reset_mfact" | "resetsplit" | "reset_split" => {
-            let mon_idx = arg
-                .v
-                .as_deref()
-                .and_then(|name| state.monitors.iter().position(|m| m.name == name))
-                .unwrap_or_else(|| state.focused_monitor());
-            state.reset_mfact(mon_idx);
+            let mon_idx = match arg.v.as_deref().filter(|n| !n.is_empty()) {
+                None => Some(state.focused_monitor()),
+                Some(name) => state.monitors.iter().position(|m| m.name == name),
+            };
+            match mon_idx {
+                Some(idx) => state.reset_mfact(idx),
+                None => tracing::warn!(
+                    output = arg.v.as_deref().unwrap_or_default(),
+                    "resetmfact: no such output"
+                ),
+            }
         }
         "togglegaps" => state.toggle_gaps(),
         "incgaps" => state.inc_gaps(arg.i),
