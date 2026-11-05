@@ -260,9 +260,9 @@ pub struct MargoState {
     pub output_pending: OutputPending,
     /// Active leases; dropping one revokes it.
     pub drm_lease_active: Vec<smithay::wayland::drm_lease::DrmLease>,
-    /// Snapshot loaded from the crash autosave at startup — applied by
-    /// the autosave timer once outputs are mapped, then cleared.
-    pub pending_crash_restore: Option<crate::session::SessionSnapshot>,
+    /// Session restore at runtime (`session.rs`): the crash / login
+    /// snapshot waiting for outputs, relaunch placements, auto-add queue.
+    pub session: crate::session::SessionRuntime,
     /// xdg-desktop-portal GlobalShortcuts registry (see
     /// `global_shortcuts.rs`); fed by margo-portal over the socket.
     pub global_shortcuts: crate::global_shortcuts::GlobalShortcutsRegistry,
@@ -793,7 +793,7 @@ impl MargoState {
             seat_state,
             output_pending: OutputPending::default(),
             drm_lease_active: Vec::new(),
-            pending_crash_restore: None,
+            session: Default::default(),
             global_shortcuts: Default::default(),
             udev_backend: None,
             scripting: None,

@@ -164,6 +164,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
             };
             let snap = crate::session::SessionSnapshot::capture(state);
             let n = snap.monitors.len();
+            let w = snap.windows.len();
             match crate::session::save_to(&path, &snap) {
                 Ok(()) => {
                     tracing::info!(target: "session", "saved {n} monitors to {path:?}");
@@ -176,7 +177,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
                         "-t",
                         "1500",
                         "Margo session",
-                        &format!("Saved {n} monitor(s)"),
+                        &format!("Saved {n} monitor(s), {w} window(s)"),
                     ]);
                 }
                 Err(e) => {
@@ -223,6 +224,14 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
             };
             let applied = crate::session::apply_to_state(state, &snap);
             tracing::info!(target: "session", "loaded {applied} monitors from {path:?}");
+            let mut summary = format!("Restored {applied} monitor(s)");
+            if state.config.session_restore_windows {
+                let r = state.restore_session_windows(&snap);
+                summary.push_str(&format!(
+                    ", moved {} window(s), launched {} app(s)",
+                    r.moved, r.launched
+                ));
+            }
             let _ = crate::utils::spawn([
                 "notify-send",
                 "-a",
@@ -232,7 +241,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
                 "-t",
                 "1500",
                 "Margo session",
-                &format!("Restored {applied} monitor(s)"),
+                &summary,
             ]);
         }
         "theme" | "set_theme" => {

@@ -1063,8 +1063,8 @@ pub const ACTIONS: &[Action] = &[
         aliases: &["save_session"],
         args: "",
         group: Group::System,
-        summary: "Save per-monitor tag/layout state to disk.",
-        detail: "Writes a JSON snapshot to `$XDG_STATE_HOME/margo/session.json` (defaults to `~/.local/state/margo/session.json`). Captures every monitor's seltags, tagset, and per-tag layout/mfact/nmaster. Open windows are NOT captured — those belong to user-space spawn lines.",
+        summary: "Save per-monitor tag/layout state and per-tag app lists to disk.",
+        detail: "Writes a JSON snapshot to `$XDG_STATE_HOME/margo/session.json` (defaults to `~/.local/state/margo/session.json`). Captures every monitor's seltags, tagset, and per-tag layout/mfact/nmaster, plus every open window's app id, output, tags and launch command (`/proc/<pid>/cmdline`) — the app lists `session_restore_windows` restores.",
     },
     Action {
         name: "session_load",
@@ -1072,7 +1072,7 @@ pub const ACTIONS: &[Action] = &[
         args: "",
         group: Group::System,
         summary: "Restore per-monitor tag/layout state from disk.",
-        detail: "Reads `$XDG_STATE_HOME/margo/session.json` and re-applies it to whatever monitors are present today (matched by output name). Snapshot entries for monitors that aren't connected get skipped (logged, not an error). Triggers an arrange + repaint so the new state is visible on the next frame.",
+        detail: "Reads `$XDG_STATE_HOME/margo/session.json` and re-applies it to whatever monitors are present today (matched by output name). Snapshot entries for monitors that aren't connected get skipped (logged, not an error). Triggers an arrange + repaint so the new state is visible on the next frame. With `session_restore_windows = 1` it also moves open windows back to their saved output and tag and relaunches saved apps that aren't open (each window they open lands on its saved tag). Never closes windows. `session_restore_at_login = 1` runs this at startup.",
     },
     Action {
         name: "session_end",

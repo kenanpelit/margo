@@ -61,6 +61,10 @@ impl MargoState {
                 client.monitor = home;
             }
         }
+        if let Some((mon, tags)) = self.session_take_placement(&client.app_id) {
+            client.monitor = mon;
+            client.tags = tags;
+        }
 
         let target_mon = client.monitor;
         let focus_new = !client.no_focus && !client.open_silent;
@@ -71,6 +75,7 @@ impl MargoState {
         ft_handle.send_done();
         client.foreign_toplevel_handle = Some(ft_handle);
         let app_id = client.app_id.clone();
+        let client_id = client.id;
         match self.new_client_position(target_mon) {
             Some(pos) => {
                 self.clients.insert(pos, client);
@@ -95,6 +100,9 @@ impl MargoState {
             monitor = target_mon,
             "new x11 toplevel",
         );
+        if let Some(idx) = self.clients.iter().position(|c| c.id == client_id) {
+            self.session_window_mapped(idx);
+        }
         // Refresh xdp-gnome's window picker — same path the
         // Wayland finalize_initial_map handler uses.
         self.emit_windows_changed();

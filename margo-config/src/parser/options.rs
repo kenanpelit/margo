@@ -285,6 +285,11 @@ pub(super) fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()>
         // minimize
         "minimize_restore_in_place" => cfg.minimize_restore_in_place = parse_bool(val),
 
+        // session restore
+        "session_restore_windows" => cfg.session_restore_windows = parse_bool(val),
+        "session_restore_at_login" => cfg.session_restore_at_login = parse_bool(val),
+        "session_auto_add" => cfg.session_auto_add = parse_bool(val),
+
         // wallpaper
         "wallpaper" => {
             let trimmed = val.trim();
@@ -723,6 +728,9 @@ pub const OPTION_KEYS: &[&str] = &[
     "shadows_size",
     "single_scratchpad",
     "minimize_restore_in_place",
+    "session_auto_add",
+    "session_restore_at_login",
+    "session_restore_windows",
     "sloppyfocus",
     "sloppyfocus_arrange",
     "smartgaps",

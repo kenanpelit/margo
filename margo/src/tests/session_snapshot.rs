@@ -23,6 +23,7 @@ fn snapshot(mon: MonitorSnapshot) -> SessionSnapshot {
         captured_at: "x".into(),
         monitors: vec![mon],
         scratchpads: vec![],
+        windows: vec![],
     }
 }
 

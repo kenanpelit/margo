@@ -94,6 +94,7 @@ mod twilight;
 mod virtual_pointer;
 mod wallpaper_runtime;
 mod window_rules;
+mod workspace_restore;
 mod x11;
 mod xdg_activation;
 mod xdg_decoration;

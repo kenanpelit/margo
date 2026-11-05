@@ -7,12 +7,14 @@
 //! that file back and re-applies the per-tag state to whatever
 //! monitors are present at load time, matching by output name.
 //!
+//! It also records every open window (app id, output, tags, launch
+//! command) — the per-tag app lists `session_restore_windows` puts back;
+//! see [`windows`].
+//!
 //! What's *not* in the snapshot:
 //!
-//! * **Open windows.** A client is bound to a process — restoring it
-//!   means re-spawning, and the spawn line lives in user space (a
-//!   tag rule, a script, the user's shell history). Margo doesn't
-//!   try to second-guess that.
+//! * **Window geometry.** Only which output and tag each window is on;
+//!   the layout re-tiles it.
 //! * **Animation state, focus, scratchpad visibility.** Ephemeral by
 //!   nature; stale within a frame.
 //! * **Monitor topology.** Outputs are physical hardware; if the
@@ -24,6 +26,7 @@
 //! shadowing a good one.
 
 use std::path::PathBuf;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -31,6 +34,9 @@ use serde::{Deserialize, Serialize};
 use margo_layouts::LayoutId;
 
 use crate::state::MargoState;
+
+mod windows;
+pub use windows::{SessionRuntime, WindowEntry};
 
 /// Top-level snapshot. `version` is bumped any time the on-disk
 /// shape changes; the loader rejects unknown versions instead of
@@ -48,6 +54,10 @@ pub struct SessionSnapshot {
     /// produced before this field landed deserialises cleanly.
     #[serde(default)]
     pub scratchpads: Vec<ScratchpadEntry>,
+    /// Every open window at capture time (per-tag app lists). Default
+    /// empty, so a snapshot from before this field still loads.
+    #[serde(default)]
+    pub windows: Vec<WindowEntry>,
 }
 
 /// One client's scratchpad state at capture time. We deliberately
@@ -118,7 +128,8 @@ pub fn autosave_path() -> Result<PathBuf> {
 }
 
 impl SessionSnapshot {
-    pub fn capture(state: &MargoState) -> Self {
+    pub fn capture(state: &mut MargoState) -> Self {
+        let windows = state.capture_session_windows();
         let captured_at = chrono_like_now();
         let monitors = state
             .monitors
@@ -156,6 +167,7 @@ impl SessionSnapshot {
             captured_at,
             monitors,
             scratchpads,
+            windows,
         }
     }
 }
@@ -246,6 +258,78 @@ pub fn load_from(path: &std::path::Path) -> Result<SessionSnapshot> {
         snap.version,
     );
     Ok(snap)
+}
+
+/// At startup: queue the crash autosave if the last session died, else
+/// (`session_restore_at_login`) the saved `session.json`. The session
+/// timer applies it once outputs exist ([`MargoState::session_timer_tick`]).
+pub fn prepare_startup_restore(state: &mut MargoState) {
+    if let Ok(path) = autosave_path()
+        && path.exists()
+    {
+        match load_from(&path) {
+            Ok(snap) => {
+                tracing::warn!(
+                    "unclean shutdown detected — will restore session from {path:?} \
+                     once outputs are up"
+                );
+                state.session.pending_crash_restore = Some(snap);
+                return;
+            }
+            Err(e) => tracing::warn!("crash autosave unreadable, ignoring: {e:?}"),
+        }
+    }
+    if !state.config.session_restore_at_login {
+        return;
+    }
+    match session_path().and_then(|p| load_from(&p)) {
+        Ok(snap) => state.session.pending_login_restore = Some(snap),
+        Err(e) => tracing::info!(target: "session", "login restore: no session to load: {e:?}"),
+    }
+}
+
+impl MargoState {
+    /// One tick of the session timer (5 s after start, then every 60 s):
+    /// apply a pending crash / login snapshot once outputs are up, flush the
+    /// `session_auto_add` queue, autosave. Returns the delay to the next.
+    pub(crate) fn session_timer_tick(&mut self, last_autosave: &mut Option<u64>) -> Duration {
+        let pending = self.session.pending_crash_restore.is_some()
+            || self.session.pending_login_restore.is_some();
+        if pending && self.monitors.is_empty() {
+            // Outputs not mapped yet — retry shortly. Do NOT autosave in
+            // this window: it would clobber the crash snapshot with an
+            // empty session.
+            return Duration::from_secs(5);
+        }
+        let (snap, what) = match (
+            self.session.pending_crash_restore.take(),
+            self.session.pending_login_restore.take(),
+        ) {
+            (Some(snap), _) => (Some(snap), "crash recovery"),
+            (None, Some(snap)) => (Some(snap), "login restore"),
+            (None, None) => (None, ""),
+        };
+        if let Some(snap) = snap {
+            let n = apply_to_state(self, &snap);
+            tracing::info!(target: "session", "{what}: restored {n} monitor snapshot(s)");
+            if self.config.session_restore_windows {
+                self.restore_session_windows(&snap);
+            }
+            self.arrange_all();
+            self.request_repaint();
+        }
+        self.flush_session_auto_add();
+        match autosave_path() {
+            Ok(path) => {
+                let snap = SessionSnapshot::capture(self);
+                if let Err(e) = autosave_to(&path, &snap, last_autosave) {
+                    tracing::debug!("session autosave failed: {e:?}");
+                }
+            }
+            Err(e) => tracing::debug!("session autosave path: {e:?}"),
+        }
+        Duration::from_secs(60)
+    }
 }
 
 /// Apply a snapshot to the live state. Matches monitors by name;
@@ -426,6 +510,7 @@ mod tests {
                     nmasters: vec![1, 2, 1],
                 },
             }],
+            windows: vec![],
         };
         let s = serde_json::to_string(&snap).unwrap();
         let back: SessionSnapshot = serde_json::from_str(&s).unwrap();
@@ -519,6 +604,7 @@ mod tests {
                     },
                 },
             ],
+            windows: vec![],
         };
 
         let path = std::env::temp_dir().join("margo-session-roundtrip.json");
@@ -570,6 +656,7 @@ mod tests {
             captured_at: "x".to_string(),
             scratchpads: vec![],
             monitors: vec![],
+            windows: vec![],
         };
         save_to(&path, &snap).unwrap();
         assert!(path.exists(), "destination not written");
@@ -606,6 +693,7 @@ mod tests {
                 vec![]
             },
             monitors: vec![],
+            windows: vec![],
         };
         let mut last = None;
 
@@ -678,6 +766,7 @@ mod tests {
                     nmasters: vec![1],
                 },
             }],
+            windows: vec![],
         };
         let json = serde_json::to_string(&short).unwrap();
         let back: SessionSnapshot = serde_json::from_str(&json).unwrap();
@@ -701,6 +790,7 @@ mod tests {
                     nmasters: vec![1; 15],
                 },
             }],
+            windows: vec![],
         };
         let json = serde_json::to_string(&long).unwrap();
         let back: SessionSnapshot = serde_json::from_str(&json).unwrap();
@@ -729,6 +819,7 @@ mod tests {
                     nmasters: vec![1],
                 },
             }],
+            windows: vec![],
         };
         let json = serde_json::to_string(&snap).unwrap();
         let back: SessionSnapshot = serde_json::from_str(&json).unwrap();
@@ -774,6 +865,7 @@ mod tests {
                     nmasters: vec![1],
                 },
             }],
+            windows: vec![],
         };
         save_to(&path, &snap).unwrap();
         let body = std::fs::read_to_string(&path).unwrap();
@@ -793,6 +885,7 @@ mod tests {
             captured_at: chrono_like_now(),
             scratchpads: vec![],
             monitors: vec![],
+            windows: vec![],
         };
         let json = serde_json::to_string(&snap).unwrap();
         let back: SessionSnapshot = serde_json::from_str(&json).unwrap();

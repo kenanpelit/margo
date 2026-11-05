@@ -173,6 +173,9 @@ pub struct MargoClient {
     /// Hidden from every tag: a tucked-away scratchpad, or a window the
     /// user / app / taskbar minimized (see [`Self::is_user_minimized`]).
     pub is_minimized: bool,
+    /// argv this window's process runs with (`/proc/<pid>/cmdline`), read
+    /// once when a session snapshot or `session_auto_add` first needs it.
+    pub launch_argv: Option<Vec<String>>,
     /// Minimize order, for `restore_last`: larger = minimized later. 0
     /// while not minimized (and for hidden scratchpads, which have their
     /// own toggle).
@@ -346,6 +349,7 @@ impl MargoClient {
             is_fake_fullscreen: false,
             is_maximized_screen: false,
             is_minimized: false,
+            launch_argv: None,
             minimized_seq: 0,
             is_urgent: false,
             is_global: false,

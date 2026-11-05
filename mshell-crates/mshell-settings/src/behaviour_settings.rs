@@ -57,6 +57,9 @@ pub(crate) struct BehaviourModel {
     scratchpad_cross_monitor: bool,
     single_scratchpad: bool,
     minimize_restore_in_place: bool,
+    session_restore_windows: bool,
+    session_restore_at_login: bool,
+    session_auto_add: bool,
     syncobj_enable: bool,
     allow_shortcuts_inhibit: bool,
     idleinhibit_ignore_visible: bool,
@@ -342,6 +345,38 @@ impl Component for BehaviourModel {
                             connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("minimize_restore_in_place", s.is_active())) } },
                 },
 
+                gtk::Label { add_css_class: "label-large-bold", set_label: "Session restore", set_halign: gtk::Align::Start },
+
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template] Row {
+                        set_widget_name: "setting:conf:session_restore_windows",
+                        #[template_child] title { set_label: "Restore windows with the session" },
+                        #[template_child] desc { set_label: "Loading the saved session also moves open windows back to their saved monitor and tag, and relaunches saved apps that aren't open. Never closes windows." },
+                        gtk::Switch { set_valign: gtk::Align::Center, set_active: model.session_restore_windows,
+                            connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("session_restore_windows", s.is_active())) } },
+                    #[template] Row {
+                        set_widget_name: "setting:conf:session_restore_at_login",
+                        #[template_child] title { set_label: "Restore the session at login" },
+                        #[template_child] desc { set_label: "Load the saved session a few seconds after margo starts." },
+                        gtk::Switch { set_valign: gtk::Align::Center, set_active: model.session_restore_at_login,
+                            connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("session_restore_at_login", s.is_active())) } },
+                    #[template] Row {
+                        set_widget_name: "setting:conf:session_auto_add",
+                        #[template_child] title { set_label: "Add new apps to the saved session" },
+                        #[template_child] desc { set_label: "An app you open that the saved session doesn't list yet is added on the tag it opened on." },
+                        gtk::Switch { set_valign: gtk::Align::Center, set_active: model.session_auto_add,
+                            connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("session_auto_add", s.is_active())) } },
+                    #[template] Row {
+                        set_widget_name: "setting:session_save_now",
+                        #[template_child] title { set_label: "Save the session now" },
+                        #[template_child] desc { set_label: "Record every monitor's tags and layouts and each open window's place (session_save)." },
+                        gtk::Button { set_valign: gtk::Align::Center, set_label: "Save", add_css_class: "ok-button-surface",
+                            connect_clicked => move |_| mshell_margo_client::ctl::dispatch_detached("session_save", &[]) } },
+                },
+
                 gtk::Expander {
                     set_label: Some("Advanced — sync, tearing, inhibitors"),
                     set_margin_top: 8,
@@ -426,6 +461,9 @@ impl Component for BehaviourModel {
             scratchpad_cross_monitor: read_bool("scratchpad_cross_monitor", true),
             single_scratchpad: read_bool("single_scratchpad", true),
             minimize_restore_in_place: read_bool("minimize_restore_in_place", false),
+            session_restore_windows: read_bool("session_restore_windows", false),
+            session_restore_at_login: read_bool("session_restore_at_login", false),
+            session_auto_add: read_bool("session_auto_add", false),
             syncobj_enable: read_bool("syncobj_enable", false),
             allow_shortcuts_inhibit: read_bool("allow_shortcuts_inhibit", true),
             idleinhibit_ignore_visible: read_bool("idleinhibit_ignore_visible", false),

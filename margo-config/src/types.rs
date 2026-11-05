@@ -981,6 +981,18 @@ pub struct Config {
     pub scratchpad_height_ratio: f32,
     pub single_scratchpad: bool,
 
+    // session restore (workspace restore)
+    /// `session_load` (and crash recovery / login restore) also moves open
+    /// windows back to their saved output + tag and relaunches saved apps
+    /// that aren't open. Off: only tags and layouts are restored.
+    pub session_restore_windows: bool,
+    /// Restore `session.json` at login (5 s after start, once outputs are
+    /// up) — the same as running `session_load`.
+    pub session_restore_at_login: bool,
+    /// Add a newly opened app that the saved session doesn't list yet, on
+    /// the tag it opened on (only adds; flushed with the minute autosave).
+    pub session_auto_add: bool,
+
     // minimize
     /// Where a minimized window comes back: `false` (default) onto the
     /// focused monitor's current tag, like a scratchpad summon; `true` to
@@ -1350,6 +1362,10 @@ impl Default for Config {
             scratchpad_width_ratio: 0.8,
             scratchpad_height_ratio: 0.9,
             single_scratchpad: true,
+
+            session_restore_windows: false,
+            session_restore_at_login: false,
+            session_auto_add: false,
 
             minimize_restore_in_place: false,
 

@@ -62,6 +62,13 @@ impl MargoState {
                 self.clients[idx].monitor = home;
             }
         }
+        // A window a session restore relaunched goes to its saved place,
+        // over the window rules (the workspace-restore plugin's exec rule).
+        let app_id = self.clients[idx].app_id.clone();
+        if let Some((mon, tags)) = self.session_take_placement(&app_id) {
+            self.clients[idx].monitor = mon;
+            self.clients[idx].tags = tags;
+        }
 
         let target_mon = self.clients[idx].monitor;
         let focus_new =
@@ -96,6 +103,7 @@ impl MargoState {
         // matched). Runs before the arrange below so the collapse to a
         // single slot lands in the same map pass.
         self.maybe_auto_group(idx);
+        self.session_window_mapped(idx);
 
         if !self.monitors.is_empty() {
             self.arrange_monitor(target_mon);
