@@ -21,11 +21,10 @@
 //!    [`MargoState::take_due_outputs`].
 //! 4. The DRM vblank lands → [`MargoState::note_vblank_per_output`]
 //!    stamps `last_present`, clears the in-flight gate, and, if the
-//!    output is dirty again, arms a zero-delay timer so the next frame
-//!    is submitted in time for the next vblank.
+//!    output is dirty again, leaves it due for the end of dispatch.
 //! 5. At the end of that loop iteration (after the animation tick),
 //!    [`MargoState::render_due_after_dispatch`] renders every output that
-//!    is due now and cancels its zero-delay timer, so continuous motion
+//!    is due now without allocating a zero-delay timer, so continuous motion
 //!    costs no extra loop iteration per frame.
 
 use std::time::{Duration, Instant};
@@ -191,7 +190,14 @@ impl MargoState {
             return false;
         }
         if self.per_output_clocks.get(name).is_some_and(|clock| {
-            clock.dirty && (clock.timer_token.is_some() || clock.pending_vblank)
+            clock.dirty
+                && (clock.timer_token.is_some()
+                    || clock.pending_vblank
+                    || (self.repaint_hook.is_some()
+                        && clock.is_due(
+                            Instant::now(),
+                            Self::output_refresh_interval(&self.monitors[mon_idx].output),
+                        )))
         }) {
             return false;
         }
@@ -202,10 +208,11 @@ impl MargoState {
         let clock = self.per_output_clocks.entry(name.clone()).or_default();
         clock.dirty = true;
         self.arm_present_timer_for(&name, &output, interval);
-        !self
-            .per_output_clocks
-            .get(&name)
-            .is_some_and(|clock| clock.timer_token.is_some() || clock.pending_vblank)
+        self.repaint_hook.is_none()
+            && !self
+                .per_output_clocks
+                .get(&name)
+                .is_some_and(|clock| clock.timer_token.is_some() || clock.pending_vblank)
     }
 
     /// Put an output rendered by the forced all-outputs path under the same
@@ -258,6 +265,11 @@ impl MargoState {
             return;
         }
         let delay = clock.next_tick_delay(Instant::now(), interval);
+        // The current dispatch will sample animations and render due outputs.
+        // Keep actual deadlines (and the no-hook backend fallback) as timers.
+        if delay.is_zero() && self.repaint_hook.is_some() {
+            return;
+        }
         self.next_present_timer_id = self.next_present_timer_id.wrapping_add(1).max(1);
         let timer_id = self.next_present_timer_id;
         clock.timer_id = timer_id;
@@ -329,7 +341,7 @@ impl MargoState {
 
     /// End of a loop iteration (after the animation tick): render every
     /// output that is due right now through the repaint hook, instead of
-    /// leaving it to its zero-delay present timer. A vblank with damage
+    /// allocating a zero-delay present timer. A vblank with damage
     /// behind it (continuous motion) used to cost one more full loop
     /// iteration per frame — epoll round trip, `flush_clients`, the IPC and
     /// animation checks — before the timer rendered. The timers of the
@@ -400,8 +412,8 @@ impl MargoState {
     /// Per-output vblank: the page-flip for `output` landed at
     /// `presented_at` (the DRM event's timestamp; `None` → now). Stamp
     /// `last_present`, drop the in-flight gate, and — if damage arrived
-    /// while the flip was in flight — arm a zero-delay present timer so
-    /// the next frame makes the next vblank. Damage that arrives later
+    /// while the flip was in flight — leave it due for end-of-dispatch
+    /// rendering (or arm a timer without a backend hook). Damage arriving later
     /// arms its own timer via `mark_output_clock_dirty`. Mirrors the
     /// global path's `note_vblank` (which pings immediately) but scoped
     /// to one output.

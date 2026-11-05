@@ -42,13 +42,13 @@ fn a_present_timer_runs_the_repaint_hook_without_a_ping() {
         assert_eq!(due.len(), 1, "the timer fired for a due output");
     }));
 
-    // A real vblank with damage behind it: zero-delay present timer.
+    // A non-zero post-empty-render deadline still needs a timer.
     let clock = state.per_output_clocks.entry("DP-1".into()).or_default();
     clock.dirty = true;
-    clock.pending_vblank = false;
-    clock.last_present = Some(std::time::Instant::now() - std::time::Duration::from_secs(1));
+    clock.note_estimated_present(std::time::Instant::now());
     state.arm_present_timer("DP-1");
     assert!(state.per_output_clocks["DP-1"].timer_token.is_some());
+    std::thread::sleep(std::time::Duration::from_millis(20));
 
     for _ in 0..5 {
         fx.server.dispatch();
@@ -93,7 +93,7 @@ fn without_a_hook_the_present_timer_still_pings() {
 
 /// Continuous motion on the per-output clock: the vblank lands with damage
 /// behind it. The end-of-iteration step renders the output right away
-/// (after the animation tick) and cancels its zero-delay timer, so the
+/// (after the animation tick) without allocating a zero-delay timer, so the
 /// frame costs no extra loop iteration and the hook runs exactly once.
 #[test]
 fn a_due_output_renders_at_the_end_of_the_iteration_without_its_timer() {
@@ -121,9 +121,9 @@ fn a_due_output_renders_at_the_end_of_the_iteration_without_its_timer() {
     let clock = state.per_output_clocks.entry("DP-1".into()).or_default();
     clock.pending_vblank = true;
     clock.dirty = true;
-    // Its flip lands: the clock arms a zero-delay present timer.
+    // Its flip lands: end-of-dispatch rendering needs no timer allocation.
     state.note_backend_vblank(&output, None);
-    assert!(state.per_output_clocks["DP-1"].timer_token.is_some());
+    assert!(state.per_output_clocks["DP-1"].timer_token.is_none());
 
     state.render_due_after_dispatch();
     assert_eq!(renders.get(), 1, "rendered in the same iteration");

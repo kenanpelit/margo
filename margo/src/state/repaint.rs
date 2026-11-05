@@ -111,7 +111,10 @@ impl MargoState {
                             && !self.render_retry_pending.contains_key(&monitor.name)
                     })
             });
-        if missing_wake && let Some(ping) = &self.repaint_ping {
+        if missing_wake
+            && self.repaint_hook.is_none()
+            && let Some(ping) = &self.repaint_ping
+        {
             ping.ping();
         }
     }
