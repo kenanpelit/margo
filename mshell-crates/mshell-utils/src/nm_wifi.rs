@@ -6,12 +6,17 @@
 //!   the network, `GetSecrets("802-11-wireless-security")` hands back the
 //!   key, which only ever lives in a [`Zeroizing`] buffer on its way into
 //!   the QR payload (qrencode's stdin);
+//! * **editing** — the Settings connection editor's write-only key field
+//!   ([`set_psk`]): the key travels to NetworkManager inside an `Update2`
+//!   settings dict, never on an `nmcli` argv that every local user can read
+//!   from `/proc/<pid>/cmdline`.
 //!
 //! Nothing here logs, prints or `Debug`-formats a key. The pure halves
 //! (settings → [`WifiShare`]) are unit-tested; the D-Bus halves run against
 //! a private mock daemon in `nm_wifi_tests.rs`, never the live system bus.
 
-use zbus::zvariant::OwnedObjectPath;
+use std::collections::HashMap;
+use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
 use zeroize::Zeroizing;
 
 use crate::hotspot::CONNECTION_NAME;
@@ -27,6 +32,8 @@ const SETTINGS_IFACE: &str = "org.freedesktop.NetworkManager.Settings";
 const CONNECTION_IFACE: &str = "org.freedesktop.NetworkManager.Settings.Connection";
 const WIFI: &str = "802-11-wireless";
 const WSEC: &str = "802-11-wireless-security";
+/// `NM_SETTINGS_UPDATE2_FLAG_TO_DISK`.
+const TO_DISK: u32 = 0x1;
 
 /// A Wi-Fi network as a phone needs it to join. The key is zeroized on
 /// drop and kept out of `Debug`.
@@ -112,6 +119,23 @@ pub fn share_from(settings: &Settings, secrets: &Settings) -> Result<WifiShare, 
         password,
         hidden,
     })
+}
+
+/// `settings` with `psk` as its WPA key, the rest (key-mgmt, flags)
+/// untouched. A profile with no security section gets `wpa-psk`.
+pub fn with_psk_kept(mut settings: Settings, psk: &str) -> Result<Settings, String> {
+    let wsec = settings.entry(WSEC.to_string()).or_default();
+    if !wsec.contains_key("key-mgmt") {
+        wsec.insert(
+            "key-mgmt".into(),
+            OwnedValue::try_from(Value::from("wpa-psk")).map_err(|e| e.to_string())?,
+        );
+    }
+    wsec.insert(
+        "psk".into(),
+        OwnedValue::try_from(Value::from(psk)).map_err(|e| e.to_string())?,
+    );
+    Ok(settings)
 }
 
 // ── D-Bus ──────────────────────────────────────────────────────────────────
@@ -214,6 +238,25 @@ pub async fn hotspot_on(bus: &zbus::Connection) -> Result<WifiShare, String> {
     Err("No hotspot yet — start it once, or set its password in Settings → Network".to_string())
 }
 
+/// Write `psk` into the connection `uuid` (Settings connection editor).
+pub async fn set_psk_on(bus: &zbus::Connection, uuid: &str, psk: &str) -> Result<(), String> {
+    let path: OwnedObjectPath = proxy(bus, SETTINGS_PATH, SETTINGS_IFACE)
+        .await?
+        .call("GetConnectionByUuid", &(uuid,))
+        .await
+        .map_err(|e| format!("NetworkManager GetConnectionByUuid: {e}"))?;
+    let settings = with_psk_kept(get_settings(bus, path.as_str()).await?, psk)?;
+    proxy(bus, path.as_str(), CONNECTION_IFACE)
+        .await?
+        .call::<_, _, HashMap<String, OwnedValue>>(
+            "Update2",
+            &(settings, TO_DISK, HashMap::<String, OwnedValue>::new()),
+        )
+        .await
+        .map_err(|_| "NetworkManager could not save the Wi-Fi password".to_string())?;
+    Ok(())
+}
+
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
 async fn bounded<T>(
@@ -232,6 +275,11 @@ pub async fn active_wifi() -> Result<WifiShare, String> {
 /// [`hotspot_on`] on the system bus.
 pub async fn hotspot() -> Result<WifiShare, String> {
     bounded(async { hotspot_on(&system_bus().await?).await }).await
+}
+
+/// [`set_psk_on`] on the system bus.
+pub async fn set_psk(uuid: &str, psk: &str) -> Result<(), String> {
+    bounded(async { set_psk_on(&system_bus().await?, uuid, psk).await }).await
 }
 
 #[path = "nm_wifi_tests.rs"]

@@ -65,6 +65,14 @@ impl MockActive {
 struct MockSettings;
 #[zbus::interface(name = "org.freedesktop.NetworkManager.Settings")]
 impl MockSettings {
+    fn get_connection_by_uuid(&self, uuid: &str) -> zbus::fdo::Result<OwnedObjectPath> {
+        if uuid == "client-uuid" {
+            Ok(OwnedObjectPath::try_from(CLIENT).unwrap())
+        } else {
+            Err(zbus::fdo::Error::Failed("no such connection".into()))
+        }
+    }
+
     fn list_connections(&self) -> Vec<OwnedObjectPath> {
         vec![
             OwnedObjectPath::try_from(CLIENT).unwrap(),
@@ -73,9 +81,12 @@ impl MockSettings {
     }
 }
 
+type Saved = std::sync::Arc<std::sync::Mutex<Option<Settings>>>;
+
 struct MockConn {
     settings: Settings,
     secret: String,
+    saved: Saved,
 }
 #[zbus::interface(name = "org.freedesktop.NetworkManager.Settings.Connection")]
 impl MockConn {
@@ -96,6 +107,17 @@ impl MockConn {
         assert_eq!(setting, WSEC, "only the Wi-Fi security secrets are asked");
         Ok(secrets(&self.secret))
     }
+    fn update2(
+        &self,
+        settings: Settings,
+        flags: u32,
+        args: HashMap<String, OwnedValue>,
+    ) -> HashMap<String, OwnedValue> {
+        assert_eq!(flags, TO_DISK);
+        assert!(args.is_empty());
+        *self.saved.lock().unwrap() = Some(settings);
+        HashMap::new()
+    }
 }
 
 struct PrivateBus(std::process::Child);
@@ -108,6 +130,12 @@ impl Drop for PrivateBus {
 
 /// Serve the mock on a private bus and return (daemon guard, server, client).
 async fn mock(active: bool) -> (PrivateBus, zbus::Connection, zbus::Connection) {
+    let (d, s, c, _) = mock_saving(active).await;
+    (d, s, c)
+}
+
+async fn mock_saving(active: bool) -> (PrivateBus, zbus::Connection, zbus::Connection, Saved) {
+    let saved = Saved::default();
     let child = std::process::Command::new("dbus-daemon")
         .args(["--session", "--nofork", "--print-address=1"])
         .stdout(std::process::Stdio::piped())
@@ -139,6 +167,7 @@ async fn mock(active: bool) -> (PrivateBus, zbus::Connection, zbus::Connection) 
             MockConn {
                 settings: profile("Home", "Home;Net", "infrastructure", "wpa-psk"),
                 secret: "synthetic:key".to_string(),
+                saved: saved.clone(),
             },
         )
         .unwrap()
@@ -147,6 +176,7 @@ async fn mock(active: bool) -> (PrivateBus, zbus::Connection, zbus::Connection) 
             MockConn {
                 settings: profile(CONNECTION_NAME, "laptop-hotspot", "ap", "wpa-psk"),
                 secret: "hotspot-test-key".to_string(),
+                saved: Saved::default(),
             },
         )
         .unwrap()
@@ -158,7 +188,7 @@ async fn mock(active: bool) -> (PrivateBus, zbus::Connection, zbus::Connection) 
         .build()
         .await
         .unwrap();
-    (daemon, server, client)
+    (daemon, server, client, saved)
 }
 
 #[tokio::test]
@@ -220,4 +250,25 @@ fn share_from_covers_open_wpa3_and_enterprise() {
             .unwrap_err()
             .contains("no stored password")
     );
+}
+
+#[tokio::test]
+async fn a_new_key_reaches_update2_with_the_rest_of_the_profile() {
+    let (_d, _s, client, saved) = mock_saving(true).await;
+    tokio::time::timeout(TIMEOUT, set_psk_on(&client, "client-uuid", "new key; ok"))
+        .await
+        .unwrap()
+        .unwrap();
+    let s = saved
+        .lock()
+        .unwrap()
+        .take()
+        .expect("NetworkManager received no settings");
+    let psk: &str = (&s[WSEC]["psk"]).try_into().unwrap();
+    assert_eq!(psk, "new key; ok");
+    // key-mgmt and the rest of the profile are kept, not rewritten.
+    let km: &str = (&s[WSEC]["key-mgmt"]).try_into().unwrap();
+    assert_eq!(km, "wpa-psk");
+    assert_eq!(ssid_of(&s).as_deref(), Some("Home;Net"));
+    assert!(set_psk_on(&client, "nope", "k").await.is_err());
 }

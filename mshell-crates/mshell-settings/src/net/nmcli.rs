@@ -106,13 +106,11 @@ pub async fn wifi_rescan() -> Result<(), String> {
     run(&["device", "wifi", "rescan"]).await.map(|_| ())
 }
 
-pub async fn wifi_connect(ssid: &str, password: Option<&str>) -> Result<(), String> {
-    let mut args = vec!["device", "wifi", "connect", ssid];
-    if let Some(p) = password {
-        args.push("password");
-        args.push(p);
-    }
-    run(&args).await.map(|_| ())
+/// Join a saved / open network. There is deliberately no password
+/// parameter: a key on the nmcli argv is readable by every local user
+/// (`/proc/<pid>/cmdline`); NetworkManager's agent asks for a missing one.
+pub async fn wifi_connect(ssid: &str) -> Result<(), String> {
+    run(&["device", "wifi", "connect", ssid]).await.map(|_| ())
 }
 
 pub async fn import_vpn(path: &str, kind: &str) -> Result<(), String> {

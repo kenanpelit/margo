@@ -1038,10 +1038,6 @@ impl Component for ConnectionEditorModel {
                         }
                     }
 
-                    if is_wifi && !psk_val.is_empty() {
-                        pairs.push(("802-11-wireless-security.psk".into(), psk_val));
-                    }
-
                     // nmcli::modify takes &[(&str, &str)] — build refs into
                     // the owned pairs vec, which lives in scope until `.await` returns.
                     let kv: Vec<(&str, &str)> = pairs
@@ -1055,6 +1051,22 @@ impl Component for ConnectionEditorModel {
                         // can fix and retry.
                         sender_c.input(ConnectionEditorInput::Loaded(EditorFields::default()));
                         return;
+                    }
+
+                    // The key goes to NetworkManager over D-Bus, never on the
+                    // nmcli argv above (readable from /proc/<pid>/cmdline).
+                    if is_wifi && !psk_val.is_empty() {
+                        let psk = zeroize::Zeroizing::new(psk_val);
+                        let id = uuid.clone();
+                        let saved = mshell_services::tokio_rt()
+                            .spawn(async move { mshell_utils::nm_wifi::set_psk(&id, &psk).await })
+                            .await
+                            .unwrap_or_else(|_| Err("the password save was cancelled".into()));
+                        if let Err(e) = saved {
+                            mshell_launcher::notify::toast("Network", &e);
+                            sender_c.input(ConnectionEditorInput::Loaded(EditorFields::default()));
+                            return;
+                        }
                     }
 
                     // Best-effort reconnect — ignore errors (VPN / offline).
@@ -1074,6 +1086,28 @@ impl Component for ConnectionEditorModel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_wifi_key_never_reaches_an_nmcli_argv() {
+        // Any local user can read /proc/<pid>/cmdline: the key must go to
+        // NetworkManager over D-Bus (mshell_utils::nm_wifi::set_psk).
+        for (file, src) in [
+            ("connection_editor.rs", include_str!("connection_editor.rs")),
+            ("nmcli.rs", include_str!("nmcli.rs")),
+        ] {
+            let prod = src.split("#[cfg(test)]").next().unwrap();
+            for forbidden in [
+                "\"802-11-wireless-security.psk\"",
+                "\"wifi-sec.psk\"",
+                "\"password\"",
+            ] {
+                assert!(
+                    !prod.contains(forbidden),
+                    "{file} hands {forbidden} to nmcli"
+                );
+            }
+        }
+    }
 
     #[test]
     fn dns_list_ok() {

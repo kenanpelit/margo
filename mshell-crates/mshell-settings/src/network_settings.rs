@@ -1141,7 +1141,7 @@ impl Component for NetworkSettingsModel {
                     } else {
                         let sender_c = sender.clone();
                         glib::spawn_future_local(async move {
-                            if let Err(e) = nmcli::wifi_connect(&ssid, None).await {
+                            if let Err(e) = nmcli::wifi_connect(&ssid).await {
                                 sender_c.input(NetworkSettingsInput::Toast(e));
                             }
                         });
