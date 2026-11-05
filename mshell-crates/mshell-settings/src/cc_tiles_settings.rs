@@ -11,6 +11,7 @@
 
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
+use mshell_config::control_center_tiles::{self, CONTROL_CENTER_TILES};
 use mshell_config::schema::config::{ConfigStoreFields, ControlCenterConfigStoreFields};
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::prelude::{BoxExt, ButtonExt, WidgetExt};
@@ -18,78 +19,19 @@ use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
 // ── Tile metadata ─────────────────────────────────────────────────────────────
 
-/// All known tile ids in the canonical default order.
-const ALL_TILE_IDS: &[&str] = &[
-    "wifi",
-    "bluetooth",
-    "audio_out",
-    "mic",
-    "vpn",
-    "valent",
-    "battery",
-    "keep_awake",
-    "dnd",
-    "airplane_mode",
-    "dark_mode",
-    "night_light",
-    "color_picker",
-    "disk",
-    "ufw",
-    "podman",
-    "mirror",
-    "hotspot",
-];
+/// All known tile ids in the canonical default order (the shared
+/// Control Center tile registry).
+fn all_tile_ids() -> impl Iterator<Item = &'static str> {
+    CONTROL_CENTER_TILES.iter().map(|t| t.id)
+}
 
 fn tile_display_name(id: &str) -> &'static str {
-    match id {
-        "wifi" => "Wi-Fi",
-        "bluetooth" => "Bluetooth",
-        "audio_out" => "Audio Out",
-        "mic" => "Microphone",
-        "battery" => "Battery",
-        "keep_awake" => "Keep Awake",
-        "dnd" => "Do Not Disturb",
-        "dark_mode" => "Dark Mode",
-        "night_light" => "Twilight (Night Light)",
-        "color_picker" => "Color Picker",
-        "disk" => "Disk",
-        "airplane_mode" => "Airplane Mode",
-        "vpn" => "VPN",
-        "valent" => "Valent",
-        "ufw" => "Firewall (UFW)",
-        "podman" => "Podman",
-        "mirror" => "Mirror Display",
-        "mic_denoise" => "Noise Suppression",
-        "hotspot" => "Hotspot",
-        _ => "Unknown",
-    }
+    control_center_tiles::tile(id).map_or("Unknown", |t| t.label)
 }
 
 /// Read a tile's current visibility from the config store.
 fn tile_visible(id: &str) -> bool {
-    let cc = config_manager().config().control_center();
-    match id {
-        "wifi" => cc.wifi().get_untracked(),
-        "bluetooth" => cc.bluetooth().get_untracked(),
-        "audio_out" => cc.audio_out().get_untracked(),
-        "mic" => cc.mic().get_untracked(),
-        "battery" => cc.battery().get_untracked(),
-        "keep_awake" => cc.keep_awake().get_untracked(),
-        "dnd" => cc.dnd().get_untracked(),
-        "dark_mode" => cc.dark_mode().get_untracked(),
-        "night_light" => cc.night_light().get_untracked(),
-        "color_picker" => cc.color_picker().get_untracked(),
-        "disk" => cc.disk().get_untracked(),
-        "airplane_mode" => cc.airplane_mode().get_untracked(),
-        "vpn" => cc.vpn().get_untracked(),
-        "valent" => cc.valent().get_untracked(),
-        "ufw" => cc.ufw().get_untracked(),
-        "podman" => cc.podman().get_untracked(),
-        "mirror" => cc.mirror().get_untracked(),
-        "mic_denoise" => cc.mic_denoise().get_untracked(),
-        "hotspot" => cc.hotspot().get_untracked(),
-        _ => true,
-    }
+    control_center_tiles::tile(id).is_none_or(|t| (t.visible)())
 }
 
 /// Read whether a tile is currently in the `wide_tiles` config list.
@@ -119,29 +61,9 @@ fn set_tile_wide(id: &str, wide: bool) {
 
 /// Write a tile's visibility to the config.
 fn set_tile_visible(id: &str, visible: bool) {
-    let id = id.to_string();
-    config_manager().update_config(move |c| match id.as_str() {
-        "wifi" => c.control_center.wifi = visible,
-        "bluetooth" => c.control_center.bluetooth = visible,
-        "audio_out" => c.control_center.audio_out = visible,
-        "mic" => c.control_center.mic = visible,
-        "battery" => c.control_center.battery = visible,
-        "keep_awake" => c.control_center.keep_awake = visible,
-        "dnd" => c.control_center.dnd = visible,
-        "dark_mode" => c.control_center.dark_mode = visible,
-        "night_light" => c.control_center.night_light = visible,
-        "color_picker" => c.control_center.color_picker = visible,
-        "disk" => c.control_center.disk = visible,
-        "airplane_mode" => c.control_center.airplane_mode = visible,
-        "vpn" => c.control_center.vpn = visible,
-        "valent" => c.control_center.valent = visible,
-        "ufw" => c.control_center.ufw = visible,
-        "podman" => c.control_center.podman = visible,
-        "mirror" => c.control_center.mirror = visible,
-        "mic_denoise" => c.control_center.mic_denoise = visible,
-        "hotspot" => c.control_center.hotspot = visible,
-        _ => {}
-    });
+    if let Some(t) = control_center_tiles::tile(id) {
+        config_manager().update_config(move |c| (t.set_visible)(&mut c.control_center, visible));
+    }
 }
 
 /// Compute the effective ordered list from a `tile_order` config vec.
@@ -149,13 +71,13 @@ fn set_tile_visible(id: &str, visible: bool) {
 /// from the config are appended in canonical order.
 fn effective_order(tile_order: &[String]) -> Vec<String> {
     let mut seen = std::collections::HashSet::new();
-    let mut result = Vec::with_capacity(ALL_TILE_IDS.len());
+    let mut result = Vec::with_capacity(CONTROL_CENTER_TILES.len());
     for s in tile_order {
-        if ALL_TILE_IDS.contains(&s.as_str()) && seen.insert(s.clone()) {
+        if control_center_tiles::tile(s).is_some() && seen.insert(s.clone()) {
             result.push(s.clone());
         }
     }
-    for &id in ALL_TILE_IDS {
+    for id in all_tile_ids() {
         if seen.insert(id.to_string()) {
             result.push(id.to_string());
         }
@@ -425,32 +347,16 @@ impl Component for CcTilesSettingsModel {
         // Build initial rows
         let rows = build_rows(&rows_box, &initial_order, &sender);
 
-        // Reactive effect: track tile_order + all visibility bools.
-        // Each call creates a fresh Subfield so we call config_manager()
-        // once per field (same pattern as tiles.rs).
+        // Reactive effect: track tile_order + wide_tiles + every tile's
+        // visibility bool.
         let mut effects = EffectScope::new();
         {
             let s = sender.clone();
             effects.push(move |_| {
                 let cm = config_manager();
-                let _ = cm.config().control_center().wifi().get();
-                let _ = cm.config().control_center().bluetooth().get();
-                let _ = cm.config().control_center().audio_out().get();
-                let _ = cm.config().control_center().mic().get();
-                let _ = cm.config().control_center().battery().get();
-                let _ = cm.config().control_center().keep_awake().get();
-                let _ = cm.config().control_center().dnd().get();
-                let _ = cm.config().control_center().dark_mode().get();
-                let _ = cm.config().control_center().night_light().get();
-                let _ = cm.config().control_center().color_picker().get();
-                let _ = cm.config().control_center().disk().get();
-                let _ = cm.config().control_center().airplane_mode().get();
-                let _ = cm.config().control_center().vpn().get();
-                let _ = cm.config().control_center().valent().get();
-                let _ = cm.config().control_center().ufw().get();
-                let _ = cm.config().control_center().podman().get();
-                let _ = cm.config().control_center().mic_denoise().get();
-                let _ = cm.config().control_center().hotspot().get();
+                for t in CONTROL_CENTER_TILES {
+                    let _ = (t.track_visible)();
+                }
                 let _ = cm.config().control_center().wide_tiles().get();
                 let order = effective_order(&cm.config().control_center().tile_order().get());
                 s.input(CcTilesSettingsInput::OrderChanged(order));
@@ -482,7 +388,7 @@ impl Component for CcTilesSettingsModel {
                     .tile_order()
                     .get_untracked();
                 // Ensure all canonical ids are present
-                for &cid in ALL_TILE_IDS {
+                for cid in all_tile_ids() {
                     if !order.contains(&cid.to_string()) {
                         order.push(cid.to_string());
                     }
@@ -503,7 +409,7 @@ impl Component for CcTilesSettingsModel {
                     .control_center()
                     .tile_order()
                     .get_untracked();
-                for &cid in ALL_TILE_IDS {
+                for cid in all_tile_ids() {
                     if !order.contains(&cid.to_string()) {
                         order.push(cid.to_string());
                     }
@@ -524,7 +430,7 @@ impl Component for CcTilesSettingsModel {
                     .control_center()
                     .tile_order()
                     .get_untracked();
-                for &cid in ALL_TILE_IDS {
+                for cid in all_tile_ids() {
                     if !order.contains(&cid.to_string()) {
                         order.push(cid.to_string());
                     }
@@ -583,4 +489,46 @@ fn rebuild_rows(
     }
     // Build new rows in new order
     widgets.rows = build_rows(&widgets.rows_box, order, sender);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The Settings list offers every Control Center tile (Noise
+    /// Suppression was missing), in the grid's canonical order, and an
+    /// order that skips a tile gets it appended instead of dropped.
+    #[test]
+    fn settings_lists_every_control_center_tile() {
+        let ids: Vec<&str> = all_tile_ids().collect();
+        assert_eq!(
+            ids,
+            [
+                "wifi",
+                "bluetooth",
+                "audio_out",
+                "mic",
+                "vpn",
+                "valent",
+                "battery",
+                "keep_awake",
+                "dnd",
+                "airplane_mode",
+                "dark_mode",
+                "night_light",
+                "color_picker",
+                "disk",
+                "ufw",
+                "podman",
+                "mirror",
+                "mic_denoise",
+                "hotspot",
+            ]
+        );
+        let order = effective_order(&["mic_denoise".to_string(), "bogus".to_string()]);
+        assert_eq!(order.first().map(String::as_str), Some("mic_denoise"));
+        assert_eq!(order.len(), ids.len());
+        assert_eq!(tile_display_name("mic_denoise"), "Noise Suppression");
+        assert_eq!(tile_display_name("bogus"), "Unknown");
+    }
 }
