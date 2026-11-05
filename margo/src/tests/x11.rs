@@ -45,3 +45,81 @@ fn xwm_starts_as_none_in_headless_mode() {
         "without XWayland::spawn, state.xwm must be None",
     );
 }
+
+// ── ConfigureRequest decisions (pure; no XWayland needed) ──────────────────
+
+use crate::layout::Rect;
+use crate::state::{X11ConfigureReply, X11ManagedGeometry, x11_configure_reply};
+
+fn managed(is_floating: bool, fullscreen: bool) -> Option<X11ManagedGeometry> {
+    Some(X11ManagedGeometry {
+        is_floating,
+        fullscreen,
+        geom: Rect::new(100, 100, 400, 300),
+    })
+}
+
+const CURRENT: Rect = Rect {
+    x: 100,
+    y: 100,
+    width: 400,
+    height: 300,
+};
+
+#[test]
+fn a_floating_x11_window_self_configure_is_kept_as_its_float_geometry() {
+    // A Wine / Steam / Java dialog growing to fit its content: the new rect
+    // must become the floating geometry, or the next arrange snaps it back.
+    assert_eq!(
+        x11_configure_reply(
+            managed(true, false),
+            CURRENT,
+            Some(150),
+            None,
+            Some(640),
+            Some(480)
+        ),
+        X11ConfigureReply::Float(Rect::new(150, 100, 640, 480))
+    );
+}
+
+#[test]
+fn a_floating_x11_self_configure_is_clamped() {
+    assert_eq!(
+        x11_configure_reply(
+            managed(true, false),
+            CURRENT,
+            Some(i32::MIN),
+            Some(i32::MAX),
+            Some(1),
+            Some(u32::MAX)
+        ),
+        X11ConfigureReply::Float(Rect::new(-(1 << 20), 1 << 20, 50, 1 << 20))
+    );
+}
+
+#[test]
+fn tiled_and_fullscreen_x11_windows_keep_the_compositor_geometry() {
+    for (floating, fullscreen) in [(false, false), (false, true), (true, true)] {
+        assert_eq!(
+            x11_configure_reply(
+                managed(floating, fullscreen),
+                CURRENT,
+                Some(0),
+                Some(0),
+                Some(10),
+                Some(10)
+            ),
+            X11ConfigureReply::Reassert(CURRENT),
+            "floating={floating} fullscreen={fullscreen}"
+        );
+    }
+}
+
+#[test]
+fn an_unmanaged_x11_window_gets_its_request_echoed() {
+    assert_eq!(
+        x11_configure_reply(None, CURRENT, None, Some(20), None, Some(200)),
+        X11ConfigureReply::Echo(Rect::new(100, 20, 400, 200))
+    );
+}

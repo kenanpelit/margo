@@ -59,6 +59,7 @@ pub use self::protocols::Protocols;
 pub use self::scroller_overview::{ScrollerOverview, overview_cells};
 pub(crate) use self::theme::ThemeBaseline;
 pub use self::twilight_methods::Twilight;
+pub(crate) use self::xwayland::{X11ConfigureReply, X11ManagedGeometry, x11_configure_reply};
 use crate::ipc::server::IpcServer;
 
 use std::{cell::RefCell, path::PathBuf, rc::Rc};

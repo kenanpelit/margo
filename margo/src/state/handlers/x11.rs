@@ -127,26 +127,45 @@ impl XwmHandler for MargoState {
         // right-click menus open offset to the side. That was the bug that only
         // "went away" by toggling the window floating, because togglefloating
         // forces a fresh `x11.configure` and re-pins the origin. Re-assert the
-        // tiled geometry instead — this mirrors dwl's `configurerequest`.
-        // Floating (and not-yet-managed) windows keep self-sizing.
-        if let Some(idx) = self.find_x11_client(&window) {
-            let g = self.clients[idx].geom;
-            if !self.clients[idx].is_floating && g.width > 0 && g.height > 0 {
-                let rect = Rectangle::new((g.x, g.y).into(), (g.width, g.height).into());
-                window.configure(rect).ok();
-                return;
+        // tiled (or fullscreen) geometry instead — this mirrors dwl's
+        // `configurerequest`.
+        // A managed floating window may move / resize itself (a Wine, Steam
+        // or Java dialog growing to fit its content); the accepted rect
+        // becomes its floating geometry, since arrange places floats from
+        // `float_geom` and would otherwise snap it back on the next focus
+        // or tag change. Not-yet-managed windows keep self-sizing.
+        let idx = self.find_x11_client(&window);
+        let managed = idx.map(|idx| {
+            let c = &self.clients[idx];
+            crate::state::X11ManagedGeometry {
+                is_floating: c.is_floating,
+                fullscreen: c.fullscreen_mode != crate::state::FullscreenMode::Off,
+                geom: c.geom,
             }
-        }
+        });
         let geom = window.geometry();
-        let new_geom = Rectangle::new(
-            (x.unwrap_or(geom.loc.x), y.unwrap_or(geom.loc.y)).into(),
-            (
-                w.map(|v| v as i32).unwrap_or(geom.size.w),
-                h.map(|v| v as i32).unwrap_or(geom.size.h),
-            )
-                .into(),
-        );
-        window.configure(new_geom).ok();
+        let current = crate::layout::Rect::new(geom.loc.x, geom.loc.y, geom.size.w, geom.size.h);
+        let reply = crate::state::x11_configure_reply(managed, current, x, y, w, h);
+        let rect = match reply {
+            crate::state::X11ConfigureReply::Reassert(r)
+            | crate::state::X11ConfigureReply::Echo(r) => r,
+            crate::state::X11ConfigureReply::Float(r) => {
+                if let Some(idx) = idx {
+                    self.clients[idx].float_geom = r;
+                    let mon_idx = self.clients[idx].monitor;
+                    // Moves the space element along with the X11 window,
+                    // so input and popups track the new origin right away.
+                    self.arrange_monitor(mon_idx);
+                }
+                r
+            }
+        };
+        window
+            .configure(Rectangle::new(
+                (rect.x, rect.y).into(),
+                (rect.width, rect.height).into(),
+            ))
+            .ok();
     }
 
     fn configure_notify(

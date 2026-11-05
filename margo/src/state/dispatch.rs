@@ -26,7 +26,7 @@ use crate::layout::LayoutId;
 /// already clamped its own deltas here; `reseed_float_geom_if_stale`
 /// reuses it as "small enough that this remembered geometry can't be
 /// trusted" — see its doc comment.
-const MIN_FLOAT_SIZE: i32 = 50;
+pub(super) const MIN_FLOAT_SIZE: i32 = 50;
 /// Bound for floating positions and sizes moved/resized by `movewin` /
 /// `resizewin` (same ±2^20 as output positions): IPC and Rhai deltas are
 /// arbitrary i32s, and layout/render math adds `x + width` in i32.

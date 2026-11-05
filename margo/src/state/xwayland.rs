@@ -7,7 +7,8 @@
 //! and calls into these methods. `pub(crate)` because those handlers (a
 //! sibling module, no longer a descendant of `state.rs`) invoke them.
 //!
-//! Pure `MargoState` glue; no new types.
+//! Mostly `MargoState` glue, plus the pure `ConfigureRequest` decision
+//! ([`x11_configure_reply`]) so it is testable without an XWayland.
 
 use super::*;
 
@@ -127,4 +128,61 @@ impl MargoState {
             self.request_repaint();
         }
     }
+}
+
+/// What margo answers an X11 `ConfigureRequest` with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum X11ConfigureReply {
+    /// A compositor-placed window (tiled or fullscreen): re-send its
+    /// current geometry and ignore the request.
+    Reassert(Rect),
+    /// A managed floating window: accept the request (clamped) and
+    /// remember it as the window's floating geometry.
+    Float(Rect),
+    /// A window margo doesn't manage yet: echo the request.
+    Echo(Rect),
+}
+
+/// The managed client's side of [`x11_configure_reply`]: `fullscreen` is
+/// any fullscreen mode other than off.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct X11ManagedGeometry {
+    pub is_floating: bool,
+    pub fullscreen: bool,
+    pub geom: Rect,
+}
+
+pub(crate) fn x11_configure_reply(
+    managed: Option<X11ManagedGeometry>,
+    current: Rect,
+    x: Option<i32>,
+    y: Option<i32>,
+    w: Option<u32>,
+    h: Option<u32>,
+) -> X11ConfigureReply {
+    let requested = Rect {
+        x: x.unwrap_or(current.x),
+        y: y.unwrap_or(current.y),
+        width: w.map_or(current.width, |v| i32::try_from(v).unwrap_or(i32::MAX)),
+        height: h.map_or(current.height, |v| i32::try_from(v).unwrap_or(i32::MAX)),
+    };
+    let Some(m) = managed else {
+        return X11ConfigureReply::Echo(requested);
+    };
+    if m.is_floating && !m.fullscreen {
+        // Same bounds `movewin` / `resizewin` keep floats in.
+        const MAX: i32 = crate::protocols::output_management::MAX_POSITION;
+        const MIN_SIZE: i32 = super::dispatch::MIN_FLOAT_SIZE;
+        return X11ConfigureReply::Float(Rect {
+            x: requested.x.clamp(-MAX, MAX),
+            y: requested.y.clamp(-MAX, MAX),
+            width: requested.width.clamp(MIN_SIZE, MAX),
+            height: requested.height.clamp(MIN_SIZE, MAX),
+        });
+    }
+    if m.geom.width > 0 && m.geom.height > 0 {
+        return X11ConfigureReply::Reassert(m.geom);
+    }
+    // Not placed yet (the first arrange hasn't run): nothing to re-assert.
+    X11ConfigureReply::Echo(requested)
 }
