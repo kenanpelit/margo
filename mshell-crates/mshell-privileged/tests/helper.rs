@@ -47,6 +47,9 @@ impl Fixture {
     }
 
     fn run_stdin(&self, args: &[&str], stdin: Option<&[u8]>) -> Output {
+        // As root the helper ignores MSHELL_PRIVILEGED_SYSROOT by design, so
+        // it would act on the machine's real /etc, sysfs and pacman.
+        assert!(!as_root(), "never run the helper fixtures as root");
         let mut child = Command::new(BIN)
             .args(args)
             .env("MSHELL_PRIVILEGED_SYSROOT", &self.root)
@@ -62,6 +65,24 @@ impl Fixture {
         drop(input);
         child.wait_with_output().expect("wait")
     }
+}
+
+/// The fixtures need the helper to honour `MSHELL_PRIVILEGED_SYSROOT`, which
+/// it ignores when any uid is 0 (a root caller must not redirect it). CI's
+/// container runs the tests as root: there these tests skip, and the
+/// validators stay covered by the crate's unit tests.
+fn as_root() -> bool {
+    // SAFETY: plain getters.
+    unsafe { libc::getuid() == 0 || libc::geteuid() == 0 }
+}
+
+macro_rules! skip_as_root {
+    () => {
+        if as_root() {
+            eprintln!("skipped as root: the helper ignores the fixture sysroot");
+            return;
+        }
+    };
 }
 
 fn code(o: &Output) -> i32 {
@@ -82,6 +103,7 @@ fn mode(p: &Path) -> u32 {
 
 #[test]
 fn install_keeps_mode_backs_up_and_consumes_the_review_file() {
+    skip_as_root!();
     let f = Fixture::new();
     let live = f.write("/etc/f.conf", "mine\n");
     f.write("/etc/f.conf.pacnew", "theirs\n");
@@ -106,6 +128,7 @@ fn install_keeps_mode_backs_up_and_consumes_the_review_file() {
 
 #[test]
 fn a_merge_arrives_on_stdin() {
+    skip_as_root!();
     let f = Fixture::new();
     f.write("/etc/sub/f.conf", "mine\n");
     f.write("/etc/sub/f.conf.pacnew", "theirs\n");
@@ -121,6 +144,7 @@ fn a_merge_arrives_on_stdin() {
 
 #[test]
 fn restoring_a_pacsave_creates_the_live_file_0644() {
+    skip_as_root!();
     let f = Fixture::new();
     f.write("/etc/gone.conf.pacsave", "saved\n");
     let o = f.run(&["pacnew-install", "/etc/gone.conf", "/etc/gone.conf.pacsave"]);
@@ -135,6 +159,7 @@ fn restoring_a_pacsave_creates_the_live_file_0644() {
 
 #[test]
 fn a_symlinked_live_file_is_refused() {
+    skip_as_root!();
     // systemd-resolved's /etc/resolv.conf is a symlink: writing through it
     // (or replacing it with a 0777 copy of the link's mode) is refused.
     let f = Fixture::new();
@@ -160,6 +185,7 @@ fn a_symlinked_live_file_is_refused() {
 
 #[test]
 fn a_symlinked_directory_or_review_file_is_refused() {
+    skip_as_root!();
     let f = Fixture::new();
     // A dotfiles dir linked into /etc.
     f.write("/home/u/dots/pacman.conf", "mine\n");
@@ -198,6 +224,7 @@ fn a_symlinked_directory_or_review_file_is_refused() {
 
 #[test]
 fn a_planted_backup_symlink_is_replaced_not_followed() {
+    skip_as_root!();
     let f = Fixture::new();
     f.write("/etc/f.conf", "mine\n");
     f.write("/etc/f.conf.pacnew", "theirs\n");
@@ -216,6 +243,7 @@ fn a_planted_backup_symlink_is_replaced_not_followed() {
 
 #[test]
 fn fifos_and_directories_are_refused() {
+    skip_as_root!();
     let f = Fixture::new();
     f.write("/etc/a.conf", "x\n");
     let fifo = f.p("/etc/a.conf.pacnew");
@@ -232,6 +260,7 @@ fn fifos_and_directories_are_refused() {
 
 #[test]
 fn hostile_paths_never_reach_the_file_system() {
+    skip_as_root!();
     let f = Fixture::new();
     f.write("/root/x.pacnew", "x\n");
     f.write("/etc/passwd", "root\n");
@@ -255,6 +284,7 @@ fn hostile_paths_never_reach_the_file_system() {
 
 #[test]
 fn remove_deletes_only_the_review_file() {
+    skip_as_root!();
     let f = Fixture::new();
     f.write("/etc/a.conf", "live\n");
     f.write("/etc/a.conf.pacsave", "saved\n");
@@ -268,6 +298,7 @@ fn remove_deletes_only_the_review_file() {
 
 #[test]
 fn fan_writes_one_allowed_line_to_the_fixed_file() {
+    skip_as_root!();
     let f = Fixture::new();
     f.write("/proc/acpi/ibm/fan", "");
     let o = f.run(&["fan-set", "3"]);
@@ -304,6 +335,7 @@ fn battery(f: &Fixture, name: &str, start: &str, end: &str) {
 
 #[test]
 fn charge_limit_writes_the_thresholds_the_helper_finds_itself() {
+    skip_as_root!();
     let f = Fixture::new();
     battery(&f, "BAT0", "75\n", "80\n");
     battery(&f, "BAT1", "75\n", "80\n");
@@ -362,6 +394,7 @@ fn charge_limit_writes_the_thresholds_the_helper_finds_itself() {
 
 #[test]
 fn charge_limit_refuses_hostile_values_and_planted_links() {
+    skip_as_root!();
     let f = Fixture::new();
     battery(&f, "BAT0", "75\n", "80\n");
     for bad in [
@@ -408,6 +441,7 @@ const GOOD_DROPIN: &str = "# Managed by margo Settings — do not edit by hand.\
 
 #[test]
 fn logind_dropin_writes_the_fixed_file_from_stdin() {
+    skip_as_root!();
     let f = Fixture::new();
     std::fs::create_dir_all(f.p("/etc/systemd")).expect("mkdir");
     let o = f.run_stdin(&["logind-dropin"], Some(GOOD_DROPIN.as_bytes()));
@@ -430,6 +464,7 @@ fn logind_dropin_writes_the_fixed_file_from_stdin() {
 
 #[test]
 fn logind_dropin_refuses_anything_but_the_settings_keys() {
+    skip_as_root!();
     let f = Fixture::new();
     std::fs::create_dir_all(f.p("/etc/systemd/logind.conf.d")).expect("mkdir");
     f.write(DROPIN, "old\n");
@@ -466,6 +501,7 @@ fn logind_dropin_refuses_anything_but_the_settings_keys() {
 
 #[test]
 fn logind_dropin_refuses_planted_links() {
+    skip_as_root!();
     // A symlinked drop-in (or drop-in directory) is not written through.
     let f = Fixture::new();
     let victim = f.write("/etc/sudoers", "root ALL\n");
@@ -498,6 +534,7 @@ fn logind_dropin_refuses_planted_links() {
 
 #[test]
 fn kill_rechecks_the_start_time() {
+    skip_as_root!();
     let f = Fixture::new();
     let mut child = Command::new("sleep").arg("30").spawn().expect("sleep");
     let pid = child.id();
@@ -543,6 +580,7 @@ fn kill_rechecks_the_start_time() {
 
 #[test]
 fn smart_read_runs_smartctl_per_validated_drive() {
+    skip_as_root!();
     let f = Fixture::new();
     f.fake("/usr/bin/smartctl");
     for bad in ["/dev/../etc/shadow", "/dev/sda;id", "/dev/", "sda"] {
@@ -581,6 +619,7 @@ fn smart_read_runs_smartctl_per_validated_drive() {
 
 #[test]
 fn upgrade_and_rollback_exec_pacman_with_a_fixed_argv() {
+    skip_as_root!();
     let f = Fixture::new();
     f.fake("/usr/bin/pacman");
     let o = f.run(&["upgrade"]);
