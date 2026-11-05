@@ -7,6 +7,7 @@
 //! the local stats incrementally, and calls the (rate-limited) usage
 //! endpoints at most every [`LIMITS_EVERY_MS`], backing off on HTTP 429.
 
+pub(crate) mod jsonl;
 pub(crate) mod limits;
 pub(crate) mod local_stats;
 pub(crate) mod sessions;
