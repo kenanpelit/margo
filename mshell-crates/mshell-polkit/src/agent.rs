@@ -42,7 +42,8 @@ impl PolkitAgentObject {
         cookie: &str,
         identities: Vec<(String, HashMap<String, OwnedValue>)>,
     ) -> fdo::Result<()> {
-        info!("[polkit] BeginAuthentication action={action_id} cookie={cookie}");
+        // Never log `cookie`: it authorises this request (see the test below).
+        info!("[polkit] BeginAuthentication action={action_id}");
 
         let username = pick_username(&identities)
             .ok_or_else(|| fdo::Error::Failed("no unix-user identity found".into()))?;
@@ -140,8 +141,8 @@ impl PolkitAgentObject {
         Err(fdo::Error::Failed("authentication failed".into()))
     }
 
-    async fn cancel_authentication(&self, cookie: &str) -> fdo::Result<()> {
-        info!("[polkit] CancelAuthentication cookie={cookie}");
+    async fn cancel_authentication(&self, _cookie: &str) -> fdo::Result<()> {
+        info!("[polkit] CancelAuthentication");
         self.prompt_sender.input(PolkitPromptInput::Hide);
         Ok(())
     }
@@ -279,6 +280,25 @@ async fn resolve_session_id(connection: &Connection) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn no_log_line_carries_the_auth_cookie() {
+        // The cookie authorises the pending request: anyone holding it can
+        // answer polkit for this session, and users paste journals into
+        // issues. No tracing macro in this file may interpolate it.
+        let src = include_str!("agent.rs");
+        let macros = ["trace!(", "debug!(", "info!(", "warn!(", "error!("];
+        for (n, line) in src.lines().enumerate() {
+            let line = line.trim_start();
+            if macros.iter().any(|m| line.starts_with(m)) {
+                assert!(
+                    !line.contains("{cookie") && !line.contains("cookie)"),
+                    "agent.rs:{}: log line leaks the polkit cookie: {line}",
+                    n + 1
+                );
+            }
+        }
+    }
 
     #[test]
     fn no_identities_yields_no_username() {
