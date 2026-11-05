@@ -1,5 +1,5 @@
-//! The settings sidebar: its route table, section groups, collapsed state
-//! and the button tree.
+//! The settings sidebar: its route table, section groups, collapsed state,
+//! the button tree and its keyboard navigation.
 
 use super::*;
 
@@ -597,6 +597,121 @@ pub(super) fn build_sidebar(
         }
     }
     buttons
+}
+
+/// Sidebar keyboard navigation (Tab / Shift+Tab / Up / Down walk the
+/// section buttons), search-box Enter / live filter, and focusing the search
+/// box each time the panel maps.
+pub(super) fn wire_sidebar_keys(
+    root: &gtk::Box,
+    sidebar_box: &gtk::Box,
+    search_entry: &gtk::SearchEntry,
+    sender: &ComponentSender<SettingsWindowModel>,
+) {
+    // Keyboard navigation on the sidebar — Tab + Up/Down walk
+    // through the ToggleButton children, activating each
+    // selection along the way so the right-side page updates.
+    // GTK4's default focus chain on a Box-of-Buttons should
+    // already make Tab work, but layer-shell + Exclusive
+    // keyboard-mode swallows the first Tab and the radio
+    // group's focus-on-click behaviour can land focus on the
+    // page content first instead of the sidebar. This
+    // controller is the belt-and-suspenders backup.
+    {
+        use gtk::gdk;
+        use gtk::glib;
+        use gtk::prelude::*;
+
+        let sidebar_weak = sidebar_box.downgrade();
+        let search_weak_kc = search_entry.downgrade();
+        let key_controller = gtk::EventControllerKey::new();
+        key_controller.set_propagation_phase(gtk::PropagationPhase::Capture);
+        key_controller.connect_key_pressed(move |_, keyval, _, modifiers| {
+            let Some(sidebar) = sidebar_weak.upgrade() else {
+                return glib::Propagation::Proceed;
+            };
+            let shift = modifiers.contains(gdk::ModifierType::SHIFT_MASK);
+            let dir = match keyval {
+                gdk::Key::Down | gdk::Key::Tab if !shift => 1i32,
+                gdk::Key::Up => -1i32,
+                gdk::Key::ISO_Left_Tab => -1i32,
+                _ => return glib::Propagation::Proceed,
+            };
+
+            // Collect the focusable ToggleButton children of the
+            // sidebar Box, find which one currently has focus
+            // (or is active), and grab focus on the neighbour.
+            let mut buttons: Vec<gtk::ToggleButton> = Vec::new();
+            collect_sidebar_buttons(&sidebar, &mut buttons);
+            // Skip page buttons inside a collapsed group — they aren't on
+            // screen, so Tab/arrows shouldn't land on them.
+            buttons.retain(|b| b.is_mapped());
+            if buttons.is_empty() {
+                return glib::Propagation::Proceed;
+            }
+            // From the search box: Down / Tab descends into the list
+            // (landing on the active section so arrows continue from
+            // there); typing and Up stay with the entry.
+            let in_search = search_weak_kc
+                .upgrade()
+                .map(|e| e.has_focus())
+                .unwrap_or(false);
+            if in_search {
+                if dir == 1 {
+                    let target = buttons
+                        .iter()
+                        .find(|b| b.is_active())
+                        .unwrap_or(&buttons[0]);
+                    target.grab_focus();
+                    return glib::Propagation::Stop;
+                }
+                return glib::Propagation::Proceed;
+            }
+            let current = buttons
+                .iter()
+                .position(|b| b.has_focus() || b.is_active())
+                .unwrap_or(0);
+            let next = ((current as i32 + dir).rem_euclid(buttons.len() as i32)) as usize;
+            let target = &buttons[next];
+            target.grab_focus();
+            target.set_active(true);
+            glib::Propagation::Stop
+        });
+        sidebar_box.add_controller(key_controller);
+        // Submit search on Enter — wired here because this view does
+        // not inject `sender` into its closures.
+        {
+            let sender = sender.clone();
+            search_entry.connect_activate(move |e| {
+                sender.input(SettingsWindowInput::SearchSubmitted(e.text().to_string()));
+            });
+        }
+        // Live filter: hide non-matching entries as the user types.
+        {
+            let sender = sender.clone();
+            search_entry.connect_search_changed(move |e| {
+                sender.input(SettingsWindowInput::SearchChanged(e.text().to_string()));
+            });
+        }
+
+        // Focus the search box every time the panel is shown — not
+        // just once at build. The menu lives in a Revealer + Stack, so
+        // its root maps on each reveal; focusing here means you can
+        // type to search immediately, and Tab / Down descend into the
+        // sidebar list — both work from the very first open without a
+        // click. (The prior one-shot idle ran once at startup while the
+        // panel was hidden, so its focus was lost.) Deferred to idle so
+        // focus lands after the map / realize settles.
+        let search_weak2 = search_entry.downgrade();
+        root.connect_map(move |_| {
+            let search_weak2 = search_weak2.clone();
+            glib::idle_add_local_once(move || {
+                if let Some(entry) = search_weak2.upgrade() {
+                    entry.grab_focus();
+                }
+            });
+        });
+    }
 }
 
 #[cfg(test)]

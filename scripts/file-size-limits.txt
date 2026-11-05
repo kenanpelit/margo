@@ -14,7 +14,9 @@ margo/src/state.rs 1248
 mshell-crates/mshell-core/src/ipc.rs 963
 # Settings panel component (view, init, update). Page registry, search,
 # sidebar and the Widgets sub-page catalogue live in settings/*.rs.
-mshell-crates/mshell-settings/src/settings.rs 1074
+mshell-crates/mshell-settings/src/settings.rs 662
+# sidebar (incl. its keyboard nav), the Theme and Widgets groups and the
+# Widgets sub-page catalogue live in settings/*.rs.
 # The config root (Config, General, OSD/toasts, alarms, idle, session,
 # launcher, notifications, wallpaper, frame). Theme, bars, menus, dock and
 # system-service sections live in schema/config/*.rs.
