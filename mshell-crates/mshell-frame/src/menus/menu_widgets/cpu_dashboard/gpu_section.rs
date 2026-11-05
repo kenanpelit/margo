@@ -10,9 +10,9 @@ use super::gpu::{
     gpu_procs, read_clients, sample_gt,
 };
 use super::keyed_rows::KeyedRows;
-use super::procs::fmt_kb;
 use super::ui;
 use crate::menus::reveal_poll::RevealPoll;
+use mshell_utils::units;
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::collections::HashMap;
@@ -246,7 +246,7 @@ fn gpu_proc_view(p: &GpuProc) -> GpuProcView {
             format!("{} · {}", p.pid, p.engine)
         },
         busy: format!("{:.0}%", p.busy),
-        rss: fmt_kb(p.resident_kb),
+        rss: units::kib(p.resident_kb),
     }
 }
 

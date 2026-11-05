@@ -124,7 +124,7 @@ impl Volume {
         } else {
             self.fs_type.clone()
         };
-        format!("{} {fs}", format_size(self.size))
+        format!("{} {fs}", mshell_utils::units::bytes(self.size))
     }
 }
 
@@ -321,7 +321,11 @@ pub(crate) fn diff(old: &[Drive], new: &[Drive]) -> Vec<DriveEvent> {
 pub(crate) fn tooltip(drives: &[Drive]) -> String {
     let mut lines = Vec::new();
     for d in drives {
-        lines.push(format!("{} · {}", d.name, format_size(d.size)));
+        lines.push(format!(
+            "{} · {}",
+            d.name,
+            mshell_utils::units::bytes(d.size)
+        ));
         for v in &d.volumes {
             let state = match (&v.crypt, v.mount_points.first()) {
                 (Crypt::Locked, _) => "locked".to_string(),
@@ -334,22 +338,6 @@ pub(crate) fn tooltip(drives: &[Drive]) -> String {
     lines.push(String::new());
     lines.push("Click: drives  ·  Right-click: remove all safely".to_string());
     lines.join("\n")
-}
-
-/// `14.9 GB` (decimal, like file managers and udisks).
-pub(crate) fn format_size(bytes: u64) -> String {
-    const UNITS: [&str; 5] = ["B", "kB", "MB", "GB", "TB"];
-    let mut v = bytes as f64;
-    let mut i = 0;
-    while v >= 1000.0 && i < UNITS.len() - 1 {
-        v /= 1000.0;
-        i += 1;
-    }
-    if i == 0 {
-        format!("{bytes} B")
-    } else {
-        format!("{v:.1} {}", UNITS[i])
-    }
 }
 
 // ── D-Bus decoding ───────────────────────────────────────────────────
@@ -1122,8 +1110,6 @@ mod tests {
 
     #[test]
     fn sizes_and_tooltip() {
-        assert_eq!(format_size(512), "512 B");
-        assert_eq!(format_size(32_000_000_000), "32.0 GB");
         let d = "/d/stick";
         let drives = build_drives(&[
             usb_drive(d, true),
@@ -1131,7 +1117,7 @@ mod tests {
         ]);
         let t = tooltip(&drives);
         assert!(
-            t.starts_with("SanDisk Ultra · 32.0 GB\n    16.0 GB vfat — not mounted"),
+            t.starts_with("SanDisk Ultra · 29.8 GiB\n    14.9 GiB vfat — not mounted"),
             "{t}"
         );
         assert!(t.ends_with("Click: drives  ·  Right-click: remove all safely"));

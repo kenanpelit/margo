@@ -225,6 +225,20 @@ scale and take a px value directly.
   32 / 48**.
 - Icon scale: `--icon-sm` 16, `--icon-md` 24, `--icon-lg` 32.
 
+### Units (bytes and rates)
+One convention for every number the user reads, through
+`mshell_utils::units` — never a local `format!("{} GB", …)`:
+
+- **Sizes** (memory, disks, drives, files, packages, images): IEC,
+  1024-based — `B`, `KiB`, `MiB`, `GiB`, `TiB` (`units::bytes`,
+  `units::kib` for `/proc` values). A "32 GB" stick reads `29.8 GiB`.
+- **Rates** (network / disk throughput): SI, 1000-based — `B/s`,
+  `kB/s`, `MB/s`, `GB/s` (`units::rate`); the bar pill's width-stable
+  form is `units::rate_compact` (`4.2k`, same prefixes). Bit rates
+  (speed test, link speed) stay SI too (`Mbit/s`).
+- Precision: one decimal below 100 of a unit (`4.2 MiB`, `96.0 MiB`),
+  whole from 100 up (`217 MiB`), plain bytes always whole (`512 B`).
+
 ### Density tiers
 Density adapts to context (philosophy §4). Tune row/control padding,
 not a magic height: keep the vertical rhythm legible without inflating

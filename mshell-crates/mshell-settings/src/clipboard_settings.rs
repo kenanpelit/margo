@@ -308,7 +308,7 @@ impl Component for ClipboardSettingsModel {
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
                         gtk::Label {
-                            set_label: "Max image size (KB, 0 = no limit)",
+                            set_label: "Max image size (KiB, 0 = no limit)",
                             set_hexpand: true,
                             set_halign: gtk::Align::Start,
                         },

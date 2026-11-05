@@ -263,8 +263,8 @@ fn mem_total() -> String {
     };
     text.lines()
         .find_map(|l| l.strip_prefix("MemTotal:"))
-        .and_then(|v| v.trim().trim_end_matches(" kB").trim().parse::<f64>().ok())
-        .map(|kb| format!("{:.1} GiB", kb / 1024.0 / 1024.0))
+        .and_then(|v| v.trim().trim_end_matches(" kB").trim().parse::<u64>().ok())
+        .map(mshell_utils::units::kib)
         .unwrap_or_else(|| "—".to_string())
 }
 

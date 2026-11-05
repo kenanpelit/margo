@@ -34,8 +34,7 @@
 
 use super::speed_test::{SpeedTestInput, SpeedTestModel};
 use crate::bars::bar_widgets::network::{
-    LinkKind, NetworkState, SpeedSample, WifiNetwork, format_speed, read_network_state,
-    wifi_signal_icon,
+    LinkKind, NetworkState, SpeedSample, WifiNetwork, read_network_state, wifi_signal_icon,
 };
 use crate::menus::reveal_poll::RevealGate;
 use mshell_common::WatcherToken;
@@ -444,8 +443,8 @@ impl Component for NetworkMenuWidgetModel {
         });
 
         // Traffic graphs + live-speed labels.
-        let rx_speed_label_widget = gtk::Label::new(Some("0B/s"));
-        let tx_speed_label_widget = gtk::Label::new(Some("0B/s"));
+        let rx_speed_label_widget = gtk::Label::new(Some("0 B/s"));
+        let tx_speed_label_widget = gtk::Label::new(Some("0 B/s"));
         let rx_peak_label_widget = gtk::Label::new(None);
         let tx_peak_label_widget = gtk::Label::new(None);
         let rx_area_widget = gtk::DrawingArea::new();
@@ -604,9 +603,9 @@ impl Component for NetworkMenuWidgetModel {
                 push_capped(&self.rx_hist, sample.down_bps as f64);
                 push_capped(&self.tx_hist, sample.up_bps as f64);
                 self.rx_speed_label
-                    .set_label(&format!("{}/s", format_speed(sample.down_bps)));
+                    .set_label(&mshell_utils::units::rate(sample.down_bps as f64));
                 self.tx_speed_label
-                    .set_label(&format!("{}/s", format_speed(sample.up_bps)));
+                    .set_label(&mshell_utils::units::rate(sample.up_bps as f64));
                 set_idle(&self.rx_speed_label, sample.down_bps);
                 set_idle(&self.tx_speed_label, sample.up_bps);
                 self.rx_peak_label.set_label(&peak_text(&self.rx_hist));
@@ -1009,7 +1008,7 @@ pub(crate) fn peak_text(hist: &Rc<RefCell<Vec<f64>>>) -> String {
     if peak < 1.0 {
         String::new()
     } else {
-        format!("peak {}/s", format_speed(peak as u64))
+        format!("peak {}", mshell_utils::units::rate(peak))
     }
 }
 

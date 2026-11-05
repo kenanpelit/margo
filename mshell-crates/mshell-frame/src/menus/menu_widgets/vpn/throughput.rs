@@ -11,7 +11,6 @@
 //! bogus spike). When no tunnel exists the card shows a dim "No tunnel"
 //! line instead of flat graphs.
 
-use crate::bars::bar_widgets::network::format_speed;
 use crate::menus::menu_widgets::network::network_menu_widget::{
     draw_graph, peak_text, push_capped, set_idle,
 };
@@ -102,7 +101,7 @@ impl Component for VpnThroughputModel {
                             #[name = "rx_speed"]
                             gtk::Label {
                                 set_css_classes: &["network-traffic-speed", "network-rx"],
-                                set_label: "0B/s",
+                                set_label: "0 B/s",
                             },
                         },
                         #[name = "rx_area"]
@@ -133,7 +132,7 @@ impl Component for VpnThroughputModel {
                             #[name = "tx_speed"]
                             gtk::Label {
                                 set_css_classes: &["network-traffic-speed", "network-tx"],
-                                set_label: "0B/s",
+                                set_label: "0 B/s",
                             },
                         },
                         #[name = "tx_area"]
@@ -201,8 +200,8 @@ impl Component for VpnThroughputModel {
         }
         push_capped(&self.rx_hist, rx as f64);
         push_capped(&self.tx_hist, tx as f64);
-        w.rx_speed.set_label(&format!("{}/s", format_speed(rx)));
-        w.tx_speed.set_label(&format!("{}/s", format_speed(tx)));
+        w.rx_speed.set_label(&mshell_utils::units::rate(rx as f64));
+        w.tx_speed.set_label(&mshell_utils::units::rate(tx as f64));
         set_idle(&w.rx_speed, rx);
         set_idle(&w.tx_speed, tx);
         w.rx_peak.set_label(&peak_text(&self.rx_hist));

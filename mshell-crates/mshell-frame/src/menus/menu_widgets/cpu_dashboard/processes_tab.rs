@@ -7,12 +7,13 @@
 
 use super::keyed_rows::KeyedRows;
 use super::procs::{
-    KillResult, ProcRow, ProcSnapshot, ProcSort, ProcTracker, fmt_kb, fmt_rate, group_by_window,
-    read_snapshot, row_matches, send_signal, sort_rows,
+    KillResult, ProcRow, ProcSnapshot, ProcSort, ProcTracker, group_by_window, read_snapshot,
+    row_matches, send_signal, sort_rows,
 };
 use super::ui;
 use crate::menus::reveal_poll::RevealPoll;
 use mshell_services::margo_service;
+use mshell_utils::units;
 use relm4::gtk::prelude::{
     AccessibleExtManual, BoxExt, ButtonExt, EditableExt, OrientableExt, ToggleButtonExt, WidgetExt,
 };
@@ -459,7 +460,7 @@ fn row_views(
             "{} process{} · {} swap",
             g.members.len(),
             if g.members.len() == 1 { "" } else { "es" },
-            fmt_kb(g.swap_kb)
+            units::kib(g.swap_kb)
         );
         out.push((
             RowKey::Group(g.app.clone()),
@@ -470,7 +471,7 @@ fn row_views(
                     .unwrap_or_else(|| "Other processes".to_string()),
                 subtitle,
                 cpu: format!("{:.1}%", g.cpu),
-                rss: fmt_kb(g.rss_kb),
+                rss: units::kib(g.rss_kb),
             },
         ));
         for i in g.members.iter().take(MAX_GROUP_MEMBERS) {
@@ -485,12 +486,16 @@ fn row_views(
 fn proc_view(r: &ProcRow, member: bool) -> RowView {
     let mut sub = format!("{}", r.pid);
     if r.swap_kb > 0 {
-        sub.push_str(&format!(" · swap {}", fmt_kb(r.swap_kb)));
+        sub.push_str(&format!(" · swap {}", units::kib(r.swap_kb)));
     }
     if let Some((rd, wr)) = r.io_bps
         && rd + wr > 0
     {
-        sub.push_str(&format!(" · R {} W {}", fmt_rate(rd), fmt_rate(wr)));
+        sub.push_str(&format!(
+            " · R {} W {}",
+            units::rate(rd as f64),
+            units::rate(wr as f64)
+        ));
     }
     RowView::Proc {
         pid: r.pid,
@@ -498,7 +503,7 @@ fn proc_view(r: &ProcRow, member: bool) -> RowView {
         name: r.name.clone(),
         subtitle: sub,
         cpu: format!("{:.1}%", r.cpu),
-        rss: fmt_kb(r.rss_kb),
+        rss: units::kib(r.rss_kb),
         cmdline: r.cmdline.clone(),
         member,
     }

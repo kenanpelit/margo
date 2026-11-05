@@ -316,7 +316,7 @@ impl Component for WallpaperSettingsModel {
                             gtk::Label {
                                 add_css_class: "label-small",
                                 set_halign: gtk::Align::Start,
-                                set_label: "Frees the GPU memory the wallpaper windows hold (about 100 MB with two screens). Looks the same; mshell draws it itself when margo can't.",
+                                set_label: "Frees the GPU memory the wallpaper windows hold (about 100 MiB with two screens). Looks the same; mshell draws it itself when margo can't.",
                                 set_hexpand: true,
                                 set_xalign: 0.0,
                                 set_wrap: true,

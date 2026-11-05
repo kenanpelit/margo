@@ -13,8 +13,9 @@
 //! toasts. udisks asks polkit, so the shell's polkit agent may prompt.
 
 use crate::menus::reveal_poll::{RevealGate, watch_stream};
-use crate::removable_drives::{self, Crypt, Drive, DrivesState, Volume, format_size};
+use crate::removable_drives::{self, Crypt, Drive, DrivesState, Volume};
 use mshell_process::SpawnReaped;
+use mshell_utils::units::bytes as format_size;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, EditableExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
@@ -494,19 +495,19 @@ mod tests {
     fn subtitles() {
         assert_eq!(
             volume_subtitle(&vol(Crypt::None, "vfat", &["/run/media/k/S"])),
-            "16.0 GB vfat  ·  /run/media/k/S"
+            "14.9 GiB vfat  ·  /run/media/k/S"
         );
         assert_eq!(
             volume_subtitle(&vol(Crypt::Locked, "crypto_LUKS", &[])),
-            "16.0 GB  ·  Encrypted · locked"
+            "14.9 GiB  ·  Encrypted · locked"
         );
         assert_eq!(
             volume_subtitle(&vol(Crypt::Unlocked("/b/dm".into()), "ext4", &[])),
-            "16.0 GB ext4  ·  Unlocked · not mounted"
+            "14.9 GiB ext4  ·  Unlocked · not mounted"
         );
         assert_eq!(
             volume_subtitle(&vol(Crypt::None, "", &[])),
-            "16.0 GB  ·  Not mounted"
+            "14.9 GiB  ·  Not mounted"
         );
     }
 

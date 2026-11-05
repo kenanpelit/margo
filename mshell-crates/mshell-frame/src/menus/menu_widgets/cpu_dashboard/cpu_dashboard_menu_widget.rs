@@ -501,7 +501,7 @@ impl Component for CpuDashboardMenuWidgetModel {
                             #[watch]
                             set_label: &format!(
                                 "{} / {}",
-                                fmt_gb(model.mem_used_kb), fmt_gb(model.mem_total_kb),
+                                mshell_utils::units::kib(model.mem_used_kb), mshell_utils::units::kib(model.mem_total_kb),
                             ),
                         },
                         gtk::Label {
@@ -536,7 +536,7 @@ impl Component for CpuDashboardMenuWidgetModel {
                             #[watch]
                             set_label: &format!(
                                 "{} / {}",
-                                fmt_gb(model.swap_used_kb), fmt_gb(model.swap_total_kb),
+                                mshell_utils::units::kib(model.swap_used_kb), mshell_utils::units::kib(model.swap_total_kb),
                             ),
                         },
                         gtk::Label {
@@ -1003,11 +1003,6 @@ impl CpuDashboardMenuWidgetModel {
     }
 }
 
-/// KiB → "X.Y GB".
-fn fmt_gb(kb: u64) -> String {
-    format!("{:.1} GB", kb as f64 / (1024.0 * 1024.0))
-}
-
 fn ram_pct(used_kb: u64, total_kb: u64) -> u32 {
     if total_kb == 0 {
         0
@@ -1098,7 +1093,11 @@ fn disk_rows(mut disks: Vec<(String, u64, u64, u32)>) -> Vec<DiskRow> {
         .into_iter()
         .map(|(mount, used, total, pct)| DiskRow {
             mount,
-            usage: format!("{} / {}", fmt_gb(used / 1024), fmt_gb(total / 1024)),
+            usage: format!(
+                "{} / {}",
+                mshell_utils::units::kib(used / 1024),
+                mshell_utils::units::kib(total / 1024)
+            ),
             pct,
         })
         .collect()
@@ -1309,7 +1308,7 @@ mod tests {
             ("/boot".into(), 1024, 512 * 1024 * 1024, 1),
         ]);
         assert_eq!(a.len(), 1, "sub-GiB filesystems are dropped");
-        assert_eq!(a[0].usage, "100.0 GB / 400.0 GB");
+        assert_eq!(a[0].usage, "100 GiB / 400 GiB");
         // A few kB written since: same rows, so no rebuild.
         let b = disk_rows(vec![("/".into(), 100 * GIB + 8192, 400 * GIB, 25)]);
         assert_eq!(a, b);

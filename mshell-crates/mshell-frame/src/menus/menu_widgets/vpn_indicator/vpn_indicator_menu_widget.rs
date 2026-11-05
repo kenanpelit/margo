@@ -226,7 +226,11 @@ impl VpnIndicatorMenuWidgetModel {
                     let elapsed = now.duration_since(*at).as_secs_f64().max(0.001);
                     let rx = iface.rx_bytes.saturating_sub(*prx) as f64 / elapsed;
                     let tx = iface.tx_bytes.saturating_sub(*ptx) as f64 / elapsed;
-                    format!("↓ {}   ↑ {}", human_rate(rx), human_rate(tx))
+                    format!(
+                        "↓ {}   ↑ {}",
+                        mshell_utils::units::rate(rx),
+                        mshell_utils::units::rate(tx)
+                    )
                 }
                 None => "…".to_string(),
             };
@@ -345,22 +349,5 @@ fn join_or_dash(items: &[String]) -> String {
         "—".to_string()
     } else {
         items.join("\n")
-    }
-}
-
-/// Human-readable throughput (`B/s` … `GB/s`).
-fn human_rate(bytes_per_sec: f64) -> String {
-    const KB: f64 = 1024.0;
-    const MB: f64 = KB * 1024.0;
-    const GB: f64 = MB * 1024.0;
-    let b = bytes_per_sec.max(0.0);
-    if b >= GB {
-        format!("{:.1} GB/s", b / GB)
-    } else if b >= MB {
-        format!("{:.1} MB/s", b / MB)
-    } else if b >= KB {
-        format!("{:.0} KB/s", b / KB)
-    } else {
-        format!("{b:.0} B/s")
     }
 }

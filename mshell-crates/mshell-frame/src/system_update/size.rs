@@ -93,24 +93,6 @@ pub(crate) fn total_download(
         .sum()
 }
 
-/// Human size, binary units like pacman (`95.98 MiB`).
-pub(crate) fn human(bytes: u64) -> String {
-    const UNITS: [&str; 4] = ["KiB", "MiB", "GiB", "TiB"];
-    if bytes < 1024 {
-        return format!("{bytes} B");
-    }
-    let mut v = bytes as f64 / 1024.0;
-    let mut unit = UNITS[0];
-    for u in &UNITS[1..] {
-        if v < 1024.0 {
-            break;
-        }
-        v /= 1024.0;
-        unit = u;
-    }
-    format!("{v:.1} {unit}")
-}
-
 /// Probe the size for the given repo entries. `None` when pacman is
 /// missing or reports nothing (the panel then just omits the size).
 pub(crate) async fn probe(entries: &[&UpdateEntry]) -> Option<u64> {
@@ -197,13 +179,5 @@ mod tests {
         assert_eq!(total, sizes[0].1);
         let total_all = total_download(&[&e1, &e2], &sizes, &[]);
         assert_eq!(total_all, sizes[0].1 + sizes[1].1);
-    }
-
-    #[test]
-    fn human_sizes() {
-        assert_eq!(human(17), "17 B");
-        assert_eq!(human(524_288), "512.0 KiB");
-        assert_eq!(human(100_642_324), "96.0 MiB");
-        assert_eq!(human(1_610_612_736), "1.5 GiB");
     }
 }

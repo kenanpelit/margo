@@ -757,7 +757,7 @@ fn make_image_row(
     name.set_xalign(0.0);
     name.set_ellipsize(gtk::pango::EllipsizeMode::End);
     texts.append(&name);
-    let size_label = gtk::Label::new(Some(&format_bytes(img.size_bytes)));
+    let size_label = gtk::Label::new(Some(&mshell_utils::units::bytes(img.size_bytes)));
     size_label.add_css_class("label-small");
     size_label.add_css_class("dim-label");
     size_label.set_xalign(0.0);
@@ -868,21 +868,6 @@ fn action_button(
         s.input(PodmanMenuWidgetInput::RunPodman(args.clone()));
     });
     btn
-}
-
-fn format_bytes(b: u64) -> String {
-    const KB: u64 = 1024;
-    const MB: u64 = KB * 1024;
-    const GB: u64 = MB * 1024;
-    if b >= GB {
-        format!("{:.2} GiB", b as f64 / GB as f64)
-    } else if b >= MB {
-        format!("{:.1} MiB", b as f64 / MB as f64)
-    } else if b >= KB {
-        format!("{:.0} KiB", b as f64 / KB as f64)
-    } else {
-        format!("{b} B")
-    }
 }
 
 // ── Terminal-backed actions (Shell / Logs) ──────────────────────────

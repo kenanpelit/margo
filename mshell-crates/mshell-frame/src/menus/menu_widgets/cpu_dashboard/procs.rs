@@ -480,28 +480,6 @@ pub(crate) fn send_signal(pid: i32, start: u64, sig: i32) -> Result<KillResult, 
     Ok(classify_kill(ret, if ret == 0 { 0 } else { errno() }))
 }
 
-/// Human byte size from kB: `512 kB`, `12.3 MB`, `1.4 GB`.
-pub(crate) fn fmt_kb(kb: u64) -> String {
-    if kb >= 1024 * 1024 {
-        format!("{:.1} GB", kb as f64 / (1024.0 * 1024.0))
-    } else if kb >= 1024 {
-        format!("{:.0} MB", kb as f64 / 1024.0)
-    } else {
-        format!("{kb} kB")
-    }
-}
-
-/// Human byte rate: `0 B/s`, `12 kB/s`, `3.4 MB/s`.
-pub(crate) fn fmt_rate(bps: u64) -> String {
-    if bps >= 1024 * 1024 {
-        format!("{:.1} MB/s", bps as f64 / (1024.0 * 1024.0))
-    } else if bps >= 1024 {
-        format!("{:.0} kB/s", bps as f64 / 1024.0)
-    } else {
-        format!("{bps} B/s")
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -762,15 +740,5 @@ mod tests {
         assert_eq!(snap.procs[0].cmdline, "/usr/bin/mshell");
         assert_eq!(snap.procs[0].rss_kb, 222_496);
         assert_eq!(snap.procs[0].io, Some((165_388_288, 103_669_760)));
-    }
-
-    #[test]
-    fn formats() {
-        assert_eq!(fmt_kb(512), "512 kB");
-        assert_eq!(fmt_kb(222_496), "217 MB");
-        assert_eq!(fmt_kb(3 * 1024 * 1024), "3.0 GB");
-        assert_eq!(fmt_rate(0), "0 B/s");
-        assert_eq!(fmt_rate(4096), "4 kB/s");
-        assert_eq!(fmt_rate(3 * 1024 * 1024), "3.0 MB/s");
     }
 }

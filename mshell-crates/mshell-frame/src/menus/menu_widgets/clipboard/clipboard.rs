@@ -1372,7 +1372,10 @@ fn build_preview(preview_box: &gtk::Box, preview: &EntryPreview, query_lower: &s
         EntryPreview::ImagePending { .. } => preview_box.append(&image_frame()),
         EntryPreview::Binary { mime_type, size } => {
             let label = gtk::Label::builder()
-                .label(format!("{mime_type}  ({})", format_size(*size)))
+                .label(format!(
+                    "{mime_type}  ({})",
+                    mshell_utils::units::bytes(*size as u64)
+                ))
                 .halign(gtk::Align::Start)
                 .build();
             label.add_css_class("label-small-bold");
@@ -1440,15 +1443,5 @@ fn relative_time(timestamp: OffsetDateTime) -> String {
         "yesterday".to_string()
     } else {
         format!("{}d ago", diff / 86_400)
-    }
-}
-
-fn format_size(bytes: usize) -> String {
-    if bytes < 1024 {
-        format!("{bytes} B")
-    } else if bytes < 1024 * 1024 {
-        format!("{:.1} KB", bytes as f64 / 1024.0)
-    } else {
-        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
     }
 }

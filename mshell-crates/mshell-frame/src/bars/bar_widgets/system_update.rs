@@ -394,7 +394,7 @@ fn tooltip(report: Option<&UpdateReport>) -> String {
     if let Some(bytes) = r.download_bytes.filter(|b| *b > 0) {
         lines.push(format!(
             "  ~{} to download",
-            system_update::size::human(bytes)
+            mshell_utils::units::bytes(bytes)
         ));
     }
     format!("{}{audit_line}{footer}", lines.join("\n"))

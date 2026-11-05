@@ -363,32 +363,6 @@ impl Component for NetworkModel {
     }
 }
 
-/// Format a bytes/sec figure into a compact bar-friendly string:
-/// `0`, `512B`, `4.2K`, `1.5M`. Whole numbers below 10 of each
-/// unit get one decimal; above that they're rounded so the
-/// label width stays stable.
-pub(crate) fn format_speed(bps: u64) -> String {
-    const K: u64 = 1024;
-    const M: u64 = K * 1024;
-    if bps >= M {
-        let v = bps as f64 / M as f64;
-        if v < 10.0 {
-            format!("{v:.1}M")
-        } else {
-            format!("{:.0}M", v)
-        }
-    } else if bps >= K {
-        let v = bps as f64 / K as f64;
-        if v < 10.0 {
-            format!("{v:.1}K")
-        } else {
-            format!("{:.0}K", v)
-        }
-    } else {
-        format!("{bps}B")
-    }
-}
-
 /// Map a signal % to one of the 5 `network-wireless-signal-*`
 /// glyphs that ship in the bundled MargoMaterial set.
 pub(crate) fn wifi_signal_icon(signal: u8) -> &'static str {
@@ -543,8 +517,14 @@ fn apply_visual(
     // figure is right-padded to a fixed 5-char field (`{:>5}`) so the
     // pill width stays rock-steady as the digits tick. Kept populated
     // even in Icon mode (hidden) so a mode-flip is instant.
-    rx_speed.set_label(&format!("\u{2193}{:>5}", format_speed(speed.down_bps)));
-    tx_speed.set_label(&format!("\u{2191}{:>5}", format_speed(speed.up_bps)));
+    rx_speed.set_label(&format!(
+        "\u{2193}{:>5}",
+        mshell_utils::units::rate_compact(speed.down_bps)
+    ));
+    tx_speed.set_label(&format!(
+        "\u{2191}{:>5}",
+        mshell_utils::units::rate_compact(speed.up_bps)
+    ));
 
     match mode {
         DisplayMode::Speed => {

@@ -1127,7 +1127,7 @@ fn summary_line(report: Option<&UpdateReport>) -> String {
     if let Some(bytes) = r.download_bytes.filter(|b| *b > 0) {
         parts.push(format!(
             "~{} to download",
-            system_update::size::human(bytes)
+            mshell_utils::units::bytes(bytes)
         ));
     }
     parts.join("   ·   ")
