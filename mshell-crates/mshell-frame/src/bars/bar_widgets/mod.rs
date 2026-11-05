@@ -43,6 +43,7 @@ pub(crate) mod network;
 pub(crate) mod notes;
 pub(crate) mod notifications;
 pub(crate) mod podman;
+pub(crate) mod pomodoro;
 pub(crate) mod power;
 pub(crate) mod privacy;
 pub(crate) mod reboot;

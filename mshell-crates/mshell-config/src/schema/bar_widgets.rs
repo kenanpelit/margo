@@ -20,6 +20,11 @@ pub enum BarWidget {
     /// exists. Port of the DMS `TimeUntil` plugin, folded into the alarm
     /// hub.
     Countdown,
+    /// Pomodoro pill — the focus/break timer's phase glyph + time left.
+    /// Click opens the Alarm Clock menu on its Pomodoro tab; right-click
+    /// starts / pauses. Rules live in `pomodoro` (Settings → Widgets →
+    /// Alarm Clock); also `mshellctl pomodoro …`.
+    Pomodoro,
     /// Control Center pill — system-preferences glyph that opens the
     /// Control Center menu.
     ControlCenter,
@@ -190,6 +195,7 @@ impl BarWidget {
             BarWidget::ActiveWindow => "Active Window",
             BarWidget::AlarmClock => "Alarm Clock",
             BarWidget::Countdown => "Countdown",
+            BarWidget::Pomodoro => "Pomodoro",
             BarWidget::ControlCenter => "Control Center",
             BarWidget::HiddenBar => "Hidden Bar",
             BarWidget::HiddenBarNamed(_) => "Hidden Bar",
@@ -263,6 +269,7 @@ impl BarWidget {
             BarWidget::ActiveWindow,
             BarWidget::AlarmClock,
             BarWidget::Countdown,
+            BarWidget::Pomodoro,
             BarWidget::ControlCenter,
             BarWidget::HiddenBar,
             BarWidget::Catwalk,

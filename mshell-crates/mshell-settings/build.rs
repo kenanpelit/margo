@@ -74,6 +74,7 @@ const PAGES: &[(&str, &[&str])] = &[
     ("widgets/system_tray", &["system_tray_settings.rs"]),
     ("widgets/system_update", &["system_update_settings.rs"]),
     ("widgets/valent", &["valent_mirror_settings.rs"]),
+    ("widgets/alarmclock", &["pomodoro_settings.rs"]),
 ];
 
 /// Shell settings that hold data the user created (or live state) rather

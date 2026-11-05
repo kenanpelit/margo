@@ -9,6 +9,9 @@
 //!   sounding.
 //! * **Stopwatch** — a start / pause / reset stopwatch backed by the
 //!   transient [`crate::stopwatch`] global.
+//! * **Countdown** — passive date countdowns (`alarm.countdowns`).
+//! * **Pomodoro** — the shell-wide focus / break timer
+//!   ([`crate::pomodoro`]); see `pomodoro_tab.rs`.
 //!
 //! The alarm engine (scheduler + tone + Stop/Snooze notification)
 //! lives in `mshell-core`'s IPC service; this widget is purely the
@@ -17,7 +20,9 @@
 //! below repaints the list — including the one-shot alarms the
 //! scheduler disables after they fire.
 
+use super::pomodoro_tab::PomodoroTab;
 use crate::countdown::{self, CountdownUnit};
+use crate::pomodoro;
 use crate::stopwatch::{self, StopwatchState};
 use chrono::Local;
 use mshell_common::scoped_effects::EffectScope;
@@ -30,7 +35,8 @@ use relm4::gtk::prelude::{
     BoxExt, ButtonExt, EditableExt, EntryExt, OrientableExt, ToggleButtonExt, WidgetExt,
 };
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::time::Duration;
+use std::time::{Duration, Instant};
+use tokio::sync::watch;
 
 /// Single-letter day labels in repeat-mask bit order (bit 0 = Sunday,
 /// matching the scheduler's `weekday = day_of_week() % 7`).
@@ -65,6 +71,9 @@ pub(crate) struct AlarmClockMenuWidgetModel {
     cd_label: gtk::Entry,
     /// The tab stack, held so a countdown-pill click can jump to its tab.
     tabs: gtk::Stack,
+    pomodoro: PomodoroTab,
+    /// Menu revealed? The Pomodoro readout only ticks while it is.
+    visible_tx: watch::Sender<bool>,
     /// Keeps the reactive subscriptions on `alarm.alarms`/`countdowns` alive.
     _effects: EffectScope,
 }
@@ -326,6 +335,9 @@ impl Component for AlarmClockMenuWidgetModel {
                         },
                     },
                 },
+
+                // ───────────── Pomodoro tab ─────────────
+                add_titled: (&model.pomodoro.root, Some("pomodoro"), "Pomodoro"),
             },
         }
     }
@@ -391,6 +403,8 @@ impl Component for AlarmClockMenuWidgetModel {
             cd_unit: cd_unit_widget.clone(),
             cd_label: cd_label_widget.clone(),
             tabs: gtk::Stack::new(),
+            pomodoro: PomodoroTab::new(),
+            visible_tx: watch::channel(false).0,
             _effects: effects,
         };
         let widgets = view_output!();
@@ -420,15 +434,38 @@ impl Component for AlarmClockMenuWidgetModel {
         // arrives as a change. (This used to wake at 10 Hz for the life of
         // the menu, once per monitor.)
         mshell_sounds::set_alarm_state_listener(stopwatch::notify_changed);
+        // The Pomodoro readout ticks once per displayed second, and only
+        // while a phase runs *and* the menu is open.
+        let mut visible_rx = model.visible_tx.subscribe();
         sender.command(|out, shutdown| async move {
             let shutdown_fut = shutdown.wait();
             tokio::pin!(shutdown_fut);
             let mut changes = stopwatch::changes();
+            let mut pomodoro_changes = pomodoro::changes();
             loop {
-                let tick = readout_tick(stopwatch::state() == StopwatchState::Running);
+                let deadline = pomodoro_changes.borrow_and_update().deadline;
+                let pomodoro_tick = if *visible_rx.borrow_and_update() {
+                    pomodoro::next_readout_change(deadline, Instant::now())
+                } else {
+                    None
+                };
+                let tick = earliest(
+                    readout_tick(stopwatch::state() == StopwatchState::Running),
+                    pomodoro_tick,
+                );
                 tokio::select! {
                     () = &mut shutdown_fut => break,
                     changed = changes.changed() => {
+                        if changed.is_err() {
+                            break;
+                        }
+                    }
+                    changed = pomodoro_changes.changed() => {
+                        if changed.is_err() {
+                            break;
+                        }
+                    }
+                    changed = visible_rx.changed() => {
                         if changed.is_err() {
                             break;
                         }
@@ -545,11 +582,19 @@ impl Component for AlarmClockMenuWidgetModel {
                 });
             }
             AlarmClockMenuWidgetInput::ParentRevealChanged(visible) => {
-                // A countdown-pill click flags the pending tab; consume it
-                // on reveal so the menu lands on the Countdown tab.
-                if countdown::take_countdown_tab_request() && visible {
+                // A countdown / pomodoro pill click flags the pending tab;
+                // consume both on reveal so the menu lands on that tab.
+                let countdown_tab = countdown::take_countdown_tab_request();
+                let pomodoro_tab = pomodoro::take_tab_request();
+                if visible && pomodoro_tab {
+                    self.tabs.set_visible_child_name("pomodoro");
+                } else if visible && countdown_tab {
                     self.tabs.set_visible_child_name("countdown");
                 }
+                if visible {
+                    self.pomodoro.sync();
+                }
+                self.visible_tx.send_replace(visible);
             }
         }
     }
@@ -564,6 +609,7 @@ impl Component for AlarmClockMenuWidgetModel {
         self.sw_time
             .set_label(&stopwatch::format_elapsed(stopwatch::elapsed()));
         sync_ringing(self);
+        self.pomodoro.sync();
     }
 }
 
@@ -792,6 +838,14 @@ fn readout_tick(running: bool) -> Option<Duration> {
     running.then_some(READOUT_TICK)
 }
 
+/// The sooner of two optional wake-ups.
+fn earliest(a: Option<Duration>, b: Option<Duration>) -> Option<Duration> {
+    match (a, b) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (a, b) => a.or(b),
+    }
+}
+
 async fn sleep_or_forever(delay: Option<Duration>) {
     match delay {
         Some(d) => tokio::time::sleep(d).await,
@@ -811,5 +865,14 @@ mod tests {
     fn the_menu_ticks_only_while_the_stopwatch_runs() {
         assert_eq!(readout_tick(true), Some(Duration::from_millis(100)));
         assert_eq!(readout_tick(false), None);
+    }
+
+    #[test]
+    fn the_sooner_wake_up_wins_and_none_means_sleep() {
+        let ms = Duration::from_millis;
+        assert_eq!(earliest(None, None), None);
+        assert_eq!(earliest(Some(ms(100)), None), Some(ms(100)));
+        assert_eq!(earliest(None, Some(ms(300))), Some(ms(300)));
+        assert_eq!(earliest(Some(ms(100)), Some(ms(30))), Some(ms(30)));
     }
 }

@@ -34,6 +34,7 @@ mod alarm;
 mod audio;
 mod command;
 mod daily_wallpaper;
+mod local;
 mod media;
 mod plugin_watch;
 mod screenshare;
@@ -52,6 +53,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
 
     spawn_daily_wallpaper_task(shell_tx.clone());
     spawn_alarm_scheduler();
+    mshell_frame::pomodoro::spawn_settings_watch();
     spawn_plugin_watcher_task(shell_tx.clone());
     tokio::spawn(async move {
         if let Err(e) = start_shell_service(shell_tx).await {
@@ -616,18 +618,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::ThemeBundle(name, reply) => {
                     let _ = reply.send(theme_bundle::reply(name));
                 }
-                IPCCommand::GameMode(target) => {
-                    // Just flip the persisted `active` flag; the reactive
-                    // reconcile effect (mshell-core `run`) does the apply, so
-                    // the CLI, the Settings toggle, and startup share one path.
-                    let active = config_manager().config().game_mode().get_untracked().active;
-                    let target = target.unwrap_or(!active); // None = toggle
-                    config_manager().update_config(|c| c.game_mode.active = target);
-                }
-                IPCCommand::GameModeStatus(reply) => {
-                    let on = config_manager().config().game_mode().get_untracked().active;
-                    let _ = reply.send(if on { "on" } else { "off" }.to_string());
-                }
+                IPCCommand::Local(cmd) => local::dispatch(cmd),
                 IPCCommand::OpenSettings => {
                     open_settings();
                 }

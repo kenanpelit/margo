@@ -33,6 +33,58 @@ pub(super) enum WidgetEntry {
     SystemUpdate,
     Dock,
     SystemTray,
+    /// A page stacked from several settings components (each scrolls as
+    /// part of one outer page) — e.g. Alarm Clock = Pomodoro rules + the
+    /// generic menu geometry page.
+    Composite {
+        stack_name: &'static str,
+        label: &'static str,
+        icon: &'static str,
+        parts: fn() -> Vec<PagePart>,
+    },
+}
+
+/// One component of a [`WidgetEntry::Composite`] page: its scrolled root
+/// plus the controller to keep alive.
+pub(super) type PagePart = (gtk::ScrolledWindow, Box<dyn std::any::Any>);
+
+/// Launch a settings component as a [`PagePart`].
+macro_rules! page_part {
+    ($model:path => $init:expr) => {{
+        let ctrl = <$model>::builder().launch($init).detach();
+        let sw: gtk::ScrolledWindow = ctrl.widget().clone();
+        (sw, Box::new(ctrl) as Box<dyn std::any::Any>)
+    }};
+}
+
+/// Stack `parts` into one scrolling page (each part sizes to its content,
+/// the outer scroller does the scrolling — no nested scrollbars).
+fn stack_parts(parts: Vec<PagePart>) -> (gtk::Widget, Vec<Box<dyn std::any::Any>>) {
+    let inner = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let mut alive = Vec::with_capacity(parts.len());
+    for (sw, ctrl) in parts {
+        sw.set_vscrollbar_policy(gtk::PolicyType::Never);
+        sw.set_propagate_natural_height(true);
+        sw.set_vexpand(false);
+        inner.append(&sw);
+        alive.push(ctrl);
+    }
+    let outer = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .hexpand(true)
+        .vexpand(true)
+        .child(&inner)
+        .build();
+    (outer.into(), alive)
+}
+
+/// Alarm Clock: the Pomodoro rules above the menu geometry.
+fn alarm_clock_parts() -> Vec<PagePart> {
+    vec![
+        page_part!(crate::pomodoro_settings::PomodoroSettingsModel => crate::pomodoro_settings::PomodoroSettingsInit {}),
+        page_part!(WidgetMenuSettingsModel => WidgetMenuSettingsInit { kind: MenuKind::AlarmClock }),
+    ]
 }
 
 impl WidgetEntry {
@@ -42,7 +94,9 @@ impl WidgetEntry {
             Self::SystemUpdate => "System Updates",
             Self::Dock => "Margo Dock",
             Self::SystemTray => "System Tray",
-            Self::Menu { label, .. } | Self::Pill { label, .. } => label,
+            Self::Menu { label, .. } | Self::Pill { label, .. } | Self::Composite { label, .. } => {
+                label
+            }
             Self::Notifications => "Notifications",
             Self::Session => "Session",
             Self::Weather => "Weather",
@@ -62,7 +116,9 @@ impl WidgetEntry {
     /// Widgets container is first shown.
     pub(super) fn stack_name(&self) -> &'static str {
         match self {
-            Self::Menu { stack_name, .. } | Self::Pill { stack_name, .. } => stack_name,
+            Self::Menu { stack_name, .. }
+            | Self::Pill { stack_name, .. }
+            | Self::Composite { stack_name, .. } => stack_name,
             Self::Notifications => "notifications",
             Self::Session => "session",
             Self::Weather => "weather",
@@ -237,11 +293,12 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
             label: "Keyboard Shortcuts",
             icon: "input-keyboard-symbolic",
         },
-        WidgetEntry::Menu {
-            kind: MenuKind::AlarmClock,
+        // Alarm Clock = Pomodoro rules + the menu geometry.
+        WidgetEntry::Composite {
             stack_name: "alarmclock",
             label: "Alarm Clock",
             icon: "alarm-symbolic",
+            parts: alarm_clock_parts,
         },
         WidgetEntry::Menu {
             kind: MenuKind::ControlCenter,
@@ -433,6 +490,22 @@ pub(super) fn register_widget_entries(
                     stack_name.to_string(),
                     page_factory!(BarPillSettingsModel => BarPillSettingsInit { kind }),
                 );
+            }
+            WidgetEntry::Composite {
+                stack_name,
+                label,
+                icon,
+                parts,
+            } => {
+                let btn = make_sub_btn(label, icon, stack_name, group_anchor.as_ref());
+                if group_anchor.is_none() {
+                    group_anchor = Some(btn.clone());
+                }
+                widgets_sub_sidebar_box.append(&btn);
+                let factory: PageFactory = Rc::new(move || stack_parts(parts()));
+                widget_registry
+                    .borrow_mut()
+                    .insert(stack_name.to_string(), factory);
             }
             WidgetEntry::Notifications => {
                 let btn = make_sub_btn(

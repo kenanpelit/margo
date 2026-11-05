@@ -124,3 +124,75 @@
   font-variant-numeric: tabular-nums;
   color: var(--on-surface);
 }
+
+// ── Pomodoro (bar pill + tab) ─────────────────────────────
+// A running focus session is "live" → primary tint (DESIGN.md §3); a
+// break reads calm with the stable success role; ready / paused stay
+// neutral. The tab hero mirrors the pill's tint.
+.pomodoro-bar-time {
+  font-size: var(--font-bar);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface);
+  transition: color var(--motion-fast) var(--ease-standard);
+}
+.pomodoro-bar-widget image {
+  transition: color var(--motion-fast) var(--ease-standard);
+}
+.pomodoro-bar-widget.running {
+  image,
+  .pomodoro-bar-time {
+    color: var(--primary);
+  }
+}
+.pomodoro-bar-widget.running.on-break {
+  image,
+  .pomodoro-bar-time {
+    color: var(--success);
+  }
+}
+
+.alarm-pomodoro {
+  padding: var(--space-4) var(--space-2);
+}
+
+.alarm-pomodoro-phase {
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+  transition: color var(--motion-fast) var(--ease-standard);
+}
+.alarm-pomodoro.running .alarm-pomodoro-phase {
+  color: var(--primary);
+}
+.alarm-pomodoro.running.on-break .alarm-pomodoro-phase {
+  color: var(--success);
+}
+
+// Same inset capsule as the CPU dashboard bars.
+.alarm-pomodoro-progress {
+  min-height: 6px;
+
+  trough {
+    min-height: 6px;
+    background-color: var(--surface-container-high);
+    border-radius: var(--radius-pill);
+    border: none;
+  }
+  progress {
+    min-height: 6px;
+    border-radius: var(--radius-pill);
+    background-color: var(--primary);
+    border: none;
+    transition: background-color var(--motion-medium) var(--ease-standard);
+  }
+}
+.alarm-pomodoro.on-break .alarm-pomodoro-progress progress {
+  background-color: var(--success);
+}
+
+.alarm-pomodoro-hint {
+  color: var(--outline);
+}

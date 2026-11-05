@@ -45,11 +45,9 @@ pub(super) enum IPCCommand {
     SystemUpdate,
     Valent,
     KeepAwake,
-    /// `mshellctl gamemode on|off|toggle` — engage/release Game Mode (drops
-    /// compositor effects, DND, idle inhibitor). `None` = toggle.
-    GameMode(Option<bool>),
-    /// `mshellctl gamemode status` — reply "on" / "off".
-    GameModeStatus(tokio::sync::oneshot::Sender<String>),
+    /// Game Mode / Pomodoro / … — answered by `local::dispatch` with no UI
+    /// round-trip.
+    Local(LocalCommand),
     Twilight,
     MargoLayoutMenu,
     Weather,
@@ -167,4 +165,21 @@ impl IPCCommand {
             _ => None,
         }
     }
+}
+
+/// Commands that drive shell services rather than a surface
+/// (`ipc/local.rs`).
+#[derive(Debug)]
+pub(super) enum LocalCommand {
+    /// `mshellctl gamemode on|off|toggle` — engage/release Game Mode (drops
+    /// compositor effects, DND, idle inhibitor). `None` = toggle.
+    GameMode(Option<bool>),
+    /// `mshellctl gamemode status` — reply "on" / "off".
+    GameModeStatus(tokio::sync::oneshot::Sender<String>),
+    /// `mshellctl pomodoro <verb>` — drive the Pomodoro timer; reply with
+    /// the resulting status line.
+    Pomodoro(
+        mshell_frame::pomodoro::Command,
+        tokio::sync::oneshot::Sender<String>,
+    ),
 }

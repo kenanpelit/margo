@@ -140,6 +140,15 @@ equivalent for the toast surface (no notification history).
 Game Mode: drop compositor effects, silence notifications and keep the
 session awake (default:
 .IR toggle ).
+.SS "Focus and breaks"
+.TP
+.B pomodoro \fR[\fItoggle\fR | \fIstart\fR | \fIpause\fR | \fIskip\fR | \fIreset\fR | \fIreset\-all\fR | \fIstatus\fR]
+The Pomodoro timer (work, short break, long break). Prints one status line
+after the action, e.g.
+.IR "phase=work state=running remaining=24:13 session=1/4 completed=0"
+(default:
+.IR status ).
+Lengths and auto-start live in Settings \(-> Widgets \(-> Alarm Clock.
 .SS "Capture"
 .TP
 .B screenshot \fISUBCOMMAND\fR

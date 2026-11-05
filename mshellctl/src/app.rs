@@ -73,6 +73,9 @@ SESSION & NOTIFICATIONS
   toast           Show a transient toast (the notify-send equivalent)
   gamemode        Game Mode — on / off / toggle / status
 
+FOCUS & BREAKS
+  pomodoro        Pomodoro timer — toggle / start / pause / skip / reset / status
+
 CAPTURE
   screenshot      Region / window / output / full → file + clipboard
   screenrecord    Screen recording — start / stop / toggle
@@ -292,6 +295,16 @@ pub enum Commands {
         #[arg(value_enum, default_value = "toggle")]
         action: GameModeAction,
     },
+    /// Pomodoro timer — work / short-break / long-break cycle. Prints the
+    /// status line after the action (`phase=work state=running
+    /// remaining=24:13 session=1/4 completed=0`). Lengths and auto-start
+    /// live in Settings → Widgets → Alarm Clock.
+    Pomodoro {
+        /// toggle | start | pause | skip | reset | reset-all | status
+        /// (default: status).
+        #[arg(value_enum, default_value = "status")]
+        action: PomodoroAction,
+    },
     /// Calendar — today's / upcoming events and connected accounts
     /// (proxied to the `mcal` calendar tool). `calendar account setup
     /// google` connects a Google account.
@@ -341,6 +354,32 @@ pub enum Commands {
         #[arg(value_enum)]
         shell: Shell,
     },
+}
+
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+pub enum PomodoroAction {
+    Toggle,
+    Start,
+    Pause,
+    Skip,
+    Reset,
+    ResetAll,
+    Status,
+}
+
+impl PomodoroAction {
+    /// The bus verb (`mshell_frame::pomodoro::Command::parse`).
+    pub fn verb(self) -> &'static str {
+        match self {
+            Self::Toggle => "toggle",
+            Self::Start => "start",
+            Self::Pause => "pause",
+            Self::Skip => "skip",
+            Self::Reset => "reset",
+            Self::ResetAll => "reset-all",
+            Self::Status => "status",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, clap::ValueEnum)]

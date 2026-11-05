@@ -74,6 +74,10 @@ async fn main() -> anyhow::Result<()> {
             GameModeAction::Off => shell().await?.game_mode("off").await?,
             GameModeAction::Toggle => shell().await?.game_mode("toggle").await?,
         },
+        Commands::Pomodoro { action } => {
+            let status: String = shell().await?.pomodoro(action.verb()).await?;
+            println!("{status}");
+        }
         Commands::Lock { command } => mshellctl::subcommands::lock::execute(command).await?,
         Commands::Session { command } => mshellctl::subcommands::session::execute(command).await?,
         Commands::Notification { command } => {

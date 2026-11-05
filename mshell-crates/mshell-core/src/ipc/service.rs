@@ -156,12 +156,21 @@ impl IPCService {
     /// `mshellctl gamemode on|off|toggle` — engage/release Game Mode.
     async fn game_mode(&self, action: String) -> fdo::Result<()> {
         let target = parse_game_mode(&action).map_err(fdo::Error::InvalidArgs)?;
-        self.send(IPCCommand::GameMode(target))
+        self.send(IPCCommand::Local(LocalCommand::GameMode(target)))
     }
     /// `mshellctl gamemode status` — "on" / "off".
     async fn game_mode_status(&self) -> fdo::Result<String> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.send(IPCCommand::GameModeStatus(tx))?;
+        self.send(IPCCommand::Local(LocalCommand::GameModeStatus(tx)))?;
+        rx.await.map_err(|_| no_reply())
+    }
+    /// `mshellctl pomodoro toggle|start|pause|skip|reset|reset-all|status` —
+    /// drive the Pomodoro timer; returns the status line after the action.
+    async fn pomodoro(&self, action: String) -> fdo::Result<String> {
+        let cmd =
+            mshell_frame::pomodoro::Command::parse(&action).map_err(fdo::Error::InvalidArgs)?;
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.send(IPCCommand::Local(LocalCommand::Pomodoro(cmd, tx)))?;
         rx.await.map_err(|_| no_reply())
     }
     /// Standalone mdock surface controls.

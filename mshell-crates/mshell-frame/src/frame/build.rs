@@ -82,6 +82,8 @@ impl Frame {
                 // The pill already set the pending-tab hint (crate::countdown);
                 // opening the Alarm Clock menu lands on its Countdown tab.
                 BarOutput::CountdownClicked => FrameInput::ToggleMenu(MenuId::AlarmClock),
+                // Same for the Pomodoro pill (crate::pomodoro::request_tab).
+                BarOutput::PomodoroClicked => FrameInput::ToggleMenu(MenuId::AlarmClock),
                 BarOutput::ControlCenterClicked => FrameInput::ToggleMenu(MenuId::ControlCenter),
                 BarOutput::SshSessionsClicked => FrameInput::ToggleMenu(MenuId::SshSessions),
                 BarOutput::UsbClicked => FrameInput::ToggleMenu(MenuId::Usb),

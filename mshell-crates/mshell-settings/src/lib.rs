@@ -76,6 +76,7 @@ mod notification_sound_rules;
 mod osd_settings;
 mod overview_settings;
 mod plugins_settings;
+mod pomodoro_settings;
 mod power_settings;
 mod privacy_pill_settings;
 mod privacy_settings;

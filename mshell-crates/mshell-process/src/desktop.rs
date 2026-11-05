@@ -33,6 +33,9 @@ pub struct Notice {
     /// stacking (`x-canonical-private-synchronous`).
     pub replace_tag: Option<String>,
     pub category: Option<String>,
+    /// Ask the server not to play its own sound (`suppress-sound`), for a
+    /// caller that plays a dedicated cue itself (Pomodoro, eye care).
+    pub silent: bool,
 }
 
 impl Notice {
@@ -50,7 +53,14 @@ impl Notice {
             timeout_ms: None,
             replace_tag: None,
             category: None,
+            silent: false,
         }
+    }
+
+    /// Suppress the notification server's sound for this notice.
+    pub fn silent(mut self) -> Self {
+        self.silent = true;
+        self
     }
 
     /// An icon name or an image path.
@@ -104,6 +114,9 @@ impl Notice {
         }
         if let Some(category) = &self.category {
             n.hint(notify_rust::Hint::Category(category.clone()));
+        }
+        if self.silent {
+            n.hint(notify_rust::Hint::SuppressSound(true));
         }
         n
     }
@@ -165,6 +178,18 @@ mod tests {
         assert!(
             n.hints
                 .contains(&notify_rust::Hint::Category("im.received".into()))
+        );
+    }
+
+    #[test]
+    fn a_silent_notice_carries_the_suppress_sound_hint() {
+        let loud = Notice::new("mshell", "Hi", "").to_notification();
+        assert!(!loud.hints.contains(&notify_rust::Hint::SuppressSound(true)));
+        let quiet = Notice::new("mshell", "Hi", "").silent().to_notification();
+        assert!(
+            quiet
+                .hints
+                .contains(&notify_rust::Hint::SuppressSound(true))
         );
     }
 

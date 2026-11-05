@@ -239,6 +239,7 @@ pub(crate) enum BarOutput {
     KeybindsClicked,
     AlarmClockClicked,
     CountdownClicked,
+    PomodoroClicked,
     ControlCenterClicked,
     SshSessionsClicked,
     UsbClicked,
@@ -1224,6 +1225,15 @@ impl BarModel {
                     .forward(sender.output_sender(), |msg| match msg {
                         crate::bars::bar_widgets::countdown::CountdownOutput::Clicked => {
                             BarOutput::CountdownClicked
+                        }
+                    }),
+            ),
+            BarWidget::Pomodoro => Box::new(
+                crate::bars::bar_widgets::pomodoro::PomodoroModel::builder()
+                    .launch(crate::bars::bar_widgets::pomodoro::PomodoroInit { orientation })
+                    .forward(sender.output_sender(), |msg| match msg {
+                        crate::bars::bar_widgets::pomodoro::PomodoroOutput::Clicked => {
+                            BarOutput::PomodoroClicked
                         }
                     }),
             ),

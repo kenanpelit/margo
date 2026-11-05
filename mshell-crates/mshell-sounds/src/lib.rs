@@ -20,6 +20,8 @@ const NOTIFICATION_SOUND: &[u8] = include_bytes!("../assets/notification.ogg");
 /// Critical-urgency notification tone (three rising tones, brighter). OGG, per
 /// the note above — rodio decodes vorbis only.
 const NOTIFICATION_CRITICAL_SOUND: &[u8] = include_bytes!("../assets/notification-critical.ogg");
+/// One-shot "timer finished" chime (Pomodoro phase end, eye-care break).
+const TIMER_SOUND: &[u8] = include_bytes!("../assets/timer.ogg");
 
 /// Whether the looping alarm tone is currently ringing. Drives both the loop
 /// thread and `alarm_is_ringing()`.
@@ -264,6 +266,12 @@ fn play_embedded_padded(bytes: &'static [u8], before: Duration, after: Duration)
     });
 }
 
+/// Play the "timer finished" chime once (Pomodoro phase end, eye-care break
+/// start). Unlike [`play_alarm_loop`] it never loops and needs no stop.
+pub fn play_timer() {
+    play_embedded(TIMER_SOUND);
+}
+
 pub fn play_shutter() {
     play_embedded(CAMERA_SHUTTER_SOUND);
 }
@@ -331,6 +339,7 @@ mod tests {
             ("alarm", ALARM_SOUND),
             ("notification", NOTIFICATION_SOUND),
             ("notification-critical", NOTIFICATION_CRITICAL_SOUND),
+            ("timer", TIMER_SOUND),
         ];
         for (name, bytes) in clips {
             rodio::Decoder::try_from(Cursor::new(*bytes))
