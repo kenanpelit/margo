@@ -44,6 +44,29 @@ class GateTests(unittest.TestCase):
                                 env={**os.environ, 'PANIC_RATCHET_BASE': self.base})
         return result
 
+    def test_size_rejects_malformed_rules(self):
+        for rule in ('demo.rs abc', 'demo.rs -1', 'demo.rs 2 extra',
+                     'demo.rs 2\ndemo.rs 3'):
+            with self.subTest(rule=rule):
+                self.write('scripts/file-size-limits.txt', rule + '\n')
+                self.assertNotEqual(self.gate('file-size-gate.sh').returncode, 0)
+
+    def test_size_deleted_rule_requires_trailer(self):
+        self.write('scripts/file-size-limits.txt', '')
+        self.commit('remove rule')
+        self.assertNotEqual(self.gate('file-size-gate.sh').returncode, 0)
+
+    def test_size_default_ceiling(self):
+        self.write('new.rs', '// line\n' * 2001)
+        self.assertNotEqual(self.gate('file-size-gate.sh').returncode, 0)
+
+    def test_size_historical_malformed_rule(self):
+        self.write('scripts/file-size-limits.txt', 'demo.rs invalid\n')
+        self.commit('bad limits')
+        self.write('scripts/file-size-limits.txt', 'demo.rs 2\n')
+        self.commit('repair limits')
+        self.assertNotEqual(self.gate('file-size-gate.sh').returncode, 0)
+
     def test_panic_malformed_baselines(self):
         for value in ('', 'x', '1#comment', '-1', '1 0'):
             with self.subTest(value=value):
