@@ -27,8 +27,10 @@ mshell-crates/mshell-frame/src/frame.rs 1219
 mshell-crates/mshell-frame/src/menus/menu_widgets/control_center/tiles.rs 713
 
 # mdots/mtune: split along their seams (`mdots init` variants in
-# commands/init/*.rs).
+# commands/init/*.rs, config sections/packages/modules/paths/loading in
+# config/*.rs).
 mdots/src/commands/init.rs 470
+mdots/src/config/mod.rs 432
 
 # Existing oversized first-party files: frozen at adoption, not growth budgets.
 margo-config/src/parser.rs 759
@@ -37,7 +39,6 @@ margo/src/backend/udev/render_elements.rs 470
 margo/src/input_handler.rs 134
 margo/src/state/dispatch.rs 213
 mctl/src/bin/mctl.rs 599
-mdots/src/config/mod.rs 2757
 mdots/src/lua/mod.rs 2430
 mtune/src/window.rs 2327
 margo/src/render/blur.rs 666
