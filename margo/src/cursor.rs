@@ -145,10 +145,11 @@ pub struct CursorManager {
     /// Requested name → theme icon that resolved it (`None`: the embedded
     /// arrow). "default" is always present.
     resolved: HashMap<String, Option<String>>,
-    /// (requested name, wanted buffer scale) → uploaded sprite. Behind a
+    /// Requested name → wanted buffer scale → uploaded sprite. Behind a
     /// `RefCell` because the render path only has `&self` and loads a
-    /// missing scale on first use.
-    sprites: RefCell<HashMap<(String, i32), CursorSprite>>,
+    /// missing scale on first use. Nested so the per-frame lookup borrows
+    /// the name instead of allocating a `(String, i32)` key.
+    sprites: RefCell<HashMap<String, HashMap<i32, CursorSprite>>>,
     /// Requested names the theme had no image for, so asking again (every
     /// pointer motion over such a surface) doesn't re-read the theme.
     missing: HashSet<String>,
@@ -186,7 +187,10 @@ impl CursorManager {
         let mut resolved = HashMap::new();
         resolved.insert("default".to_string(), theme_name);
         let mut sprites = HashMap::new();
-        sprites.insert(("default".to_string(), 1), CursorSprite::new(&image, 1));
+        sprites.insert(
+            "default".to_string(),
+            HashMap::from([(1, CursorSprite::new(&image, 1))]),
+        );
         let mut manager = Self {
             resolved,
             sprites: RefCell::new(sprites),
@@ -217,7 +221,9 @@ impl CursorManager {
                     .insert(primary.to_string(), Some(name.to_string()));
                 self.sprites
                     .get_mut()
-                    .insert((primary.to_string(), 1), CursorSprite::new(&image, 1));
+                    .entry(primary.to_string())
+                    .or_default()
+                    .insert(1, CursorSprite::new(&image, 1));
             }
             None => {
                 self.missing.insert(primary.to_string());
@@ -248,9 +254,14 @@ impl CursorManager {
     /// the theme on first use. Falls back to the 1× sprite when the theme
     /// can't provide it.
     fn sprite(&self, wanted: i32) -> CursorSprite {
-        let key = (self.current.clone(), wanted);
-        if let Some(sprite) = self.sprites.borrow().get(&key) {
-            return sprite.clone();
+        let cached = |sprites: &HashMap<String, HashMap<i32, CursorSprite>>, name: &str, scale| {
+            sprites
+                .get(name)
+                .and_then(|by_scale| by_scale.get(&scale))
+                .cloned()
+        };
+        if let Some(sprite) = cached(&self.sprites.borrow(), &self.current, wanted) {
+            return sprite;
         }
         let loaded = match self.resolved.get(&self.current) {
             Some(Some(theme_name)) if wanted > 1 => load_from_theme(
@@ -267,15 +278,16 @@ impl CursorManager {
         let mut sprites = self.sprites.borrow_mut();
         let sprite = match loaded {
             Some(sprite) => sprite,
-            None => sprites
-                .get(&(self.current.clone(), 1))
-                .or_else(|| sprites.get(&("default".to_string(), 1)))
-                .cloned()
+            None => cached(&sprites, &self.current, 1)
+                .or_else(|| cached(&sprites, "default", 1))
                 .unwrap_or_else(|| CursorSprite::new(&embedded_arrow(), 1)),
         };
         // Cache the fallback too, so a theme without the size isn't
         // re-read on every frame.
-        sprites.insert(key, sprite.clone());
+        sprites
+            .entry(self.current.clone())
+            .or_default()
+            .insert(wanted, sprite.clone());
         sprite
     }
 
@@ -462,6 +474,21 @@ mod tests {
             after_miss,
             "a miss must not re-read the theme"
         );
+    }
+
+    #[test]
+    fn a_missing_scale_falls_back_to_1x_and_is_cached_under_its_name() {
+        let mut load = |name: &str, _size: u32| (name == "default").then(fake_image);
+        let theme = Rc::new(xcursor::CursorTheme::load("margo-test-no-such-theme"));
+        let m = CursorManager::build(24, theme, &mut load);
+        assert_eq!(m.sprite(1).buffer_scale, 1);
+        // No theme to load a 2× image from: the 1× sprite, remembered for
+        // 2× so the next frame is a plain lookup.
+        assert_eq!(m.sprite(2).buffer_scale, 1);
+        let sprites = m.sprites.borrow();
+        let mut scales: Vec<i32> = sprites["default"].keys().copied().collect();
+        scales.sort_unstable();
+        assert_eq!(scales, [1, 2]);
     }
 
     #[test]

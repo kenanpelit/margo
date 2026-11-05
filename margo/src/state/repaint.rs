@@ -177,27 +177,38 @@ impl MargoState {
     /// as element construction so a hidden bar cannot drive empty KMS frames
     /// and a visible overview wallpaper cannot be accidentally frozen.
     pub(crate) fn layer_renders_on_output(&self, output: &Output, layer: WlrLayer) -> bool {
+        self.layer_visibility_on_output(output).renders(layer)
+    }
+
+    /// [`Self::layer_renders_on_output`] for every layer role at once: the
+    /// monitor lookup and the exclusive-fullscreen client scan run once,
+    /// not once per layer surface.
+    pub(crate) fn layer_visibility_on_output(&self, output: &Output) -> LayerVisibility {
         if self.session_locked {
-            return false;
+            return LayerVisibility::None;
         }
         let Some(mon_idx) = self
             .monitors
             .iter()
             .position(|monitor| monitor.enabled && monitor.output == *output)
         else {
-            return false;
+            return LayerVisibility::None;
         };
 
         // The scroller renderer embeds only wallpaper-class layers in each
         // workspace cell. Top/Overlay (bar, notifications) are replaced by
         // the overview chrome.
         if self.scroller_overview.is_some() {
-            return matches!(layer, WlrLayer::Background | WlrLayer::Bottom);
+            return LayerVisibility::Lower;
         }
 
         // Classic overview deliberately shows the complete desktop, including
         // layers, even if a thumbnail client owns an exclusive lease.
-        self.monitors[mon_idx].is_overview || !self.monitor_has_exclusive_fullscreen(mon_idx)
+        if self.monitors[mon_idx].is_overview || !self.monitor_has_exclusive_fullscreen(mon_idx) {
+            LayerVisibility::All
+        } else {
+            LayerVisibility::None
+        }
     }
 
     /// Input follows layer visibility except in scroller overview, where
@@ -384,18 +395,24 @@ impl MargoState {
         // hook may advance running animations for the next frame.
         self.animation_presented_since_tick = true;
         let presented_at = std::time::Instant::now();
-        if let Some(at) = self.last_present_at.get_mut(output.name().as_str()) {
+        // One name per call (each `Output::name` is a fresh `String`), and
+        // a map key is only allocated the first time.
+        let name = output.name();
+        if let Some(at) = self.last_present_at.get_mut(&name) {
             *at = presented_at;
         } else {
-            self.last_present_at.insert(output.name(), presented_at);
+            self.last_present_at.insert(name.clone(), presented_at);
         }
         // Current sequence for this output. Bumped by `note_vblank`
         // and `on_estimated_vblank_timer`; surfaces stamped with this
         // value already received a frame_done this cycle.
-        let sequence = *self
-            .frame_callback_sequence
-            .entry(output.name())
-            .or_insert(0);
+        let sequence = match self.frame_callback_sequence.get(&name) {
+            Some(sequence) => *sequence,
+            None => {
+                self.frame_callback_sequence.insert(name, 0);
+                0
+            }
+        };
 
         // Backup throttle handed to smithay's send_frame. niri uses
         // 995 ms — long enough that it never interferes with our
@@ -507,10 +524,11 @@ impl MargoState {
             }
 
             {
+                let visibility = self.layer_visibility_on_output(output);
                 let map = layer_map_for_output(output);
                 for layer in map
                     .layers()
-                    .filter(|layer| self.layer_renders_on_output(output, layer.layer()))
+                    .filter(|layer| visibility.renders(layer.layer()))
                 {
                     layer.send_frame(output, time, throttle, should_send);
                 }
@@ -721,6 +739,28 @@ impl MargoState {
             && let Some(ping) = &self.repaint_ping
         {
             ping.ping();
+        }
+    }
+}
+
+/// Which layer-shell roles the display draws on an output (see
+/// [`MargoState::layer_visibility_on_output`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum LayerVisibility {
+    /// None (session locked, output out of the layout, exclusive
+    /// fullscreen).
+    None,
+    /// Background and Bottom only (scroller overview).
+    Lower,
+    All,
+}
+
+impl LayerVisibility {
+    pub(crate) fn renders(self, layer: WlrLayer) -> bool {
+        match self {
+            Self::None => false,
+            Self::Lower => matches!(layer, WlrLayer::Background | WlrLayer::Bottom),
+            Self::All => true,
         }
     }
 }

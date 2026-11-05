@@ -120,6 +120,11 @@ pub struct OutputDevice {
     /// `perf_counters` / `frame_callback_sequence` off this stable copy
     /// instead — no allocation on the steady-state hot path.
     pub(super) output_name: String,
+    /// Length of this output's last display element list: the next
+    /// frame's capacity, so the Vec of large render-element enums is not
+    /// regrown on every frame (a per-client estimate under-counts popups,
+    /// subsurfaces and decorations).
+    pub(super) last_element_count: std::cell::Cell<usize>,
     pub(super) compositor: GbmDrmCompositor,
     pub(super) render_count: u64,
     pub(super) queued_count: u64,
@@ -779,6 +784,7 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
             crtc,
             OutputDevice {
                 output_name: output.name(),
+                last_element_count: Default::default(),
                 output,
                 compositor,
                 render_count: 0,

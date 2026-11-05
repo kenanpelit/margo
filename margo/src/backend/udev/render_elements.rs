@@ -9,6 +9,7 @@
 //! (`run`), capture queueing, and `serve_screencopies`.
 
 use super::*;
+use crate::state::DecorationKind;
 
 /// What kind of frame the caller is building. Replaces the previous
 /// `(include_cursor: bool, for_screencast: bool)` two-bool parameter pair on
@@ -929,8 +930,10 @@ fn build_desktop_elements(
     let clipped_surface_program =
         crate::render::clipped_surface::shader(renderer).map(|program| program.0);
 
+    // Last frame's length (+ room for the wallpaper) beats the estimate.
+    let estimate = upper_layers.len() + lower_layers.len() + state.clients.len() * 2 + 1;
     let mut elements: Vec<MargoRenderElement> =
-        Vec::with_capacity(upper_layers.len() + lower_layers.len() + state.clients.len() * 2 + 1);
+        Vec::with_capacity(estimate.max(od.last_element_count.get() + 2));
 
     // First elements are highest z-order in the DRM compositor.
     if include_cursor {
@@ -1029,7 +1032,7 @@ fn build_desktop_elements(
         &[WlrLayer::Bottom, WlrLayer::Background],
         &mut elements,
     );
-
+    od.last_element_count.set(elements.len());
     elements
 }
 
@@ -1836,7 +1839,7 @@ fn push_group_tabs(
                     .clients
                     .get(member)
                     .and_then(|c| c.window.wl_surface())
-                    .map(|s| state.decoration_element_ids(&s).group_chip)
+                    .map(|s| state.decoration_element_id(&s, DecorationKind::GroupChip))
                     .unwrap_or_else(smithay::backend::renderer::element::Id::new)
             },
         ) {
@@ -1938,10 +1941,7 @@ fn push_dim_overlay(
         )
             .into(),
     );
-    let id = match window.wl_surface() {
-        Some(s) => state.decoration_element_ids(&s).dim,
-        None => smithay::backend::renderer::element::Id::new(),
-    };
+    let id = state.window_decoration_id(window, DecorationKind::Dim);
     let tint_key = color.iter().fold(0usize, |acc, c| {
         acc.wrapping_mul(31).wrapping_add(c.to_bits() as usize)
     });
@@ -2236,10 +2236,8 @@ fn push_client_elements(
                             // Stable id (reused across frames) so an
                             // unchanged shadow reports zero damage instead
                             // of re-damaging its oversized bbox every frame.
-                            let shadow_id = match window.wl_surface() {
-                                Some(s) => state.decoration_element_ids(&s).shadow,
-                                None => smithay::backend::renderer::element::Id::new(),
-                            };
+                            let shadow_id =
+                                state.window_decoration_id(window, DecorationKind::Shadow);
                             let shadow = crate::render::shadow::ShadowRenderElement::new(
                                 shadow_id,
                                 win_rect,
@@ -2562,10 +2560,7 @@ fn push_client_elements(
                             // Stable id (reused across frames) so unchanged
                             // window blur reports zero damage rather than
                             // re-damaging its rect every frame.
-                            let blur_id = match window.wl_surface() {
-                                Some(s) => state.decoration_element_ids(&s).blur,
-                                None => smithay::backend::renderer::element::Id::new(),
-                            };
+                            let blur_id = state.window_decoration_id(window, DecorationKind::Blur);
                             elements.push(MargoRenderElement::Blur(
                                 crate::render::blur::BlurRenderElement::new(
                                     blur_id,
@@ -2803,9 +2798,10 @@ fn push_layer_elements(
                 );
                 // Stable id (reused across frames) so unchanged layer blur
                 // reports zero damage rather than re-damaging every frame.
-                let blur_id = state
-                    .decoration_element_ids(surface.layer_surface().wl_surface())
-                    .blur;
+                let blur_id = state.decoration_element_id(
+                    surface.layer_surface().wl_surface(),
+                    DecorationKind::Blur,
+                );
                 elements.push(MargoRenderElement::Blur(
                     crate::render::blur::BlurRenderElement::new(
                         blur_id,
@@ -2838,11 +2834,12 @@ fn push_closing_layers(
     let Some(_target_mon_idx) = target_mon_idx else {
         return;
     };
+    let visibility = state.layer_visibility_on_output(output);
     for (_id, anim) in state.layer_animations.iter() {
         if !anim.is_close
             || anim.output != *output
             || !roles.contains(&anim.layer)
-            || !state.layer_renders_on_output(output, anim.layer)
+            || !visibility.renders(anim.layer)
         {
             continue;
         }

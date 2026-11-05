@@ -1163,18 +1163,36 @@ impl ForeignToplevelListHandler for MargoState {
 // ── XwmHandler: X11 window management ────────────────────────────────────────
 
 impl MargoState {
-    /// Stable element ids for a surface's self-drawn decorations,
-    /// created once and reused across frames. See
-    /// [`MargoState::decoration_ids`]. `Id` is a cheap clonable handle.
-    pub fn decoration_element_ids(
+    /// The stable element id of one of a surface's self-drawn
+    /// decorations, created once and reused across frames. See
+    /// [`MargoState::decoration_ids`]. Only the id asked for is cloned
+    /// (the render path asks several times per window per frame).
+    pub fn decoration_element_id(
         &self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-    ) -> DecorationIds {
-        self.decoration_ids
-            .borrow_mut()
-            .entry(surface.id())
-            .or_insert_with(DecorationIds::new)
-            .clone()
+        kind: DecorationKind,
+    ) -> smithay::backend::renderer::element::Id {
+        let mut ids = self.decoration_ids.borrow_mut();
+        let ids = ids.entry(surface.id()).or_insert_with(DecorationIds::new);
+        match kind {
+            DecorationKind::Shadow => ids.shadow.clone(),
+            DecorationKind::Blur => ids.blur.clone(),
+            DecorationKind::Dim => ids.dim.clone(),
+            DecorationKind::GroupChip => ids.group_chip.clone(),
+        }
+    }
+
+    /// [`Self::decoration_element_id`] for `window`'s surface; a fresh id
+    /// when it has none (an X11 window not yet associated).
+    pub fn window_decoration_id(
+        &self,
+        window: &Window,
+        kind: DecorationKind,
+    ) -> smithay::backend::renderer::element::Id {
+        match window.wl_surface() {
+            Some(s) => self.decoration_element_id(&s, kind),
+            None => smithay::backend::renderer::element::Id::new(),
+        }
     }
 
     /// Drop a destroyed surface's decoration ids.
@@ -1186,9 +1204,19 @@ impl MargoState {
     }
 }
 
+/// Which of a surface's decorations [`MargoState::decoration_element_id`]
+/// is asked for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DecorationKind {
+    Shadow,
+    Blur,
+    Dim,
+    /// The surface's own chip in its group's tab strip.
+    GroupChip,
+}
+
 /// Per-surface stable render-element ids (see
-/// [`MargoState::decoration_element_ids`]).
-#[derive(Clone)]
+/// [`MargoState::decoration_element_id`]).
 pub struct DecorationIds {
     pub shadow: smithay::backend::renderer::element::Id,
     pub blur: smithay::backend::renderer::element::Id,

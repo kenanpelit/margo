@@ -1288,3 +1288,30 @@ fn state_snapshot_flags_outputs_whose_layers_exclusive_fullscreen_hides() {
     fx.server.state.monitors[0].is_overview = true;
     assert_eq!(flag(&fx), false);
 }
+
+/// Each decoration of a window keeps one element id across frames (so
+/// unchanged decorations report no damage), distinct per decoration, and
+/// a new one once the surface's ids are forgotten.
+#[test]
+fn decoration_ids_are_stable_per_window_and_distinct_per_kind() {
+    use crate::state::DecorationKind::*;
+    let mut fx = Fixture::new();
+    fx.add_output("DP-1", (800, 600));
+    map_window(&mut fx);
+    let state = &fx.server.state;
+    let window = state.clients[0].window.clone();
+    let kinds = [Shadow, Blur, Dim, GroupChip];
+    let ids: Vec<_> = kinds
+        .iter()
+        .map(|&k| state.window_decoration_id(&window, k))
+        .collect();
+    for (k, id) in kinds.iter().zip(&ids) {
+        assert_eq!(state.window_decoration_id(&window, *k), *id, "{k:?} stable");
+    }
+    for (i, a) in ids.iter().enumerate() {
+        assert!(ids[i + 1..].iter().all(|b| a != b), "ids are distinct");
+    }
+    let surface = window.wl_surface().unwrap();
+    state.forget_decoration_ids(&surface);
+    assert_ne!(state.window_decoration_id(&window, Shadow), ids[0]);
+}

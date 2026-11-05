@@ -419,6 +419,7 @@ pub(super) fn setup_connector(
         crtc_h,
         OutputDevice {
             output_name: output.name(),
+            last_element_count: Default::default(),
             output,
             compositor,
             render_count: 0,
