@@ -1,7 +1,8 @@
 //! Ports tab of the CPU dashboard: listening TCP/UDP sockets from
-//! `ss -tulpnH`, grouped by exposure, with search, copy-PID and a
-//! confirmed terminate / force-kill of the owning process. Polls every
-//! 5 s only while the menu is revealed and this tab is visible.
+//! `ss -tulpnH`, grouped by exposure, with search, open-in-browser for
+//! TCP listeners (`mshell_utils::local_url`), copy-PID and a confirmed
+//! terminate / force-kill of the owning process. Polls every 5 s only
+//! while the menu is revealed and this tab is visible.
 
 use super::ports::{Exposure, PortRow, ProtoFilter, parse_ss, port_matches, sort_ports};
 use super::procs::{KillResult, proc_start, send_signal};
@@ -47,6 +48,8 @@ pub(crate) enum PortsTabInput {
     Proto(ProtoFilter),
     Search(String),
     CopyPid(i32),
+    /// Open a TCP listener in the default browser.
+    OpenUrl(String),
     /// End the owner: pid, start time, name, port.
     AskKill(i32, Option<u64>, String, u16),
     CancelKill,
@@ -256,6 +259,13 @@ impl Component for PortsTabModel {
                 self.status = format!("Copied PID {pid}");
                 self.needs_admin = None;
             }
+            PortsTabInput::OpenUrl(url) => {
+                self.needs_admin = None;
+                self.status = match mshell_process::desktop::open(&url) {
+                    Ok(_) => format!("Opened {url}"),
+                    Err(e) => format!("Could not open {url}: {e}"),
+                };
+            }
             PortsTabInput::AskKill(pid, start, name, port) => {
                 self.pending = Some(PendingKill {
                     pid,
@@ -405,6 +415,12 @@ fn port_row(r: &PortRow, sender: &ComponentSender<PortsTabModel>) -> gtk::ListBo
     };
     let mut trailing: Vec<gtk::Widget> =
         vec![ui::value_label(&format!(":{}", r.port), 6, "").into()];
+    if let Some(url) = row_url(r) {
+        let open = ui::icon_button("open-in-new-symbolic", &format!("Open {url}"));
+        let s = sender.clone();
+        open.connect_clicked(move |_| s.input(PortsTabInput::OpenUrl(url.clone())));
+        trailing.push(open.into());
+    }
     let (title, subtitle) = match r.owners.first() {
         Some(owner) => {
             let pids: Vec<String> = r.owners.iter().map(|o| o.pid.to_string()).collect();
@@ -434,4 +450,60 @@ fn port_row(r: &PortRow, sender: &ComponentSender<PortsTabModel>) -> gtk::ListBo
         ),
     };
     ui::plain_row(&ui::row_body(&title, &subtitle, &trailing))
+}
+
+/// The browser link for a listener: TCP only (UDP cannot serve a web UI),
+/// host chosen by [`mshell_utils::local_url`] from the bound address.
+fn row_url(r: &PortRow) -> Option<String> {
+    if r.proto != "tcp" {
+        return None;
+    }
+    let bind = match &r.iface {
+        Some(iface) => format!("{}%{iface}", r.addr),
+        None => r.addr.clone(),
+    };
+    mshell_utils::local_url::url(&bind, r.port)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(proto: &str, addr: &str, port: u16) -> Option<String> {
+        parse_ss(include_str!("testdata/ss_tulpn.txt"))
+            .into_iter()
+            .find(|r| r.proto == proto && r.addr == addr && r.port == port)
+            .and_then(|r| row_url(&r))
+    }
+
+    #[test]
+    fn tcp_listeners_link_to_their_reachable_host() {
+        // Rows of `ss -tulpnH` captured on the owner's machine.
+        assert_eq!(
+            row("tcp", "127.0.0.1", 8642).as_deref(),
+            Some("http://localhost:8642")
+        );
+        assert_eq!(
+            row("tcp", "0.0.0.0", 9091).as_deref(),
+            Some("http://localhost:9091")
+        );
+        assert_eq!(
+            row("tcp", "*", 8096).as_deref(),
+            Some("http://localhost:8096")
+        );
+        assert_eq!(
+            row("tcp", "::1", 5174).as_deref(),
+            Some("http://localhost:5174")
+        );
+        assert_eq!(
+            row("tcp", "127.0.0.53", 53).as_deref(),
+            Some("http://localhost:53")
+        );
+    }
+
+    #[test]
+    fn udp_listeners_get_no_link() {
+        assert_eq!(row("udp", "0.0.0.0", 5353), None);
+        assert_eq!(row("udp", "224.0.0.251", 5353), None);
+    }
 }

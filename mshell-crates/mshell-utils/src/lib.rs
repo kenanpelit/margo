@@ -16,6 +16,7 @@ pub mod hover_scroll;
 pub mod idle;
 pub mod key_mode;
 pub mod launch;
+pub mod local_url;
 pub mod logout;
 pub mod margo;
 pub mod media;
