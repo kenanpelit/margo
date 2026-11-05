@@ -11,7 +11,6 @@ license.workspace = true
 margo-fs.workspace = true
 dirs.workspace = true
 emojis = "0.7"
-evalexpr = "12"
 mshell-margo-client.workspace = true
 mshell-process.workspace = true
 notify-rust.workspace = true

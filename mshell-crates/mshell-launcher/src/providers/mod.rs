@@ -7,6 +7,7 @@
 pub mod archpkgs;
 pub(crate) mod bg_cache;
 pub mod bluetooth;
+pub(crate) mod calc_expr;
 pub mod calculator;
 pub mod command;
 pub mod emoji;

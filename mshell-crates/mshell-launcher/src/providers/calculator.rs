@@ -1,7 +1,7 @@
 //! Inline math evaluator.
 //!
 //! Detects expressions like `2+2`, `sqrt(16) * 3`, `sin(0.5)`,
-//! `(1+2)/3`. Pure-Rust evaluator via [`evalexpr`], so no `bc`
+//! `(1+2)/3`. Pure-Rust evaluator ([`super::calc_expr`]), so no `bc`
 //! subprocess shenanigans. On activation the result is copied to
 //! the wl-clipboard via `wl-copy`.
 //!
@@ -12,14 +12,14 @@
 //! ## qalc backend (optional)
 //!
 //! When `qalc` (Arch: `libqalculate`) is installed it handles what
-//! evalexpr can't: unit conversion (`10 km to mi`), currency
+//! the built-in evaluator can't: unit conversion (`10 km to mi`), currency
 //! (`5 usd to eur`, `€20 to try`) and percentages (`20% of 150`,
-//! `50 + 10%`). Plain arithmetic stays on evalexpr (synchronous, no
+//! `50 + 10%`). Plain arithmetic stays built in (synchronous, no
 //! subprocess); only expressions with `%`, ` to ` or a currency symbol go
 //! to qalc, on a worker thread, and the row appears when it answers.
-//! Without qalc nothing changes (`%` keeps evalexpr's modulo meaning).
+//! Without qalc nothing changes (`%` keeps its remainder meaning).
 //!
-//! `= <expr>` forces evaluation (qalc when installed, else evalexpr)
+//! `= <expr>` forces evaluation (qalc when installed, else built in)
 //! even when the auto-detection would not fire.
 //!
 //! ## History
@@ -29,13 +29,13 @@
 //! forgets the row.
 
 use crate::history::CommandHistory;
+use crate::providers::calc_expr;
 use crate::providers::tools::command_exists;
 use crate::{
     item::LauncherItem,
     notify::toast,
     provider::{Provider, RefreshNotifier},
 };
-use evalexpr::{Value, eval};
 use regex::Regex;
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
@@ -53,7 +53,7 @@ const CURRENCY: &[char] = &['$', '€', '£', '₺', '¥', '₹', '₽'];
 
 /// Should `q` go to qalc (when installed)? It must look numeric (contain
 /// a digit, start with a digit / sign / paren / currency symbol) and use
-/// something evalexpr can't express: `%`, a ` to ` conversion, or a
+/// something the built-in evaluator can't express: `%`, a ` to ` conversion, or a
 /// currency symbol. Plain words never qualify — qalc happily turns
 /// "foo bar" into femtobar units.
 pub fn qalc_candidate(q: &str) -> bool {
@@ -209,13 +209,6 @@ pub struct CalculatorProvider {
     candidate_re: Regex,
     operator_re: Regex,
     function_call_re: Regex,
-    /// Rewrites bare function names like `sqrt(` to evalexpr's
-    /// namespaced form `math::sqrt(`. Stored on the struct so the
-    /// regex compiles once.
-    function_prefix_re: Regex,
-    /// Promotes integer literals to floats so e.g. `10/4` yields
-    /// `2.5` instead of `2`.
-    int_literal_re: Regex,
     /// qalc found on PATH at construction.
     qalc: bool,
     runner: QalcRunner,
@@ -251,13 +244,6 @@ impl CalculatorProvider {
             // Letters followed by an opening paren = function call
             // (sqrt, sin, cos, etc.).
             function_call_re: Regex::new(r"[a-zA-Z]\s*\(").unwrap(),
-            // Captures bare function names so we can rewrite them
-            // to evalexpr's `math::*` namespace before evaluation.
-            function_prefix_re: Regex::new(
-                r"\b(sqrt|sin|cos|tan|asin|acos|atan|ln|log|log2|log10|exp|abs|floor|ceil|round)\(",
-            )
-            .unwrap(),
-            int_literal_re: Regex::new(r"(?P<n>\b\d+\b)(?P<tail>\.\d)?").unwrap(),
         }
     }
 
@@ -285,43 +271,11 @@ impl CalculatorProvider {
         true
     }
 
+    /// Plain arithmetic (all `f64`); `None` for anything that isn't a
+    /// finite number.
     fn evaluate(&self, expr: &str) -> Option<String> {
-        // Rewrite `sqrt(`, `sin(`, … to evalexpr's `math::sqrt(` /
-        // `math::sin(` form so users can type the natural name.
-        // Then substitute `pi` and `e` with their literal values so
-        // we don't need a custom variable context.
-        let rewritten = self.function_prefix_re.replace_all(expr, "math::$1(");
-        let rewritten = substitute_constant(&rewritten, "pi", std::f64::consts::PI);
-        let rewritten = substitute_constant(&rewritten, "e", std::f64::consts::E);
-        let rewritten = self
-            .int_literal_re
-            .replace_all(&rewritten, |c: &regex::Captures| {
-                // Already has a fractional tail like `1.5` → leave it.
-                if c.name("tail").is_some() {
-                    return c.get(0).unwrap().as_str().to_string();
-                }
-                format!("{}.0", &c["n"])
-            });
-
-        match eval(&rewritten).ok()? {
-            Value::Int(i) => Some(i.to_string()),
-            Value::Float(f) => Some(format_float(f)),
-            other => Some(other.to_string()),
-        }
+        calc_expr::eval(expr).map(format_float)
     }
-}
-
-/// Substitute a bare identifier `name` with `value.to_string()` —
-/// only when surrounded by non-word characters so we don't mangle
-/// e.g. `expression` when `name == "ex"`.
-fn substitute_constant(input: &str, name: &str, value: f64) -> String {
-    let pattern = format!(r"\b{name}\b");
-    Regex::new(&pattern)
-        .map(|re| {
-            re.replace_all(input, value.to_string().as_str())
-                .into_owned()
-        })
-        .unwrap_or_else(|_| input.to_string())
 }
 
 /// Format a float without trailing zeros — `4` instead of `4.0`,
@@ -572,6 +526,91 @@ mod tests {
         assert_eq!(p.evaluate("abs(-5)"), Some("5".into()));
     }
 
+    // What the previous evaluator (the evalexpr 12 crate) answered: the
+    // in-tree evaluator keeps every one of these.
+    #[test]
+    fn keeps_the_previous_evaluators_answers() {
+        let p = CalculatorProvider::with_options(false, temp_history("compat"));
+        for (q, want) in [
+            ("2*3+4", "10"),
+            ("2+3*4", "14"),
+            ("2 * (3 + 4)", "14"),
+            ("-2^2", "-4"),
+            ("2^10", "1024"),
+            ("2^-1", "0.5"),
+            ("2^0.5", "1.41421356"),
+            ("--2", "2"),
+            ("2*-3", "-6"),
+            ("-7%4", "-3"),
+            ("7.5%2", "1.5"),
+            ("1e3", "1000"),
+            ("1.5e2", "150"),
+            ("1/3", "0.33333333"),
+            ("0.1+0.2", "0.3"),
+            ("2.5*2", "5"),
+            ("100000000000000000*10", "1000000000000000000"),
+            ("sin(0)", "0"),
+            ("cos(0)", "1"),
+            ("tan(0)", "0"),
+            ("asin(1)", "1.57079633"),
+            ("acos(1)", "0"),
+            ("atan(1)", "0.78539816"),
+            ("sqrt(2)", "1.41421356"),
+            ("pi*2", "6.28318531"),
+            ("e", "2.71828183"),
+            ("ln(e)", "1"),
+            ("exp(0)", "1"),
+            ("log10(1000)", "3"),
+            ("log2(8)", "3"),
+            ("log(8, 2)", "3"),
+            ("max(1,2)", "2"),
+        ] {
+            assert_eq!(p.evaluate(q).as_deref(), Some(want), "{q}");
+        }
+        for q in [
+            "2 3", "sqrt 4", "(2", "2)", "3!", "SQRT(4)", "Pi", "x+1", "",
+        ] {
+            assert_eq!(p.evaluate(q), None, "{q}");
+        }
+    }
+
+    // The functions the calculator advertises but evalexpr never knew
+    // (`floor`/`ceil`/`round` aren't in its `math::` namespace, and its
+    // `log` wants a base), and results that aren't numbers.
+    #[test]
+    fn evaluates_every_advertised_function_and_rejects_non_numbers() {
+        let p = CalculatorProvider::with_options(false, temp_history("funcs"));
+        for (q, want) in [
+            ("floor(2.7)", "2"),
+            ("ceil(2.1)", "3"),
+            ("round(2.5)", "3"),
+            ("round(-2.5)", "-3"),
+            ("log(100)", "2"),
+            ("min(3, 1, 2)", "1"),
+            (".5+1", "1.5"),
+            ("+3", "3"),
+            // `^` is right-associative, as in maths and qalc.
+            ("2^3^2", "512"),
+        ] {
+            assert_eq!(p.evaluate(q).as_deref(), Some(want), "{q}");
+        }
+        // Comparisons and booleans are not arithmetic (evalexpr said `true`).
+        for q in [
+            "1 == 1",
+            "sqrt(-1)",
+            "1/0",
+            "ln(0)",
+            "sqrt()",
+            "sqrt(1, 2)",
+            "nope(1)",
+        ] {
+            assert_eq!(p.evaluate(q), None, "{q}");
+        }
+        // Deep nesting is refused, not a stack overflow.
+        let deep = format!("{}1{}", "(".repeat(100_000), ")".repeat(100_000));
+        assert_eq!(p.evaluate(&deep), None);
+    }
+
     #[test]
     fn rejects_plain_app_names() {
         let p = CalculatorProvider::with_options(false, temp_history("basic"));
@@ -670,12 +709,12 @@ mod tests {
         p.runner.seed("5 usd to eur", Some("€4.2597"));
         let rows = p.search("5 usd to eur");
         assert_eq!(rows[0].name, "€4.2597");
-        // Plain math stays on evalexpr even with qalc present.
+        // Plain math stays built in even with qalc present.
         assert_eq!(p.search("2+2")[0].name, "4");
         // Explicit `=` on a cached failure → "No result" row.
         p.runner.seed("blah", None);
         assert_eq!(p.search("= blah")[0].name, "No result");
-        // Without qalc: `%` keeps evalexpr modulo; `=` uses evalexpr.
+        // Without qalc: `%` keeps its remainder meaning; `=` stays built in.
         let p = CalculatorProvider::with_options(false, temp_history("noqalc"));
         assert_eq!(p.search("7%4")[0].name, "3");
         assert!(p.search("5 usd to eur").is_empty());

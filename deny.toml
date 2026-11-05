@@ -80,16 +80,6 @@ allow = [
     "GPL-3.0-or-later",
 ]
 
-# evalexpr (the launcher's calculator / expression provider, pulled by
-# mshell-launcher and shipped in mshell) is AGPL-3.0-only. GPLv3 §13 explicitly
-# permits combining GPL-3.0 code with AGPL-3.0 code, so this is license-
-# compatible with margo (GPL-3.0-or-later); the AGPL network-use clause has no
-# effect on a local desktop launcher. Scoped to this single crate on purpose —
-# a future AGPL dependency still trips the gate for a fresh, deliberate call.
-[[licenses.exceptions]]
-name = "evalexpr"
-allow = ["AGPL-3.0-only"]
-
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
