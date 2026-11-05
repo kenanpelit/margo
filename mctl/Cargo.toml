@@ -17,7 +17,6 @@ clap.workspace = true
 clap_complete = "4"
 # Pulled in for `mctl rules` — config-only introspection, no Wayland.
 margo-config = { path = "../margo-config" }
-margo-fs.workspace = true
 # `mctl log` reuses the shared log-dir resolver.
 margo-logging = { path = "../margo-logging" }
 regex = "1"
