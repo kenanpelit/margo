@@ -151,6 +151,7 @@ impl NotificationServiceBuilder {
             popups,
             popup_duration: self.popup_duration,
             dnd: self.dnd,
+            dnd_events: Default::default(),
             remove_expired: self.remove_expired,
             blocklist: self.blocklist,
             popup_timers,

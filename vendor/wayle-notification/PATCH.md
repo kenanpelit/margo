@@ -20,8 +20,13 @@ changes below; the root `Cargo.toml` swaps it in via `[patch.crates-io]`.
    smaller than one row before caching the image. Any process on the session
    bus can send that hint; upstream's `data.chunks(rowstride)` panics on a
    zero rowstride and takes the notification daemon thread down.
+4. **Lossless DND changes.** `NotificationService::dnd_changes()` returns a
+   receiver that gets every value passed to `set_dnd`, in order
+   (`src/service.rs`, `src/builder.rs`). `dnd.watch()` only yields the
+   latest value, so a quick off→on collapses into one "on"; mshell's
+   auto-DND needs each write to tell that the user took DND over.
 
-All three are upstream-PR-able; drop the vendored copy once wayle ships them.
+All four are upstream-PR-able; drop the vendored copy once wayle ships them.
 
 ## Refreshing this diff
 
@@ -34,6 +39,17 @@ diff -ruN wayle-notification-0.1.3 vendor/wayle-notification   # minus this file
 ## Diff against upstream 0.1.3
 
 ```diff
+diff -ruN a/src/builder.rs b/src/builder.rs
+--- a/src/builder.rs
++++ b/src/builder.rs
+@@ -151,6 +151,7 @@
+             popups,
+             popup_duration: self.popup_duration,
+             dnd: self.dnd,
++            dnd_events: Default::default(),
+             remove_expired: self.remove_expired,
+             blocklist: self.blocklist,
+             popup_timers,
 diff -ruN a/src/core/controls.rs b/src/core/controls.rs
 --- a/src/core/controls.rs
 +++ b/src/core/controls.rs
@@ -140,6 +156,101 @@ diff -ruN a/src/image_cache.rs b/src/image_cache.rs
      let dir = cache_dir();
      let path = dir.join(format!("{}.png", content_hash(data)));
  
+diff -ruN a/src/service.rs b/src/service.rs
+--- a/src/service.rs
++++ b/src/service.rs
+@@ -1,4 +1,4 @@
+-use std::sync::Arc;
++use std::sync::{Arc, Mutex};
+ 
+ use derive_more::Debug;
+ use tokio::sync::broadcast;
+@@ -33,6 +33,8 @@
+     pub popup_duration: Property<u32>,
+     /// Do Not Disturb mode; suppresses popups when true.
+     pub dnd: Property<bool>,
++    #[debug(skip)]
++    pub(crate) dnd_events: DndEvents,
+     /// Auto-remove expired notifications.
+     pub remove_expired: Property<bool>,
+     /// Glob patterns for blocking notifications by app name.
+@@ -81,7 +83,17 @@
+     /// When enabled, new notifications will not appear as popups but will
+     /// still be added to the notification list.
+     pub fn set_dnd(&self, dnd: bool) {
+-        self.dnd.set(dnd)
++        self.dnd.set(dnd);
++        self.dnd_events.send(dnd);
++    }
++
++    /// Every value passed to [`Self::set_dnd`] from now on, in order.
++    ///
++    /// Unlike `dnd.watch()`, which only yields the latest value, nothing is
++    /// coalesced: a quick off→on still arrives as `false`, `true`. The
++    /// receiver must be drained; dropping it unsubscribes.
++    pub fn dnd_changes(&self) -> tokio::sync::mpsc::UnboundedReceiver<bool> {
++        self.dnd_events.subscribe()
+     }
+ 
+     /// Sets the duration for how long popup notifications are displayed.
+@@ -116,8 +128,57 @@
+     }
+ }
+ 
++/// Subscribers to [`NotificationService::dnd_changes`].
++#[derive(Default)]
++pub(crate) struct DndEvents(Mutex<Vec<tokio::sync::mpsc::UnboundedSender<bool>>>);
++
++impl DndEvents {
++    fn subscribe(&self) -> tokio::sync::mpsc::UnboundedReceiver<bool> {
++        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
++        self.0.lock().unwrap_or_else(|e| e.into_inner()).push(tx);
++        rx
++    }
++
++    /// Queue `value` for every live subscriber; drop the closed ones.
++    fn send(&self, value: bool) {
++        self.0
++            .lock()
++            .unwrap_or_else(|e| e.into_inner())
++            .retain(|tx| tx.send(value).is_ok());
++    }
++}
++
+ impl Drop for NotificationService {
+     fn drop(&mut self) {
+         self.cancellation_token.cancel();
+     }
+ }
++
++#[cfg(test)]
++mod dnd_event_tests {
++    use super::DndEvents;
++
++    #[test]
++    fn fast_off_on_is_queued_in_order_for_every_subscriber() {
++        let events = DndEvents::default();
++        let mut a = events.subscribe();
++        let mut b = events.subscribe();
++        for value in [true, false, true] {
++            events.send(value);
++        }
++        for rx in [&mut a, &mut b] {
++            assert_eq!(rx.try_recv(), Ok(true));
++            assert_eq!(rx.try_recv(), Ok(false));
++            assert_eq!(rx.try_recv(), Ok(true));
++            assert!(rx.try_recv().is_err());
++        }
++    }
++
++    #[test]
++    fn dropped_subscriber_is_forgotten() {
++        let events = DndEvents::default();
++        drop(events.subscribe());
++        events.send(true);
++        assert!(events.0.lock().expect("not poisoned").is_empty());
++    }
++}
 diff -ruN a/src/types/mod.rs b/src/types/mod.rs
 --- a/src/types/mod.rs
 +++ b/src/types/mod.rs

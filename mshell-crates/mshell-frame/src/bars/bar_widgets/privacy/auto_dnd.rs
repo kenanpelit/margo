@@ -15,8 +15,9 @@
 //! A shell restart mid-share needs no saved state: the DND flag lives in
 //! mshell's own notification service (not persisted), so it comes back off
 //! and the fresh machine takes ownership again when it sees the share.
-//! The driver also wakes on every DND change, so a quick off→on by the
-//! user between idle ticks is still seen.
+//! The driver receives every DND write as a queued value
+//! (`NotificationService::dnd_changes`), not just a wake-up, so a user's
+//! off→on faster than two samples is still seen as theirs.
 //!
 //! The decision lives in the pure [`AutoDnd`] state machine (unit-tested);
 //! [`ensure_started`] is the thin GTK-main-loop driver around it.
@@ -25,7 +26,7 @@ use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use futures::StreamExt;
+use futures::future::{self, Either};
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, NotificationsStoreFields};
 use mshell_services::notification_service;
@@ -83,16 +84,7 @@ impl AutoDnd {
         if !enabled {
             return self.release(dnd_on);
         }
-        if self.owned {
-            // Ownership follows what the user does mid-session: once our
-            // DND was on, seeing it off means the user took over. Whatever
-            // they do with it afterwards (on again by hand) is theirs.
-            if dnd_on {
-                self.seen_on = true;
-            } else if self.seen_on {
-                self.owned = false;
-            }
-        }
+        self.observe_dnd(dnd_on);
         if sharing {
             self.stopped_since = None;
             if !self.session {
@@ -122,6 +114,23 @@ impl AutoDnd {
         }
     }
 
+    /// Feed one DND value: a queued setter value (every write, in order) or
+    /// the current value sampled by [`Self::step`].
+    ///
+    /// Ownership follows what the user does mid-session: once our DND was
+    /// on, seeing it off means the user took over. Whatever they do with it
+    /// afterwards (on again by hand) is theirs.
+    pub(crate) fn observe_dnd(&mut self, dnd_on: bool) {
+        if !self.owned {
+            return;
+        }
+        if dnd_on {
+            self.seen_on = true;
+        } else if self.seen_on {
+            self.owned = false;
+        }
+    }
+
     /// End the session: turn DND back off if we own it.
     fn release(&mut self, dnd_on: bool) -> Step {
         let owned = self.owned;
@@ -130,6 +139,16 @@ impl AutoDnd {
             set_dnd: (owned && dnd_on).then_some(false),
             recheck_at: None,
         }
+    }
+}
+
+/// Feed every queued DND value to the machine, oldest first.
+pub(crate) fn drain_dnd_changes(
+    machine: &mut AutoDnd,
+    changes: &mut tokio::sync::mpsc::UnboundedReceiver<bool>,
+) {
+    while let Ok(value) = changes.try_recv() {
+        machine.observe_dnd(value);
     }
 }
 
@@ -147,19 +166,16 @@ pub(crate) fn ensure_started() {
     if STARTED.swap(true, Ordering::SeqCst) {
         return;
     }
-    // Wake the driver on every DND change too (ours or the user's), so the
-    // machine sees a user's off→on even between idle ticks.
-    if let Some(service) = notification_service() {
-        let mut changes = Box::pin(service.dnd.watch());
-        glib::spawn_future_local(async move {
-            while changes.next().await.is_some() {
-                WAKE.notify_one();
-            }
-        });
-    }
+    // Every DND write (ours or the user's), queued in order. A property
+    // watch or a wake-up would coalesce a quick off→on by the user into
+    // one "on" sample and lose their ownership; the queue cannot.
+    let mut changes = notification_service().map(|s| s.dnd_changes());
     glib::spawn_future_local(async move {
         let mut machine = AutoDnd::default();
         loop {
+            if let Some(changes) = changes.as_mut() {
+                drain_dnd_changes(&mut machine, changes);
+            }
             let on = enabled();
             screen_watch::set_wanted_by_auto_dnd(on);
             let release_after = Duration::from_millis(u64::from(
@@ -182,7 +198,16 @@ pub(crate) fn ensure_started() {
                 .map(|t| t.saturating_duration_since(Instant::now()))
                 .unwrap_or(IDLE_TICK)
                 .min(IDLE_TICK);
-            let _ = glib::future_with_timeout(tick, WAKE.notified()).await;
+            let woken = std::pin::pin!(glib::future_with_timeout(tick, WAKE.notified()));
+            let changed = std::pin::pin!(async {
+                match changes.as_mut() {
+                    Some(changes) => changes.recv().await,
+                    None => std::future::pending().await,
+                }
+            });
+            if let Either::Right((Some(value), _)) = future::select(woken, changed).await {
+                machine.observe_dnd(value);
+            }
         }
     });
 }
@@ -287,6 +312,48 @@ mod tests {
         assert_eq!(m.step(true, true, false, DELAY, t).set_dnd, Some(true));
         assert_eq!(m.step(true, true, false, DELAY, ms(t, 1)).set_dnd, None);
         assert_eq!(m.step(true, true, true, DELAY, ms(t, 50)).set_dnd, None);
+        m.step(true, false, true, DELAY, ms(t, 100));
+        assert_eq!(
+            m.step(true, false, true, DELAY, ms(t, 1100)).set_dnd,
+            Some(false)
+        );
+    }
+
+    /// Review item 84: the user turns our DND off and on again faster than
+    /// the driver samples. Both samples read "on", so only the queued
+    /// setter values show that the user took DND over.
+    #[test]
+    fn fast_user_off_on_between_two_samples_still_hands_dnd_to_the_user() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let t = Instant::now();
+        let mut m = AutoDnd::default();
+        assert_eq!(m.step(true, true, false, DELAY, t).set_dnd, Some(true));
+        // Scripted sequence, all before the next sample: our own "on",
+        // then the user's "off" and "on".
+        for value in [true, false, true] {
+            tx.send(value).expect("receiver alive");
+        }
+        drain_dnd_changes(&mut m, &mut rx);
+        assert!(rx.try_recv().is_err(), "queue fully drained");
+        assert_eq!(m.step(true, true, true, DELAY, ms(t, 100)).set_dnd, None);
+        m.step(true, false, true, DELAY, ms(t, 200));
+        assert_eq!(m.step(true, false, true, DELAY, ms(t, 1200)).set_dnd, None);
+    }
+
+    /// Our own "on" arriving through the queue is not a user action, and
+    /// values queued before the share started don't touch ownership.
+    #[test]
+    fn queued_own_writes_and_pre_share_values_keep_ownership() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let t = Instant::now();
+        let mut m = AutoDnd::default();
+        for value in [true, false] {
+            tx.send(value).expect("receiver alive");
+        }
+        drain_dnd_changes(&mut m, &mut rx);
+        assert_eq!(m.step(true, true, false, DELAY, t).set_dnd, Some(true));
+        tx.send(true).expect("receiver alive");
+        drain_dnd_changes(&mut m, &mut rx);
         m.step(true, false, true, DELAY, ms(t, 100));
         assert_eq!(
             m.step(true, false, true, DELAY, ms(t, 1100)).set_dnd,
