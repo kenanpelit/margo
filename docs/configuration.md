@@ -585,6 +585,9 @@ Every action below can be bound to a key (`bind`), a mouse button (`mousebind`),
 | `force_unlock`, `force-unlock` |  | Restart a crashed lock screen (never unlocks). With the session locked and the locker gone, starts `mlock` again; the session stays locked until the password is typed. Ignored while a locker lives and while unlocked. margo also restarts a dead locker on its own. The only unlock without the locker is `loginctl unlock-session` from a TTY or ssh. Not bound by default. |
 | `chvt` | `<vt>` | Switch to virtual terminal &lt;vt> (default bind: Ctrl+Alt+F1…F12). Bound automatically on every config; the session pauses and resumes through logind/seatd. Ignored when margo runs nested (winit). |
 | `debug_dump`, `debug-dump`, `diagnose` |  | Dump compositor state (clients, monitors, layouts) to the log. |
+| `wallpaper_set` | <code>&lt;*&#124;OUTPUT[,…]&gt; [fit=…] [bg=#rrggbb[aa]&#124;none] [fade=MS] [owner=TAG] &lt;PATH&gt;</code> | Draw an image as the compositor wallpaper on some or every output. Replaces the configured `wallpaper` there until `wallpaper_clear`. PATH is absolute: a headed `.raw` is read before the reply, other images decode in the background. fit is cover\|contain\|fill\|center\|scale-down; bg paints around a contained image; fade crossfades from the previous image. `get wallpaper` shows what is set. |
+| `wallpaper_update` | <code>&lt;*&#124;OUTPUT[,…]&gt; [fit=…] [bg=#rrggbb[aa]&#124;none]</code> | Change the fit or background of a runtime wallpaper. Fails when nothing was set there with `wallpaper_set`. |
+| `wallpaper_clear` | <code>[*&#124;OUTPUT[,…]] [owner=TAG]</code> | Drop runtime wallpapers; the configured `wallpaper` shows again. No argument or `*` clears every entry; owner= only those set with that owner. |
 
 <!-- END dispatch-actions -->
 
