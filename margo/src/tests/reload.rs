@@ -62,3 +62,28 @@ fn a_good_reload_saves_its_generation() {
     assert!(state.config_fingerprint.is_some());
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+/// A reload replaces the seat keymap with the configured one, so the
+/// "virtual keyboard keymap is already loaded" marker must go too: left
+/// set, the next key from the same wtype/mkeys/wayvnc device skipped
+/// re-installing its own keymap and was decoded with the user's layout.
+#[test]
+fn a_reload_forgets_the_active_virtual_keymap() {
+    let dir = std::env::temp_dir().join(format!("margo-reload-vkbd-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let config = dir.join("config.conf");
+    std::fs::write(&config, "borderpx = 3\n").unwrap();
+
+    let mut fx = Fixture::new();
+    fx.add_keyboard();
+    let state = &mut fx.server.state;
+    state.config_path = Some(config);
+    state.generations_dir = dir.join("generations");
+    state.active_virtual_keymap = Some(std::sync::Arc::from("xkb_keymap { virtual }"));
+
+    state.reload_config().unwrap();
+
+    assert_eq!(state.active_virtual_keymap, None);
+    std::fs::remove_dir_all(dir).unwrap();
+}

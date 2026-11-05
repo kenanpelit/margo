@@ -194,6 +194,11 @@ impl MargoState {
                 )
                 .map_err(|e| anyhow::anyhow!("reload xkb config: {e:?}"))?;
             keyboard.change_repeat_info(new_config.repeat_rate, new_config.repeat_delay);
+            // The seat now carries the configured keymap, not a virtual
+            // keyboard's: forget the marker so that device's next key
+            // re-installs its own keymap instead of being decoded with
+            // the user's layout.
+            self.active_virtual_keymap = None;
         }
 
         self.config_fingerprint = Some(config_fingerprint(&sources));
