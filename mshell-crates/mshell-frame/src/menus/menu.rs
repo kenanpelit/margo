@@ -1,5 +1,5 @@
 use crate::menus::builder::build_widget;
-use crate::menus::list_fit::fit_menu_lists;
+use crate::menus::list_fit::{MenuLists, lists_follow_menu_height};
 use crate::menus::menu_widgets::agents::agents_menu_widget::{
     AgentsMenuWidgetInput, AgentsMenuWidgetModel,
 };
@@ -203,6 +203,9 @@ pub(crate) struct MenuModel {
     // which silently re-runs their probe loops (dns / ufw /
     // podman shell out on init). Mirrors the bar's guard.
     widget_kinds: Vec<MenuWidget>,
+    /// The list scrollers the content build marked (`list_fit`), re-capped
+    /// when the content is built and when `maximum_height` changes.
+    menu_lists: MenuLists,
     minimum_width: i32,
     /// Maximum visible content height in pixels. 0 = no cap
     /// (legacy "grow to fit children" behaviour). When > 0, the
@@ -429,7 +432,8 @@ impl Component for MenuModel {
                 // scroller instead (see clipboard.rs), so the header +
                 // tabs stay fixed while only the list scrolls — and the
                 // bounded inner viewport lets the ListView virtualize.
-                // Capping both would double-scroll (chrome scrolls away).
+                // (Plain list menus do cap the outer scroller: GTK then
+                // squeezes their list scroller instead — see list_fit.rs.)
             }
             MenuType::Translate => {
                 css_class = "translate-menu".to_string();
@@ -446,7 +450,7 @@ impl Component for MenuModel {
                 // applies that cap to its own inner history scroller (see
                 // notifications.rs) so the header stays fixed while only the
                 // list scrolls — and the bounded inner viewport is what lets
-                // the ListView virtualize. Capping both would double-scroll.
+                // the ListView virtualize.
             }
             MenuType::Screenshot => {
                 css_class = "screenshot-menu".to_string();
@@ -732,6 +736,7 @@ impl Component for MenuModel {
             revealed: false,
             reveal_broadcast_pending: false,
             widget_kinds: Vec::new(),
+            menu_lists: MenuLists::default(),
             minimum_width,
             maximum_height,
             css_class,
@@ -822,10 +827,6 @@ impl Component for MenuModel {
                     } else {
                         self.build_content(&widgets.widget_container, &sender);
                     }
-                }
-                if visible {
-                    // Lists cap at the configured height (see list_fit).
-                    fit_menu_lists(widgets.widget_container.upcast_ref(), self.maximum_height);
                 }
                 // Defer the per-widget reveal broadcasts (which kick off
                 // pollers — network/BT scans, launcher requery, …) off the
@@ -1177,7 +1178,7 @@ impl Component for MenuModel {
             }
             MenuInput::SetMaximumHeight(height) => {
                 self.maximum_height = height;
-                fit_menu_lists(widgets.widget_container.upcast_ref(), self.maximum_height);
+                self.fit_lists();
                 pin_scroller_bounds(
                     &widgets.scrolled_window,
                     self.minimum_width,
@@ -1272,16 +1273,28 @@ impl MenuModel {
         // Move the kinds out so the build loop isn't holding an immutable
         // borrow of `self` while it pushes into `widget_controllers`.
         let kinds = std::mem::take(&mut self.widget_kinds);
-        for item in &kinds {
-            // The standalone weather menu stacks all sections; every other
-            // host (notably mdash) keeps the compact paged weather view.
-            let controller =
-                build_widget(item, gtk::Orientation::Vertical, sender, weather_all_in_one);
-            container.append(&controller.root_widget());
-            self.widget_controllers.push(controller);
-        }
+        let controllers = &mut self.widget_controllers;
+        // Register the list scrollers the widgets mark while they build.
+        self.menu_lists = MenuLists::collect(|| {
+            for item in &kinds {
+                // The standalone weather menu stacks all sections; every other
+                // host (notably mdash) keeps the compact paged weather view.
+                let controller =
+                    build_widget(item, gtk::Orientation::Vertical, sender, weather_all_in_one);
+                container.append(&controller.root_widget());
+                controllers.push(controller);
+            }
+        });
         self.widget_kinds = kinds;
         self.built = true;
+        self.fit_lists();
+    }
+
+    /// Cap the content's list scrollers for the current height (see
+    /// `list_fit`). Free when nothing changed since the last fit.
+    fn fit_lists(&mut self) {
+        let follows = lists_follow_menu_height(&self.widget_kinds);
+        self.menu_lists.fit(self.maximum_height, follows);
     }
 }
 

@@ -420,6 +420,16 @@ dark block of slack between the last card and the footer:
   cap. The list then ends right after the last card (≈16px before the
   footer) and only scrolls once it passes the max. A fixed
   `min_content_height` (180/240/…) reserves empty height = the band.
+- **A menu's main list follows the menu's height.** Mark the list
+  scroller from the widget's `init` with
+  `list_fit::mark_menu_list(&sw, <built-in cap>)`; never cap it at the
+  menu's height yourself. The menu's outer scroller is capped at the
+  configured height and GTK squeezes the list (a tiny
+  `min_content_height`), so the header/tabs/footer stay put and only the
+  list scrolls; the built-in cap only applies when no height is set, or
+  when the list is embedded in a host (Control Center, mdash). Don't
+  give a menu list a large `min_content_height`: the outer scroller then
+  has to scroll and the header scrolls away.
 - **Footer is its own region.** Refresh / man-page / action buttons
   live in a row *below* the list on the panel surface (≈16px
   `margin_top`), never inside the scroller — so the list visibly ends
