@@ -111,6 +111,43 @@ pub fn drain_to(mut stream: &UnixStream, buf: &mut Vec<u8>) -> DrainState {
     DrainState::Drained
 }
 
+/// How one turn of the accept loop ended.
+#[derive(Debug)]
+pub enum AcceptOutcome {
+    /// The backlog is empty (`WouldBlock`); wait for the next readable.
+    Drained,
+    /// Accepting can't make progress right now (out of file descriptors —
+    /// `EMFILE` / `ENFILE` — or kernel memory, or an unexpected listener
+    /// error): the pending connection stays queued, so the level-triggered
+    /// source would fire again at once and spin a core. Pause it.
+    Backoff(std::io::Error),
+}
+
+/// How long the accept source stays paused after [`AcceptOutcome::Backoff`].
+const ACCEPT_BACKOFF: std::time::Duration = std::time::Duration::from_millis(100);
+
+/// Accept every queued connection, handing each to `on_stream`. A
+/// connection that died in the backlog (`ECONNABORTED`, `EPROTO`) or a
+/// signal (`EINTR`) is skipped; any other error stops the turn as
+/// [`AcceptOutcome::Backoff`].
+pub fn accept_pending<T>(
+    mut accept: impl FnMut() -> std::io::Result<T>,
+    mut on_stream: impl FnMut(T),
+) -> AcceptOutcome {
+    loop {
+        match accept() {
+            Ok(stream) => on_stream(stream),
+            Err(e) if e.kind() == ErrorKind::WouldBlock => return AcceptOutcome::Drained,
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    ErrorKind::Interrupted | ErrorKind::ConnectionAborted
+                ) || e.raw_os_error() == Some(libc::EPROTO) => {}
+            Err(e) => return AcceptOutcome::Backoff(e),
+        }
+    }
+}
+
 /// Bind the socket and register the accept source on the loop. Best-effort:
 /// a bind failure is logged but never fatal.
 pub fn insert_ipc_source(handle: &LoopHandle<'static, MargoState>) {
@@ -126,23 +163,52 @@ pub fn insert_ipc_source(handle: &LoopHandle<'static, MargoState>) {
         tracing::warn!(error = %e, "ipc: set_nonblocking");
     }
     let source = Generic::new(listener, Interest::READ, Mode::Level);
-    let res = handle.insert_source(source, |_, listener, state: &mut MargoState| {
-        loop {
-            match listener.accept() {
-                Ok((stream, _)) => state.ipc_accept(stream),
-                Err(e) if e.kind() == ErrorKind::WouldBlock => break,
-                Err(e) => {
-                    tracing::warn!(error = %e, "ipc: accept");
-                    break;
-                }
+    // Our own token, for the backoff timer to re-enable the source.
+    let token: std::rc::Rc<std::cell::Cell<Option<RegistrationToken>>> = Default::default();
+    let timer_token = std::rc::Rc::clone(&token);
+    let loop_handle = handle.clone();
+    // Logged once per out-of-fds episode, not on every retry.
+    let mut backing_off = false;
+    let res = handle.insert_source(source, move |_, listener, state: &mut MargoState| {
+        let outcome = accept_pending(
+            || listener.accept().map(|(stream, _)| stream),
+            |stream| state.ipc_accept(stream),
+        );
+        let AcceptOutcome::Backoff(e) = outcome else {
+            if std::mem::take(&mut backing_off) {
+                tracing::info!("ipc: accepting connections again");
             }
+            return Ok(PostAction::Continue);
+        };
+        if !std::mem::replace(&mut backing_off, true) {
+            tracing::warn!(
+                error = %e,
+                "ipc: accept failing, pausing the listener (retry every {ACCEPT_BACKOFF:?})"
+            );
         }
-        Ok(PostAction::Continue)
+        let Some(token) = timer_token.get() else {
+            return Ok(PostAction::Continue);
+        };
+        let reenable = loop_handle.clone();
+        let timer = calloop::timer::Timer::from_duration(ACCEPT_BACKOFF);
+        if let Err(e) = loop_handle.insert_source(timer, move |_, _, _| {
+            if let Err(e) = reenable.enable(&token) {
+                tracing::error!(error = %e, "ipc: re-enable accept source");
+            }
+            calloop::timer::TimeoutAction::Drop
+        }) {
+            // No timer, no way back from Disable: keep the source live.
+            tracing::error!(error = %e, "ipc: insert accept backoff timer");
+            return Ok(PostAction::Continue);
+        }
+        Ok(PostAction::Disable)
     });
-    if let Err(e) = res {
-        tracing::error!(error = %e, "ipc: insert accept source");
-    } else {
-        tracing::info!(?path, "ipc: listening");
+    match res {
+        Ok(t) => {
+            token.set(Some(t));
+            tracing::info!(?path, "ipc: listening");
+        }
+        Err(e) => tracing::error!(error = %e, "ipc: insert accept source"),
     }
 }
 
@@ -663,12 +729,67 @@ impl MargoState {
 
 #[cfg(test)]
 mod tests {
-    use super::{DrainState, args_to_dispatch_arg, drain_to, pop_line};
+    use super::{
+        AcceptOutcome, DrainState, accept_pending, args_to_dispatch_arg, drain_to, pop_line,
+    };
     use std::io::Read;
     use std::os::unix::net::UnixStream;
 
     fn args(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|s| s.to_string()).collect()
+    }
+
+    // ── accept loop ────────────────────────────────────────
+
+    /// Feed `accept_pending` a scripted sequence of accept() results.
+    fn run_accepts(script: Vec<std::io::Result<u32>>) -> (AcceptOutcome, Vec<u32>, usize) {
+        let mut script = script.into_iter();
+        let mut calls = 0;
+        let mut got = Vec::new();
+        let outcome = accept_pending(
+            || {
+                calls += 1;
+                script
+                    .next()
+                    .unwrap_or_else(|| Err(std::io::ErrorKind::WouldBlock.into()))
+            },
+            |s| got.push(s),
+        );
+        (outcome, got, calls)
+    }
+
+    fn os_err(code: i32) -> std::io::Result<u32> {
+        Err(std::io::Error::from_raw_os_error(code))
+    }
+
+    #[test]
+    fn accept_drains_the_backlog_until_would_block() {
+        let (outcome, got, _) = run_accepts(vec![Ok(1), Ok(2)]);
+        assert!(matches!(outcome, AcceptOutcome::Drained));
+        assert_eq!(got, vec![1, 2]);
+    }
+
+    #[test]
+    fn accept_out_of_fds_backs_off_instead_of_spinning() {
+        // With the fd table full the connection stays in the backlog and a
+        // level-triggered source fires again immediately: the loop must
+        // report it so the source is paused, not just `break`.
+        for code in [libc::EMFILE, libc::ENFILE, libc::ENOBUFS, libc::ENOMEM] {
+            let (outcome, got, _) = run_accepts(vec![Ok(1), os_err(code), Ok(2)]);
+            assert!(matches!(outcome, AcceptOutcome::Backoff(_)), "errno {code}");
+            assert_eq!(got, vec![1], "errno {code}");
+        }
+    }
+
+    #[test]
+    fn accept_skips_a_connection_that_died_in_the_backlog() {
+        // ECONNABORTED / EINTR are about one connection (or a signal), not
+        // the listener: keep accepting the rest.
+        let (outcome, got, calls) =
+            run_accepts(vec![os_err(libc::ECONNABORTED), os_err(libc::EINTR), Ok(7)]);
+        assert!(matches!(outcome, AcceptOutcome::Drained));
+        assert_eq!(got, vec![7]);
+        assert_eq!(calls, 4);
     }
 
     // ── framing: pop_line ──────────────────────────────────
