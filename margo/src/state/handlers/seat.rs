@@ -33,7 +33,9 @@ impl SeatHandler for MargoState {
     /// translates them as if the parent were under the cursor — exactly the
     /// "imleç başka yerde, seçim başka yerde" symptom.
     type PointerFocus = WlSurface;
-    type TouchFocus = FocusTarget;
+    /// Touch focus is the drilled `WlSurface` under each finger, for the
+    /// same reason as the pointer's.
+    type TouchFocus = WlSurface;
 
     fn seat_state(&mut self) -> &mut SeatState<MargoState> {
         &mut self.seat_state

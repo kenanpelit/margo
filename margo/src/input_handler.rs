@@ -20,7 +20,7 @@ use smithay::{
 use tracing::{debug, info};
 
 use crate::{
-    input::{TouchPoint, TouchRelease, find_keybinding, find_lock_binding},
+    input::{find_keybinding, find_lock_binding},
     state::{FocusTarget, MargoState},
 };
 
@@ -96,9 +96,11 @@ pub fn handle_input<B: InputBackend>(state: &mut MargoState, event: InputEvent<B
         InputEvent::GestureHoldEnd { event } => {
             gesture_hold_end(state, event.time().millis(), event.cancelled())
         }
-        InputEvent::TouchDown { event } => handle_touch_down(state, event),
-        InputEvent::TouchMotion { event } => handle_touch_motion(state, event),
-        InputEvent::TouchUp { event } => handle_touch_up(state, event),
+        InputEvent::TouchDown { event } => crate::input::touch::handle_touch_down(state, event),
+        InputEvent::TouchMotion { event } => crate::input::touch::handle_touch_motion(state, event),
+        InputEvent::TouchUp { event } => crate::input::touch::handle_touch_up(state, event),
+        InputEvent::TouchFrame { .. } => crate::input::touch::touch_frame(state),
+        InputEvent::TouchCancel { .. } => crate::input::touch::touch_cancel(state),
         InputEvent::SwitchToggle { event } => handle_switch_toggle(state, event),
         _ => {}
     }
@@ -348,7 +350,13 @@ fn derive_motion_code(dx: f64, dy: f64) -> u32 {
 /// `source` is just a log tag so the trace clearly says which input
 /// path matched — handy when binding-debugging on a 2-in-1 with both
 /// a touchpad and a touchscreen.
-fn dispatch_swipe(state: &mut MargoState, dx: f64, dy: f64, fingers: u32, source: &'static str) {
+pub(crate) fn dispatch_swipe(
+    state: &mut MargoState,
+    dx: f64,
+    dy: f64,
+    fingers: u32,
+    source: &'static str,
+) {
     if state.session_locked {
         return;
     }
@@ -399,98 +407,6 @@ fn dispatch_swipe(state: &mut MargoState, dx: f64, dy: f64, fingers: u32, source
             fingers, motion, mods
         );
     }
-}
-
-// ── Touchscreen handling ────────────────────────────────────────────────────
-//
-// Direct touch events (true touchscreen / 2-in-1 panel; not touchpad
-// gestures, which arrive as `InputEvent::GestureSwipe*` and have
-// already been distilled by libinput). Multi-finger swipe gets routed
-// to the same `gesture_bindings` table that touchpad swipe uses, so a
-// binding written as `gesture = swipe, 3, right, view_tag` fires for
-// either input path.
-
-fn handle_touch_down<B: InputBackend, E: smithay::backend::input::TouchDownEvent<B>>(
-    state: &mut MargoState,
-    event: E,
-) {
-    let id: i32 = event.slot().into();
-    // libinput delivers absolute coords as `[0, 1]` normalised; we
-    // only need them as a magnitude, so the unit doesn't matter as
-    // long as DOWN/MOTION/UP agree.
-    let pos = event.position_transformed(smithay::utils::Size::from((1, 1)));
-    let (x, y) = (pos.x, pos.y);
-    let now = event.time().millis();
-    state.input_touch.points.push(TouchPoint {
-        id,
-        x,
-        y,
-        start_x: x,
-        start_y: y,
-        start_time: now,
-    });
-    if state.input_touch.points.len() >= 2 {
-        state.input_touch.gesture_armed = true;
-    }
-}
-
-fn handle_touch_motion<B: InputBackend, E: smithay::backend::input::TouchMotionEvent<B>>(
-    state: &mut MargoState,
-    event: E,
-) {
-    let id: i32 = event.slot().into();
-    let pos = event.position_transformed(smithay::utils::Size::from((1, 1)));
-    if let Some(p) = state.input_touch.points.iter_mut().find(|p| p.id == id) {
-        p.x = pos.x;
-        p.y = pos.y;
-    }
-}
-
-fn handle_touch_up<B: InputBackend, E: smithay::backend::input::TouchUpEvent<B>>(
-    state: &mut MargoState,
-    event: E,
-) {
-    let id: i32 = event.slot().into();
-    let removed = state
-        .input_touch
-        .points
-        .iter()
-        .position(|p| p.id == id)
-        .map(|i| state.input_touch.points.remove(i));
-
-    if state.input_touch.gesture_armed {
-        if let Some(p) = removed {
-            state.input_touch.releases.push(TouchRelease {
-                start_x: p.start_x,
-                start_y: p.start_y,
-                end_x: p.x,
-                end_y: p.y,
-            });
-        }
-    }
-
-    // Gesture completes when every finger is up.
-    if !state.input_touch.points.is_empty() {
-        return;
-    }
-    if !state.input_touch.gesture_armed {
-        return;
-    }
-    let releases = std::mem::take(&mut state.input_touch.releases);
-    state.input_touch.gesture_armed = false;
-    if releases.len() < 2 {
-        // Not a multi-finger gesture; could be a tap that briefly
-        // overlapped a pre-existing touch. Drop without dispatching.
-        return;
-    }
-
-    // Average displacement across every finger that contributed —
-    // smooths out the natural finger-to-finger variation in a
-    // hand-driven swipe.
-    let n = releases.len() as f64;
-    let avg_dx: f64 = releases.iter().map(|r| r.end_x - r.start_x).sum::<f64>() / n;
-    let avg_dy: f64 = releases.iter().map(|r| r.end_y - r.start_y).sum::<f64>() / n;
-    dispatch_swipe(state, avg_dx, avg_dy, releases.len() as u32, "touchscreen");
 }
 
 /// Put the configured xkb keymap back after a virtual keyboard's own
@@ -2015,17 +1931,17 @@ fn top_menu_layer_open(state: &MargoState) -> bool {
     })
 }
 
-type SurfaceHit = (
+pub(crate) type SurfaceHit = (
     smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     Point<f64, Logical>,
 );
-type FocusHit = (FocusTarget, Point<f64, Logical>);
+pub(crate) type FocusHit = (FocusTarget, Point<f64, Logical>);
 
 /// Keyboard-level target (toplevel / layer / lock surface) and the
 /// drilled pointer surface under `pos`, from a single walk of the layer
 /// maps and the space. Pointer motion needs both — one for sloppy focus,
 /// one for `pointer.motion` — and used to hit-test twice per event.
-fn hit_test(
+pub(crate) fn hit_test(
     state: &MargoState,
     pos: Point<f64, Logical>,
 ) -> (Option<FocusHit>, Option<SurfaceHit>) {

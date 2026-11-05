@@ -1,4 +1,4 @@
-//! Keyboard / pointer / touch / DnD focus target — the
+//! Keyboard / pointer / DnD focus target — the
 //! `MargoState::seat` focus channel's payload.
 //!
 //! Extracted from `state.rs` (roadmap Q1). One enum + a handful of
@@ -24,7 +24,6 @@ use smithay::{
             GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent, MotionEvent,
             PointerTarget, RelativeMotionEvent,
         },
-        touch::TouchTarget,
     },
     reexports::wayland_server::{DisplayHandle, protocol::wl_surface::WlSurface},
     utils::{Logical, Point, Serial},
@@ -321,87 +320,6 @@ impl PointerTarget<MargoState> for FocusTarget {
         if let Some(s) = self.inner_wl_surface() {
             PointerTarget::gesture_hold_end(s, seat, data, event);
         }
-    }
-}
-
-impl TouchTarget<MargoState> for FocusTarget {
-    fn down(
-        &self,
-        seat: &Seat<MargoState>,
-        data: &mut MargoState,
-        event: &smithay::input::touch::DownEvent,
-    ) {
-        if let Some(s) = self.inner_wl_surface() {
-            TouchTarget::down(s, seat, data, event);
-        }
-    }
-    fn up(
-        &self,
-        seat: &Seat<MargoState>,
-        data: &mut MargoState,
-        event: &smithay::input::touch::UpEvent,
-    ) {
-        if let Some(s) = self.inner_wl_surface() {
-            TouchTarget::up(s, seat, data, event);
-        }
-    }
-    fn motion(
-        &self,
-        seat: &Seat<MargoState>,
-        data: &mut MargoState,
-        event: &smithay::input::touch::MotionEvent,
-    ) {
-        if let Some(s) = self.inner_wl_surface() {
-            TouchTarget::motion(s, seat, data, event);
-        }
-    }
-    fn frame(
-        &self,
-        seat: &Seat<MargoState>,
-        data: &mut MargoState,
-        marker: smithay::input::touch::FrameMarker,
-    ) {
-        if let Some(s) = self.inner_wl_surface() {
-            TouchTarget::frame(s, seat, data, marker);
-        }
-    }
-    fn cancel(
-        &self,
-        seat: &Seat<MargoState>,
-        data: &mut MargoState,
-        marker: smithay::input::touch::FrameMarker,
-    ) {
-        if let Some(s) = self.inner_wl_surface() {
-            TouchTarget::cancel(s, seat, data, marker);
-        }
-    }
-    fn shape(
-        &self,
-        seat: &Seat<MargoState>,
-        data: &mut MargoState,
-        event: &smithay::input::touch::ShapeEvent,
-    ) {
-        if let Some(s) = self.inner_wl_surface() {
-            TouchTarget::shape(s, seat, data, event);
-        }
-    }
-    fn orientation(
-        &self,
-        seat: &Seat<MargoState>,
-        data: &mut MargoState,
-        event: &smithay::input::touch::OrientationEvent,
-    ) {
-        if let Some(s) = self.inner_wl_surface() {
-            TouchTarget::orientation(s, seat, data, event);
-        }
-    }
-    fn last_frame(
-        &self,
-        seat: &Seat<MargoState>,
-        data: &mut MargoState,
-    ) -> Option<smithay::input::touch::FrameMarker> {
-        self.inner_wl_surface()
-            .and_then(|s| TouchTarget::last_frame(s, seat, data))
     }
 }
 

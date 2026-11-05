@@ -38,6 +38,7 @@ impl Server {
         // Like main.rs: margo always has a pointer. smithay answers
         // `get_pointer` without the capability with a protocol error.
         state.seat.add_pointer();
+        state.seat.add_touch();
 
         Self {
             event_loop,

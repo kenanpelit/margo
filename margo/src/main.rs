@@ -1618,6 +1618,9 @@ fn main() -> Result<()> {
     margo.apply_lock_keys();
 
     margo.seat.add_pointer();
+    // wl_touch: touchscreen fingers go to the surface under them
+    // (`input::touch`).
+    margo.seat.add_touch();
 
     start_dbus_services(&event_loop, &mut margo);
 

@@ -85,6 +85,7 @@ mod tag_mask;
 mod tag_mon;
 mod tag_transition_anim;
 mod theme;
+mod touch;
 mod twilight;
 mod virtual_pointer;
 mod window_rules;

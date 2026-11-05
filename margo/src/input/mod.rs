@@ -5,6 +5,7 @@
 use margo_config::{Config, KeyBinding, Modifiers};
 
 pub mod grabs;
+pub mod touch;
 
 // ── Keyboard state ────────────────────────────────────────────────────────────
 
@@ -98,6 +99,10 @@ pub struct TouchState {
     /// finger is up.
     pub gesture_armed: bool,
     pub releases: Vec<TouchRelease>,
+    /// margo took this touch sequence for a `gesturebind` (the client got
+    /// `wl_touch.cancel`); nothing reaches clients until every finger is
+    /// up. See `input::touch`.
+    pub claimed: bool,
 }
 
 // ── Gesture state ─────────────────────────────────────────────────────────────

@@ -414,6 +414,15 @@ gesturebind = NONE, up_left,   4, focusmon, left
 gesturebind = NONE, up_right,  4, focusmon, right
 ```
 
+On a touchscreen every finger goes to the app under it (taps, drags, pinch
+zoom), and a first finger focuses the window it lands on. Once as many fingers
+are down as some `gesturebind` uses, margo takes the touch for the gesture:
+the app's touch sequence is cancelled and the swipe runs its bind when the
+last finger lifts. Without a matching bind (two-finger pinch with only 3/4
+finger binds) the touches stay the app's. The touchscreen maps to the built-in
+panel (`eDP-*`, `LVDS-*`, `DSI-*`), or the first output when there is none,
+following its rotation.
+
 Mouse buttons bind with `mousebind`, and the scroll wheel with `axisbind`:
 
 ```ini

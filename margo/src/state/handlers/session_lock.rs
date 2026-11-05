@@ -61,6 +61,10 @@ impl SessionLockHandler for MargoState {
         self.set_keyboard_focus(None, SERIAL_COUNTER.next_serial());
         if let Some(touch) = self.seat.get_touch() {
             touch.unset_grab(self);
+            // A finger already down on a window keeps its focus in smithay;
+            // without a cancel its motion would still reach that window
+            // behind the lock.
+            touch.cancel(self);
         }
         self.cursor_status = CursorImageStatus::default_named();
         self.input_gesture = Default::default();

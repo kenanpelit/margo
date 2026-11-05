@@ -205,8 +205,8 @@ pub struct Protocols {
     /// to another client, which imports it as a parent.
     pub xdg_foreign: smithay::wayland::xdg_foreign::XdgForeignState,
     /// `zwp_tablet_manager_v2`: Wacom / Huion drawing tablets — pen
-    /// pressure, tilt, eraser, buttons. Without this, tablets fall
-    /// back to mouse-emulation only.
+    /// pressure, tilt, eraser, buttons. Its global is removed at once
+    /// until tablet tool events are routed (roadmap W2.3).
     pub tablet_manager: smithay::wayland::tablet_manager::TabletManagerState,
     /// `wp_security_context_v1`: lets Flatpak / sandboxed clients
     /// connect through a separate socket the sandbox engine
@@ -433,9 +433,13 @@ impl Protocols {
             smithay::wayland::single_pixel_buffer::SinglePixelBufferState::new::<MargoState>(dh);
         // `xdg_foreign_v2` — cross-process surface embedding.
         let xdg_foreign = smithay::wayland::xdg_foreign::XdgForeignState::new::<MargoState>(dh);
-        // `zwp_tablet_manager_v2` — pen tablets.
+        // `zwp_tablet_manager_v2` — pen tablets. Withdrawn right away:
+        // margo doesn't route tablet tool events yet (roadmap W2.3), and
+        // advertising the global made apps believe a tablet exists. The
+        // state stays so the delegate still compiles.
         let tablet_manager =
             smithay::wayland::tablet_manager::TabletManagerState::new::<MargoState>(dh);
+        dh.remove_global::<MargoState>(tablet_manager.global());
         // `wp_security_context_v1` — sandboxed-client socket
         // pre-allocation. Clients connecting through such a socket are
         // marked restricted (see `state/handlers/security_context.rs`);

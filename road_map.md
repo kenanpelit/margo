@@ -772,7 +772,7 @@ three" below.
 
 | # | Protocol | What it enables | smithay support | Cost |
 |---|---|---|---|---|
-| **P6** ✅ | `zwp_tablet_manager_v2` | Wacom / Huion drawing tablets — pen pressure, tilt, eraser, buttons. Shipped in `74a0edb` — folded the orphan `impl TabletSeatHandler` that was sitting in state.rs into the new handler file. | `delegate_tablet_manager!` | mid |
+| **P6** ⏸ | `zwp_tablet_manager_v2` | Wacom / Huion drawing tablets — pen pressure, tilt, eraser, buttons. Global withdrawn until W2.3 routes tablet tool events; it was advertised with no events behind it. Shipped in `74a0edb` — folded the orphan `impl TabletSeatHandler` that was sitting in state.rs into the new handler file. | `delegate_tablet_manager!` | mid |
 | **P7** ✅ | `zwlr_virtual_pointer_manager_v1` | Companion to `zwp_virtual_keyboard_v1` — remote-desktop / accessibility / `wtype --click` pointer injection. Shipped `7fdbcca` — near-verbatim niri port; synthetic `VirtualPointerInputBackend` events fed through `input_handler::handle_input` (same focus/constraint path as libinput). | hand-rolled — ported from niri (~563 LOC ref) | done 2026-05-21 |
 | **P8** ✅ | `wp_security_context_v1` | Flatpak / sandboxed app identification. Shipped in `74a0edb` — handler inserts listener source into calloop. Restricted-client enforcement (gating sensitive protocols) is a follow-up. | `delegate_security_context!` | low |
 | **P9** ✅ | `wp_single_pixel_buffer_v1` | Solid-color buffer optimization — modern apps (GTK4, kwin clients) skip a real buffer alloc for opaque-fill regions. Shipped in `dc44818`. | `delegate_single_pixel_buffer!` | trivial |

@@ -106,7 +106,7 @@ runtime-checked even where the per-protocol behaviour isn't.
 | `zwp_input_method_manager_v2` | ✅ | ✅ | ❌ | ❌ | as above |
 | `zwp_virtual_keyboard_manager_v1` | ✅ | ✅ | ❌ | ❌ | synthetic key injection untested |
 | `zwlr_virtual_pointer_manager_v1` | ✅ | ✅ | ❌ | ❌ | hand-rolled (`protocols/virtual_pointer.rs`); feeds normal input path |
-| `zwp_tablet_manager_v2` | ✅ | ✅ | ❌ | ❌ | no tablet in CI |
+| `zwp_tablet_manager_v2` | ⏸ | ❌ | ✅ | ❌ | global withdrawn until tablet tool events are routed (road_map W2.3); `tests/touch.rs` pins that it is not advertised |
 | `zwp_keyboard_shortcuts_inhibit_v1` | ✅ | ✅ | ❌ | ❌ | inhibit grant/revoke untested |
 | `zwp_xwayland_keyboard_grab_v1` | ✅ | ✅ | ❌ | ❌ | **margo-unique**; X11-side grab, hard to fixture |
 

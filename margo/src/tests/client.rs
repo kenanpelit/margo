@@ -70,6 +70,7 @@ use wayland_client::protocol::wl_shm_pool::WlShmPool;
 use wayland_client::protocol::wl_subcompositor::WlSubcompositor;
 use wayland_client::protocol::wl_subsurface::WlSubsurface;
 use wayland_client::protocol::wl_surface::{self, WlSurface};
+use wayland_client::protocol::wl_touch::{self, WlTouch};
 use wayland_client::{Connection, Dispatch, Proxy, QueueHandle};
 
 /// Stable id for talking about a particular client across the
@@ -136,6 +137,10 @@ pub struct ClientState {
     pub gesture_events: Vec<String>,
     /// `ext_session_lock_v1.finished` arrived on one of this client's locks.
     pub session_lock_finished: bool,
+    /// `wl_touch` events in arrival order, e.g. `"down 3 0 10 20"` (slot,
+    /// surface protocol id, surface-local x y), `"motion 0 15 20"`,
+    /// `"up 0"`, `"frame"`, `"cancel"`.
+    pub touch_events: Vec<String>,
 }
 
 /// Sync sentinel: each `roundtrip` mints one and the fixture spins
@@ -467,6 +472,15 @@ impl Client {
         let pointer = seat.get_pointer(&self.qh, ());
         self.connection.flush().expect("client flush");
         pointer
+    }
+
+    /// Bind `wl_seat` and obtain a touch object from it; events land in
+    /// `state.touch_events`.
+    pub fn create_touch(&mut self) -> WlTouch {
+        let seat: WlSeat = self.bind_global(7);
+        let touch = seat.get_touch(&self.qh, ());
+        self.connection.flush().expect("client flush");
+        touch
     }
 
     /// Subscribe `pointer` to swipe, pinch and hold gestures
@@ -1030,6 +1044,29 @@ impl Dispatch<WlPointer, ()> for ClientState {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
+    }
+}
+
+impl Dispatch<WlTouch, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        _: &WlTouch,
+        event: wl_touch::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        let line = match event {
+            wl_touch::Event::Down {
+                surface, id, x, y, ..
+            } => format!("down {id} {} {x:.0} {y:.0}", surface.id().protocol_id()),
+            wl_touch::Event::Motion { id, x, y, .. } => format!("motion {id} {x:.0} {y:.0}"),
+            wl_touch::Event::Up { id, .. } => format!("up {id}"),
+            wl_touch::Event::Frame => "frame".into(),
+            wl_touch::Event::Cancel => "cancel".into(),
+            _ => return,
+        };
+        state.touch_events.push(line);
     }
 }
 
