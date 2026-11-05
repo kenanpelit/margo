@@ -56,7 +56,6 @@ pub(crate) fn render_dropin(h: &LogindHandlers) -> String {
 }
 
 const MAIN: &str = "/etc/systemd/logind.conf";
-const DROPIN: &str = "/etc/systemd/logind.conf.d/99-margo.conf";
 
 /// Read main conf + every *.conf.d/*.conf (sorted) for effective values.
 pub async fn read_handlers() -> LogindHandlers {
@@ -81,13 +80,33 @@ pub async fn read_handlers() -> LogindHandlers {
     parse_handlers(&frags)
 }
 
-/// Write the managed drop-in with elevated privileges (silent `sudo -n` when
-/// available, else the polkit agent — see [`crate::sys::privileged`]). Does NOT
+/// The privileged argv writing the drop-in: the root helper's fixed
+/// `logind-dropin` verb (fixed path, body on stdin, re-validated as
+/// root), never a shell.
+pub(crate) fn dropin_argv() -> Vec<String> {
+    mshell_privileged::lossy(&mshell_privileged::Request::LogindDropin.argv())
+}
+
+/// The helper's own check, run before the prompt: a value read back
+/// from a hand-edited logind.conf that root would refuse fails here.
+pub(crate) fn check_dropin(body: &str) -> Result<(), String> {
+    mshell_privileged::validate::logind_dropin(body.as_bytes()).map_err(|e| e.message().to_string())
+}
+
+/// Write the managed drop-in
+/// ([`mshell_privileged::validate::LOGIND_DROPIN`]) as root through
+/// `mshell-privileged logind-dropin` (silent `sudo -n` when available,
+/// else the polkit agent — see [`crate::sys::privileged`]). Does NOT
 /// restart logind — changes apply on next login. Err on failure/denial.
 pub async fn write_dropin(h: &LogindHandlers) -> Result<(), String> {
     let body = render_dropin(h);
-    let script = format!("mkdir -p /etc/systemd/logind.conf.d && cat > {DROPIN}");
-    crate::sys::privileged::run_with_stdin(&["sh", "-c", &script], body.as_bytes()).await
+    check_dropin(&body)?;
+    if !mshell_privileged::installed() {
+        return Err(mshell_privileged::MISSING.to_string());
+    }
+    let argv = dropin_argv();
+    let args: Vec<&str> = argv.iter().map(String::as_str).collect();
+    crate::sys::privileged::run_with_stdin(&args, body.as_bytes()).await
 }
 
 #[cfg(test)]
@@ -109,6 +128,35 @@ mod tests {
         assert_eq!(h.lid, "suspend");
         assert_eq!(h.lid_external, "suspend");
     }
+    #[test]
+    fn the_dropin_goes_through_the_helper_and_passes_its_check() {
+        assert_eq!(dropin_argv(), [mshell_privileged::HELPER, "logind-dropin"]);
+        for power_key in ACTIONS {
+            for lid in ACTIONS {
+                for lid_external in ACTIONS {
+                    let h = LogindHandlers {
+                        power_key: power_key.into(),
+                        lid: lid.into(),
+                        lid_external: lid_external.into(),
+                    };
+                    let body = render_dropin(&h);
+                    assert_eq!(
+                        mshell_privileged::validate::logind_dropin(body.as_bytes()),
+                        Ok(()),
+                        "{body}"
+                    );
+                }
+            }
+        }
+        // A value read back from a hand-edited logind.conf that root
+        // would refuse is refused before the prompt.
+        let h = LogindHandlers {
+            power_key: "ignore\nKillUserProcesses=no".into(),
+            ..LogindHandlers::default()
+        };
+        assert!(check_dropin(&render_dropin(&h)).is_err());
+    }
+
     #[test]
     fn serializes_dropin() {
         let h = LogindHandlers {

@@ -45,7 +45,8 @@ pub async fn run(args: &[&str]) -> Result<(), String> {
 }
 
 /// Like [`run`] but feeds `input` to the command's stdin (e.g. `chpasswd`,
-/// `cat > file`) so a secret/body never lands in the process arguments.
+/// the helper's `logind-dropin`) so a secret/body never lands in the process
+/// arguments.
 pub async fn run_with_stdin(args: &[&str], input: &[u8]) -> Result<(), String> {
     use tokio::io::AsyncWriteExt;
     let sudo = have_sudo_n().await;

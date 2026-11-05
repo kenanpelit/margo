@@ -97,6 +97,18 @@
     <annotate key="org.freedesktop.policykit.exec.argv1">charge-limit</annotate>
   </action>
 
+  <action id="org.margo.mshell.privileged.logind-dropin">
+    <description>Change the power button and lid actions</description>
+    <message>Authentication is required to change what the power button and closing the lid do (/etc/systemd/logind.conf.d/99-margo.conf)</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/mshell/mshell-privileged</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">logind-dropin</annotate>
+  </action>
+
   <action id="org.margo.mshell.privileged.upgrade">
     <description>Upgrade the system</description>
     <message>Authentication is required to upgrade the system from the official repositories (pacman -Syu)</message>

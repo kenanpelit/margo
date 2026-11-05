@@ -2,7 +2,8 @@
 //!
 //! Every privileged action the shell offers (pacnew review, rollback,
 //! the background upgrade, signalling another user's process, a SMART
-//! read, a ThinkPad fan level, the battery charge limit) is one fixed subcommand of this binary,
+//! read, a ThinkPad fan level, the battery charge limit, the logind
+//! power-key/lid drop-in) is one fixed subcommand of this binary,
 //! with its own polkit action (`org.margo.mshell.privileged.<sub>`,
 //! matched on `exec.path` + `exec.argv1`), so the password dialog says
 //! exactly what root is about to do instead of "run /bin/sh". There is
@@ -44,7 +45,7 @@ pub fn installed() -> bool {
 }
 
 /// Every subcommand, in policy order.
-pub const SUBCOMMANDS: [&str; 9] = [
+pub const SUBCOMMANDS: [&str; 10] = [
     "pacnew-install",
     "pacnew-merge",
     "pacnew-remove",
@@ -52,6 +53,7 @@ pub const SUBCOMMANDS: [&str; 9] = [
     "smart-read",
     "fan-set",
     "charge-limit",
+    "logind-dropin",
     "upgrade",
     "rollback",
 ];
@@ -112,6 +114,10 @@ pub enum Request {
     /// has one under `/sys/class/power_supply` (found by the helper
     /// itself), and the start threshold to 5 below it where present.
     ChargeLimit { limit: u8 },
+    /// Write [`validate::LOGIND_DROPIN`] from a body on stdin that
+    /// passes [`validate::logind_dropin`] (the power key and lid keys
+    /// Settings manages, nothing else).
+    LogindDropin,
     /// `pacman -Syu --noconfirm` (official repositories only).
     Upgrade,
     /// `pacman -U --noconfirm <cached package>`.
@@ -128,6 +134,7 @@ impl Request {
             Request::SmartRead { .. } => "smart-read",
             Request::FanSet { .. } => "fan-set",
             Request::ChargeLimit { .. } => "charge-limit",
+            Request::LogindDropin => "logind-dropin",
             Request::Upgrade => "upgrade",
             Request::Rollback { .. } => "rollback",
         }
@@ -153,7 +160,7 @@ impl Request {
             Request::SmartRead { devices } => devices.iter().map(OsString::from).collect(),
             Request::FanSet { level } => vec![level.keyword().into()],
             Request::ChargeLimit { limit } => vec![limit.to_string().into()],
-            Request::Upgrade => Vec::new(),
+            Request::LogindDropin | Request::Upgrade => Vec::new(),
             Request::Rollback { package } => vec![p(package)],
         }
     }
@@ -237,6 +244,10 @@ impl Request {
                 Request::ChargeLimit {
                     limit: validate::charge_limit(a(0))?,
                 }
+            }
+            "logind-dropin" => {
+                arity(0)?;
+                Request::LogindDropin
             }
             "upgrade" => {
                 arity(0)?;
@@ -322,6 +333,7 @@ mod tests {
             level: FanLevel::FullSpeed,
         });
         round_trip(Request::ChargeLimit { limit: 80 });
+        round_trip(Request::LogindDropin);
         round_trip(Request::Upgrade);
         round_trip(Request::Rollback {
             package: "/var/cache/pacman/pkg/a-1-1-any.pkg.tar.zst".into(),

@@ -571,3 +571,68 @@ pub fn charge_limit(root: &Sysroot, limit: u8) -> Result<(), Error> {
     }
     first_err.map_or(Ok(()), Err)
 }
+
+/// Write the logind drop-in ([`crate::validate::LOGIND_DROPIN`],
+/// `0644`, owned by root) with `body` (already validated), creating
+/// `logind.conf.d` (`0755`) when missing. The directory and the file
+/// must not be symlinks (an admin-managed link is left alone); the
+/// write is the same temp-file + rename as a pacnew install.
+pub fn logind_dropin(root: &Sysroot, body: &[u8]) -> Result<(), Error> {
+    let logical = Path::new(crate::validate::LOGIND_DROPIN);
+    let dir_logical = logical
+        .parent()
+        .ok_or_else(|| Error::Invalid("drop-in has no directory".into()))?;
+    let parent = open_parent(root, crate::validate::ETC, dir_logical)?;
+    match lstat_at(&parent.dir, &parent.name)? {
+        Some(libc::S_IFDIR) => {}
+        None => {
+            let c = cstr(&parent.name)?;
+            // SAFETY: valid dirfd and NUL-terminated name.
+            let r = unsafe { libc::mkdirat(parent.dir.as_raw_fd(), c.as_ptr(), 0o755) };
+            if r != 0 && errno().raw_os_error() != Some(libc::EEXIST) {
+                return Err(Error::Io(format!("{}: {}", dir_logical.display(), errno())));
+            }
+        }
+        Some(t) => {
+            return Err(Error::Refused(format!(
+                "refusing {}: {}",
+                dir_logical.display(),
+                type_name(t)
+            )));
+        }
+    }
+    let dir = openat(
+        &parent.dir,
+        &parent.name,
+        libc::O_RDONLY | libc::O_DIRECTORY,
+        0,
+    )
+    .map_err(|e| match e.raw_os_error() {
+        Some(libc::ELOOP) | Some(libc::ENOTDIR) => Error::Refused(format!(
+            "refusing {}: a symlink or not a directory",
+            dir_logical.display()
+        )),
+        _ => Error::Io(format!("{}: {e}", dir_logical.display())),
+    })?;
+    let name = logical
+        .file_name()
+        .ok_or_else(|| Error::Invalid("drop-in has no name".into()))?
+        .to_os_string();
+    let d = InDir {
+        dir,
+        name: name.clone(),
+        shown: logical.to_path_buf(),
+    };
+    regular_or_absent(&d, &name, logical)?;
+    // SAFETY: getters with no arguments.
+    let (uid, gid) = unsafe { (libc::geteuid(), libc::getegid()) };
+    let attrs = Attrs {
+        mode: 0o644,
+        uid,
+        gid,
+        times: None,
+    };
+    replace(&d, &name, body, &attrs)?;
+    sync_dir(&d.dir);
+    Ok(())
+}

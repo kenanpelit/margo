@@ -403,6 +403,99 @@ fn charge_limit_refuses_hostile_values_and_planted_links() {
     );
 }
 
+const DROPIN: &str = "/etc/systemd/logind.conf.d/99-margo.conf";
+const GOOD_DROPIN: &str = "# Managed by margo Settings — do not edit by hand.\n[Login]\nHandlePowerKey=ignore\nHandleLidSwitch=suspend\nHandleLidSwitchExternalPower=lock\nHandleLidSwitchDocked=suspend\n";
+
+#[test]
+fn logind_dropin_writes_the_fixed_file_from_stdin() {
+    let f = Fixture::new();
+    std::fs::create_dir_all(f.p("/etc/systemd")).expect("mkdir");
+    let o = f.run_stdin(&["logind-dropin"], Some(GOOD_DROPIN.as_bytes()));
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert_eq!(f.read(DROPIN), GOOD_DROPIN);
+    assert_eq!(mode(&f.p(DROPIN)), 0o644);
+    // Rewriting replaces it.
+    let next = GOOD_DROPIN.replace("HandlePowerKey=ignore", "HandlePowerKey=poweroff");
+    let o = f.run_stdin(&["logind-dropin"], Some(next.as_bytes()));
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert_eq!(f.read(DROPIN), next);
+    let leftovers = std::fs::read_dir(f.p("/etc/systemd/logind.conf.d"))
+        .expect("ls")
+        .count();
+    assert_eq!(leftovers, 1, "no temp files left");
+    // It takes no arguments: a path on the command line is a usage error.
+    let o = f.run_stdin(&["logind-dropin", "/etc/shadow"], Some(next.as_bytes()));
+    assert_eq!(code(&o), 2, "{}", stderr(&o));
+}
+
+#[test]
+fn logind_dropin_refuses_anything_but_the_settings_keys() {
+    let f = Fixture::new();
+    std::fs::create_dir_all(f.p("/etc/systemd/logind.conf.d")).expect("mkdir");
+    f.write(DROPIN, "old\n");
+    let long = format!("[Login]\nHandlePowerKey=ignore\n#{}\n", "x".repeat(5000));
+    for bad in [
+        "",
+        "HandlePowerKey=ignore\n",
+        "[Login]\n",
+        "[Login]\nKillUserProcesses=no\n",
+        "[Login]\nHandlePowerKey=ignore\nHandlePowerKey=lock\n",
+        "[Login]\nHandlePowerKey=factory-reset\n",
+        "[Login]\nHandlePowerKey=ignore\n[Other]\nHandleLidSwitch=lock\n",
+        "[Login]\n[Login]\nHandlePowerKey=ignore\n",
+        "[Login]\nHandlePowerKey=ignore\\\nKillUserProcesses=no\n",
+        "[Login]\n# comment \\\nHandlePowerKey=ignore\n",
+        "[Login]\nHandlePowerKey = ignore\n",
+        "[Login]\nHandlePowerKey=ignore\r\n",
+        "[Login]\nHandlePowerKey=ignore\0\n",
+        "[Login]\nHandlePowerKey=ignore suspend\n",
+        "[Login]\nHandlePowerKey\n",
+        "[Login]\n.include /tmp/evil.conf\n",
+        &long,
+    ] {
+        let o = f.run_stdin(&["logind-dropin"], Some(bad.as_bytes()));
+        assert_eq!(code(&o), 2, "{bad:?}: {}", stderr(&o));
+    }
+    let o = f.run_stdin(
+        &["logind-dropin"],
+        Some(b"[Login]\nHandlePowerKey=caf\xe9\n"),
+    );
+    assert_eq!(code(&o), 2, "non-UTF-8");
+    assert_eq!(f.read(DROPIN), "old\n", "nothing written");
+}
+
+#[test]
+fn logind_dropin_refuses_planted_links() {
+    // A symlinked drop-in (or drop-in directory) is not written through.
+    let f = Fixture::new();
+    let victim = f.write("/etc/sudoers", "root ALL\n");
+    std::fs::create_dir_all(f.p("/etc/systemd/logind.conf.d")).expect("mkdir");
+    symlink(&victim, f.p(DROPIN)).expect("symlink");
+    let o = f.run_stdin(&["logind-dropin"], Some(GOOD_DROPIN.as_bytes()));
+    assert_eq!(code(&o), 3, "{}", stderr(&o));
+    assert_eq!(f.read("/etc/sudoers"), "root ALL\n");
+    assert!(
+        std::fs::symlink_metadata(f.p(DROPIN))
+            .expect("lstat")
+            .file_type()
+            .is_symlink()
+    );
+
+    let g = Fixture::new();
+    std::fs::create_dir_all(g.p("/etc/systemd")).expect("mkdir");
+    std::fs::create_dir_all(g.p("/home/u/dots")).expect("mkdir");
+    symlink(g.p("/home/u/dots"), g.p("/etc/systemd/logind.conf.d")).expect("symlink");
+    let o = g.run_stdin(&["logind-dropin"], Some(GOOD_DROPIN.as_bytes()));
+    assert_eq!(code(&o), 3, "{}", stderr(&o));
+    assert!(!g.p("/home/u/dots/99-margo.conf").exists());
+
+    // The drop-in name taken by a directory.
+    let h = Fixture::new();
+    std::fs::create_dir_all(h.p(DROPIN)).expect("mkdir");
+    let o = h.run_stdin(&["logind-dropin"], Some(GOOD_DROPIN.as_bytes()));
+    assert_eq!(code(&o), 3, "{}", stderr(&o));
+}
+
 #[test]
 fn kill_rechecks_the_start_time() {
     let f = Fixture::new();

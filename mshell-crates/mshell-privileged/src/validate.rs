@@ -199,6 +199,88 @@ pub fn charge_limit(arg: &OsStr) -> Result<u8, Error> {
         .ok_or_else(|| invalid("charge limit (1-100)", arg))
 }
 
+/// The logind drop-in Settings writes (power key and lid actions).
+pub const LOGIND_DROPIN: &str = "/etc/systemd/logind.conf.d/99-margo.conf";
+/// A drop-in body larger than this is refused (Settings writes ~200 B).
+pub const MAX_LOGIND_DROPIN: usize = 4096;
+/// The `[Login]` keys Settings writes, each at most once.
+pub const LOGIND_KEYS: [&str; 4] = [
+    "HandlePowerKey",
+    "HandleLidSwitch",
+    "HandleLidSwitchExternalPower",
+    "HandleLidSwitchDocked",
+];
+/// The actions logind takes for those keys (logind.conf(5)), minus
+/// `factory-reset`: Settings never offers it, and a lid switch must not
+/// be turned into a factory reset through this helper.
+pub const LOGIND_ACTIONS: [&str; 11] = [
+    "ignore",
+    "poweroff",
+    "reboot",
+    "halt",
+    "kexec",
+    "suspend",
+    "hibernate",
+    "hybrid-sleep",
+    "suspend-then-hibernate",
+    "sleep",
+    "lock",
+];
+
+/// A logind.conf drop-in body as Settings renders it: UTF-8, no
+/// control character but `\n`, `#`/`;` comments and blank lines, then
+/// exactly one `[Login]` header followed by `Key=action` lines (no
+/// spaces) for [`LOGIND_KEYS`], each once, values from
+/// [`LOGIND_ACTIONS`], at least one key. No line may end in `\`
+/// (systemd joins such a line with the next one, comments included).
+pub fn logind_dropin(body: &[u8]) -> Result<(), Error> {
+    let bad = |why: &str| Error::Invalid(format!("invalid logind drop-in: {why}"));
+    if body.len() > MAX_LOGIND_DROPIN {
+        return Err(bad("larger than 4 KiB"));
+    }
+    let text = std::str::from_utf8(body).map_err(|_| bad("not UTF-8"))?;
+    if text.chars().any(|c| c.is_control() && c != '\n') {
+        return Err(bad("a control character"));
+    }
+    let mut in_login = false;
+    let mut seen: Vec<&str> = Vec::new();
+    for line in text.lines() {
+        if line.ends_with('\\') {
+            return Err(bad("a line continuation"));
+        }
+        if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
+            continue;
+        }
+        if line == "[Login]" {
+            if in_login {
+                return Err(bad("a second [Login] header"));
+            }
+            in_login = true;
+            continue;
+        }
+        if !in_login {
+            return Err(bad("a line before [Login]"));
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            return Err(bad("a line that is not Key=value"));
+        };
+        if !LOGIND_KEYS.contains(&key) {
+            return Err(bad(&format!("{key:?} is not a key Settings writes")));
+        }
+        if seen.contains(&key) {
+            return Err(bad(&format!("{key} twice")));
+        }
+        if !LOGIND_ACTIONS.contains(&value) {
+            return Err(bad(&format!("{value:?} is not a logind action")));
+        }
+        seen.push(key);
+    }
+    if seen.is_empty() {
+        return Err(bad("no [Login] key"));
+    }
+    Ok(())
+}
+
 /// Package file extensions pacman writes to its cache.
 const PKG_EXTS: [&str; 9] = [
     ".pkg.tar",
@@ -412,6 +494,36 @@ mod tests {
         ] {
             assert!(charge_limit(os(bad)).is_err(), "{bad:?} accepted");
         }
+    }
+
+    #[test]
+    fn logind_dropins_carry_only_the_settings_keys() {
+        let ok = "# Managed by margo Settings — do not edit by hand.\n[Login]\nHandlePowerKey=ignore\nHandleLidSwitch=suspend\nHandleLidSwitchExternalPower=lock\nHandleLidSwitchDocked=suspend\n";
+        assert!(logind_dropin(ok.as_bytes()).is_ok());
+        assert!(logind_dropin(b"; c\n\n[Login]\n\nHandleLidSwitch=suspend-then-hibernate").is_ok());
+        for bad in [
+            "",
+            "[Login]\n",
+            "HandlePowerKey=ignore\n[Login]\n",
+            "[Login]\nKillUserProcesses=no\n",
+            "[Login]\nHandlePowerKey=reboot\nHandlePowerKey=lock\n",
+            "[Login]\nHandlePowerKey=factory-reset\n",
+            "[Login]\n[Sleep]\nHandlePowerKey=ignore\n",
+            "[Login]\nHandlePowerKey=ignore\\\n",
+            "[Login]\n#x\\\nHandlePowerKey=ignore\n",
+            "[Login]\n HandlePowerKey=ignore\n",
+            "[Login]\nHandlePowerKey=ignore\t\n",
+            "[Login]\nHandlePowerKey=\n",
+            "[Login]\nhandlepowerkey=ignore\n",
+        ] {
+            assert!(logind_dropin(bad.as_bytes()).is_err(), "{bad:?} accepted");
+        }
+        let big = format!(
+            "[Login]\nHandlePowerKey=ignore\n#{}",
+            "x".repeat(MAX_LOGIND_DROPIN)
+        );
+        assert!(logind_dropin(big.as_bytes()).is_err());
+        assert!(logind_dropin(b"[Login]\nHandlePowerKey=ign\xffore\n").is_err());
     }
 
     #[test]

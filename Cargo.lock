@@ -5590,6 +5590,7 @@ dependencies = [
  "mshell-margo-client",
  "mshell-matugen",
  "mshell-plugins",
+ "mshell-privileged",
  "mshell-process",
  "mshell-services",
  "mshell-sounds",

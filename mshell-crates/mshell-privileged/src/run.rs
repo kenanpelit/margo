@@ -6,6 +6,7 @@
 use crate::fsops::{self, Source, Sysroot};
 use crate::{Error, Request, validate};
 use std::ffi::OsString;
+use std::io::Read;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 
@@ -98,7 +99,7 @@ fn smart_read(root: &Sysroot, devices: &[String]) -> Result<(), Error> {
     Ok(())
 }
 
-/// Run one request. `stdin` feeds `pacnew-merge`.
+/// Run one request. `stdin` feeds `pacnew-merge` and `logind-dropin`.
 pub fn execute(root: &Sysroot, req: Request, stdin: &mut dyn std::io::Read) -> Result<(), Error> {
     match &req {
         Request::PacnewInstall { live, review } => {
@@ -112,6 +113,15 @@ pub fn execute(root: &Sysroot, req: Request, stdin: &mut dyn std::io::Read) -> R
         Request::SmartRead { devices } => smart_read(root, devices),
         Request::FanSet { level } => fsops::fan_set(root, *level),
         Request::ChargeLimit { limit } => fsops::charge_limit(root, *limit),
+        Request::LogindDropin => {
+            let mut body = Vec::new();
+            stdin
+                .take(validate::MAX_LOGIND_DROPIN as u64 + 1)
+                .read_to_end(&mut body)
+                .map_err(|e| Error::Io(format!("reading the drop-in: {e}")))?;
+            validate::logind_dropin(&body)?;
+            fsops::logind_dropin(root, &body)
+        }
         Request::Upgrade => {
             let pacman = program(root, &[PACMAN], "pacman")?;
             let args = pacman_args(&req, None).unwrap_or_default();

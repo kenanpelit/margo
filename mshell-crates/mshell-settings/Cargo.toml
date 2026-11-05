@@ -27,6 +27,7 @@ mshell-logging.workspace = true
 mshell-margo-client.workspace = true
 mshell-matugen.workspace = true
 mshell-plugins.workspace = true
+mshell-privileged.workspace = true
 mshell-process.workspace = true
 mshell-services.workspace = true
 mshell-sounds.workspace = true
