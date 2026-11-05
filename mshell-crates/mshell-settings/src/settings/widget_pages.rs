@@ -513,10 +513,15 @@ pub(super) fn register_widget_entries(
                     group_anchor = Some(btn.clone());
                 }
                 widgets_sub_sidebar_box.append(&btn);
-                widget_registry.borrow_mut().insert(
-                    stack_name.to_string(),
-                    page_factory!(WidgetMenuSettingsModel => WidgetMenuSettingsInit { kind }),
-                );
+                // AI Agents has its own knobs above the generic menu page.
+                let factory = if matches!(kind, MenuKind::Agents) {
+                    agents_page()
+                } else {
+                    page_factory!(WidgetMenuSettingsModel => WidgetMenuSettingsInit { kind })
+                };
+                widget_registry
+                    .borrow_mut()
+                    .insert(stack_name.to_string(), factory);
             }
             WidgetEntry::Pill {
                 kind,
@@ -994,4 +999,44 @@ pub(super) fn register_widget_entries(
             }
         }
     }
+}
+
+/// Settings → Widgets → AI Agents: the agents knobs, then the generic
+/// per-menu geometry page (composed the same way as Lyrics).
+fn agents_page() -> PageFactory {
+    Rc::new(|| {
+        let top = crate::agents_settings::AgentsSettingsModel::builder()
+            .launch(crate::agents_settings::AgentsSettingsInit {})
+            .detach();
+        let menu_ctrl = WidgetMenuSettingsModel::builder()
+            .launch(WidgetMenuSettingsInit {
+                kind: MenuKind::Agents,
+            })
+            .detach();
+        let ts = top.widget().clone();
+        let ms = menu_ctrl.widget().clone();
+        for sw in [&ts, &ms] {
+            sw.set_vscrollbar_policy(gtk::PolicyType::Never);
+            sw.set_propagate_natural_height(true);
+            sw.set_vexpand(false);
+        }
+        let inner = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        inner.append(&ts);
+        inner.append(&ms);
+        let outer = gtk::ScrolledWindow::builder()
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .vscrollbar_policy(gtk::PolicyType::Automatic)
+            .hexpand(true)
+            .vexpand(true)
+            .child(&inner)
+            .build();
+        let widget: gtk::Widget = outer.into();
+        (
+            widget,
+            vec![
+                Box::new(top) as Box<dyn std::any::Any>,
+                Box::new(menu_ctrl) as Box<dyn std::any::Any>,
+            ],
+        )
+    })
 }

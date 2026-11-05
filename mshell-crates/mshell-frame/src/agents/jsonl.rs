@@ -41,6 +41,17 @@ pub(crate) struct ReadOutcome {
 }
 
 impl JsonlTail {
+    /// Whether the next [`JsonlTail::read`] of `path` starts over (first
+    /// visit, or the file was replaced or truncated), so a caller can drop
+    /// what it derived from the earlier reads first.
+    pub(crate) fn would_restart(&self, path: &Path) -> bool {
+        use std::os::unix::fs::MetadataExt;
+        match std::fs::metadata(path) {
+            Ok(m) => self.id != Some((m.dev(), m.ino())) || self.offset > m.len(),
+            Err(_) => true,
+        }
+    }
+
     /// Feed every complete line appended since the last call to `f`. On a
     /// fresh start, reading begins at the first line whose `timestamp` is
     /// at or after `since_ms` (`None` = the start of the file).

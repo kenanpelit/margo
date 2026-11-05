@@ -43,6 +43,7 @@ pub(crate) struct AgentsMenuWidgetModel {
     notice: Option<String>,
     poll: PollSubscription<UsageSnapshot>,
     sessions_poll: PollSubscription<SessionsSnapshot>,
+    _settings: mshell_common::scoped_effects::EffectScope,
 }
 
 #[derive(Debug)]
@@ -208,6 +209,7 @@ impl Component for AgentsMenuWidgetModel {
             notice: None,
             poll,
             sessions_poll,
+            _settings: crate::agents::settings::watch_settings(),
         };
         let widgets = view_output!();
         crate::menus::list_fit::mark_menu_list(&widgets.usage_scroll, 560);
@@ -314,7 +316,17 @@ fn run_session_action(action: SessionAction) -> Option<String> {
     match action {
         SessionAction::Focus(pid) => (!sessions::focus_session(pid))
             .then(|| "Couldn't find that session's terminal window".to_string()),
-        SessionAction::Resume { session_id, cwd } => sessions::resume(&session_id, &cwd).err(),
+        SessionAction::Resume {
+            session_id,
+            cwd,
+            config_dir,
+        } => {
+            let dir = (!config_dir.as_os_str().is_empty()).then_some(config_dir);
+            sessions::resume(&session_id, &cwd, dir.as_deref()).err()
+        }
+        SessionAction::OpenUrl(url) => mshell_process::desktop::open(&url)
+            .err()
+            .map(|e| format!("Couldn't open the browser: {e}")),
     }
 }
 
@@ -361,23 +373,38 @@ fn rebuild_usage(container: &gtk::Box, s: Option<&UsageSnapshot>) {
         container.append(&label("Loading…", &["label-small", "dim-label"]));
         return;
     };
-    provider_card(container, &s.claude, s);
+    provider_card(container, &s.claude, s.claude_label.as_deref(), s);
+    for a in &s.others {
+        provider_card(container, &a.limits, Some(&a.label), s);
+    }
     if let Some(codex) = &s.codex {
-        provider_card(container, codex, s);
+        provider_card(container, codex, None, s);
     }
     today_card(container, s);
 }
 
-fn provider_card(container: &gtk::Box, p: &ProviderLimits, s: &UsageSnapshot) {
-    let title = p
+/// One provider's (or Claude account's) plan windows. `account` names the
+/// account when there are several.
+fn provider_card(
+    container: &gtk::Box,
+    p: &ProviderLimits,
+    account: Option<&str>,
+    s: &UsageSnapshot,
+) {
+    let mut title = p
         .usage
         .as_ref()
         .map_or_else(|| p.provider.name().to_string(), |u| u.plan.clone());
+    if let Some(a) = account {
+        title.push_str(&format!(" · {a}"));
+    }
     container.append(&section(&title));
     let list = boxed_list();
     if let Some(u) = &p.usage {
         for w in &u.windows {
-            let rate = (p.provider == Provider::Claude && w.kind == WindowKind::Session)
+            // The recent burn rate is sampled for the primary account.
+            let primary = std::ptr::eq(p, &s.claude);
+            let rate = (primary && w.kind == WindowKind::Session)
                 .then_some(s.session_rate)
                 .flatten();
             list.append(&window_row(w, s.now_ms, rate, p.error.is_some()));

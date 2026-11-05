@@ -7,8 +7,9 @@
 //! Beside it, one lamp per running Claude Code session (needs-you in the
 //! error tint, working in primary, idle dim; `+N` past eight). Data comes
 //! from the shared [`USAGE_POLL`] and [`SESSIONS_POLL`], which run only
-//! while a pill or the menu is mapped. Click opens `MenuType::Agents`;
-//! right-click asks for fresh limits.
+//! while a pill or the menu is mapped. While a session waits for you the
+//! icon turns into a red bell. Click opens `MenuType::Agents`; right-click
+//! asks for fresh limits.
 
 use crate::agents::limits::{self, Pace, PaceStatus};
 use crate::agents::local_stats::compact_count;
@@ -24,6 +25,7 @@ pub(crate) struct AgentsModel {
     sessions: Option<SessionsSnapshot>,
     _poll: Rc<PollSubscription<UsageSnapshot>>,
     _sessions_poll: Rc<PollSubscription<SessionsSnapshot>>,
+    _settings: mshell_common::scoped_effects::EffectScope,
 }
 
 #[derive(Debug)]
@@ -84,6 +86,7 @@ impl Component for AgentsModel {
                         set_valign: gtk::Align::Center,
                         add_css_class: "agents-bar-cluster",
 
+                        #[name = "icon"]
                         gtk::Image {
                             set_icon_name: Some("ai-agents-symbolic"),
                             add_css_class: "agents-bar-icon",
@@ -174,6 +177,7 @@ impl Component for AgentsModel {
             sessions: None,
             _poll: poll,
             _sessions_poll: sessions_poll,
+            _settings: crate::agents::settings::watch_settings(),
         };
         let widgets = view_output!();
         apply_visual(&widgets, &root, None, None);
@@ -212,6 +216,7 @@ impl Component for AgentsModel {
                 if self.sessions.as_ref() != Some(&s) {
                     self.sessions = Some(s);
                     apply_lamps(&widgets.lamps, self.sessions.as_ref());
+                    apply_bell(&widgets.icon, self.sessions.as_ref());
                     root.set_tooltip_text(Some(&tooltip(
                         self.snapshot.as_ref(),
                         self.sessions.as_ref(),
@@ -225,7 +230,7 @@ impl Component for AgentsModel {
 /// The pill's percentage and severity class, from the headline window.
 pub(crate) fn headline(s: &UsageSnapshot) -> Option<(String, &'static str)> {
     let (p, w) = s.headline()?;
-    let rate = (p.provider == limits::Provider::Claude && w.kind == limits::WindowKind::Session)
+    let rate = (std::ptr::eq(p, &s.claude) && w.kind == limits::WindowKind::Session)
         .then_some(s.session_rate)
         .flatten();
     let pace = limits::pace(w, s.now_ms, rate);
@@ -268,6 +273,21 @@ fn apply_lamps(container: &gtk::Box, s: Option<&SessionsSnapshot>) {
         container.append(&l);
     }
     container.set_visible(true);
+}
+
+/// The icon becomes a red bell while any session needs you.
+pub(crate) fn needs_you(s: Option<&SessionsSnapshot>) -> bool {
+    s.is_some_and(|s| s.count(SessionStatus::Waiting) > 0)
+}
+
+fn apply_bell(icon: &gtk::Image, s: Option<&SessionsSnapshot>) {
+    if needs_you(s) {
+        icon.set_icon_name(Some("notification-alert-symbolic"));
+        icon.add_css_class("waiting");
+    } else {
+        icon.set_icon_name(Some("ai-agents-symbolic"));
+        icon.remove_css_class("waiting");
+    }
 }
 
 fn apply_visual(
@@ -319,13 +339,19 @@ fn tooltip(s: Option<&UsageSnapshot>, sessions: Option<&SessionsSnapshot>) -> St
     match s {
         None => lines.push("AI agents: loading…".to_string()),
         Some(s) => {
-            for p in std::iter::once(&s.claude).chain(s.codex.as_ref()) {
+            let accounts = std::iter::once((&s.claude, s.claude_label.as_deref()))
+                .chain(s.others.iter().map(|a| (&a.limits, Some(a.label.as_str()))))
+                .chain(s.codex.as_ref().map(|c| (c, None)));
+            for (p, account) in accounts {
+                let primary = std::ptr::eq(p, &s.claude);
                 match &p.usage {
                     Some(u) => {
-                        lines.push(u.plan.clone());
+                        lines.push(match account {
+                            Some(a) => format!("{} · {a}", u.plan),
+                            None => u.plan.clone(),
+                        });
                         for w in &u.windows {
-                            let rate = (p.provider == limits::Provider::Claude
-                                && w.kind == limits::WindowKind::Session)
+                            let rate = (primary && w.kind == limits::WindowKind::Session)
                                 .then_some(s.session_rate)
                                 .flatten();
                             let pace: Pace = limits::pace(w, s.now_ms, rate);
@@ -385,6 +411,8 @@ mod tests {
                 error: None,
                 fetched_at: Some(0),
             },
+            claude_label: None,
+            others: Vec::new(),
             codex: None,
             local: LocalStats::default(),
             session_rate: None,
@@ -421,5 +449,18 @@ mod tests {
             .collect();
         let (l, more) = lamps(&s);
         assert_eq!((l.len(), more), (8, 3));
+    }
+
+    #[test]
+    fn the_bell_rings_while_a_session_needs_you() {
+        use crate::agents::sessions::{SessionStatus, test_session};
+        let mut s = SessionsSnapshot {
+            live: vec![test_session(SessionStatus::Busy, 0)],
+            ..SessionsSnapshot::default()
+        };
+        assert!(!needs_you(Some(&s)));
+        s.live.push(test_session(SessionStatus::Waiting, 0));
+        assert!(needs_you(Some(&s)));
+        assert!(!needs_you(None));
     }
 }

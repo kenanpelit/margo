@@ -16,10 +16,11 @@
 //! prompt line names its session and project. [`SavedIndex`] reads only
 //! the lines appended since its last look.
 
+use super::details::SessionDetail;
 use super::jsonl::JsonlTail;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum SessionStatus {
@@ -56,7 +57,7 @@ impl SessionStatus {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct LiveSession {
     pub(crate) pid: u32,
     pub(crate) session_id: String,
@@ -70,6 +71,40 @@ pub(crate) struct LiveSession {
     /// `/proc/<pid>/stat` start time Claude Code recorded; guards against
     /// a reused pid.
     proc_start: Option<u64>,
+    /// The claude.ai/code session id when Remote Control is on.
+    pub(crate) bridge: Option<String>,
+    /// The account (config dir) it runs under, and its label.
+    pub(crate) config_dir: PathBuf,
+    pub(crate) account: String,
+    /// What its transcript says it is doing, once read.
+    pub(crate) detail: Option<SessionDetail>,
+    /// Its estimated cost so far, USD.
+    pub(crate) cost_usd: Option<f64>,
+    /// Its context use as a share of the model's window.
+    pub(crate) context_fraction: Option<f64>,
+}
+
+impl LiveSession {
+    /// Unique across accounts.
+    pub(crate) fn key(&self) -> String {
+        format!("{}|{}", self.config_dir.display(), self.session_id)
+    }
+
+    /// Its page on claude.ai when Remote Control is on.
+    pub(crate) fn remote_url(&self) -> Option<String> {
+        self.bridge
+            .as_deref()
+            .map(|b| format!("https://claude.ai/code/{b}"))
+    }
+
+    /// The AI title when the transcript has one, else the session name.
+    pub(crate) fn title(&self) -> &str {
+        self.detail
+            .as_ref()
+            .map(|d| d.title.as_str())
+            .filter(|t| !t.is_empty())
+            .unwrap_or(&self.name)
+    }
 }
 
 /// Parse one `sessions/<pid>.json`. Agent SDK runs (hooks, scripts) are
@@ -102,6 +137,16 @@ pub(crate) fn parse_session(raw: &str) -> Option<LiveSession> {
                 .and_then(|s| s.parse().ok())
                 .or_else(|| p.as_u64())
         }),
+        bridge: Some(text("bridgeSessionId")).filter(|b| {
+            !b.is_empty()
+                && b.bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
+        }),
+        config_dir: PathBuf::new(),
+        account: String::new(),
+        detail: None,
+        cost_usd: None,
+        context_fraction: None,
     })
 }
 
@@ -116,6 +161,12 @@ pub(crate) fn test_session(status: SessionStatus, since_ms: i64) -> LiveSession 
         waiting_for: String::new(),
         since_ms,
         proc_start: None,
+        bridge: None,
+        config_dir: PathBuf::new(),
+        account: String::new(),
+        detail: None,
+        cost_usd: None,
+        context_fraction: None,
     }
 }
 
@@ -151,8 +202,8 @@ pub(crate) fn sort_sessions(v: &mut [LiveSession]) {
     v.sort_by(|a, b| a.status.cmp(&b.status).then(b.since_ms.cmp(&a.since_ms)));
 }
 
-/// Every running session under `config_dir`.
-pub(crate) fn read_live_sessions(config_dir: &Path) -> Vec<LiveSession> {
+/// Every running session under `config_dir` (tagged with `account`).
+pub(crate) fn read_live_sessions(config_dir: &Path, account: &str) -> Vec<LiveSession> {
     let Ok(entries) = std::fs::read_dir(config_dir.join("sessions")) else {
         return Vec::new();
     };
@@ -163,6 +214,11 @@ pub(crate) fn read_live_sessions(config_dir: &Path) -> Vec<LiveSession> {
         .filter_map(|p| std::fs::read_to_string(p).ok())
         .filter_map(|raw| parse_session(&raw))
         .filter(alive)
+        .map(|mut s| {
+            s.config_dir = config_dir.to_path_buf();
+            s.account = account.to_string();
+            s
+        })
         .collect();
     sort_sessions(&mut out);
     out
@@ -186,6 +242,9 @@ pub(crate) struct SavedSession {
     pub(crate) last_prompt: String,
     pub(crate) last_ms: i64,
     pub(crate) prompts: u32,
+    /// The account it belongs to (set by the caller; empty in the index).
+    pub(crate) config_dir: PathBuf,
+    pub(crate) account: String,
 }
 
 /// Sessions grouped from `history.jsonl`, kept up to date by reading only
@@ -226,6 +285,8 @@ impl SavedIndex {
             last_prompt: display.lines().next().unwrap_or("").to_string(),
             last_ms: ts,
             prompts: 1,
+            config_dir: PathBuf::new(),
+            account: String::new(),
         });
     }
 
@@ -240,6 +301,8 @@ impl SavedIndex {
                 last_prompt: String::new(),
                 last_ms: 0,
                 prompts: 0,
+                config_dir: PathBuf::new(),
+                account: String::new(),
             });
         e.prompts += s.prompts;
         if s.last_ms >= e.last_ms {
@@ -444,19 +507,29 @@ pub(crate) fn focus_session(pid: u32) -> bool {
 // ── Resume ─────────────────────────────────────────────────────────────
 
 /// The command (run inside the user's terminal) that resumes `session_id`
-/// in `cwd`. The directory and id travel as positional arguments to
+/// in `cwd` — or starts a new session there when `session_id` is empty —
+/// under `config_dir` (`CLAUDE_CONFIG_DIR`; empty = the default). The
+/// directory, id and config dir travel as positional arguments to
 /// `sh -c`, never spliced into the script.
-pub(crate) fn resume_command(claude: &str, cwd: &str, session_id: &str) -> Vec<String> {
-    let script = "cd \"$1\" 2>/dev/null; exec \"$2\" --resume \"$3\"";
-    ["sh", "-c", script, "sh", cwd, claude, session_id]
-        .iter()
-        .map(|s| s.to_string())
-        .collect()
+pub(crate) fn resume_command(
+    claude: &str,
+    cwd: &str,
+    session_id: &str,
+    config_dir: &str,
+) -> Vec<String> {
+    let script = "cd \"$1\" 2>/dev/null; [ -n \"$4\" ] && export CLAUDE_CONFIG_DIR=\"$4\"; \
+                  if [ -n \"$3\" ]; then exec \"$2\" --resume \"$3\"; else exec \"$2\"; fi";
+    [
+        "sh", "-c", script, "sh", cwd, claude, session_id, config_dir,
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect()
 }
 
 /// `claude` on PATH, else the installer's `~/.local/bin/claude` (mshell
 /// runs under systemd and may not see the login shell's PATH).
-fn claude_binary() -> Option<String> {
+pub(crate) fn claude_binary() -> Option<String> {
     margo_fs::path::find_in_path("claude")
         .or_else(|| {
             let p = margo_fs::xdg::home()?.join(".local/bin/claude");
@@ -465,16 +538,22 @@ fn claude_binary() -> Option<String> {
         .map(|p| p.to_string_lossy().into_owned())
 }
 
-/// Open a terminal resuming `session_id` in `cwd`. Errors are a short
-/// user-facing reason.
-pub(crate) fn resume(session_id: &str, cwd: &str) -> Result<(), String> {
+/// Open a terminal resuming `session_id` in `cwd` (a new session when it
+/// is empty) under `config_dir` (`None` = the default account). Errors
+/// are a short user-facing reason.
+pub(crate) fn resume(session_id: &str, cwd: &str, config_dir: Option<&Path>) -> Result<(), String> {
     use mshell_process::SpawnReaped;
     let claude = claude_binary().ok_or("claude is not installed")?;
+    let dir = config_dir
+        .map(|d| d.to_string_lossy().into_owned())
+        .unwrap_or_default();
     // In its own scope: the resumed session must not die with an mshell
     // restart (a plain child is killed with mshell.service).
-    let (term, mut cmd) =
-        mshell_process::terminal::command(&resume_command(&claude, cwd, session_id), "claude")
-            .map_err(|e| e.to_string())?;
+    let (term, mut cmd) = mshell_process::terminal::command(
+        &resume_command(&claude, cwd, session_id, &dir),
+        "claude",
+    )
+    .map_err(|e| e.to_string())?;
     cmd.spawn_reaped()
         .map(|_| ())
         .map_err(|e| format!("{term}: {e}"))
@@ -496,6 +575,12 @@ mod tests {
         assert_eq!(s.status, SessionStatus::Idle);
         assert_eq!(s.since_ms, 1793808300449);
         assert_eq!(s.proc_start, Some(3065));
+        assert_eq!(
+            s.remote_url().as_deref(),
+            Some("https://claude.ai/code/session_0199mJTFiXH171ULbbkGauz9")
+        );
+        let odd = SESSION.replace("session_0199mJTFiXH171ULbbkGauz9", "x/../y");
+        assert_eq!(parse_session(&odd).unwrap().bridge, None);
     }
 
     #[test]
@@ -653,12 +738,37 @@ mod tests {
 
     #[test]
     fn resume_command_keeps_paths_out_of_the_script() {
-        let argv = resume_command("/usr/bin/claude", "/tmp/it's here", "abc");
+        let argv = resume_command("/usr/bin/claude", "/tmp/it's here", "abc", "/h/.claude-w");
         assert_eq!(argv[..2], ["sh", "-c"]);
         assert_eq!(
-            &argv[argv.len() - 3..],
-            ["/tmp/it's here", "/usr/bin/claude", "abc"]
+            &argv[argv.len() - 4..],
+            ["/tmp/it's here", "/usr/bin/claude", "abc", "/h/.claude-w"]
         );
         assert!(!argv[2].contains("it's"));
+        assert!(!argv[2].contains("claude-w"));
+    }
+
+    #[test]
+    fn resume_command_runs_in_sh() {
+        // The script really resumes / starts and exports the account dir.
+        let dir = tempfile::tempdir().unwrap();
+        let fake = dir.path().join("claude");
+        std::fs::write(
+            &fake,
+            "#!/bin/sh\necho \"$PWD|${CLAUDE_CONFIG_DIR:-none}|$*\"\n",
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let run = |sid: &str, cfg: &str| {
+            let argv = resume_command(fake.to_str().unwrap(), "/tmp", sid, cfg);
+            let out = std::process::Command::new(&argv[0])
+                .args(&argv[1..])
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        assert_eq!(run("abc", ""), "/tmp|none|--resume abc");
+        assert_eq!(run("", "/h/.claude-w"), "/tmp|/h/.claude-w|");
     }
 }

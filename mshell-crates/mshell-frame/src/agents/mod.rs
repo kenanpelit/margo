@@ -7,15 +7,23 @@
 //! the local stats incrementally, and calls the (rate-limited) usage
 //! endpoints at most every [`LIMITS_EVERY_MS`], backing off on HTTP 429.
 
+pub(crate) mod accounts;
+pub(crate) mod details;
 pub(crate) mod jsonl;
+pub(crate) mod launcher;
 pub(crate) mod limits;
 pub(crate) mod local_stats;
+pub(crate) mod pricing;
 pub(crate) mod sessions;
+pub(crate) mod settings;
+pub(crate) mod watch;
 
 use limits::{LimitWindow, LimitsError, PlanUsage, Provider, RateTracker, WindowKind};
 use local_stats::{LocalStats, StatsCache};
 use mshell_utils::shared_poll::SharedPoll;
 use sessions::{LiveSession, SavedSession};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
@@ -42,9 +50,21 @@ pub(crate) struct ProviderLimits {
     pub(crate) fetched_at: Option<i64>,
 }
 
+/// Plan limits of a Claude account other than the primary one.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct AccountLimits {
+    pub(crate) label: String,
+    pub(crate) limits: ProviderLimits,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct UsageSnapshot {
+    /// The primary account (mshell's own `CLAUDE_CONFIG_DIR`, or `~/.claude`).
     pub(crate) claude: ProviderLimits,
+    /// Its label, when there are other accounts to tell it from.
+    pub(crate) claude_label: Option<String>,
+    /// Every other Claude account seen (see [`accounts`]).
+    pub(crate) others: Vec<AccountLimits>,
     /// `None` when the Codex CLI isn't signed in on this machine.
     pub(crate) codex: Option<ProviderLimits>,
     pub(crate) local: LocalStats,
@@ -58,6 +78,7 @@ impl UsageSnapshot {
     /// session and weekly windows of every provider.
     pub(crate) fn headline(&self) -> Option<(&ProviderLimits, &LimitWindow)> {
         std::iter::once(&self.claude)
+            .chain(self.others.iter().map(|a| &a.limits))
             .chain(self.codex.as_ref())
             .filter_map(|p| p.usage.as_ref().map(|u| (p, u)))
             .flat_map(|(p, u)| u.windows.iter().map(move |w| (p, w)))
@@ -89,6 +110,8 @@ struct FetchState {
 #[derive(Default)]
 struct PollState {
     claude: FetchState,
+    /// The other accounts, by config dir.
+    others: HashMap<PathBuf, FetchState>,
     codex: FetchState,
     rate: RateTracker,
     session_rate: Option<f64>,
@@ -116,6 +139,8 @@ fn empty_snapshot(now: i64) -> UsageSnapshot {
             error: None,
             fetched_at: None,
         },
+        claude_label: None,
+        others: Vec::new(),
         codex: None,
         local: LocalStats::default(),
         session_rate: None,
@@ -130,20 +155,27 @@ fn probe_blocking(force: bool) -> UsageSnapshot {
     };
     let st = &mut *st;
     let claude_dir = limits::claude_config_dir();
+    pricing::ensure_fresh(now);
 
     refresh_provider(&mut st.claude, Provider::Claude, now, force, || {
-        let oauth = limits::read_claude_credentials(&claude_dir, now)?;
-        let plan = limits::claude_plan_name(oauth.subscription.as_deref(), oauth.tier.as_deref());
-        let bearer = zeroize::Zeroizing::new(format!("Bearer {}", oauth.token.as_str()));
-        let body = http_get(
-            limits::CLAUDE_USAGE_URL,
-            &[
-                ("Authorization", bearer.as_str()),
-                ("anthropic-beta", "oauth-2025-04-20"),
-            ],
-        )?;
-        limits::parse_claude_usage(&body, plan)
+        fetch_claude(&claude_dir, now)
     });
+    let all = accounts::accounts(now);
+    let mut others = Vec::new();
+    for a in all.iter().filter(|a| !a.primary) {
+        let fs = st.others.entry(a.dir.clone()).or_default();
+        refresh_provider(fs, Provider::Claude, now, force, || {
+            fetch_claude(&a.dir, now)
+        });
+        others.push(AccountLimits {
+            label: a.label.clone(),
+            limits: fs
+                .limits
+                .clone()
+                .unwrap_or_else(|| empty_limits(Provider::Claude)),
+        });
+    }
+    let claude_label = (!others.is_empty()).then(|| all[0].label.clone());
 
     let codex_auth = limits::codex_home().join("auth.json");
     let codex = if codex_auth.exists() {
@@ -183,17 +215,43 @@ fn probe_blocking(force: bool) -> UsageSnapshot {
         .refresh(&claude_dir, local_stats::local_day_start_ms());
 
     UsageSnapshot {
-        claude: st.claude.limits.clone().unwrap_or(ProviderLimits {
-            provider: Provider::Claude,
-            usage: None,
-            error: None,
-            fetched_at: None,
-        }),
+        claude: st
+            .claude
+            .limits
+            .clone()
+            .unwrap_or_else(|| empty_limits(Provider::Claude)),
+        claude_label,
+        others,
         codex,
         local,
         session_rate,
         now_ms: now,
     }
+}
+
+fn empty_limits(provider: Provider) -> ProviderLimits {
+    ProviderLimits {
+        provider,
+        usage: None,
+        error: None,
+        fetched_at: None,
+    }
+}
+
+/// One account's Claude plan limits, with the OAuth session Claude Code
+/// saved in `dir` (read for this call only, never logged or written).
+fn fetch_claude(dir: &Path, now: i64) -> Result<PlanUsage, LimitsError> {
+    let oauth = limits::read_claude_credentials(dir, now)?;
+    let plan = limits::claude_plan_name(oauth.subscription.as_deref(), oauth.tier.as_deref());
+    let bearer = zeroize::Zeroizing::new(format!("Bearer {}", oauth.token.as_str()));
+    let body = http_get(
+        limits::CLAUDE_USAGE_URL,
+        &[
+            ("Authorization", bearer.as_str()),
+            ("anthropic-beta", "oauth-2025-04-20"),
+        ],
+    )?;
+    limits::parse_claude_usage(&body, plan)
 }
 
 /// Call `fetch` when the provider is due (and not held by a 429), keeping
@@ -281,19 +339,26 @@ const SESSIONS_TICK: Duration = Duration::from_secs(3);
 /// Recent saved sessions listed in the menu.
 const SAVED_LIMIT: usize = 12;
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct SessionsSnapshot {
-    /// `<config>/sessions` exists (Claude Code 2.1+ is installed and ran).
+    /// Some account's `<config>/sessions` exists (Claude Code 2.1+ ran).
     pub(crate) available: bool,
-    /// Running sessions, needs-you first.
+    /// Running sessions of every account, needs-you first.
     pub(crate) live: Vec<LiveSession>,
     /// Recent sessions to resume, newest first (running ones excluded).
     pub(crate) saved: Vec<SavedSession>,
+    /// Account labels, primary first; rows name their account when
+    /// there is more than one.
+    pub(crate) accounts: Vec<String>,
 }
 
 impl SessionsSnapshot {
     pub(crate) fn count(&self, status: sessions::SessionStatus) -> usize {
         self.live.iter().filter(|s| s.status == status).count()
+    }
+
+    pub(crate) fn multi_account(&self) -> bool {
+        self.accounts.len() > 1
     }
 }
 
@@ -311,43 +376,133 @@ struct SavedCache {
     saved: Vec<SavedSession>,
 }
 
-static SAVED: LazyLock<Mutex<SavedCache>> = LazyLock::new(Mutex::default);
+#[derive(Default)]
+struct SessionsState {
+    /// Per account config dir.
+    saved: HashMap<PathBuf, SavedCache>,
+    /// Per live session ([`LiveSession::key`]).
+    details: HashMap<String, details::DetailTracker>,
+    watch: watch::StatusWatch,
+}
+
+static SESSIONS_STATE: LazyLock<Mutex<SessionsState>> = LazyLock::new(Mutex::default);
 
 async fn probe_sessions() -> SessionsSnapshot {
-    tokio::task::spawn_blocking(probe_sessions_blocking)
+    tokio::task::spawn_blocking(|| sessions_snapshot(true))
         .await
         .unwrap_or_default()
 }
 
-fn probe_sessions_blocking() -> SessionsSnapshot {
-    let dir = limits::claude_config_dir();
-    let available = dir.join("sessions").is_dir();
-    let live = sessions::read_live_sessions(&dir);
-    let live_ids: Vec<String> = live.iter().map(|s| s.session_id.clone()).collect();
-    let history = dir.join("history.jsonl");
-    let saved = match (std::fs::metadata(&history), SAVED.lock()) {
-        (Ok(meta), Ok(mut guard)) => {
-            let cache = &mut *guard;
-            let stat = (meta.len(), meta.modified().unwrap_or(std::time::UNIX_EPOCH));
-            let mut changed = false;
-            if cache.stat != Some(stat) {
-                changed = cache.index.refresh(&history);
-                cache.stat = Some(stat);
-            }
-            if changed || cache.live_ids.as_ref() != Some(&live_ids) {
-                let exclude: Vec<&str> = live_ids.iter().map(String::as_str).collect();
-                cache.saved = cache.index.top(&exclude, SAVED_LIMIT);
-                cache.live_ids = Some(live_ids);
-            }
-            cache.saved.clone()
-        }
-        _ => Vec::new(),
+/// Read every account's live and saved sessions. `notify` sends the
+/// notifications the user turned on (only the shared poll does; the
+/// launcher's one-off read must not repeat them). Blocking.
+pub(crate) fn sessions_snapshot(notify: bool) -> SessionsSnapshot {
+    let now = now_ms();
+    let accounts = accounts::accounts(now);
+    let available = accounts.iter().any(|a| a.dir.join("sessions").is_dir());
+    let prices = pricing::current();
+    let Ok(mut guard) = SESSIONS_STATE.lock() else {
+        return SessionsSnapshot::default();
     };
+    let st = &mut *guard;
+    let mut live: Vec<LiveSession> = Vec::new();
+    for a in &accounts {
+        live.extend(sessions::read_live_sessions(&a.dir, &a.label));
+    }
+    let keys: Vec<String> = live.iter().map(LiveSession::key).collect();
+    st.details.retain(|k, _| keys.contains(k));
+    for s in &mut live {
+        let path = details::transcript_path(&s.config_dir, &s.cwd, &s.session_id);
+        let d = st.details.entry(s.key()).or_default().refresh(&path);
+        s.cost_usd = d.cost_usd(&prices);
+        s.context_fraction = d.context_fraction(&prices);
+        s.detail = Some(d);
+    }
+    sessions::sort_sessions(&mut live);
+    if notify {
+        let multi = accounts.len() > 1;
+        let events = st.watch.update(&live, |s| {
+            if multi {
+                format!("{} · {}", s.account, s.title())
+            } else {
+                s.title().to_string()
+            }
+        });
+        let cfg = settings::current();
+        for e in events {
+            send_event(&e, &cfg);
+        }
+    }
+    let mut saved: Vec<SavedSession> = Vec::new();
+    for a in &accounts {
+        let ids: Vec<String> = live
+            .iter()
+            .filter(|s| s.config_dir == a.dir)
+            .map(|s| s.session_id.clone())
+            .collect();
+        let cache = st.saved.entry(a.dir.clone()).or_default();
+        saved.extend(
+            saved_for(cache, &a.dir.join("history.jsonl"), ids)
+                .into_iter()
+                .map(|mut x| {
+                    x.config_dir = a.dir.clone();
+                    x.account = a.label.clone();
+                    x
+                }),
+        );
+    }
+    saved.sort_by_key(|s| std::cmp::Reverse(s.last_ms));
+    saved.truncate(SAVED_LIMIT);
     SessionsSnapshot {
         available,
         live,
         saved,
+        accounts: accounts.into_iter().map(|a| a.label).collect(),
     }
+}
+
+/// One account's recent saved sessions, minus its running `live_ids`.
+fn saved_for(cache: &mut SavedCache, history: &Path, live_ids: Vec<String>) -> Vec<SavedSession> {
+    let Ok(meta) = std::fs::metadata(history) else {
+        return Vec::new();
+    };
+    let stat = (meta.len(), meta.modified().unwrap_or(std::time::UNIX_EPOCH));
+    let mut changed = false;
+    if cache.stat != Some(stat) {
+        changed = cache.index.refresh(history);
+        cache.stat = Some(stat);
+    }
+    if changed || cache.live_ids.as_ref() != Some(&live_ids) {
+        let exclude: Vec<&str> = live_ids.iter().map(String::as_str).collect();
+        cache.saved = cache.index.top(&exclude, SAVED_LIMIT);
+        cache.live_ids = Some(live_ids);
+    }
+    cache.saved.clone()
+}
+
+/// Notify about `e` when the user turned that kind on.
+fn send_event(e: &watch::SessionEvent, cfg: &settings::AgentSettings) {
+    use mshell_process::desktop::{Notice, Urgency, notify};
+    let notice = match e {
+        watch::SessionEvent::NeedsYou(key, title, what) if cfg.notify_waiting => {
+            let body = if what.is_empty() {
+                title.clone()
+            } else {
+                format!("{title} · {what}")
+            };
+            Notice::new("AI Agents", "Claude needs you", body)
+                .urgency(Urgency::Critical)
+                .replace(format!("agents-{key}"))
+        }
+        watch::SessionEvent::Finished(key, title, turn_ms) if cfg.notify_finished => Notice::new(
+            "AI Agents",
+            "Claude finished",
+            format!("{title} · {}", limits::span(*turn_ms)),
+        )
+        .replace(format!("agents-{key}")),
+        _ => return,
+    };
+    notify(notice.icon("ai-agents-symbolic").category("im.received"));
 }
 
 #[path = "mod_tests.rs"]

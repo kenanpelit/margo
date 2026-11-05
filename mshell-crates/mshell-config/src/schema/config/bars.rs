@@ -85,6 +85,9 @@ pub struct BarWidgets {
     /// per-metric tinting and the hover table.
     #[serde(default)]
     pub cpu_dashboard: CpuDashboardBarWidget,
+    /// AI Agents pill + menu: notifications and extra Claude accounts.
+    #[serde(default)]
+    pub agents: AgentsConfig,
     /// Hidden Bar drawer behaviour (hover-expand, auto-collapse, …) for the
     /// bar's default (`!HiddenBar`) drawer.
     pub hidden_bar: HiddenBarConfig,
@@ -690,6 +693,50 @@ impl Default for CpuDashboardBarWidget {
             highlight: true,
             hide_unavailable: false,
             detailed_tooltip: true,
+        }
+    }
+}
+
+/// AI Agents pill + menu behaviour.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema, Default,
+)]
+#[serde(default)]
+pub struct AgentsConfig {
+    /// Desktop notification when a Claude Code session starts waiting for
+    /// you (a permission prompt or a question).
+    pub notify_waiting: bool,
+    /// Desktop notification when a Claude Code session finishes a turn of
+    /// two minutes or more (working → idle).
+    pub notify_finished: bool,
+    /// Extra Claude Code config dirs (`CLAUDE_CONFIG_DIR`, one per
+    /// account, `~` allowed) to always show. Dirs of running sessions are
+    /// found on their own.
+    pub claude_config_dirs: Vec<String>,
+    /// Currency of the cost estimates (EUR converts at the day's ECB rate).
+    pub currency: AgentsCurrency,
+}
+
+/// Currency of the AI Agents cost estimates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentsCurrency {
+    #[default]
+    Usd,
+    Eur,
+}
+
+impl PatchField for AgentsCurrency {
+    fn patch_field(
+        &mut self,
+        new: Self,
+        path: &StorePath,
+        notify: &mut dyn FnMut(&StorePath),
+        _keys: Option<&KeyMap>,
+    ) {
+        if *self != new {
+            *self = new;
+            notify(path);
         }
     }
 }

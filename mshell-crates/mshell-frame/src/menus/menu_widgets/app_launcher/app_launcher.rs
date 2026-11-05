@@ -559,6 +559,9 @@ impl Component for AppLauncherModel {
                 .get_untracked()
         }))));
         runtime.register(Box::new(
+            crate::agents::launcher::ClaudeSessionsProvider::new(),
+        ));
+        runtime.register(Box::new(
             SystemdProvider::new().with_search_setter(make_search_setter()),
         ));
         // pass: store path follows Settings → Launcher (else

@@ -42,6 +42,13 @@
   opacity: 0.85;
 }
 
+// A session needs you: the icon is a bell in the error tint, whatever
+// the limit severity says.
+.agents-bar-cluster image.agents-bar-icon.waiting {
+  color: var(--error);
+  opacity: 1;
+}
+
 // ── Limit window rows ─────────────────────────────────────────
 .agents-window-row.stale {
   opacity: 0.6;
@@ -113,6 +120,40 @@
   border-top: none;
   border-left: none;
   border-right: none;
+}
+
+// A live row is a box: the jump button plus its action buttons.
+.ok-boxed-list > box.agents-session-row {
+  padding: 0;
+}
+
+.agents-session-main {
+  padding: var(--space-2) var(--space-3);
+}
+
+.agents-session-doing {
+  color: var(--primary);
+}
+
+.agents-session-chips {
+  margin-top: 2px;
+}
+
+// Same chip as the GitHub menu's.
+.agents-chip {
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  background-color: var(--surface-container-high);
+  color: var(--on-surface-variant);
+
+  &.accent { color: var(--primary); }
+  &.warn { color: var(--warning); }
+  &.danger {
+    background-color: var(--error-container);
+    color: var(--on-error-container);
+  }
 }
 
 .agents-session-go {
