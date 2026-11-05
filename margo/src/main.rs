@@ -891,6 +891,37 @@ fn start_dbus_services(event_loop: &EventLoop<'static, MargoState>, margo: &mut 
         use crate::dbus::gnome_shell_screenshot::{
             Screenshot, ScreenshotToCompositor, grim_target_args,
         };
+        use crate::dbus::portal_shots;
+
+        // Shots a previous margo left in XDG_RUNTIME_DIR (tmpfs, RAM).
+        // Validate before sweeping too: never walk a shared/symlinked dir.
+        if let Some(runtime) = std::env::var_os("XDG_RUNTIME_DIR").filter(|r| !r.is_empty())
+            && let Ok(dir) = portal_shots::shot_dir(Some(&runtime))
+        {
+            let removed = portal_shots::sweep_leftovers(std::path::Path::new(&runtime));
+            if removed > 0 {
+                info!(removed, "removed leftover portal screenshots");
+            }
+            // A quiet session must not keep the last shot forever: sweep
+            // every minute, not just when the next screenshot arrives.
+            let timer = calloop::timer::Timer::from_duration(std::time::Duration::from_secs(60));
+            if let Err(e) =
+                event_loop
+                    .handle()
+                    .insert_source(timer, move |_, _, _: &mut MargoState| {
+                        portal_shots::sweep(
+                            &dir,
+                            std::time::SystemTime::now(),
+                            portal_shots::MAX_AGE,
+                        );
+                        calloop::timer::TimeoutAction::ToDuration(std::time::Duration::from_secs(
+                            60,
+                        ))
+                    })
+            {
+                warn!("could not start portal screenshot cleanup timer: {e}");
+            }
+        }
 
         let (shot_tx, shot_rx) = calloop::channel::channel::<ScreenshotToCompositor>();
 
@@ -935,15 +966,27 @@ fn start_dbus_services(event_loop: &EventLoop<'static, MargoState>, margo: &mut 
                             let _ = reply.try_send(None);
                             return;
                         };
-                        let runtime =
-                            std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".to_owned());
-                        let stamp = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .map(|d| d.as_millis())
-                            .unwrap_or(0);
-                        let path = std::path::PathBuf::from(format!(
-                            "{runtime}/margo-portal-shot-{stamp}.png"
-                        ));
+                        // A private 0700 dir in XDG_RUNTIME_DIR and a fresh
+                        // random 0600 file per shot (see portal_shots); no
+                        // runtime dir means no shot, never /tmp. Shots older
+                        // than portal_shots::MAX_AGE go first.
+                        let runtime = std::env::var_os("XDG_RUNTIME_DIR");
+                        let path =
+                            match portal_shots::shot_dir(runtime.as_deref()).and_then(|dir| {
+                                portal_shots::sweep(
+                                    &dir,
+                                    std::time::SystemTime::now(),
+                                    portal_shots::MAX_AGE,
+                                );
+                                portal_shots::reserve_shot(&dir)
+                            }) {
+                                Ok(path) => path,
+                                Err(e) => {
+                                    warn!("portal screenshot: no private file to write: {e}");
+                                    let _ = reply.try_send(None);
+                                    return;
+                                }
+                            };
                         let mut cmd = std::process::Command::new("grim");
                         utils::apply_child_env(&mut cmd);
                         if include_cursor {
@@ -954,13 +997,20 @@ fn start_dbus_services(event_loop: &EventLoop<'static, MargoState>, margo: &mut 
                         match cmd.spawn() {
                             Ok(mut child) => {
                                 std::thread::spawn(move || {
+                                    // The file exists from the start (reserved
+                                    // empty), so "grim wrote it" is a success
+                                    // exit plus a non-empty file.
                                     let ok = matches!(child.wait(), Ok(s) if s.success())
-                                        && path.exists();
+                                        && std::fs::metadata(&path).is_ok_and(|m| m.len() > 0);
+                                    if !ok {
+                                        let _ = std::fs::remove_file(&path);
+                                    }
                                     let _ = reply.try_send(ok.then_some(path));
                                 });
                             }
                             Err(e) => {
                                 warn!("grim spawn for portal screenshot failed: {e}");
+                                let _ = std::fs::remove_file(&path);
                                 let _ = reply.try_send(None);
                             }
                         }
