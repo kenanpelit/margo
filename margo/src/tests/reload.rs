@@ -87,3 +87,40 @@ fn a_reload_forgets_the_active_virtual_keymap() {
     assert_eq!(state.active_virtual_keymap, None);
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+/// `wallpaper = …` applies on reload. The configured wallpaper was decoded
+/// once at startup and never again, though the field's doc said reload
+/// re-decoded it: a new path needed a compositor restart.
+#[test]
+fn a_reload_swaps_the_configured_wallpaper() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = dir.path().join("config.conf");
+    let a = dir.path().join("a.png");
+    let b = dir.path().join("b.png");
+    image::RgbaImage::new(3, 2).save(&a).expect("png");
+    image::RgbaImage::new(5, 1).save(&b).expect("png");
+
+    let mut fx = Fixture::new();
+    fx.add_keyboard();
+    fx.server.state.config_path = Some(config.clone());
+    fx.server.state.generations_dir = dir.path().join("generations");
+    let size = |fx: &Fixture| {
+        fx.server
+            .state
+            .wallpaper
+            .as_ref()
+            .map(crate::wallpaper::WallpaperState::natural_size)
+    };
+    for (path, want) in [(&a, (3, 2)), (&b, (5, 1))] {
+        std::fs::write(&config, format!("wallpaper = {}\n", path.display())).expect("write");
+        fx.server.state.reload_config().expect("reload");
+        for _ in 0..200 {
+            if size(&fx) == Some(want) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            fx.server.dispatch();
+        }
+        assert_eq!(size(&fx), Some(want), "{}", path.display());
+    }
+}

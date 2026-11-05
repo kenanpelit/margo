@@ -1,6 +1,7 @@
 //! Compositor-side wallpaper renderer.
 //!
-//! Decodes the configured wallpaper once at startup, uploads it as a
+//! Decodes the configured wallpaper at startup (and off the event loop
+//! again when a reload changes it, `state/reload.rs`), uploads it as a
 //! GPU texture the first time a renderer draws it, and exposes a
 //! `render_element()` helper that fits the bitmap into a given output
 //! rectangle. The decoded CPU pixels (~33 MB for a 4K image) are dropped
@@ -161,16 +162,23 @@ impl DecodedImage {
         Some(expanded)
     }
 
+    /// The configured wallpaper's path through the fallback chain (see the
+    /// module docs), `None` when nothing is readable. Reads `HOME`: call it
+    /// on the event-loop thread, like [`Self::resolve_exact`].
+    pub fn resolve_wallpaper(explicit: Option<&str>) -> Option<PathBuf> {
+        resolve_path(explicit)
+    }
+
     /// Decode an already-resolved path. Touches no environment, so it may
     /// run on any thread. `None` (logged) when undecodable.
     pub fn decode(path: &Path) -> Option<Self> {
         match decode_pixels(path) {
             Ok(image) => {
-                info!(path = %path.display(), "overview backdrop: loaded");
+                info!(path = %path.display(), "image: loaded");
                 Some(image.with_source(path))
             }
             Err(e) => {
-                warn!(path = %path.display(), error = %e, "overview backdrop: decode failed");
+                warn!(path = %path.display(), error = %e, "image: decode failed");
                 None
             }
         }

@@ -619,9 +619,11 @@ pub struct MargoState {
     pub post_repaint_pending: bool,
     /// Compositor-painted wallpaper. `None` when no path resolves or
     /// the decode failed at startup — frame loop falls through to the
-    /// solid `rootcolor` clear in that case. Re-decoded by
-    /// `reload_config` if the path changes.
+    /// solid `rootcolor` clear in that case. Re-decoded off the loop by
+    /// `reload_config` when the path changes (`load_wallpaper_async`).
     pub wallpaper: Option<crate::wallpaper::WallpaperState>,
+    /// Generation of the latest wallpaper decode request.
+    pub wallpaper_request: u64,
     /// Wallpapers set over IPC (`wallpaper_set`), drawn instead of
     /// [`Self::wallpaper`] on the outputs they cover.
     pub runtime_wallpaper: crate::wallpaper::runtime::RuntimeWallpapers,
@@ -886,6 +888,7 @@ impl MargoState {
             last_present_at: std::collections::HashMap::new(),
             post_repaint_pending: false,
             wallpaper: crate::wallpaper::WallpaperState::load(config.wallpaper.as_deref()),
+            wallpaper_request: 0,
             runtime_wallpaper: Default::default(),
             overview_backdrop: config
                 .overview_backdrop_image

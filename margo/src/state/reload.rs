@@ -22,26 +22,68 @@ impl MargoState {
             self.request_repaint();
             return;
         };
-        let (tx, rx) = calloop::channel::channel::<Option<DecodedImage>>();
-        let inserted = self.loop_handle.insert_source(rx, move |event, _, state| {
-            if let calloop::channel::Event::Msg(image) = event
-                && state.overview_backdrop_request == request
-            {
+        self.decode_off_loop(path, "margo-backdrop", move |state, image| {
+            if state.overview_backdrop_request == request {
                 state.overview_backdrop = image.map(WallpaperState::from_decoded);
                 state.request_repaint();
+            }
+        });
+    }
+
+    /// Re-resolve and decode the configured `wallpaper` (with its fallback
+    /// chain) off the event loop after a reload changed it. The old image
+    /// stays until the new one lands, and stays if it fails to decode; a
+    /// newer reload supersedes a decode in flight.
+    pub(crate) fn load_wallpaper_async(&mut self, configured: Option<String>) {
+        use crate::wallpaper::{DecodedImage, WallpaperState};
+        self.wallpaper_request = self.wallpaper_request.wrapping_add(1);
+        let request = self.wallpaper_request;
+        // Resolved here: the fallback chain reads `HOME`.
+        let Some(path) = DecodedImage::resolve_wallpaper(configured.as_deref()) else {
+            self.wallpaper = None;
+            self.request_repaint();
+            return;
+        };
+        self.decode_off_loop(path, "margo-wallpaper", move |state, image| {
+            if state.wallpaper_request == request
+                && let Some(image) = image
+            {
+                state.wallpaper = Some(WallpaperState::from_decoded(image));
+                state.request_repaint();
+            }
+        });
+    }
+
+    /// Decode `path` on a short-lived thread and hand the result to
+    /// `deliver` on the event loop; inline when no thread or channel can
+    /// be set up.
+    fn decode_off_loop(
+        &mut self,
+        path: std::path::PathBuf,
+        thread: &str,
+        deliver: impl Fn(&mut MargoState, Option<crate::wallpaper::DecodedImage>) + 'static,
+    ) {
+        use crate::wallpaper::DecodedImage;
+        let deliver = std::rc::Rc::new(deliver);
+        let on_loop = deliver.clone();
+        let (tx, rx) = calloop::channel::channel::<Option<DecodedImage>>();
+        let inserted = self.loop_handle.insert_source(rx, move |event, _, state| {
+            if let calloop::channel::Event::Msg(image) = event {
+                on_loop(state, image);
             }
         });
         if let Err(error) = inserted {
             tracing::warn!(
                 ?error,
-                "overview backdrop: channel insert failed, decoding inline"
+                thread,
+                "image decode: channel insert failed, decoding inline"
             );
-            self.overview_backdrop = DecodedImage::decode(&path).map(WallpaperState::from_decoded);
+            deliver(self, DecodedImage::decode(&path));
             return;
         }
         let thread_path = path.clone();
         let spawned = std::thread::Builder::new()
-            .name("margo-backdrop".into())
+            .name(thread.into())
             .spawn(move || {
                 // The receiver may be gone (compositor shutting down).
                 let _ = tx.send(DecodedImage::decode(&thread_path));
@@ -49,9 +91,10 @@ impl MargoState {
         if let Err(error) = spawned {
             tracing::warn!(
                 ?error,
-                "overview backdrop: decode thread failed, decoding inline"
+                thread,
+                "image decode: thread failed, decoding inline"
             );
-            self.overview_backdrop = DecodedImage::decode(&path).map(WallpaperState::from_decoded);
+            deliver(self, DecodedImage::decode(&path));
         }
     }
 
@@ -270,6 +313,10 @@ impl MargoState {
         // differs — avoids a needless decode on every `mctl reload`.
         if new_config.overview_backdrop_image != self.config.overview_backdrop_image {
             self.load_overview_backdrop_async(new_config.overview_backdrop_image.clone());
+        }
+        // The same for the compositor wallpaper (it used to need a restart).
+        if new_config.wallpaper != self.config.wallpaper {
+            self.load_wallpaper_async(new_config.wallpaper.clone());
         }
         // `client.border_width` is seeded from `config.borderpx` at map time
         // (see `state/data.rs`), so a bare config swap would leave every
