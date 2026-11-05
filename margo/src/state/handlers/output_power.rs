@@ -23,10 +23,8 @@ impl OutputPowerHandler for MargoState {
         self.request_dpms(Some(on), Some(&name));
     }
 
-    fn output_power_is_on(&mut self, _output: &Output) -> bool {
-        // DPMS is driven globally (request_dpms with no target hits every
-        // output), so the global flag is an accurate initial state.
-        !self.any_dpms_off
+    fn output_power_is_on(&mut self, output: &Output) -> bool {
+        self.output_dpms_on(&output.name())
     }
 }
 delegate_output_power!(MargoState);

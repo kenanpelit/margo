@@ -644,10 +644,11 @@ pub struct MargoState {
     /// surface is finally mapped. Cleared on unmap/destroy.
     pub or_positions: std::collections::HashMap<u32, (i32, i32)>,
     pub libinput: Option<smithay::reexports::input::Libinput>,
-    /// `true` while ANY output is DPMS-off. Lets `handle_input` cheaply gate
-    /// the "any input wakes the screen" safety net without touching the
-    /// backend, and lets a `dpms toggle` decide direction.
-    pub any_dpms_off: bool,
+    /// Outputs (by connector name) whose panel DPMS switched off. Drives
+    /// the "any input wakes the screen" safety net (`any_dpms_off`), the
+    /// direction of a `dpms toggle`, and what wlr-output-power reports per
+    /// output.
+    pub dpms_off: std::collections::HashSet<String>,
     /// When the last DPMS-off was requested. `wake_dpms_on_input` ignores
     /// input within a short grace after this so the very keystroke / click
     /// that triggered the off (its release event, the Enter that ran `mctl`,
@@ -893,7 +894,7 @@ impl MargoState {
             xwm: None,
             or_positions: std::collections::HashMap::new(),
             libinput: None,
-            any_dpms_off: false,
+            dpms_off: std::collections::HashSet::new(),
             dpms_off_at: None,
             libinput_devices: Vec::new(),
             closing_clients: Vec::new(),
@@ -1023,6 +1024,7 @@ impl MargoState {
         // present timer so a gone display doesn't keep waking the loop
         // (no-op when the opt-in flag is off / no clock exists).
         self.drop_output_clock(&output.name());
+        self.dpms_off.remove(&output.name());
         // Hotplug-out: refresh the shared D-Bus snapshot so
         // xdp-gnome's chooser dialog drops the now-gone output.
         self.refresh_ipc_outputs();

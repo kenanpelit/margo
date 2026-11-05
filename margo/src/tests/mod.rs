@@ -44,6 +44,7 @@ mod cursor_repaint;
 mod disabled_output;
 mod dispatch;
 mod dmabuf;
+mod dpms;
 mod floating_layout;
 mod focus_index;
 mod focus_mon;

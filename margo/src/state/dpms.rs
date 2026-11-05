@@ -8,23 +8,26 @@ use super::*;
 impl MargoState {
     /// Request a DPMS power change (real panel off/on via the udev
     /// backend's `DrmCompositor::clear()` / re-render). `on = Some(false)`
-    /// powers the panel(s) OFF, `Some(true)` ON; `None` toggles globally
-    /// (any-off → on-all, else off-all). `target = Some(name)` scopes to one
-    /// output, `None` = all. Pushes to `output_pending.dpms` + kicks a repaint;
-    /// no-ops on winit. Any subsequent input wakes the screen (see
-    /// `wake_dpms_on_input`), so a black screen is always recoverable.
+    /// powers the panel(s) OFF, `Some(true)` ON; `None` toggles (any of the
+    /// addressed panels off → all of them on, else off — for one output,
+    /// its own state). `target = Some(name)` scopes to one output, `None` =
+    /// all. The state is kept per output (`dpms_off`). Pushes to
+    /// `output_pending.dpms` + kicks a repaint; no-ops on winit. Any
+    /// subsequent input wakes the screen (see `wake_dpms_on_input`), so a
+    /// black screen is always recoverable.
     pub fn request_dpms(&mut self, on: Option<bool>, target: Option<&str>) {
         let outputs: Vec<Output> = self
             .monitors
             .iter()
-            .filter(|m| m.enabled)
+            .filter(|m| self.dpms_reachable(m))
             .filter(|m| target.is_none_or(|t| m.output.name() == t))
             .map(|m| m.output.clone())
             .collect();
         if outputs.is_empty() {
             return;
         }
-        let want_on = on.unwrap_or(self.any_dpms_off);
+        let want_on =
+            on.unwrap_or_else(|| outputs.iter().any(|o| self.dpms_off.contains(&o.name())));
         for o in &outputs {
             self.output_pending.dpms.push((o.clone(), want_on));
             // Tell wlr-output-power clients (swayidle etc.) about the change,
@@ -32,14 +35,38 @@ impl MargoState {
             self.protocols
                 .output_power_manager
                 .output_power_changed(o, want_on);
+            if want_on {
+                self.dpms_off.remove(&o.name());
+            } else {
+                self.dpms_off.insert(o.name());
+            }
         }
-        self.any_dpms_off = !want_on;
-        self.dpms_off_at = if want_on {
-            None
-        } else {
-            Some(std::time::Instant::now())
-        };
+        if !want_on {
+            self.dpms_off_at = Some(std::time::Instant::now());
+        } else if !self.any_dpms_off() {
+            self.dpms_off_at = None;
+        }
         self.wake_repaint_backend();
+    }
+
+    /// Whether DPMS acts on `mon`: an output in the layout.
+    fn dpms_reachable(&self, mon: &MargoMonitor) -> bool {
+        mon.enabled
+    }
+
+    /// Whether any panel DPMS can wake is switched off. An output that
+    /// left DPMS' reach never counts: it would make every key press a
+    /// "wake" that is swallowed.
+    pub fn any_dpms_off(&self) -> bool {
+        self.monitors
+            .iter()
+            .any(|m| self.dpms_reachable(m) && self.dpms_off.contains(&m.name))
+    }
+
+    /// Whether `name`'s panel is on as far as DPMS goes (what
+    /// wlr-output-power reports).
+    pub fn output_dpms_on(&self, name: &str) -> bool {
+        !self.dpms_off.contains(name)
     }
 
     /// Safety net: called from `handle_input` on any real input event. If a
@@ -54,7 +81,7 @@ impl MargoState {
     /// stray newline in the terminal you ran `mctl dispatch dpms off` from).
     pub fn wake_dpms_on_input(&mut self) -> bool {
         const GRACE: std::time::Duration = std::time::Duration::from_millis(1200);
-        if self.any_dpms_off && self.dpms_off_at.is_none_or(|t| t.elapsed() >= GRACE) {
+        if self.any_dpms_off() && self.dpms_off_at.is_none_or(|t| t.elapsed() >= GRACE) {
             self.request_dpms(Some(true), None);
             return true;
         }
@@ -137,6 +164,8 @@ impl MargoState {
         let output = self.monitors[mon_idx].output.clone();
         if blank {
             self.output_pending.dpms.push((output.clone(), false));
+            // Dark because it is off now, not because of DPMS.
+            self.dpms_off.remove(&src_name);
         }
         self.space.unmap_output(&output);
         self.wake_repaint_backend();
@@ -208,9 +237,21 @@ impl MargoState {
         let output = self.monitors[mon_idx].output.clone();
         let area = self.monitors[mon_idx].monitor_area;
         self.space.map_output(&output, (area.x, area.y));
-        // Light the panel again (unless DPMS has every panel off: the
-        // next wake turns this one on with the rest).
-        if !self.any_dpms_off {
+        // Light the panel again, unless DPMS has it off (a mirror target
+        // switched off by DPMS) or has every other panel off: the next
+        // wake turns this one on with the rest.
+        let name = self.monitors[mon_idx].name.clone();
+        let mut others = self
+            .monitors
+            .iter()
+            .enumerate()
+            .filter(|&(i, m)| i != mon_idx && self.dpms_reachable(m))
+            .peekable();
+        let screen_off =
+            others.peek().is_some() && others.all(|(_, m)| self.dpms_off.contains(&m.name));
+        if self.dpms_off.contains(&name) || screen_off {
+            self.dpms_off.insert(name);
+        } else {
             self.output_pending.dpms.push((output, true));
             self.wake_repaint_backend();
         }
