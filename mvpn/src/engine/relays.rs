@@ -11,6 +11,8 @@
 
 use super::sys;
 
+pub use mvpn_proto::locations::{City, Country as Location};
+
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct Country {
     pub name: String,
@@ -48,6 +50,83 @@ pub fn parse_countries(s: &str) -> Vec<Country> {
 
 pub fn countries() -> Vec<Country> {
     parse_countries(&sys::mullvad(&["relay", "list"]))
+}
+
+/// A leading signed decimal (`-34.92123°N` → -34.92123).
+fn leading_number(s: &str) -> Option<f64> {
+    let s = s.trim();
+    let end = s
+        .char_indices()
+        .find(|&(i, c)| !(c.is_ascii_digit() || c == '.' || (i == 0 && c == '-')))
+        .map_or(s.len(), |(i, _)| i);
+    s[..end].parse().ok()
+}
+
+/// `\tTirana (tia) @ 41.32795°N, 19.81902°W` → (name, code, lat, lon).
+/// Mullvad prints the raw signed degrees with a fixed `°N` / `°W` suffix
+/// (Tirana is at 19.8° *east*), so the sign alone is the hemisphere.
+fn parse_city_line(line: &str) -> Option<(String, String, f64, f64)> {
+    let (head, coords) = line.trim().split_once(" @ ")?;
+    let open = head.rfind('(')?;
+    let name = head[..open].trim().to_string();
+    let code = head[open + 1..].trim_end_matches(')').trim().to_string();
+    let (lat, lon) = coords.split_once(',')?;
+    if name.is_empty() || code.is_empty() {
+        return None;
+    }
+    Some((name, code, leading_number(lat)?, leading_number(lon)?))
+}
+
+/// Parse the relay list into the country → city tree (`mvpn locations`).
+/// Countries / cities without a relay line are dropped: nothing to
+/// connect to there.
+pub fn parse_locations(s: &str) -> Vec<Location> {
+    let mut out: Vec<Location> = Vec::new();
+    for line in s.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        if line.starts_with("\t\t") {
+            let id = line.split_whitespace().next().unwrap_or("");
+            if looks_like_relay(id)
+                && let Some(city) = out.last_mut().and_then(|c| c.cities.last_mut())
+            {
+                city.relays += 1;
+            }
+        } else if line.starts_with('\t') {
+            if let (Some(country), Some((name, code, latitude, longitude))) =
+                (out.last_mut(), parse_city_line(line))
+            {
+                country.cities.push(City {
+                    code,
+                    name,
+                    latitude,
+                    longitude,
+                    relays: 0,
+                });
+            }
+        } else if let Some(open) = line.rfind('(') {
+            let name = line[..open].trim().to_string();
+            let code = line[open + 1..].trim_end_matches(')').trim().to_string();
+            if !name.is_empty() && !code.is_empty() {
+                out.push(Location {
+                    code,
+                    name,
+                    cities: Vec::new(),
+                });
+            }
+        }
+    }
+    for c in &mut out {
+        c.cities.retain(|ci| ci.relays > 0);
+    }
+    out.retain(|c| !c.cities.is_empty());
+    out
+}
+
+/// The live country → city tree.
+pub fn locations() -> Vec<Location> {
+    parse_locations(&sys::mullvad(&["relay", "list"]))
 }
 
 /// Ownership filter for relay picking.
@@ -207,6 +286,45 @@ USA (us)\n\
     fn extracts_relay_ipv4() {
         assert_eq!(relay_ipv4(SAMPLE, "de-ber-wg-006"), Some("1.2.3.4".into()));
         assert_eq!(relay_ipv4(SAMPLE, "nope"), None);
+    }
+
+    const REAL: &str = include_str!("../../tests/fixtures/relay-list.txt");
+
+    #[test]
+    fn parses_the_location_tree_from_a_real_relay_list() {
+        let t = parse_locations(REAL);
+        let codes: Vec<&str> = t.iter().map(|c| c.code.as_str()).collect();
+        assert_eq!(codes, ["al", "au", "bg", "de", "se", "tr", "us"]);
+        let au = &t[1];
+        assert_eq!(au.name, "Australia");
+        let cities: Vec<&str> = au.cities.iter().map(|c| c.code.as_str()).collect();
+        assert_eq!(cities, ["adl", "bne", "mel", "per", "syd"]);
+        assert_eq!(au.relays(), 10);
+        // Signed degrees: south / west are negative whatever the suffix says.
+        let adl = &au.cities[0];
+        assert!((adl.latitude - -34.92123).abs() < 1e-9);
+        assert!((adl.longitude - 138.5995).abs() < 1e-9);
+        let us = &t[6];
+        assert_eq!(us.cities[0].name, "Ashburn, VA");
+        assert!((us.cities[0].longitude - -77.48744).abs() < 1e-9);
+        // Non-ASCII names survive.
+        assert_eq!(t[4].cities[1].name, "Malmö");
+        // The tree and the flat catalog agree on the counts.
+        let flat = parse_countries(REAL);
+        for (c, f) in t.iter().zip(&flat) {
+            assert_eq!((c.code.as_str(), c.relays()), (f.code.as_str(), f.relays));
+        }
+    }
+
+    #[test]
+    fn drops_places_without_relays() {
+        let t = parse_locations(
+            "Nowhere (nw)\n\tGhost (gho) @ 1.0°N, 2.0°W\nGermany (de)\n\tBerlin (ber) @ 52.5°N, 13.4°W\n\t\tde-ber-wg-001 (1.2.3.4) - hosted by X (rented)\n\tEmpty (emp) @ 1°N, 1°W\n",
+        );
+        assert_eq!(t.len(), 1);
+        assert_eq!(t[0].cities.len(), 1);
+        assert_eq!(t[0].cities[0].relays, 1);
+        assert!(parse_locations("").is_empty());
     }
 
     #[test]

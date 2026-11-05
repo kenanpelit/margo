@@ -426,6 +426,7 @@ mvpn status --json         # machine-readable; --pill for the bar feed, -v verbo
 mvpn status --json --follow  # a JSON line per change until stdin closes (mshell's VPN feed)
 mvpn connect / disconnect / toggle / reconnect
 mvpn de            ;  mvpn us nyc      # connect by country / country+city
+mvpn locations                         # relay locations as a JSON country → city tree
 mvpn random [cc]                       # a random relay (optionally in a country)
 mvpn fastest [cc]                      # ping EVERY relay in <cc>, connect to the
                                        #   genuinely fastest (prints each ping)

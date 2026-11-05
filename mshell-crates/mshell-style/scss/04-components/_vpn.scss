@@ -196,3 +196,26 @@ row.active.ok-button-surface,
   color: var(--on-surface);
   letter-spacing: 0.01em;
 }
+
+// ── Locations: country rows open to their cities ────────────
+// The list scrolls on its own (capped by `list_fit`); keep the scroller
+// transparent so a short list never paints a dark band (DESIGN.md §5).
+.vpn-locations-scroller {
+  background-color: transparent;
+}
+// City rows sit under their country, inset by the chevron's width.
+.vpn-city-row {
+  margin-left: var(--space-6);
+}
+// The disclosure chevron: a small flat icon button inside the row, with
+// the shared focus ring (it is `flat`, not `all: unset`).
+.vpn-chevron {
+  min-width: 0;
+  min-height: 0;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+}
+.vpn-chevron image {
+  -gtk-icon-size: var(--icon-sm);
+  color: var(--on-surface-variant);
+}

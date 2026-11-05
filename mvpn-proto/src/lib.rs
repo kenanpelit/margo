@@ -4,6 +4,8 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod locations;
+
 /// One tunnel status (`mvpn status --json`, one line per change with
 /// `--follow`). Every field defaults, so an older or newer `mvpn` that
 /// lacks / adds fields still parses.

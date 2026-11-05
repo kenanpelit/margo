@@ -80,6 +80,9 @@ enum Cmd {
     },
     /// List Mullvad countries as `code<TAB>name<TAB>relay-count` (for the menu).
     Countries,
+    /// Print relay locations as a JSON country → city tree (codes, names,
+    /// coordinates, relay counts): the VPN menu's country / city pickers.
+    Locations,
     /// Anti-censorship / obfuscation: bare = show; `cycle`, `hunt443`, or a mode
     /// (auto|off|udp2tcp|shadowsocks|quic).
     Obf { arg: Option<String> },
@@ -260,6 +263,13 @@ fn main() {
             for c in relays::countries() {
                 println!("{}\t{}\t{}", c.code, c.name, c.relays);
             }
+            true
+        }
+        Cmd::Locations => {
+            println!(
+                "{}",
+                serde_json::to_string(&relays::locations()).unwrap_or_else(|_| "[]".into())
+            );
             true
         }
         Cmd::Obf { arg } => match arg.as_deref() {

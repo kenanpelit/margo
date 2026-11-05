@@ -13,6 +13,7 @@ mvpn status --json --follow   # one line per change until stdin closes (mshell's
 mvpn connect | disconnect | toggle | reconnect
 mvpn de                    # random relay in a country
 mvpn us nyc                # random relay in a city
+mvpn locations             # relay locations as a JSON country → city tree
 mvpn random | owned [cc] | rented [cc]
 mvpn protocol              # toggle WireGuard ↔ OpenVPN
 mvpn fastest [cc]          # ping a sample, connect to the lowest, save to favs

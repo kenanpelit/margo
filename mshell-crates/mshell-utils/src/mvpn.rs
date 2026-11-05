@@ -12,6 +12,9 @@ use std::time::Duration;
 /// `summary()` for the hero / Settings line.
 pub type VpnStatus = mvpn_proto::Status;
 
+/// `mvpn locations` — the relay list as a country → city tree.
+pub use mvpn_proto::locations;
+
 /// What the shared VPN poll reports: the tunnel plus the blocky DNS guard.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct VpnProbe {

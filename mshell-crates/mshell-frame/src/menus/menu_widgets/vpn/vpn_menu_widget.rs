@@ -17,6 +17,7 @@ use super::super::dns::dns_menu_widget::{
     DnsMenuWidgetInit, DnsMenuWidgetInput, DnsMenuWidgetModel,
 };
 use super::super::dns::state::{Mode, probe_dns_state};
+use super::locations::{self, LocationAction, LocationList};
 use super::throughput::{VpnThroughputInput, VpnThroughputModel};
 use crate::menus::reveal_poll::RevealGate;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, EditableExt, OrientableExt, WidgetExt};
@@ -27,11 +28,15 @@ use std::time::Duration;
 /// outside, e.g. the CLI). The status itself comes from the live feed.
 const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 
+/// Built-in height cap of the location list's scroller (used when the
+/// menu has no configured height, see `list_fit`).
+const LOCATIONS_LIST_CAP: i32 = 360;
+
 /// Anti-censorship (obfuscation) modes offered in the dropdown (index ↔ string).
 const OBF_MODES: &[&str] = &["auto", "off", "udp2tcp", "shadowsocks", "quic"];
 
 use mshell_utils::mvpn::{
-    VPN_POLL, VpnFav as Fav, VpnProbe, VpnStatus, parse_fav_list, toggle_value,
+    VPN_POLL, VpnFav as Fav, VpnProbe, VpnStatus, locations::Country, parse_fav_list, toggle_value,
 };
 use mshell_utils::shared_poll::PollSubscription;
 
@@ -71,12 +76,16 @@ pub(crate) struct VpnMenuWidgetModel {
     obf_drop: gtk::DropDown,
     fav_box: gtk::Box,
     expiry_label: gtk::Label,
-    /// Country picker (lazy): the list box + a one-shot load guard.
+    /// Location picker (lazy): the list box + a one-shot load guard.
     countries_box: gtk::Box,
     countries_loaded: bool,
-    /// Full country catalog (filtered into `countries_box` by `country_filter`).
-    countries: Vec<(String, String, u32)>,
-    /// Live search terms for the Countries / Favourites lists.
+    /// `mvpn locations` answered (an empty answer then reads "none").
+    countries_ready: bool,
+    /// Country → city tree (filtered into `countries_box` by `country_filter`).
+    countries: Vec<Country>,
+    /// Countries whose cities are shown.
+    expanded_countries: std::collections::HashSet<String>,
+    /// Live search terms for the Locations / Favourites lists.
     country_filter: String,
     fav_filter: String,
     /// Lazy-poll gates — see `ParentRevealChanged`.
@@ -122,11 +131,12 @@ pub(crate) enum VpnMenuWidgetInput {
     ParentRevealChanged(bool),
     /// The DNS section's expander toggled.
     DnsExpanded(bool),
-    /// The Countries section's expander toggled (loads the list on first open).
+    /// The Locations section's expander toggled (loads the tree on first open).
     CountriesExpanded(bool),
-    /// Connect to a country by its code (`mvpn <cc>`).
-    ConnectCountry(String),
-    /// Filter the country list (search entry in the Countries section).
+    /// A click in the location list: open a country, or connect to a
+    /// country / city.
+    Location(LocationAction),
+    /// Filter the location list (search entry in the Locations section).
     CountryFilter(String),
     /// Filter the favourites list (search entry in the Favourites section).
     FavFilter(String),
@@ -155,9 +165,9 @@ pub(crate) enum VpnMenuWidgetCommandOutput {
         /// Current network mode (VPN / Blocky / Default) from `probe_dns_state`.
         mode: Mode,
     },
-    /// Mullvad country catalog (code, name, relay-count) — loaded lazily when
-    /// the Countries section is first expanded.
-    CountriesLoaded(Vec<(String, String, u32)>),
+    /// Mullvad's country → city tree — loaded lazily when the Locations
+    /// section is first expanded.
+    CountriesLoaded(Vec<Country>),
     /// A connection change from the shared VPN feed (no `mvpn` spawn).
     Status {
         status: String,
@@ -370,7 +380,8 @@ impl Component for VpnMenuWidgetModel {
                     },
                 },
 
-                // Countries — lazy: fetched from `mvpn countries` on first expand.
+                // Locations — lazy: the country → city tree from `mvpn locations`
+                // on first expand.
                 #[name = "countries_expander"]
                 gtk::Expander {
                     add_css_class: "vpn-dns-expander",
@@ -389,7 +400,7 @@ impl Component for VpnMenuWidgetModel {
                         },
                         gtk::Label {
                             add_css_class: "vpn-section-name",
-                            set_label: "Countries",
+                            set_label: "Locations",
                         },
                     },
                 },
@@ -603,7 +614,9 @@ impl Component for VpnMenuWidgetModel {
             expiry_label: expiry_label_widget.clone(),
             countries_box: countries_box_widget.clone(),
             countries_loaded: false,
+            countries_ready: false,
             countries: Vec::new(),
+            expanded_countries: std::collections::HashSet::new(),
             country_filter: String::new(),
             fav_filter: String::new(),
             poll_started: false,
@@ -640,19 +653,29 @@ impl Component for VpnMenuWidgetModel {
         });
         // Drop the embedded DNS widget into the expander now that both exist.
         widgets.dns_expander.set_child(Some(model.dns.widget()));
-        // Countries section = a search entry above the (filtered) list box.
+        // Locations section = a search entry above the (filtered) list,
+        // in its own scroller: 50 countries and their cities would
+        // otherwise stretch the whole menu.
         let country_search = gtk::SearchEntry::new();
-        country_search.set_placeholder_text(Some("Search countries…"));
+        country_search.set_placeholder_text(Some("Search countries and cities…"));
         {
             let s = sender.clone();
             country_search.connect_search_changed(move |e| {
                 s.input(VpnMenuWidgetInput::CountryFilter(e.text().to_string()));
             });
         }
+        let countries_scroller = gtk::ScrolledWindow::builder()
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .min_content_height(0)
+            .propagate_natural_height(true)
+            .child(&model.countries_box)
+            .build();
+        countries_scroller.add_css_class("vpn-locations-scroller");
+        crate::menus::list_fit::mark_menu_list(&countries_scroller, LOCATIONS_LIST_CAP);
         let countries_container = gtk::Box::new(gtk::Orientation::Vertical, 6);
         countries_container.set_margin_top(6);
         countries_container.append(&country_search);
-        countries_container.append(&model.countries_box);
+        countries_container.append(&countries_scroller);
         widgets
             .countries_expander
             .set_child(Some(&countries_container));
@@ -678,17 +701,19 @@ impl Component for VpnMenuWidgetModel {
             VpnMenuWidgetInput::Connect(relay) => {
                 act(&sender, vec!["fav".into(), "connect".into(), relay]);
             }
-            VpnMenuWidgetInput::ConnectCountry(code) => {
-                act(&sender, vec![code]);
+            VpnMenuWidgetInput::Location(action) => {
+                if let LocationAction::Toggle(code) = &action {
+                    if !self.expanded_countries.remove(code) {
+                        self.expanded_countries.insert(code.clone());
+                    }
+                    self.rebuild_locations(&sender);
+                } else if let Some(args) = locations::connect_args(&action) {
+                    act(&sender, args);
+                }
             }
             VpnMenuWidgetInput::CountryFilter(text) => {
                 self.country_filter = text;
-                rebuild_countries(
-                    &self.countries_box,
-                    &self.countries,
-                    &self.country_filter,
-                    &sender,
-                );
+                self.rebuild_locations(&sender);
             }
             VpnMenuWidgetInput::FavFilter(text) => {
                 self.fav_filter = text;
@@ -703,22 +728,10 @@ impl Component for VpnMenuWidgetModel {
             VpnMenuWidgetInput::CountriesExpanded(expanded) => {
                 if expanded && !self.countries_loaded {
                     self.countries_loaded = true;
+                    self.rebuild_locations(&sender);
                     sender.command(|out, _shutdown| async move {
-                        let raw = capture(&["countries"]).await;
-                        let list = raw
-                            .lines()
-                            .filter_map(|l| {
-                                let mut it = l.splitn(3, '\t');
-                                let code = it.next()?.trim().to_string();
-                                let name = it.next()?.trim().to_string();
-                                let n: u32 = it.next().unwrap_or("0").trim().parse().unwrap_or(0);
-                                if code.is_empty() {
-                                    None
-                                } else {
-                                    Some((code, name, n))
-                                }
-                            })
-                            .collect();
+                        let list =
+                            mshell_utils::mvpn::locations::parse(&capture(&["locations"]).await);
                         let _ = out.send(VpnMenuWidgetCommandOutput::CountriesLoaded(list));
                     });
                 }
@@ -804,12 +817,8 @@ impl Component for VpnMenuWidgetModel {
                 ),
                 VpnMenuWidgetCommandOutput::CountriesLoaded(list) => {
                     self.countries = list;
-                    rebuild_countries(
-                        &self.countries_box,
-                        &self.countries,
-                        &self.country_filter,
-                        &sender,
-                    );
+                    self.countries_ready = true;
+                    self.rebuild_locations(&sender);
                     return;
                 }
                 VpnMenuWidgetCommandOutput::Status {
@@ -948,6 +957,21 @@ impl VpnMenuWidgetModel {
             .set_label(if connected { "Disconnect" } else { "Connect" });
     }
 
+    /// Refill the location list from the tree, search and open countries.
+    fn rebuild_locations(&self, sender: &ComponentSender<Self>) {
+        let s = sender.clone();
+        locations::rebuild(
+            &self.countries_box,
+            &LocationList {
+                countries: &self.countries,
+                filter: &self.country_filter,
+                expanded: &self.expanded_countries,
+                loaded: self.countries_ready,
+            },
+            std::rc::Rc::new(move |a| s.input(VpnMenuWidgetInput::Location(a))),
+        );
+    }
+
     /// Drive the embedded DNS section's lazy probe: it runs only while the
     /// menu is visible *and* the DNS section is expanded.
     fn forward_dns_reveal(&self) {
@@ -997,60 +1021,6 @@ fn status_location(status: &str) -> String {
         .unwrap_or("")
         .trim()
         .to_string()
-}
-
-/// Populate the country picker: one row per Mullvad country (name + relay
-/// count + a Connect button that connects to a random relay there).
-fn rebuild_countries(
-    b: &gtk::Box,
-    countries: &[(String, String, u32)],
-    filter: &str,
-    sender: &ComponentSender<VpnMenuWidgetModel>,
-) {
-    while let Some(c) = b.first_child() {
-        b.remove(&c);
-    }
-    let needle = filter.trim().to_lowercase();
-    let matches: Vec<&(String, String, u32)> = countries
-        .iter()
-        .filter(|(code, name, _)| {
-            needle.is_empty()
-                || name.to_lowercase().contains(&needle)
-                || code.to_lowercase().contains(&needle)
-        })
-        .collect();
-    if matches.is_empty() {
-        let msg = if countries.is_empty() {
-            "No countries (is the Mullvad daemon running?)"
-        } else {
-            "No matches."
-        };
-        let l = gtk::Label::new(Some(msg));
-        l.add_css_class("label-small");
-        l.set_xalign(0.0);
-        b.append(&l);
-        return;
-    }
-    for (code, name, count) in matches {
-        let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-        row.add_css_class("ok-button-surface");
-        let label = gtk::Label::new(Some(name));
-        label.set_xalign(0.0);
-        label.set_hexpand(true);
-        let n = gtk::Label::new(Some(&format!("{count}")));
-        n.add_css_class("label-small");
-        let connect = gtk::Button::with_label("Connect");
-        connect.set_css_classes(&["ok-button-surface", "dns-action"]);
-        {
-            let (s, c) = (sender.clone(), code.clone());
-            connect
-                .connect_clicked(move |_| s.input(VpnMenuWidgetInput::ConnectCountry(c.clone())));
-        }
-        row.append(&label);
-        row.append(&n);
-        row.append(&connect);
-        b.append(&row);
-    }
 }
 
 /// Clear + repopulate the favourites list (relay + ping, per-row connect/remove).

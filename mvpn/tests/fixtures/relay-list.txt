@@ -1,0 +1,61 @@
+Albania (al)
+	Tirana (tia) @ 41.32795°N, 19.81902°W
+		al-tia-wg-001 (45.142.26.2, 2a04:27c0:0:e::f001) - hosted by iRegister (rented)
+		al-tia-wg-002 (62.101.165.2, 2a04:27c0:0:f::f001) - hosted by iRegister (rented)
+
+Australia (au)
+	Adelaide (adl) @ -34.92123°N, 138.59950°W
+		au-adl-wg-301 (103.214.20.50, 2404:f780:0:deb::c1f) - hosted by hostuniversal (rented)
+		au-adl-wg-302 (103.214.20.130, 2404:f780:0:dec::c2f) - hosted by hostuniversal (rented)
+	Brisbane (bne) @ -27.47100°N, 153.02340°W
+		au-bne-wg-301 (103.216.220.18, 2404:f780:4:deb::f001) - hosted by hostuniversal (rented)
+		au-bne-wg-302 (103.216.220.34, 2404:f780:4:dec::a02f) - hosted by hostuniversal (rented)
+	Melbourne (mel) @ -37.81502°N, 144.94601°W
+		au-mel-wg-401 (163.47.16.146, 2406:d501:f:dfa::f001) - hosted by hostuniversal (rented)
+		au-mel-wg-402 (163.47.16.150, 2406:d501:f:dfb::f001) - hosted by hostuniversal (rented)
+	Perth (per) @ -31.95351°N, 115.85705°W
+		au-per-wg-301 (103.108.231.50, 2404:f780:8:deb::a01f) - hosted by hostuniversal (rented)
+		au-per-wg-302 (103.108.231.66, 2404:f780:8:dec::f001) - hosted by hostuniversal (rented)
+	Sydney (syd) @ -33.86148°N, 151.20548°W
+		au-syd-wg-001 (146.70.200.2, 2001:ac8:84:5::f001) - hosted by M247 (rented)
+		au-syd-wg-002 (146.70.141.194, 2001:ac8:84:6::2f) - hosted by M247 (rented)
+
+Bulgaria (bg)
+	Sofia (sof) @ 42.68333°N, 23.31667°W
+		bg-sof-wg-001 (146.70.188.130, 2001:ac8:30:55::f001) - hosted by M247 (rented)
+		bg-sof-wg-002 (135.136.38.2, 2001:ac8:30:56::f001) - hosted by M247 (rented)
+
+Germany (de)
+	Berlin (ber) @ 52.52001°N, 13.40495°W
+		de-ber-wg-001 (193.32.248.66, 2a03:1b20:b:f011::a01f) - hosted by 31173 (Mullvad-owned)
+		de-ber-wg-002 (193.32.248.67, 2a03:1b20:b:f011::a02f) - hosted by 31173 (Mullvad-owned)
+	Dusseldorf (dus) @ 51.23333°N, 6.78333°W
+		de-dus-wg-101 (80.66.197.3, 2a07:d883:703:1::f001) - hosted by xtom (Mullvad-owned)
+		de-dus-wg-102 (80.66.197.166, 2a07:d883:703:2::f001) - hosted by xtom (Mullvad-owned)
+	Frankfurt (fra) @ 50.11092°N, 8.68213°W
+		de-fra-wg-001 (185.213.155.73, 2a03:1b20:6:f011::f001) - hosted by 31173 (Mullvad-owned)
+		de-fra-wg-002 (185.213.155.74, 2a03:1b20:6:f011::f101) - hosted by 31173 (Mullvad-owned)
+
+Sweden (se)
+	Gothenburg (got) @ 57.70887°N, 11.97456°W
+		se-got-wg-001 (185.213.154.66, 2a03:1b20:5:f011:31::a03f) - hosted by 31173 (Mullvad-owned)
+		se-got-wg-002 (185.213.154.67, 2a03:1b20:5:f011::a05f) - hosted by 31173 (Mullvad-owned)
+	Malmö (mma) @ 55.60708°N, 13.00272°W
+		se-mma-wg-001 (193.138.218.220, 2a03:1b20:1:f410::fa01) - hosted by 31173 (Mullvad-owned)
+		se-mma-wg-002 (193.138.218.80, 2a03:1b20:1:f410::a15f) - hosted by 31173 (Mullvad-owned)
+	Stockholm (sto) @ 59.32890°N, 18.06490°W
+		se-sto-wg-001 (185.195.233.76, 2a03:1b20:4:f011::999f) - hosted by 31173 (Mullvad-owned)
+		se-sto-wg-002 (185.65.135.67, 2a03:1b20:4:f011::a02f) - hosted by 31173 (Mullvad-owned)
+
+Turkey (tr)
+	Istanbul (ist) @ 41.00824°N, 28.97836°W
+		tr-ist-wg-001 (149.102.229.129, 2a02:6ea0:e813::f001) - hosted by DataPacket (rented)
+		tr-ist-wg-002 (149.102.229.158, 2a02:6ea0:e813:1::f001) - hosted by DataPacket (rented)
+
+USA (us)
+	Ashburn, VA (qas) @ 39.04376°N, -77.48744°W
+		us-qas-wg-101 (185.156.46.130, 2a02:6ea0:e206:1::a01f) - hosted by DataPacket (rented)
+		us-qas-wg-102 (185.156.46.143, 2a02:6ea0:e206:2::a02f) - hosted by DataPacket (rented)
+	Atlanta, GA (atl) @ 33.75375°N, -84.38633°W
+		us-atl-wg-001 (45.134.140.130, 2a02:6ea0:c122:1::b79f) - hosted by DataPacket (rented)
+		us-atl-wg-002 (45.134.140.143, 2a02:6ea0:c122:2::b80f) - hosted by DataPacket (rented)
