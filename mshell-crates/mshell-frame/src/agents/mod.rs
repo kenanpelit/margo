@@ -349,3 +349,7 @@ fn probe_sessions_blocking() -> SessionsSnapshot {
         saved,
     }
 }
+
+#[path = "mod_tests.rs"]
+#[cfg(test)]
+mod mod_tests;
