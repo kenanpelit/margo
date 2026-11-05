@@ -15,4 +15,6 @@ pub mod relays;
 pub mod slot;
 pub mod status;
 pub mod sys;
+#[cfg(test)]
+pub(crate) mod testutil;
 pub mod timer;

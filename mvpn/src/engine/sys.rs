@@ -44,6 +44,62 @@ pub fn ok(program: &str, args: &[&str]) -> bool {
         .unwrap_or(false)
 }
 
+/// What a finished command left behind, for callers that must tell a
+/// refused request (exit status + stderr) from a missing program.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Output {
+    /// The program could be started at all.
+    pub spawned: bool,
+    pub success: bool,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+impl Output {
+    /// stdout and stderr together, for message matching.
+    pub fn text(&self) -> String {
+        format!("{}\n{}", self.stdout, self.stderr)
+    }
+}
+
+/// Run a command and keep its exit status, stdout and stderr. `input`,
+/// when given, is written to its stdin (then closed): the way secrets
+/// (the account number) reach `mullvad` without ever being in an argv,
+/// where every process of the user can read them.
+pub fn run(program: &str, args: &[&str], input: Option<&str>) -> Output {
+    use std::io::Write as _;
+    let child = Command::new(program)
+        .args(args)
+        .stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn();
+    let Ok(mut child) = child else {
+        return Output::default();
+    };
+    if let (Some(text), Some(mut stdin)) = (input, child.stdin.take()) {
+        // A program that exits without reading closes the pipe: the
+        // write fails and its exit status says the rest.
+        let _ = stdin.write_all(text.as_bytes());
+    }
+    match child.wait_with_output() {
+        Ok(o) => Output {
+            spawned: true,
+            success: o.status.success(),
+            stdout: String::from_utf8_lossy(&o.stdout).trim().to_string(),
+            stderr: String::from_utf8_lossy(&o.stderr).trim().to_string(),
+        },
+        Err(_) => Output {
+            spawned: true,
+            ..Output::default()
+        },
+    }
+}
+
 /// Run `mullvad <args>` → trimmed stdout.
 pub fn mullvad(args: &[&str]) -> String {
     out("mullvad", args)

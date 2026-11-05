@@ -213,6 +213,40 @@ pub fn revoke(account: Option<&str>, name: &str) -> Result<(), String> {
     }
 }
 
+/// The `mullvad` argv for a login. The account number is never in it:
+/// `mullvad account login` with no argument reads the number from stdin
+/// ("Enter an account number: "), so it travels through a pipe instead
+/// of an argv every process of the user can read (`ps`, `/proc/*/cmdline`).
+pub const LOGIN_ARGS: [&str; 2] = ["account", "login"];
+
+/// Log in with `account`, handed to `mullvad` on stdin (see [`LOGIN_ARGS`]).
+/// The error is a fixed sentence: nothing of the output is echoed.
+pub fn login_with(program: &str, account: &str) -> Result<(), String> {
+    let out = sys::run(program, &LOGIN_ARGS, Some(&format!("{}\n", account.trim())));
+    if out.success {
+        return Ok(());
+    }
+    if !out.spawned {
+        return Err("the mullvad command is not installed".into());
+    }
+    Err(login_error(&out.text()))
+}
+
+/// A failed login's output → the sentence to show.
+pub fn login_error(text: &str) -> String {
+    if text.contains("There are too many devices on the account") {
+        "too many devices on the account; revoke one first".into()
+    } else if text.contains("The account does not exist") {
+        "there is no Mullvad account with that number".into()
+    } else if text.contains("Management RPC server or client error")
+        || text.contains("Failed to connect to mullvad-daemon")
+    {
+        "the Mullvad service is not running".into()
+    } else {
+        "mullvad account login failed".into()
+    }
+}
+
 /// Log in if needed using the account number; returns Ok when logged in.
 pub fn login_if_needed(pass_entry: &str) -> Result<(), String> {
     if is_logged_in() {
@@ -221,11 +255,7 @@ pub fn login_if_needed(pass_entry: &str) -> Result<(), String> {
     let acc = account_number(pass_entry).ok_or_else(|| {
         "not logged in; set MULLVAD_ACCOUNT_NUMBER or store it in pass".to_string()
     })?;
-    if sys::mullvad_ok(&["account", "login", &acc]) {
-        Ok(())
-    } else {
-        Err("mullvad account login failed (too many devices? revoke one first)".into())
-    }
+    login_with("mullvad", &acc)
 }
 
 /// Free a slot for this machine: optionally revoke the *other* machine's
@@ -280,6 +310,7 @@ pub fn recycle(revoke_others: bool, pass_entry: &str, dry_run: bool) -> Result<S
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::testutil::Fake;
 
     #[test]
     fn parses_device_name() {
@@ -303,5 +334,40 @@ mod tests {
     #[test]
     fn sanitize_key() {
         assert_eq!(sanitize("cachy os/1"), "cachy_os_1");
+    }
+
+    /// The account number used to be the last argv word of `mullvad
+    /// account login`, readable by every process of the user.
+    #[test]
+    fn login_sends_the_account_number_on_stdin_never_in_argv() {
+        let fake = Fake::new("login", 0, "", "");
+        assert_eq!(login_with(fake.program(), " 1234567890123456 "), Ok(()));
+        assert_eq!(fake.argv(), "account\nlogin\n");
+        assert!(!fake.argv().contains("1234"));
+        assert_eq!(fake.stdin(), "1234567890123456\n");
+    }
+
+    #[test]
+    fn a_failed_login_is_a_plain_sentence() {
+        let fake = Fake::new(
+            "login-full",
+            1,
+            "",
+            "Error: There are too many devices on the account. One must be revoked to log in",
+        );
+        let err = login_with(fake.program(), "1234567890123456").expect_err("fails");
+        assert_eq!(err, "too many devices on the account; revoke one first");
+        assert_eq!(
+            login_error("Error: The account does not exist"),
+            "there is no Mullvad account with that number"
+        );
+        assert_eq!(
+            login_error("Error: Management RPC server or client error"),
+            "the Mullvad service is not running"
+        );
+        assert_eq!(
+            login_with("/nonexistent/mullvad", "1").expect_err("no binary"),
+            "the mullvad command is not installed"
+        );
     }
 }
