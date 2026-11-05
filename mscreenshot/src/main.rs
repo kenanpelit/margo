@@ -28,9 +28,11 @@
 //! `margo/src/dispatch/mod.rs` now calls `mscreenshot <mode>`
 //! instead of `margo-screenshot <mode>`.
 
+mod measure;
 mod ocr;
 mod palette;
 mod scan;
+mod translate;
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -63,7 +65,8 @@ use clap::{Parser, Subcommand};
                   OPTIONAL TOOLS:\n  \
                     tesseract + tesseract-data-<lang> (ocr)\n  \
                     zbar (qr)\n\
-                  palette needs nothing extra."
+                  palette and measure need nothing extra; ocr --translate\n\
+                  uses Settings → Translate (network)."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -142,7 +145,19 @@ enum Cmd {
         /// OCR the focused output instead of a selected region.
         #[arg(long)]
         screen: bool,
+        /// Translate the recognised text (Settings → Translate's provider
+        /// and target) and copy the translation instead.
+        #[arg(long, short = 't')]
+        translate: bool,
+        /// Target language for `--translate` (e.g. `en`); implies it.
+        #[arg(long, value_name = "LANG")]
+        to: Option<String>,
     },
+
+    /// Region select → measure: copy the size (`WxH`, device pixels) and
+    /// notify the position, aspect ratio and output. The in-shell selector
+    /// shows the size live while you drag.
+    Measure,
 
     /// Region select → decode QR codes / barcodes (zbarimg) → copy the
     /// payload. A single http(s) URL gets an "Open" notification action.
@@ -222,6 +237,7 @@ fn main() {
 fn failure_title(cmd: &Cmd) -> &'static str {
     match cmd {
         Cmd::Ocr { .. } => "Text recognition failed",
+        Cmd::Measure => "Measure failed",
         Cmd::Qr => "Code scan failed",
         Cmd::Palette { .. } => "Palette extraction failed",
         _ => "Screenshot failed",
@@ -238,9 +254,17 @@ fn run(cli: &Cli) -> Result<()> {
         Cmd::NotifyUrl { title, body, url } => return run_notify_url(title, body, url),
         Cmd::Qr => return run_qr(cli),
         Cmd::Palette { count } => return run_palette(cli, count.as_deref()),
-        Cmd::Ocr { lang, psm, screen } => {
-            return run_ocr(cli, lang.as_deref(), psm.as_deref(), *screen);
+        Cmd::Ocr {
+            lang,
+            psm,
+            screen,
+            translate,
+            to,
+        } => {
+            let translate = (*translate || to.is_some()).then_some(to.as_deref());
+            return run_ocr(cli, lang.as_deref(), psm.as_deref(), *screen, translate);
         }
+        Cmd::Measure => return run_measure(),
         _ => {}
     }
 
@@ -360,6 +384,7 @@ fn capture_plan(cmd: &Cmd) -> Option<(CaptureSource, DeliveryMode)> {
         Cmd::Ac => (CaptureSource::AllOutputs, DeliveryMode::ClipOnly),
         Cmd::Af => (CaptureSource::AllOutputs, DeliveryMode::SaveOnly),
         Cmd::Ocr { .. }
+        | Cmd::Measure
         | Cmd::Qr
         | Cmd::Palette { .. }
         | Cmd::NotifyUrl { .. }
@@ -392,7 +417,15 @@ fn capture_for_tool(cli: &Cli, source: CaptureSource) -> Result<ToolCapture> {
     Ok(shot)
 }
 
-fn run_ocr(cli: &Cli, lang: Option<&str>, psm: Option<&str>, screen: bool) -> Result<()> {
+/// `translate`: `None` = plain OCR; `Some(to)` = translate, `to` the
+/// optional target override.
+fn run_ocr(
+    cli: &Cli,
+    lang: Option<&str>,
+    psm: Option<&str>,
+    screen: bool,
+    translate: Option<Option<&str>>,
+) -> Result<()> {
     if !margo_fs::path::on_path("tesseract") {
         bail!("OCR needs `tesseract` (pacman -S tesseract tesseract-data-eng)");
     }
@@ -440,11 +473,36 @@ fn run_ocr(cli: &Cli, lang: Option<&str>, psm: Option<&str>, screen: bool) -> Re
         notify_tool("Text recognition", "No text recognised in the selection");
         return Ok(());
     }
+    if let Some(to) = translate {
+        let outcome = translate::run(&text, to);
+        copy_text_to_clipboard(outcome.clipboard(&text))?;
+        notify_tool(
+            &outcome.title(),
+            &ocr::escape_markup(&ocr::preview(outcome.clipboard(&text), ocr::PREVIEW_CHARS)),
+        );
+        return Ok(());
+    }
     copy_text_to_clipboard(&text)?;
     notify_tool(
         &format!("Text copied ({langs})"),
         &ocr::escape_markup(&ocr::preview(&text, ocr::PREVIEW_CHARS)),
     );
+    Ok(())
+}
+
+fn run_measure() -> Result<()> {
+    require("wl-copy")?;
+    let geom = select_region_geom(true)?;
+    let Some(rect) = measure::parse_geom(&geom) else {
+        bail!("region selection cancelled");
+    };
+    let outputs = mctl_status_json()
+        .map(|j| measure::outputs_in(&j))
+        .unwrap_or_default();
+    let m = measure::Measurement::new(rect, &outputs);
+    copy_text_to_clipboard(&m.clipboard())?;
+    println!("{}", m.clipboard());
+    notify_with_urgency(&m.title(), &m.body(), "normal", "zoom-fit-best-symbolic");
     Ok(())
 }
 
@@ -611,23 +669,7 @@ fn capture_region(dest: &Path) -> Result<()> {
     //   3. `slurp` fallback. For compositors without mshell or
     //      when mshellctl isn't installed; preserves the original
     //      mscreenshot behaviour from before the bridge landed.
-    let geom_owned = std::env::var("MARGO_REGION_GEOM").unwrap_or_default();
-    let geom = if !geom_owned.trim().is_empty() {
-        geom_owned.trim().to_string()
-    } else if let Some(g) = try_mshell_select_region() {
-        g
-    } else {
-        let g = run_capture_stdout(
-            "slurp",
-            &[
-                "-b", "00000055", "-c", "f5f5f5ee", "-s", "00000000", "-w", "3",
-            ],
-        )?;
-        g.trim().to_string()
-    };
-    if geom.is_empty() {
-        bail!("region selection cancelled");
-    }
+    let geom = select_region_geom(false)?;
     let status = Command::new("grim")
         .args(["-g", &geom])
         .arg(dest)
@@ -637,6 +679,32 @@ fn capture_region(dest: &Path) -> Result<()> {
         bail!("grim exited {status} for region capture");
     }
     Ok(())
+}
+
+/// A region geometry (`"X,Y WxH"`) from the first available source (see
+/// [`capture_region`]); `show_size` makes the slurp fallback print the live
+/// size while dragging (the in-shell selector always does). Errors on
+/// cancel.
+fn select_region_geom(show_size: bool) -> Result<String> {
+    let geom_owned = std::env::var("MARGO_REGION_GEOM").unwrap_or_default();
+    let geom = if !geom_owned.trim().is_empty() {
+        geom_owned.trim().to_string()
+    } else if let Some(g) = try_mshell_select_region() {
+        g
+    } else {
+        let mut args = vec![
+            "-b", "00000055", "-c", "f5f5f5ee", "-s", "00000000", "-w", "3",
+        ];
+        if show_size {
+            args.push("-d");
+        }
+        let g = run_capture_stdout("slurp", &args)?;
+        g.trim().to_string()
+    };
+    if geom.is_empty() {
+        bail!("region selection cancelled");
+    }
+    Ok(geom)
 }
 
 /// Try `mshellctl screenshot select-region`. Returns `Some(geom)`

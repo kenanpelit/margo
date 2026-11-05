@@ -2318,6 +2318,7 @@ _arguments "${_arguments_options[@]}" : \
 '--copy[Copy to clipboard only (no file, no editor)]' \
 '--save[Save to file only (no clipboard, no editor)]' \
 '--edit[Open the editor (satty / swappy) → save]' \
+'--pin[Pin the capture on screen\: a floating, always-on-top image (drag to move, scroll to zoom, Esc to close). Nothing is saved]' \
 '-h[Print help]' \
 '--help[Print help]' \
 '::editor -- Force a specific annotation editor (satty | swappy | gimp | krita). Implies `--edit`. Omit to use the default chain (`SCREENSHOT_EDITOR` env, then satty → swappy → gimp → krita):_default' \
@@ -2330,6 +2331,7 @@ _arguments "${_arguments_options[@]}" : \
 '--copy[Copy to clipboard only (no file, no editor)]' \
 '--save[Save to file only (no clipboard, no editor)]' \
 '--edit[Open the editor (satty / swappy) → save]' \
+'--pin[Pin the capture on screen\: a floating, always-on-top image (drag to move, scroll to zoom, Esc to close). Nothing is saved]' \
 '-h[Print help]' \
 '--help[Print help]' \
 '::editor -- Force a specific annotation editor (satty | swappy | gimp | krita). Implies `--edit`. Omit to use the default chain (`SCREENSHOT_EDITOR` env, then satty → swappy → gimp → krita):_default' \
@@ -2342,6 +2344,7 @@ _arguments "${_arguments_options[@]}" : \
 '--copy[Copy to clipboard only (no file, no editor)]' \
 '--save[Save to file only (no clipboard, no editor)]' \
 '--edit[Open the editor (satty / swappy) → save]' \
+'--pin[Pin the capture on screen\: a floating, always-on-top image (drag to move, scroll to zoom, Esc to close). Nothing is saved]' \
 '-h[Print help]' \
 '--help[Print help]' \
 '::editor -- Force a specific annotation editor (satty | swappy | gimp | krita). Implies `--edit`. Omit to use the default chain (`SCREENSHOT_EDITOR` env, then satty → swappy → gimp → krita):_default' \
@@ -2354,6 +2357,7 @@ _arguments "${_arguments_options[@]}" : \
 '--copy[Copy to clipboard only (no file, no editor)]' \
 '--save[Save to file only (no clipboard, no editor)]' \
 '--edit[Open the editor (satty / swappy) → save]' \
+'--pin[Pin the capture on screen\: a floating, always-on-top image (drag to move, scroll to zoom, Esc to close). Nothing is saved]' \
 '-h[Print help]' \
 '--help[Print help]' \
 '::editor -- Force a specific annotation editor (satty | swappy | gimp | krita). Implies `--edit`. Omit to use the default chain (`SCREENSHOT_EDITOR` env, then satty → swappy → gimp → krita):_default' \
@@ -2366,6 +2370,7 @@ _arguments "${_arguments_options[@]}" : \
 '--copy[Copy to clipboard only (no file, no editor)]' \
 '--save[Save to file only (no clipboard, no editor)]' \
 '--edit[Open the editor (satty / swappy) → save]' \
+'--pin[Pin the capture on screen\: a floating, always-on-top image (drag to move, scroll to zoom, Esc to close). Nothing is saved]' \
 '-h[Print help]' \
 '--help[Print help]' \
 '::editor -- Force a specific annotation editor (satty | swappy | gimp | krita). Implies `--edit`. Omit to use the default chain (`SCREENSHOT_EDITOR` env, then satty → swappy → gimp → krita):_default' \
@@ -2375,6 +2380,15 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 '-l+[tesseract languages joined with \`+\` (default\: \$MSCREENSHOT_OCR_LANG, else eng+tur when installed)]:LANG:_default' \
 '--lang=[tesseract languages joined with \`+\` (default\: \$MSCREENSHOT_OCR_LANG, else eng+tur when installed)]:LANG:_default' \
+'--to=[Target language for \`--translate\` (e.g. \`en\`); implies it]:LANG:_default' \
+'-t[Translate the text (Settings → Translate) and copy that instead]' \
+'--translate[Translate the text (Settings → Translate) and copy that instead]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(measure)
+_arguments "${_arguments_options[@]}" : \
 '-h[Print help]' \
 '--help[Print help]' \
 && ret=0
@@ -2432,6 +2446,10 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (ocr)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(measure)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -4407,6 +4425,10 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (ocr)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(measure)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -6785,6 +6807,7 @@ _mshellctl__subcmd__help__subcmd__screenshot_commands() {
 'full:Whole layout (every output) → capture' \
 'repeat:Re-capture the last selected region (no reselect). Falls back to a normal region select the first time it'\''s used' \
 'ocr:Region select → OCR (tesseract) → copy the text. Runs the \`mscreenshot ocr\` pipeline, which uses the in-shell selector' \
+'measure:Region select → measure\: copy the size as \`WxH\` (device pixels) and notify position / aspect / output. Runs \`mscreenshot measure\`' \
 'qr:Region select → decode QR codes / barcodes (zbarimg) → copy' \
 'palette:Region select → dominant colours → copy the hex codes' \
 'select-region:(internal) Open the in-shell area selector and print the chosen region as "X,Y WxH" (slurp format). Used by the \`mscreenshot\` CLI'\''s region bridge; not meant for direct use' \
@@ -6795,6 +6818,11 @@ _mshellctl__subcmd__help__subcmd__screenshot_commands() {
 _mshellctl__subcmd__help__subcmd__screenshot__subcmd__full_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help screenshot full commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__screenshot__subcmd__measure_commands] )) ||
+_mshellctl__subcmd__help__subcmd__screenshot__subcmd__measure_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help screenshot measure commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__help__subcmd__screenshot__subcmd__ocr_commands] )) ||
 _mshellctl__subcmd__help__subcmd__screenshot__subcmd__ocr_commands() {
@@ -8972,6 +9000,7 @@ _mshellctl__subcmd__screenshot_commands() {
 'full:Whole layout (every output) → capture' \
 'repeat:Re-capture the last selected region (no reselect). Falls back to a normal region select the first time it'\''s used' \
 'ocr:Region select → OCR (tesseract) → copy the text. Runs the \`mscreenshot ocr\` pipeline, which uses the in-shell selector' \
+'measure:Region select → measure\: copy the size as \`WxH\` (device pixels) and notify position / aspect / output. Runs \`mscreenshot measure\`' \
 'qr:Region select → decode QR codes / barcodes (zbarimg) → copy' \
 'palette:Region select → dominant colours → copy the hex codes' \
 'select-region:(internal) Open the in-shell area selector and print the chosen region as "X,Y WxH" (slurp format). Used by the \`mscreenshot\` CLI'\''s region bridge; not meant for direct use' \
@@ -8993,6 +9022,7 @@ _mshellctl__subcmd__screenshot__subcmd__help_commands() {
 'full:Whole layout (every output) → capture' \
 'repeat:Re-capture the last selected region (no reselect). Falls back to a normal region select the first time it'\''s used' \
 'ocr:Region select → OCR (tesseract) → copy the text. Runs the \`mscreenshot ocr\` pipeline, which uses the in-shell selector' \
+'measure:Region select → measure\: copy the size as \`WxH\` (device pixels) and notify position / aspect / output. Runs \`mscreenshot measure\`' \
 'qr:Region select → decode QR codes / barcodes (zbarimg) → copy' \
 'palette:Region select → dominant colours → copy the hex codes' \
 'select-region:(internal) Open the in-shell area selector and print the chosen region as "X,Y WxH" (slurp format). Used by the \`mscreenshot\` CLI'\''s region bridge; not meant for direct use' \
@@ -9009,6 +9039,11 @@ _mshellctl__subcmd__screenshot__subcmd__help__subcmd__full_commands() {
 _mshellctl__subcmd__screenshot__subcmd__help__subcmd__help_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl screenshot help help commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__screenshot__subcmd__help__subcmd__measure_commands] )) ||
+_mshellctl__subcmd__screenshot__subcmd__help__subcmd__measure_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl screenshot help measure commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__screenshot__subcmd__help__subcmd__ocr_commands] )) ||
 _mshellctl__subcmd__screenshot__subcmd__help__subcmd__ocr_commands() {
@@ -9049,6 +9084,11 @@ _mshellctl__subcmd__screenshot__subcmd__help__subcmd__select-region_commands() {
 _mshellctl__subcmd__screenshot__subcmd__help__subcmd__window_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl screenshot help window commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__screenshot__subcmd__measure_commands] )) ||
+_mshellctl__subcmd__screenshot__subcmd__measure_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl screenshot measure commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__screenshot__subcmd__ocr_commands] )) ||
 _mshellctl__subcmd__screenshot__subcmd__ocr_commands() {

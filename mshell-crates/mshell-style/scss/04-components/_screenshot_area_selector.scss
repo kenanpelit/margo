@@ -5,3 +5,15 @@
 .screenshot-overlay {
   background: transparent;
 }
+
+// Pinned capture (mshell-screenshot/src/pin.rs): a floating piece of the
+// screen. The window itself is transparent; the picture carries a primary
+// hairline so the pin reads as "live, on top" against whatever lies under
+// it, and nothing else — it must look like the pixels it froze.
+.screenshot-pin-window {
+  background: transparent;
+}
+
+.screenshot-pin {
+  border: 1px solid var(--primary);
+}

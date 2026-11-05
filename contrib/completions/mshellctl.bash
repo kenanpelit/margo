@@ -1066,6 +1066,9 @@ _mshellctl() {
             mshellctl__subcmd__help__subcmd__screenshot,full)
                 cmd="mshellctl__subcmd__help__subcmd__screenshot__subcmd__full"
                 ;;
+            mshellctl__subcmd__help__subcmd__screenshot,measure)
+                cmd="mshellctl__subcmd__help__subcmd__screenshot__subcmd__measure"
+                ;;
             mshellctl__subcmd__help__subcmd__screenshot,ocr)
                 cmd="mshellctl__subcmd__help__subcmd__screenshot__subcmd__ocr"
                 ;;
@@ -2080,6 +2083,9 @@ _mshellctl() {
             mshellctl__subcmd__screenshot,help)
                 cmd="mshellctl__subcmd__screenshot__subcmd__help"
                 ;;
+            mshellctl__subcmd__screenshot,measure)
+                cmd="mshellctl__subcmd__screenshot__subcmd__measure"
+                ;;
             mshellctl__subcmd__screenshot,ocr)
                 cmd="mshellctl__subcmd__screenshot__subcmd__ocr"
                 ;;
@@ -2109,6 +2115,9 @@ _mshellctl() {
                 ;;
             mshellctl__subcmd__screenshot__subcmd__help,help)
                 cmd="mshellctl__subcmd__screenshot__subcmd__help__subcmd__help"
+                ;;
+            mshellctl__subcmd__screenshot__subcmd__help,measure)
+                cmd="mshellctl__subcmd__screenshot__subcmd__help__subcmd__measure"
                 ;;
             mshellctl__subcmd__screenshot__subcmd__help,ocr)
                 cmd="mshellctl__subcmd__screenshot__subcmd__help__subcmd__ocr"
@@ -6671,7 +6680,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help__subcmd__screenshot)
-            opts="region window output full repeat ocr qr palette select-region"
+            opts="region window output full repeat ocr measure qr palette select-region"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -6685,6 +6694,20 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help__subcmd__screenshot__subcmd__full)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__screenshot__subcmd__measure)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -11803,7 +11826,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__screenshot)
-            opts="-h --help region window output full repeat ocr qr palette select-region help"
+            opts="-h --help region window output full repeat ocr measure qr palette select-region help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -11817,7 +11840,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__screenshot__subcmd__full)
-            opts="-d -h --copy --save --edit --delay --help [EDITOR]"
+            opts="-d -h --copy --save --edit --pin --delay --help [EDITOR]"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -11839,7 +11862,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__screenshot__subcmd__help)
-            opts="region window output full repeat ocr qr palette select-region help"
+            opts="region window output full repeat ocr measure qr palette select-region help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -11867,6 +11890,20 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__screenshot__subcmd__help__subcmd__help)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__screenshot__subcmd__help__subcmd__measure)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -11992,8 +12029,22 @@ _mshellctl() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        mshellctl__subcmd__screenshot__subcmd__measure)
+            opts="-h --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         mshellctl__subcmd__screenshot__subcmd__ocr)
-            opts="-l -h --lang --help"
+            opts="-l -t -h --lang --translate --to --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -12007,6 +12058,10 @@ _mshellctl() {
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
+                --to)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
                 *)
                     COMPREPLY=()
                     ;;
@@ -12015,7 +12070,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__screenshot__subcmd__output)
-            opts="-d -h --copy --save --edit --delay --help [EDITOR]"
+            opts="-d -h --copy --save --edit --pin --delay --help [EDITOR]"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -12073,7 +12128,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__screenshot__subcmd__region)
-            opts="-d -h --copy --save --edit --delay --help [EDITOR]"
+            opts="-d -h --copy --save --edit --pin --delay --help [EDITOR]"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -12095,7 +12150,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__screenshot__subcmd__repeat)
-            opts="-d -h --copy --save --edit --delay --help [EDITOR]"
+            opts="-d -h --copy --save --edit --pin --delay --help [EDITOR]"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -12131,7 +12186,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__screenshot__subcmd__window)
-            opts="-d -h --copy --save --edit --delay --help [EDITOR]"
+            opts="-d -h --copy --save --edit --pin --delay --help [EDITOR]"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

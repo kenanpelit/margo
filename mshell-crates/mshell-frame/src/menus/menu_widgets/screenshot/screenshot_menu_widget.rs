@@ -328,6 +328,10 @@ impl Component for ScreenshotMenuWidgetModel {
                     value: OutputTarget::EditAndSave(None),
                     icon_name: "document-edit-symbolic".into(),
                 },
+                SaveOptionRow {
+                    value: OutputTarget::Pin,
+                    icon_name: "view-pin-symbolic".into(),
+                },
             ])
             .forward(sender.input_sender(), |msg| match msg {
                 OptionsListOutput::Selected(opt) => {
@@ -423,6 +427,7 @@ impl Component for ScreenshotMenuWidgetModel {
                         OutputTarget::File => "Save to file".to_string(),
                         OutputTarget::Clipboard => "Save to clipboard".to_string(),
                         OutputTarget::EditAndSave(_) => "Edit (satty / swappy) → save".to_string(),
+                        OutputTarget::Pin => "Pin on screen".to_string(),
                     }));
                 self.save_row
                     .emit(RevealerRowInput::UpdateActionIconName(opt.icon_name));

@@ -7,12 +7,15 @@
 //!
 //! ```text
 //! mshellctl screenshot region|window|output|full|repeat [EDITOR] [--copy|--save|--edit] [--delay N]
-//! mshellctl screenshot ocr [--lang eng+tur]
+//! mshellctl screenshot region|window|output|full|repeat --pin
+//! mshellctl screenshot ocr [--lang eng+tur] [--translate [--to LANG]]
 //! mshellctl screenshot qr
 //! mshellctl screenshot palette [-n 8]
+//! mshellctl screenshot measure
 //! ```
 //! Default delivery is file + clipboard. `--copy` = clipboard only,
-//! `--save` = file only, `--edit` = editor → save (no clipboard).
+//! `--save` = file only, `--edit` = editor → save (no clipboard),
+//! `--pin` = float the capture on screen (always on top, nothing saved).
 //! A positional editor name (`mshellctl screenshot region satty`) forces
 //! that annotation tool and implies `--edit`.
 
@@ -39,7 +42,16 @@ pub enum ScreenshotCommands {
         /// $MSCREENSHOT_OCR_LANG, else eng+tur when installed).
         #[arg(long, short = 'l')]
         lang: Option<String>,
+        /// Translate the text (Settings → Translate) and copy that instead.
+        #[arg(long, short = 't')]
+        translate: bool,
+        /// Target language for `--translate` (e.g. `en`); implies it.
+        #[arg(long, value_name = "LANG")]
+        to: Option<String>,
     },
+    /// Region select → measure: copy the size as `WxH` (device pixels)
+    /// and notify position / aspect / output. Runs `mscreenshot measure`.
+    Measure,
     /// Region select → decode QR codes / barcodes (zbarimg) → copy.
     Qr,
     /// Region select → dominant colours → copy the hex codes.
@@ -55,7 +67,7 @@ pub enum ScreenshotCommands {
 }
 
 /// Delivery flags shared by every capture area. If several are passed,
-/// precedence is edit > save > copy; the default is file + clipboard.
+/// precedence is pin > edit > save > copy; the default is file + clipboard.
 #[derive(Args, Debug, Default)]
 pub struct Capture {
     /// Copy to clipboard only (no file, no editor).
@@ -67,6 +79,10 @@ pub struct Capture {
     /// Open the editor (satty / swappy) → save.
     #[arg(long)]
     edit: bool,
+    /// Pin the capture on screen: a floating, always-on-top image (drag
+    /// to move, scroll to zoom, Esc to close). Nothing is saved.
+    #[arg(long)]
+    pin: bool,
     /// Wait N seconds before capturing (catch menus / tooltips).
     #[arg(long, short = 'd')]
     delay: Option<u32>,
@@ -80,7 +96,9 @@ pub struct Capture {
 impl Capture {
     fn target(&self) -> &'static str {
         // A named editor implies edit mode.
-        if self.edit || self.editor.is_some() {
+        if self.pin {
+            "pin"
+        } else if self.edit || self.editor.is_some() {
             "edit"
         } else if self.save {
             "save"
@@ -108,13 +126,24 @@ pub async fn execute(command: ScreenshotCommands) -> anyhow::Result<()> {
         ScreenshotCommands::Output(c) => capture("output", &c).await?,
         ScreenshotCommands::Full(c) => capture("full", &c).await?,
         ScreenshotCommands::Repeat(c) => capture("repeat", &c).await?,
-        ScreenshotCommands::Ocr { lang } => {
+        ScreenshotCommands::Ocr {
+            lang,
+            translate,
+            to,
+        } => {
             let mut args = vec!["ocr".to_string()];
             if let Some(lang) = lang {
                 args.extend(["--lang".to_string(), lang]);
             }
+            if translate {
+                args.push("--translate".to_string());
+            }
+            if let Some(to) = to {
+                args.extend(["--to".to_string(), to]);
+            }
             run_mscreenshot(&args)?;
         }
+        ScreenshotCommands::Measure => run_mscreenshot(&["measure".to_string()])?,
         ScreenshotCommands::Qr => run_mscreenshot(&["qr".to_string()])?,
         ScreenshotCommands::Palette { count } => {
             let mut args = vec!["palette".to_string()];

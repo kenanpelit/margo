@@ -734,6 +734,7 @@ impl Component for Shell {
                     Some("copy") => OutputTarget::Clipboard,
                     Some("save") => OutputTarget::File,
                     Some("edit") => OutputTarget::EditAndSave(editor),
+                    Some("pin") => OutputTarget::Pin,
                     _ if editor.is_some() => OutputTarget::EditAndSave(editor),
                     _ => OutputTarget::FileAndClipboard, // "default"
                 };

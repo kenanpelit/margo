@@ -1,6 +1,7 @@
 mod capture;
 mod common;
 pub mod editor;
+pub mod pin;
 pub mod record;
 mod selectors;
 mod utils;
@@ -75,6 +76,9 @@ pub enum OutputTarget {
     /// preference chain (`SCREENSHOT_EDITOR` env, then satty → swappy
     /// → gimp → krita) via [`editor::pick_editor`].
     EditAndSave(Option<String>),
+    /// Capture → pin it on screen as a floating, always-on-top image
+    /// ([`pin`]). Nothing is saved unless the user presses Ctrl+S on it.
+    Pin,
 }
 
 #[derive(Debug, Clone)]
@@ -303,10 +307,12 @@ where
                 Ok((region, override_target)) => {
                     store_last_region(region.clone());
                     let final_target = override_target.unwrap_or(target);
+                    let pin_at = region_placement(&region);
                     capture_and_finish_async(
                         move || CaptureBackend::new()?.capture_region(&region),
                         final_target,
                         delay,
+                        pin_at,
                         on_done,
                     );
                 }
@@ -315,10 +321,12 @@ where
         }
         CaptureArea::RepeatRegion => match load_last_region() {
             Some(region) => {
+                let pin_at = region_placement(&region);
                 capture_and_finish_async(
                     move || CaptureBackend::new()?.capture_region(&region),
                     request.target,
                     delay,
+                    pin_at,
                     on_done,
                 );
             }
@@ -349,6 +357,7 @@ where
                         move || CaptureBackend::new()?.capture_output(&name),
                         target,
                         delay,
+                        None,
                         on_done,
                     ),
                     Err(e) => on_done(Err(e)),
@@ -366,6 +375,7 @@ where
                     move || CaptureBackend::new()?.capture_window(&win),
                     target,
                     delay,
+                    None,
                     on_done,
                 ),
                 Err(e) => on_done(Err(e)),
@@ -376,20 +386,59 @@ where
                 || CaptureBackend::new()?.capture_all(),
                 request.target,
                 delay,
+                None,
                 on_done,
             );
         }
     }
 }
 
-fn capture_and_finish_async<C, F>(capture: C, target: OutputTarget, delay: Duration, on_done: F)
-where
+/// Where a pin of `region` opens: exactly over the captured area, 1:1.
+fn region_placement(region: &RegionSelection) -> Option<pin::PinPlacement> {
+    Some(pin::PinPlacement {
+        output: Some(region.output.clone()),
+        x: region.x,
+        y: region.y,
+        width: region.width,
+        height: region.height,
+    })
+}
+
+/// Capture on a worker thread, then deliver per `target` and report on the
+/// GTK thread. A [`OutputTarget::Pin`] target hands the image to
+/// [`pin::show_pin`] there instead (at `pin_at`, or inset on the first
+/// output when the capture has no region).
+fn capture_and_finish_async<C, F>(
+    capture: C,
+    target: OutputTarget,
+    delay: Duration,
+    pin_at: Option<pin::PinPlacement>,
+    on_done: F,
+) where
     C: FnOnce() -> Result<image::RgbaImage> + Send + 'static,
     F: FnOnce(Result<ScreenshotResult>) + Send + 'static,
 {
     std::thread::spawn(move || {
         if !delay.is_zero() {
             std::thread::sleep(delay);
+        }
+        if matches!(target, OutputTarget::Pin) {
+            let captured = capture();
+            let outputs = query_outputs().unwrap_or_default();
+            glib::idle_add_once(move || match captured {
+                Ok(image) => {
+                    let placement = pin_at.unwrap_or_else(|| {
+                        pin::PinPlacement::inset(outputs.first(), image.width(), image.height())
+                    });
+                    pin::show_pin(image, placement, &outputs);
+                    on_done(Ok(ScreenshotResult {
+                        saved_path: None,
+                        in_clipboard: false,
+                    }));
+                }
+                Err(e) => on_done(Err(e)),
+            });
+            return;
         }
         let result = capture().and_then(|image| finish_capture(image, &target));
         glib::idle_add_once(move || {
@@ -425,6 +474,12 @@ fn finish_capture(image: image::RgbaImage, target: &OutputTarget) -> Result<Scre
             })
         }
         OutputTarget::EditAndSave(editor) => finish_with_editor(image, editor.as_deref()),
+        // Pins are shown by `capture_and_finish_async` on the GTK thread;
+        // nothing to deliver here.
+        OutputTarget::Pin => Ok(ScreenshotResult {
+            saved_path: None,
+            in_clipboard: false,
+        }),
     }
 }
 

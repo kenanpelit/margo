@@ -144,7 +144,13 @@ session awake (default:
 .TP
 .B screenshot \fISUBCOMMAND\fR
 Capture to file and clipboard:
-.IR region ", " window ", " output ", " full ", " repeat ", " ocr ", " qr ", " palette .
+.IR region ", " window ", " output ", " full ", " repeat ", " ocr ", " qr ", " palette ", " measure .
+.B \-\-pin
+floats a capture on screen (always on top);
+.B ocr \-\-translate
+copies the translation;
+.B measure
+copies a region's size.
 .TP
 .B screenrecord \fISUBCOMMAND\fR
 The shell's screen recorder:

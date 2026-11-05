@@ -13,6 +13,8 @@ mscreenshot output        # the whole monitor
 mscreenshot ocr           # region → OCR (tesseract) → text on the clipboard
 mscreenshot qr            # region → QR code / barcode (zbarimg) → clipboard
 mscreenshot palette       # region → dominant colours as hex → clipboard
+mscreenshot measure       # region → size as WxH (device px) → clipboard
+mscreenshot ocr --translate [--to LANG]  # OCR → translation (Settings → Translate) → clipboard
 mscreenshot --help
 ```
 

@@ -5042,7 +5042,9 @@ dependencies = [
  "libc",
  "margo-fs",
  "margo-logging",
+ "mshell-translate",
  "serde_json",
+ "zeroize",
 ]
 
 [[package]]

@@ -155,6 +155,9 @@ temporary file that is deleted as soon as the tool has read it.
 | Text (OCR) | `mscreenshot ocr` · `mshellctl screenshot ocr` | `screenshot-ocr [LANGS]` | `tesseract` + `tesseract-data-<lang>` |
 | QR / barcode | `mscreenshot qr` · `mshellctl screenshot qr` | `screenshot-qr` | `zbarimg` (zbar) |
 | Palette | `mscreenshot palette [-n N]` · `mshellctl screenshot palette` | `screenshot-palette` | — (native median cut) |
+| Text → translation | `mscreenshot ocr --translate [--to LANG]` · `mshellctl screenshot ocr --translate` | — | `tesseract` + Settings → Translate (network) |
+| Measure (ruler) | `mscreenshot measure` · `mshellctl screenshot measure` | — | — (`slurp -d` only as fallback) |
+| Pin on screen | `mshellctl screenshot region --pin` (any area) · screenshot menu → save option **Pin on screen** | — | — |
 
 OCR languages: `--lang` / the action argument, else
 `MSCREENSHOT_OCR_LANG` (set it once with `env = MSCREENSHOT_OCR_LANG,eng+tur`
@@ -170,6 +173,22 @@ payloads stay intact). When exactly one code was found and it is a plain
 `http(s)://` link, the notification offers **Open link**; other schemes
 (`file:`, `javascript:`, Wi-Fi configs, …) are only copied — a code on
 screen is untrusted input.
+
+OCR → translate: the recognised text goes through the same engine and
+settings as `mshellctl translate` (Settings → Translate: provider, target,
+secondary language for the auto-flip; `--to LANG` forces a target and
+disables the flip). Text that looks like a token or key is never sent — it
+is copied untranslated and the notification says why.
+
+Measure: drag a box (the in-shell selector labels its size and aspect while
+you drag) and its size lands on the clipboard as `WxH` in the output's
+device pixels; the notification adds the position relative to the output,
+the aspect ratio and, on a scaled output, the logical size.
+
+Pin: the capture floats above every window on an overlay layer — a region
+pin opens exactly where the region was, 1:1. Drag to move, scroll to zoom,
+Ctrl+scroll for opacity, Ctrl+C copy, Ctrl+S save, `0` resets, Esc or
+right-click closes. Nothing is written to disk unless you save.
 
 Palette: up to N (default 8, max 16) dominant colours by median cut over
 the region's opaque pixels, most common first, copied as `#RRGGBB` lines;
@@ -193,9 +212,10 @@ mscreenshot area      # region → file (no editor, no clipboard)
 mscreenshot screen    # focused output → editor → file (alias: output)
 mscreenshot all       # all outputs (whole layout) → editor → file (alias: full)
 mscreenshot window    # focused window → editor → file
-mscreenshot ocr       # region → OCR → text on the clipboard (see Region tools)
+mscreenshot ocr       # region → OCR → text on the clipboard (see Region tools; --translate)
 mscreenshot qr        # region → QR / barcode → clipboard
 mscreenshot palette   # region → dominant colours → clipboard
+mscreenshot measure   # region → size (WxH, device px) → clipboard
 mscreenshot open      # open ~/Pictures/Screenshots in the file manager
 mscreenshot dir       # open the screenshot dir
 ```

@@ -18,6 +18,9 @@ serde_json.workspace = true
 image.workspace = true
 libc = "0.2"
 margo-logging = { path = "../margo-logging" }
+# `ocr --translate`: the same GTK-free engine + settings as `mshellctl translate`.
+mshell-translate.workspace = true
+zeroize.workspace = true
 
 [lints]
 workspace = true

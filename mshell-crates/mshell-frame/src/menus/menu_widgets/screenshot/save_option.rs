@@ -14,6 +14,7 @@ impl OptionItem for SaveOptionRow {
             OutputTarget::File => "Save to file".to_string(),
             OutputTarget::Clipboard => "Save to clipboard".to_string(),
             OutputTarget::EditAndSave(_) => "Edit (satty / swappy) → save".to_string(),
+            OutputTarget::Pin => "Pin on screen".to_string(),
         }
     }
 
@@ -23,6 +24,7 @@ impl OptionItem for SaveOptionRow {
             OutputTarget::File => Some("screenshot-save-file-symbolic".to_string()),
             OutputTarget::Clipboard => Some("screenshot-save-clipboard-symbolic".to_string()),
             OutputTarget::EditAndSave(_) => Some("document-edit-symbolic".to_string()),
+            OutputTarget::Pin => Some("view-pin-symbolic".to_string()),
         }
     }
 }
