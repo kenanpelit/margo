@@ -443,34 +443,15 @@ pub(crate) fn focus_session(pid: u32) -> bool {
 
 // ── Resume ─────────────────────────────────────────────────────────────
 
-/// Terminals tried for resuming, in order.
-const TERMINALS: &[&str] = &[
-    "kitty",
-    "foot",
-    "alacritty",
-    "wezterm",
-    "ghostty",
-    "konsole",
-    "xterm",
-];
-
-/// argv that opens `term` in `cwd` running `claude --resume <id>`. The
-/// directory and id travel as positional arguments to `sh -c`, never
-/// spliced into the script.
-pub(crate) fn resume_argv(term: &str, claude: &str, cwd: &str, session_id: &str) -> Vec<String> {
+/// The command (run inside the user's terminal) that resumes `session_id`
+/// in `cwd`. The directory and id travel as positional arguments to
+/// `sh -c`, never spliced into the script.
+pub(crate) fn resume_command(claude: &str, cwd: &str, session_id: &str) -> Vec<String> {
     let script = "cd \"$1\" 2>/dev/null; exec \"$2\" --resume \"$3\"";
-    let mut argv: Vec<String> = match term {
-        "kitty" | "ghostty" => vec!["-e".into()],
-        "foot" => vec![],
-        "wezterm" => vec!["start".into(), "--".into()],
-        _ => vec!["-e".into()],
-    };
-    argv.extend(
-        ["sh", "-c", script, "sh", cwd, claude, session_id]
-            .iter()
-            .map(|s| s.to_string()),
-    );
-    argv
+    ["sh", "-c", script, "sh", cwd, claude, session_id]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
 }
 
 /// `claude` on PATH, else the installer's `~/.local/bin/claude` (mshell
@@ -489,14 +470,12 @@ fn claude_binary() -> Option<String> {
 pub(crate) fn resume(session_id: &str, cwd: &str) -> Result<(), String> {
     use mshell_process::SpawnReaped;
     let claude = claude_binary().ok_or("claude is not installed")?;
-    let term = TERMINALS
-        .iter()
-        .find(|t| margo_fs::path::on_path(t))
-        .ok_or("no terminal emulator found")?;
     // In its own scope: the resumed session must not die with an mshell
     // restart (a plain child is killed with mshell.service).
-    mshell_process::outliving_shell(term, resume_argv(term, &claude, cwd, session_id), "claude")
-        .spawn_reaped()
+    let (term, mut cmd) =
+        mshell_process::terminal::command(&resume_command(&claude, cwd, session_id), "claude")
+            .map_err(|e| e.to_string())?;
+    cmd.spawn_reaped()
         .map(|_| ())
         .map_err(|e| format!("{term}: {e}"))
 }
@@ -673,15 +652,13 @@ mod tests {
     }
 
     #[test]
-    fn resume_argv_keeps_paths_out_of_the_script() {
-        let argv = resume_argv("kitty", "/usr/bin/claude", "/tmp/it's here", "abc");
-        assert_eq!(argv[0], "-e");
+    fn resume_command_keeps_paths_out_of_the_script() {
+        let argv = resume_command("/usr/bin/claude", "/tmp/it's here", "abc");
+        assert_eq!(argv[..2], ["sh", "-c"]);
         assert_eq!(
             &argv[argv.len() - 3..],
             ["/tmp/it's here", "/usr/bin/claude", "abc"]
         );
-        assert!(!argv[3].contains("it's"));
-        assert_eq!(resume_argv("foot", "c", "/", "x")[0], "sh");
-        assert_eq!(&resume_argv("wezterm", "c", "/", "x")[..2], ["start", "--"]);
+        assert!(!argv[2].contains("it's"));
     }
 }

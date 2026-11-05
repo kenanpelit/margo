@@ -690,47 +690,24 @@ pub(crate) async fn launch_terminal_upgrade(cfg: ProbeConfig) -> Result<(), Stri
 /// Open the user's terminal running `steps` one after another, then
 /// wait for Enter.
 async fn spawn_in_terminal(steps: &[String]) -> Result<(), String> {
-    let Some(term) = detect_terminal().await else {
-        warn!("system_update: no terminal emulator on PATH; upgrade ignored");
-        return Err("no terminal emulator found".into());
-    };
+    use mshell_process::SpawnReaped;
     let script = format!(
         "{}; echo; echo \"[mshell] done — press Enter to close.\"; read",
         steps.join("; ")
     );
-    let args = terminal_argv(term, script);
-    if let Err(e) = tokio::process::Command::new(term).args(&args).spawn() {
+    // In its own scope: an upgrade must not die with an mshell restart.
+    let (term, mut cmd) =
+        mshell_process::terminal::command(&["sh", "-c", &script], "system-update").map_err(
+            |e| {
+                warn!("system_update: {e}; upgrade ignored");
+                e.to_string()
+            },
+        )?;
+    if let Err(e) = cmd.spawn_reaped() {
         warn!(error = %e, term, "system_update: terminal spawn failed");
         return Err(format!("{term}: {e}"));
     }
     Ok(())
-}
-
-/// Arguments that make `term` run `sh -c script`.
-fn terminal_argv(term: &str, script: String) -> Vec<String> {
-    match term {
-        "kitty" => vec!["--".into(), "sh".into(), "-c".into(), script],
-        "foot" => vec!["sh".into(), "-c".into(), script],
-        "gnome-terminal" => vec!["--".into(), "sh".into(), "-c".into(), script],
-        _ => vec!["-e".into(), "sh".into(), "-c".into(), script],
-    }
-}
-
-async fn detect_terminal() -> Option<&'static str> {
-    for term in [
-        "kitty",
-        "alacritty",
-        "foot",
-        "wezterm",
-        "konsole",
-        "gnome-terminal",
-        "xterm",
-    ] {
-        if on_path(term) {
-            return Some(term);
-        }
-    }
-    None
 }
 
 #[cfg(test)]
@@ -979,21 +956,5 @@ mod tests {
             ..Default::default()
         };
         assert!(!aur_left_for_review(&no_aur, SystemUpdateMode::Background));
-    }
-
-    #[test]
-    fn terminal_argv_per_emulator() {
-        let s = || "echo hi".to_string();
-        assert_eq!(terminal_argv("kitty", s()), ["--", "sh", "-c", "echo hi"]);
-        assert_eq!(terminal_argv("foot", s()), ["sh", "-c", "echo hi"]);
-        assert_eq!(
-            terminal_argv("gnome-terminal", s()),
-            ["--", "sh", "-c", "echo hi"]
-        );
-        assert_eq!(
-            terminal_argv("alacritty", s()),
-            ["-e", "sh", "-c", "echo hi"]
-        );
-        assert_eq!(terminal_argv("xterm", s()), ["-e", "sh", "-c", "echo hi"]);
     }
 }

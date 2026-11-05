@@ -198,12 +198,9 @@ impl Provider for AppsProvider {
         item.id.starts_with("apps:")
     }
 
-    /// Ctrl+Enter on an app → launch in $TERMINAL. Resolves the
-    /// desktop entry and spawns `$TERMINAL -e <exec>`, falling back
-    /// to `kitty / alacritty / foot / wezterm` in order if the env
-    /// var is unset. The terminal binary itself decides how to
-    /// keep the window open after the program exits — most respect
-    /// `hold_open` style flags or rely on the program being a shell.
+    /// Ctrl+Enter on an app → run it in the user's terminal
+    /// (`mshell_process::terminal`: `$TERMINAL`, else the first installed
+    /// emulator), held open until Enter so its output can be read.
     fn alt_action(
         &self,
         item: &mshell_launcher::LauncherItem,
@@ -214,31 +211,16 @@ impl Provider for AppsProvider {
         // hold a `DesktopAppInfo` ergonomically across threads).
         let info = gio_unix::DesktopAppInfo::new(app_id)?;
         let exec = info.commandline()?.to_string_lossy().to_string();
-        let term = std::env::var("TERMINAL").ok().filter(|t| !t.is_empty());
         Some(std::rc::Rc::new(move || {
-            // Probe for a known terminal via PATH-style file lookup
-            // (no extra crate dep — walks $PATH manually). $TERMINAL
-            // wins when set; otherwise we pick the first installed
-            // candidate so the user doesn't have to configure
-            // anything in the common case.
-            let term_bin = term.clone().unwrap_or_else(|| {
-                let path = std::env::var_os("PATH").unwrap_or_default();
-                for candidate in ["kitty", "alacritty", "foot", "wezterm", "xterm"] {
-                    let found =
-                        std::env::split_paths(&path).any(|dir| dir.join(candidate).is_file());
-                    if found {
-                        return candidate.to_string();
+            let cmd = format!("{exec}; echo; echo '[press enter to close]'; read");
+            match mshell_process::terminal::command(&["sh", "-c", &cmd], "app") {
+                Ok((terminal, mut command)) => {
+                    if let Err(err) = command.spawn_reaped() {
+                        tracing::warn!(?err, %terminal, "launch in terminal failed");
                     }
                 }
-                "xterm".to_string()
-            });
-            let cmd = format!("{exec}; echo; echo '[press enter to close]'; read");
-            let _ = std::process::Command::new(&term_bin)
-                .arg("-e")
-                .arg("sh")
-                .arg("-c")
-                .arg(&cmd)
-                .spawn_reaped();
+                Err(err) => tracing::warn!(%err, "launch in terminal failed"),
+            }
         }))
     }
 }

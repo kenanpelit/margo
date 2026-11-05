@@ -887,39 +887,24 @@ fn format_bytes(b: u64) -> String {
 
 // ── Terminal-backed actions (Shell / Logs) ──────────────────────────
 
-/// The user's terminal: honour `$TERMINAL`, else the first installed of
-/// a sensible candidate list (kitty first — the project's default).
-fn pick_terminal() -> String {
-    if let Some(t) = std::env::var_os("TERMINAL")
-        && !t.is_empty()
-    {
-        return t.to_string_lossy().into_owned();
-    }
-    let path = std::env::var_os("PATH").unwrap_or_default();
-    for candidate in ["kitty", "alacritty", "foot", "wezterm", "xterm"] {
-        if std::env::split_paths(&path).any(|dir| dir.join(candidate).is_file()) {
-            return candidate.to_string();
+fn spawn_terminal(cmd: Vec<String>) {
+    use mshell_process::SpawnReaped;
+    match mshell_process::terminal::command(&cmd, "podman") {
+        Ok((term, mut command)) => {
+            if let Err(e) = command.spawn_reaped() {
+                warn!(error = %e, term, ?cmd, "podman: failed to spawn terminal");
+            }
         }
+        Err(e) => warn!(error = %e, ?cmd, "podman: no terminal"),
     }
-    "xterm".to_string()
 }
 
-fn spawn_terminal(args: Vec<String>) {
-    let term = pick_terminal();
-    relm4::spawn(async move {
-        if let Err(e) = tokio::process::Command::new(&term).args(&args).spawn() {
-            warn!(error = %e, term, ?args, "podman: failed to spawn terminal");
-        }
-    });
-}
-
-/// `<term> -e podman exec -it <id> sh -c 'exec bash || sh'` — opens an
+/// `<terminal> podman exec -it <id> sh -c 'exec bash || sh'` — opens an
 /// interactive shell, preferring bash and falling back to sh so it works
 /// on minimal images. `id` is passed as its own argv element (no shell
 /// quoting needed).
 fn open_shell(id: &str) {
     spawn_terminal(vec![
-        "-e".to_string(),
         "podman".to_string(),
         "exec".to_string(),
         "-it".to_string(),
@@ -930,19 +915,14 @@ fn open_shell(id: &str) {
     ]);
 }
 
-/// `<term> -e sh -c 'podman logs -f --tail 200 <id>; …; read'` — follows
+/// `<terminal> sh -c 'podman logs -f --tail 200 <id>; …; read'` — follows
 /// the log and keeps the window open after the stream ends.
 fn open_logs(id: &str) {
     let script = format!(
         "podman logs -f --tail 200 {id}; echo; printf '\\n[log ended — press Enter to close] '; read _",
         id = sh_quote(id)
     );
-    spawn_terminal(vec![
-        "-e".to_string(),
-        "sh".to_string(),
-        "-c".to_string(),
-        script,
-    ]);
+    spawn_terminal(vec!["sh".to_string(), "-c".to_string(), script]);
 }
 
 /// Single-quote a string for safe embedding in a `sh -c` script.

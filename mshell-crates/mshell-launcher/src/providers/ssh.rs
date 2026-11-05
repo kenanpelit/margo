@@ -34,7 +34,6 @@ use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::process::Command;
 use std::rc::Rc;
 
 /// One host snapshot, projected from the YAML map for cheap
@@ -79,7 +78,6 @@ pub struct SshProvider {
     /// OpenSSH client config read when assh yields no hosts.
     ssh_config_path: PathBuf,
     hosts: RefCell<Vec<Host>>,
-    terminal: String,
 }
 
 impl SshProvider {
@@ -101,20 +99,10 @@ impl SshProvider {
 
     /// assh YAML path plus the OpenSSH config used as fallback.
     pub fn with_paths(path: PathBuf, ssh_config_path: PathBuf) -> Self {
-        let terminal = std::env::var("TERMINAL")
-            .ok()
-            .or_else(|| {
-                ["kitty", "alacritty", "foot", "wezterm"]
-                    .iter()
-                    .find(|t| margo_fs::path::on_path(t))
-                    .map(|t| t.to_string())
-            })
-            .unwrap_or_else(|| "kitty".into());
         let me = Self {
             config_path: path,
             ssh_config_path,
             hosts: RefCell::new(Vec::new()),
-            terminal,
         };
         me.refresh();
         me
@@ -394,7 +382,6 @@ impl Provider for SshProvider {
             }];
         }
 
-        let terminal = self.terminal.clone();
         hosts
             .iter()
             .filter(|h| {
@@ -425,7 +412,6 @@ impl Provider for SshProvider {
                 } else {
                     format!("{label_host}:{}", h.port)
                 };
-                let terminal_clone = terminal.clone();
                 let name_for_toast = name.clone();
                 LauncherItem {
                     id: format!("ssh:{}", h.name),
@@ -437,7 +423,7 @@ impl Provider for SshProvider {
                     provider_name: "SSH".into(),
                     usage_key: Some(format!("ssh:{}", h.name)),
                     on_activate: Rc::new(move || {
-                        spawn_terminal_ssh(&terminal_clone, &name);
+                        spawn_terminal_ssh(&name);
                         toast("SSH", format!("Connecting to {name_for_toast}"));
                     }),
                 }
@@ -463,21 +449,16 @@ impl Provider for SshProvider {
     }
 }
 
-/// Spawn `<terminal> -e ssh <host>`. wezterm wants `start --`,
-/// the rest accept `-e` — mirrors the convention in
-/// ArchLinuxPkgsProvider's terminal spawn.
-fn spawn_terminal_ssh(terminal: &str, host: &str) {
-    let result = if terminal == "wezterm" {
-        Command::new(terminal)
-            .args(["start", "--", "ssh", host])
-            .spawn_reaped()
-    } else {
-        Command::new(terminal)
-            .args(["-e", "ssh", host])
-            .spawn_reaped()
-    };
-    if let Err(err) = result {
-        tracing::warn!(?err, terminal, host, "ssh provider spawn failed");
+/// Open the user's terminal running `ssh <host>`
+/// (`mshell_process::terminal`).
+fn spawn_terminal_ssh(host: &str) {
+    match mshell_process::terminal::command(&["ssh", host], "ssh") {
+        Ok((terminal, mut cmd)) => {
+            if let Err(err) = cmd.spawn_reaped() {
+                tracing::warn!(?err, %terminal, host, "ssh provider spawn failed");
+            }
+        }
+        Err(err) => tracing::warn!(%err, host, "ssh provider: no terminal"),
     }
 }
 

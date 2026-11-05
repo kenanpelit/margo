@@ -36,23 +36,12 @@ struct Session {
 }
 
 pub struct TmuxProvider {
-    terminal: String,
     cache: BgCache<Vec<Session>>,
 }
 
 impl TmuxProvider {
     pub fn new() -> Self {
-        let terminal = std::env::var("TERMINAL")
-            .ok()
-            .or_else(|| {
-                ["kitty", "alacritty", "foot", "wezterm"]
-                    .iter()
-                    .find(|t| margo_fs::path::on_path(t))
-                    .map(|t| t.to_string())
-            })
-            .unwrap_or_else(|| "kitty".into());
         Self {
-            terminal,
             cache: BgCache::new(SNAPSHOT_TTL),
         }
     }
@@ -162,7 +151,6 @@ impl Provider for TmuxProvider {
             }];
         }
 
-        let terminal = self.terminal.clone();
         sessions
             .iter()
             .filter(|s| filter.is_empty() || s.name.to_ascii_lowercase().contains(&filter))
@@ -174,7 +162,6 @@ impl Provider for TmuxProvider {
                     s.windows,
                     if s.attached { "attached" } else { "detached" }
                 );
-                let terminal_clone = terminal.clone();
                 let name_for_toast = name.clone();
                 LauncherItem {
                     id: format!("mtm:{}", s.name),
@@ -186,7 +173,7 @@ impl Provider for TmuxProvider {
                     provider_name: "Tmux".into(),
                     usage_key: Some(format!("mtm:{}", s.name)),
                     on_activate: Rc::new(move || {
-                        spawn_terminal_attach(&terminal_clone, &name);
+                        spawn_terminal_attach(&name);
                         toast("Tmux", format!("Attaching to {name_for_toast}"));
                     }),
                 }
@@ -205,21 +192,17 @@ impl Provider for TmuxProvider {
     }
 }
 
-/// Spawn `<terminal> -e mtm session create <name>` — create-or-attach, so
+/// Open the user's terminal running `mtm session create <name>` — create-or-attach, so
 /// a session that raced closed between listing and activation still does
 /// something sensible instead of erroring.
-fn spawn_terminal_attach(terminal: &str, session: &str) {
-    let result = if terminal == "wezterm" {
-        Command::new(terminal)
-            .args(["start", "--", "mtm", "session", "create", session])
-            .spawn_reaped()
-    } else {
-        Command::new(terminal)
-            .args(["-e", "mtm", "session", "create", session])
-            .spawn_reaped()
-    };
-    if let Err(err) = result {
-        tracing::warn!(?err, terminal, session, "tmux provider spawn failed");
+fn spawn_terminal_attach(session: &str) {
+    match mshell_process::terminal::command(&["mtm", "session", "create", session], "tmux") {
+        Ok((terminal, mut cmd)) => {
+            if let Err(err) = cmd.spawn_reaped() {
+                tracing::warn!(?err, %terminal, session, "tmux provider spawn failed");
+            }
+        }
+        Err(err) => tracing::warn!(%err, session, "tmux provider: no terminal"),
     }
 }
 

@@ -46,7 +46,7 @@
 //! are 100 (the runtime's frecency boost lifts frequently-launched binaries
 //! above the rest); history rows score 40..140 by recency.
 
-use crate::providers::tools::{default_terminal, terminal_argv, tildify};
+use crate::providers::tools::tildify;
 use crate::{history::CommandHistory, item::LauncherItem, notify::toast, provider::Provider};
 use mshell_process::SpawnReaped;
 use std::cell::RefCell;
@@ -174,11 +174,16 @@ pub fn terminal_command(expr: &str, hold: bool) -> Vec<String> {
 
 fn spawn_in_terminal(expr: &str, hold: bool) {
     let cmd = terminal_command(expr, hold);
-    let cmd: Vec<&str> = cmd.iter().map(String::as_str).collect();
-    let argv = terminal_argv(&default_terminal(), &cmd);
-    if let Err(err) = Command::new(&argv[0]).args(&argv[1..]).spawn_reaped() {
-        tracing::warn!(?err, terminal = %argv[0], "run in terminal failed");
-        toast("Run in terminal failed", format!("{}: {err}", argv[0]));
+    let (terminal, mut command) = match mshell_process::terminal::command(&cmd, "run") {
+        Ok(found) => found,
+        Err(err) => {
+            toast("Run in terminal failed", err.to_string());
+            return;
+        }
+    };
+    if let Err(err) = command.spawn_reaped() {
+        tracing::warn!(?err, %terminal, "run in terminal failed");
+        toast("Run in terminal failed", format!("{terminal}: {err}"));
     }
 }
 

@@ -13,10 +13,14 @@
 //! `tokio::process` children don't need this: tokio's runtime reaps dropped
 //! children itself.
 //!
+//! [`terminal`] opens the user's terminal running a command (one
+//! `$TERMINAL` → candidate rule, one per-emulator argv table).
+//!
 //! [`identity`] finds the [`outliving_shell`] processes an earlier mshell
 //! started, after a restart, by uid + exact scope name + argv + start time.
 
 pub mod identity;
+pub mod terminal;
 
 use std::ffi::{OsStr, OsString};
 use std::io;

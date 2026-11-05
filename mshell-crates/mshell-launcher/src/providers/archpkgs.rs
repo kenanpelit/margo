@@ -63,7 +63,6 @@ pub struct ArchLinuxPkgsProvider {
     /// pick `$TERMINAL` env when set, else `kitty`, `alacritty`,
     /// `foot` in that order. Falls back to `kitty` and lets the
     /// shell discover failures.
-    terminal: String,
     /// Optional UI hook used by category browse rows. Activating
     /// the "Arch / AUR package search" row should seed `p ` into
     /// the launcher entry so the user can continue typing; actual
@@ -83,18 +82,8 @@ impl ArchLinuxPkgsProvider {
             .iter()
             .find(|h| margo_fs::path::on_path(h))
             .map(|h| h.to_string());
-        let terminal = std::env::var("TERMINAL")
-            .ok()
-            .or_else(|| {
-                ["kitty", "alacritty", "foot", "wezterm"]
-                    .iter()
-                    .find(|t| margo_fs::path::on_path(t))
-                    .map(|t| t.to_string())
-            })
-            .unwrap_or_else(|| "kitty".into());
         Self {
             helper,
-            terminal,
             set_search: None,
             cache: Arc::new(Mutex::new(PkgCache::default())),
             notifier: None,
@@ -178,7 +167,6 @@ impl ArchLinuxPkgsProvider {
     /// the worker thread in [`Self::hits_for`].
     fn items_from_hits(&self, hits: Vec<Hit>) -> Vec<LauncherItem> {
         let install_cmd = self.helper.clone().unwrap_or_else(|| "pacman".into());
-        let terminal = self.terminal.clone();
 
         hits.into_iter()
             .take(80)
@@ -186,7 +174,6 @@ impl ArchLinuxPkgsProvider {
             .map(|(idx, hit)| {
                 let pkg = hit.full.clone();
                 let pkg_short = pkg.split('/').next_back().unwrap_or(&pkg).to_string();
-                let term_clone = terminal.clone();
                 let install_cmd_clone = install_cmd.clone();
                 let pkg_label = pkg.clone();
                 let label = if hit.installed {
@@ -213,7 +200,7 @@ impl ArchLinuxPkgsProvider {
                     provider_name: "Arch packages".into(),
                     usage_key: Some(format!("archpkgs:{}", hit.full)),
                     on_activate: Rc::new(move || {
-                        spawn_install(&term_clone, &install_cmd_clone, &pkg_short);
+                        spawn_install(&install_cmd_clone, &pkg_short);
                         toast("Installing", pkg_label.clone());
                     }),
                 }
@@ -439,36 +426,23 @@ impl Provider for ArchLinuxPkgsProvider {
     }
 }
 
-/// Spawn `<terminal> -e <helper> -S <pkg>` so the user sees the
+/// Open the user's terminal running `<helper> -S <pkg>` so they see the
 /// confirmation prompt. When using bare pacman we wrap with
 /// `sudo`; AUR helpers handle their own privilege escalation.
-fn spawn_install(terminal: &str, helper: &str, pkg: &str) {
+fn spawn_install(helper: &str, pkg: &str) {
     let inner: Vec<String> = if helper == "pacman" {
         vec!["sudo".into(), "pacman".into(), "-S".into(), pkg.into()]
     } else {
         vec![helper.into(), "-S".into(), pkg.into()]
     };
 
-    // `kitty` / `alacritty` / `foot` all accept `<term> -e <cmd>
-    // <args...>`. wezterm wants `start --`, so handle it
-    // specially.
-    let result = if terminal == "wezterm" {
-        let mut cmd = Command::new(terminal);
-        cmd.arg("start").arg("--");
-        for arg in &inner {
-            cmd.arg(arg);
+    match mshell_process::terminal::command(&inner, "archpkgs") {
+        Ok((terminal, mut cmd)) => {
+            if let Err(err) = cmd.spawn_reaped() {
+                tracing::warn!(?err, %terminal, pkg, "archpkgs: terminal spawn failed");
+            }
         }
-        cmd.spawn_reaped()
-    } else {
-        let mut cmd = Command::new(terminal);
-        cmd.arg("-e");
-        for arg in &inner {
-            cmd.arg(arg);
-        }
-        cmd.spawn_reaped()
-    };
-    if let Err(err) = result {
-        tracing::warn!(?err, terminal, pkg, "archpkgs install spawn failed");
+        Err(err) => tracing::warn!(%err, pkg, "archpkgs: no terminal"),
     }
 }
 
