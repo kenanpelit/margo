@@ -562,6 +562,10 @@ impl Component for AppLauncherModel {
             crate::agents::launcher::ClaudeSessionsProvider::new(),
         ));
         runtime.register(Box::new(
+            mshell_launcher::providers::AiProvider::new()
+                .with_settings_resolver(Box::new(crate::agents::settings::ask_settings)),
+        ));
+        runtime.register(Box::new(
             SystemdProvider::new().with_search_setter(make_search_setter()),
         ));
         // pass: store path follows Settings → Launcher (else
@@ -1813,6 +1817,8 @@ fn should_auto_close_after_activation(id: &str) -> bool {
     if id.starts_with("providers:")
         || id.starts_with("websearch:engine:")
         || id == "archpkgs:engine"
+        // `ai`: asking (and the answer streaming in) happens in place.
+        || matches!(id, "ai:ask" | "ai:state" | "ai:hint")
     {
         return false;
     }

@@ -7,7 +7,8 @@ use crate::row::Row;
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
-    AgentsConfig, AgentsCurrency, BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields,
+    AgentsAskTarget, AgentsConfig, AgentsCurrency, BarWidgetsStoreFields, BarsStoreFields,
+    ConfigStoreFields,
 };
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::glib;
@@ -17,6 +18,8 @@ use relm4::{Component, ComponentParts, ComponentSender, gtk};
 pub(crate) struct AgentsSettingsModel {
     cfg: AgentsConfig,
     currencies: gtk::StringList,
+    models: gtk::StringList,
+    targets: gtk::StringList,
     _effects: EffectScope,
 }
 
@@ -27,6 +30,10 @@ pub(crate) enum AgentsSettingsInput {
     ConfigDirs(String),
     Currency(u32),
     PillPace(bool),
+    AskModel(u32),
+    AskWeb(bool),
+    AskTimeout(f64),
+    AskTarget(u32),
     Effect(AgentsConfig),
 }
 
@@ -40,6 +47,18 @@ pub(crate) fn parse_dirs(text: &str) -> Vec<String> {
         .map(str::to_string)
         .collect()
 }
+
+const MODELS: [(&str, &str); 4] = [
+    ("sonnet", "Sonnet"),
+    ("haiku", "Haiku"),
+    ("opus", "Opus"),
+    ("", "Claude Code's default"),
+];
+
+const TARGETS: [(AgentsAskTarget, &str); 2] = [
+    (AgentsAskTarget::Terminal, "New terminal"),
+    (AgentsAskTarget::Tmux, "New tmux window"),
+];
 
 const CURRENCIES: [(AgentsCurrency, &str); 2] = [
     (AgentsCurrency::Usd, "USD ($)"),
@@ -156,6 +175,82 @@ impl Component for AgentsSettingsModel {
                         },
                     },
                 },
+
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Launcher · ai <question>",
+                    set_halign: gtk::Align::Start,
+                },
+
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Model" },
+                        #[template_child] desc { set_label: "The model that answers launcher asks." },
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.models),
+                            #[watch]
+                            #[block_signal(model_handler)]
+                            set_selected: MODELS.iter().position(|(m, _)| *m == model.cfg.ask_model.trim()).unwrap_or(0) as u32,
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(AgentsSettingsInput::AskModel(d.selected()));
+                            } @model_handler,
+                        },
+                    },
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Allow web lookups" },
+                        #[template_child] desc { set_label: "Off: the answer comes from the model alone, no tools. On: WebSearch and WebFetch only; a session that used the web asks before every tool call when you continue it." },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(web_handler)]
+                            set_active: model.cfg.ask_web,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(AgentsSettingsInput::AskWeb(v));
+                                glib::Propagation::Proceed
+                            } @web_handler,
+                        },
+                    },
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Timeout" },
+                        #[template_child] desc { set_label: "Seconds before an unanswered ask is stopped." },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_numeric: true,
+                            set_adjustment: &gtk::Adjustment::new(120.0, 15.0, 900.0, 15.0, 60.0, 0.0),
+                            #[watch]
+                            #[block_signal(timeout_handler)]
+                            set_value: f64::from(model.cfg.ask_timeout_s),
+                            connect_value_changed[sender] => move |sb| {
+                                sender.input(AgentsSettingsInput::AskTimeout(sb.value()));
+                            } @timeout_handler,
+                        },
+                    },
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Continue in" },
+                        #[template_child] desc { set_label: "Where Enter on an answer opens the Claude Code session (tmux falls back to a terminal when no tmux client is attached)." },
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.targets),
+                            #[watch]
+                            #[block_signal(target_handler)]
+                            set_selected: TARGETS.iter().position(|(t, _)| *t == model.cfg.ask_target).unwrap_or(0) as u32,
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(AgentsSettingsInput::AskTarget(d.selected()));
+                            } @target_handler,
+                        },
+                    },
+                },
             }
         }
     }
@@ -172,6 +267,8 @@ impl Component for AgentsSettingsModel {
             sc.input(AgentsSettingsInput::Effect(c));
         });
         let currencies = gtk::StringList::new(&CURRENCIES.map(|(_, l)| l));
+        let models = gtk::StringList::new(&MODELS.map(|(_, l)| l));
+        let targets = gtk::StringList::new(&TARGETS.map(|(_, l)| l));
         let model = AgentsSettingsModel {
             cfg: config_manager()
                 .config()
@@ -180,6 +277,8 @@ impl Component for AgentsSettingsModel {
                 .agents()
                 .get_untracked(),
             currencies,
+            models,
+            targets,
             _effects: effects,
         };
         let widgets = view_output!();
@@ -207,6 +306,24 @@ impl Component for AgentsSettingsModel {
                 }
             }
             AgentsSettingsInput::PillPace(v) => set(Box::new(move |a| a.pill_pace = v)),
+            AgentsSettingsInput::AskModel(i) => {
+                if let Some((m, _)) = MODELS.get(i as usize) {
+                    let m = m.to_string();
+                    set(Box::new(move |a| a.ask_model = m));
+                }
+            }
+            AgentsSettingsInput::AskWeb(v) => set(Box::new(move |a| a.ask_web = v)),
+            AgentsSettingsInput::AskTimeout(v) => {
+                let secs = (v as u32).clamp(15, 900);
+                if secs != self.cfg.ask_timeout_s {
+                    set(Box::new(move |a| a.ask_timeout_s = secs));
+                }
+            }
+            AgentsSettingsInput::AskTarget(i) => {
+                if let Some((t, _)) = TARGETS.get(i as usize).copied() {
+                    set(Box::new(move |a| a.ask_target = t));
+                }
+            }
             AgentsSettingsInput::Effect(c) => self.cfg = c,
         }
     }

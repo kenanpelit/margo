@@ -698,9 +698,7 @@ impl Default for CpuDashboardBarWidget {
 }
 
 /// AI Agents pill + menu behaviour.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema, Default,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
 pub struct AgentsConfig {
     /// Desktop notification when a Claude Code session starts waiting for
@@ -718,6 +716,67 @@ pub struct AgentsConfig {
     /// Show the pace beside the pill's percentage: `↑12` = twelve points
     /// over where the elapsed share of the window would put it, `↓8` under.
     pub pill_pace: bool,
+    /// Launcher `ai <question>`: model for the ask (`sonnet`, `haiku`,
+    /// `opus`, or empty for Claude Code's default).
+    #[serde(default = "default_ask_model")]
+    pub ask_model: String,
+    /// Let a launcher ask use WebSearch / WebFetch (otherwise no tools).
+    pub ask_web: bool,
+    /// Seconds before a launcher ask is stopped (15–900).
+    #[serde(default = "default_ask_timeout_s")]
+    pub ask_timeout_s: u32,
+    /// Where Enter on a launcher answer continues the session.
+    pub ask_target: AgentsAskTarget,
+}
+
+impl Default for AgentsConfig {
+    fn default() -> Self {
+        Self {
+            notify_waiting: false,
+            notify_finished: false,
+            claude_config_dirs: Vec::new(),
+            currency: AgentsCurrency::default(),
+            pill_pace: false,
+            ask_model: default_ask_model(),
+            ask_web: false,
+            ask_timeout_s: default_ask_timeout_s(),
+            ask_target: AgentsAskTarget::default(),
+        }
+    }
+}
+
+fn default_ask_model() -> String {
+    "sonnet".into()
+}
+
+fn default_ask_timeout_s() -> u32 {
+    120
+}
+
+/// Where the launcher's `ai` answer continues as a Claude Code session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentsAskTarget {
+    /// A new terminal window.
+    #[default]
+    Terminal,
+    /// A new window in the most recently used tmux session.
+    Tmux,
+}
+
+impl PatchField for AgentsAskTarget {
+    fn patch_field(
+        &mut self,
+        new: Self,
+        path: &StorePath,
+        notify: &mut dyn FnMut(&StorePath),
+        _keys: Option<&KeyMap>,
+    ) {
+        if *self != new {
+            *self = new;
+            notify(path);
+        }
+    }
 }
 
 /// Currency of the AI Agents cost estimates.
@@ -1041,6 +1100,34 @@ mod tests {
         assert_eq!(
             WallpaperPillAction::from_index(99),
             WallpaperPillAction::None
+        );
+    }
+}
+
+#[cfg(test)]
+mod agents_config_tests {
+    use super::*;
+
+    #[test]
+    fn missing_agents_keys_keep_todays_behaviour() {
+        let c: AgentsConfig = yaml_serde::from_str("notify_waiting: true").unwrap();
+        assert!(c.notify_waiting);
+        assert!(!c.notify_finished && !c.pill_pace && !c.ask_web);
+        assert_eq!(c.ask_model, "sonnet");
+        assert_eq!(c.ask_timeout_s, 120);
+        assert_eq!(c.ask_target, AgentsAskTarget::Terminal);
+        assert_eq!(c.currency, AgentsCurrency::Usd);
+        let c: AgentsConfig = yaml_serde::from_str(
+            "currency: eur\nask_target: tmux\nclaude_config_dirs: [~/.claude-work]",
+        )
+        .unwrap();
+        assert_eq!(
+            (c.currency, c.ask_target, c.claude_config_dirs),
+            (
+                AgentsCurrency::Eur,
+                AgentsAskTarget::Tmux,
+                vec!["~/.claude-work".to_string()]
+            )
         );
     }
 }

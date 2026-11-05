@@ -43,6 +43,29 @@ fn apply(c: &AgentsConfig) {
     super::accounts::set_configured(c.claude_config_dirs.clone());
 }
 
+/// The launcher `ai` provider's settings, read from the config store
+/// when an ask starts (GTK thread).
+pub(crate) fn ask_settings() -> mshell_launcher::providers::ai::AiSettings {
+    use mshell_config::schema::config::AgentsAskTarget;
+    use mshell_launcher::providers::ai::{AiSettings, AskTarget};
+    use reactive_graph::prelude::GetUntracked;
+    let c = config_manager()
+        .config()
+        .bars()
+        .widgets()
+        .agents()
+        .get_untracked();
+    AiSettings {
+        model: c.ask_model.trim().to_string(),
+        web: c.ask_web,
+        timeout_s: u64::from(c.ask_timeout_s.clamp(15, 900)),
+        target: match c.ask_target {
+            AgentsAskTarget::Terminal => AskTarget::Terminal,
+            AgentsAskTarget::Tmux => AskTarget::Tmux,
+        },
+    }
+}
+
 /// Track the config live; keep the returned scope alive with the widget.
 pub(crate) fn watch_settings() -> EffectScope {
     let mut effects = EffectScope::new();

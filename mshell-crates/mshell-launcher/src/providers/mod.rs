@@ -4,6 +4,7 @@
 //! `gtk::gio_unix::DesktopAppInfo` and so lives in `mshell-frame`
 //! alongside the rest of the GTK code.
 
+pub mod ai;
 pub mod archpkgs;
 pub(crate) mod bg_cache;
 pub mod bluetooth;
@@ -32,6 +33,7 @@ pub mod websearch;
 pub mod wireplumber;
 pub mod youtube;
 
+pub use ai::AiProvider;
 pub use archpkgs::ArchLinuxPkgsProvider;
 pub use bluetooth::BluetoothProvider;
 pub use calculator::CalculatorProvider;
