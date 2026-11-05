@@ -11,14 +11,20 @@
 //! (port of the noctalia `stdout` plugin's JSON mode, see [`JsonOutput`]).
 //! Right-click (when `on_click_right` is empty) or `mshellctl
 //! custom-refresh [name]` re-runs the exec at once.
+//!
+//! The exec runs only while the pill is mapped (not in a collapsed drawer
+//! or on a hidden bar); a pill its own JSON hid keeps polling so it can
+//! come back. Art images are decoded off the GTK thread, and only when the
+//! file (path or mtime) changed.
 
+use crate::menus::reveal_poll::RevealGate;
 use crate::plugin_cmd::{run_capture, run_detached};
 use mshell_config::schema::config::{CustomMenuRow, CustomWidgetConfig};
 use relm4::gtk::prelude::{
     BoxExt, ButtonExt, GestureExt, GestureSingleExt, OrientableExt, WidgetExt,
 };
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 /// Leading icon / image pixel size in the pill.
 const ICON_SIZE: i32 = 16;
@@ -39,6 +45,12 @@ pub(crate) struct CustomWidgetModel {
     json_glyph: Option<String>,
     /// The configured static tooltip (restored when JSON sends none).
     tooltip: String,
+    /// Open while the exec should run: the pill is mapped, or its own JSON
+    /// hid it (so the next poll can show it again).
+    shown: RevealGate,
+    /// Art mode: the image widget showing the current art, kept across
+    /// polls (`None` while the fallback icon shows).
+    art_image: Option<gtk::Image>,
 }
 
 #[derive(Debug)]
@@ -80,7 +92,7 @@ pub(crate) enum CustomWidgetCommandOutput {
     /// `exec` poller. `paused` dims the pill (media-style) and is derived from
     /// the helper's optional status line (`art` widgets only).
     ExecResult {
-        art: Option<String>,
+        art: ArtUpdate,
         label: String,
         paused: bool,
         /// Optional state CSS class parsed from a `#<state>` first line.
@@ -149,6 +161,8 @@ impl Component for CustomWidgetModel {
             json_classes: Vec::new(),
             json_glyph: None,
             tooltip: config.tooltip.clone(),
+            shown: RevealGate::new(root.is_mapped()),
+            art_image: None,
         };
 
         let widgets = view_output!();
@@ -221,8 +235,16 @@ impl Component for CustomWidgetModel {
             widgets.root.add_controller(gesture);
         }
 
+        // The exec runs while the pill is mapped. An unmap because the
+        // pill's own JSON hid it keeps it running (see `apply_json`).
+        let g = model.shown.clone();
+        widgets.root.connect_map(move |_| g.set(true));
+        let g = model.shown.clone();
+        widgets.root.connect_unmap(move |w| g.set(!w.is_visible()));
+
         // `exec` poller fills the label from command stdout.
         if !config.exec.trim().is_empty() {
+            let shown = model.shown.clone();
             let exec = config.exec.clone();
             let env = config.secret_env.clone();
             let template = config.template.clone();
@@ -235,7 +257,14 @@ impl Component for CustomWidgetModel {
             sender.command(move |out, shutdown| async move {
                 let shutdown_fut = shutdown.wait();
                 tokio::pin!(shutdown_fut);
+                let mut art_seen = ArtTracker::default();
                 loop {
+                    // Not shown (collapsed drawer, hidden bar): no exec and
+                    // no timer until it is.
+                    tokio::select! {
+                        () = &mut shutdown_fut => return,
+                        () = shown.until_revealed() => {}
+                    }
                     if json {
                         if let Some(stdout) = run_capture(&exec, &env).await {
                             let parsed = JsonOutput::parse(&stdout).map(|mut j| {
@@ -245,31 +274,30 @@ impl Component for CustomWidgetModel {
                             let _ = out.send(CustomWidgetCommandOutput::JsonResult(parsed));
                         }
                     } else if let Some(stdout) = run_capture(&exec, &env).await {
-                        let (art_path, body, paused, state_class) = if art {
+                        let (art_update, body, paused, state_class) = if art {
                             let (cand, label, paused) = split_art_output(&stdout);
-                            // Only show the image if the file actually exists.
-                            let path = cand.filter(|p| std::path::Path::new(p).exists());
-                            (path, label, paused, None)
+                            (art_update(&mut art_seen, cand).await, label, paused, None)
                         } else {
                             let (state, label) = split_state_output(&stdout);
-                            (None, label, false, state)
+                            (ArtUpdate::Unchanged, label, false, state)
                         };
                         let rendered = truncate(&render(&body, &template), max_chars);
                         let _ = out.send(CustomWidgetCommandOutput::ExecResult {
-                            art: art_path,
+                            art: art_update,
                             label: rendered,
                             paused,
                             state_class,
                         });
                     }
-                    // Wait for the next interval, a right-click, or an IPC
+                    // Wait for the next interval (of shown time; a pill that
+                    // comes back re-runs at once), a right-click, or an IPC
                     // refresh aimed at this pill. `interval == 0` runs once
                     // and then only on a forced refresh.
                     let sleep = async {
                         if interval == 0 {
                             std::future::pending::<()>().await;
                         } else {
-                            tokio::time::sleep(Duration::from_secs(interval)).await;
+                            shown.tick(Duration::from_secs(interval)).await;
                         }
                     };
                     tokio::pin!(sleep);
@@ -337,20 +365,7 @@ impl Component for CustomWidgetModel {
                     self.state_class = state_class;
                 }
                 if self.art {
-                    // Reload the leading image (e.g. album art) — rebuild the
-                    // icon box so a changed file on disk actually re-renders.
-                    while let Some(child) = widgets.icon_box.first_child() {
-                        widgets.icon_box.remove(&child);
-                    }
-                    if let Some(path) = art {
-                        let img = gtk::Image::from_file(&path);
-                        img.set_pixel_size(ICON_SIZE);
-                        widgets.icon_box.append(&img);
-                    } else if !self.icon.trim().is_empty() {
-                        let img = gtk::Image::from_icon_name(self.icon.trim());
-                        img.set_pixel_size(ICON_SIZE);
-                        widgets.icon_box.append(&img);
-                    }
+                    self.apply_art(widgets, art);
                 }
             }
             CustomWidgetCommandOutput::JsonResult(parsed) => {
@@ -362,6 +377,36 @@ impl Component for CustomWidgetModel {
 }
 
 impl CustomWidgetModel {
+    /// Show a new art image (already decoded off the GTK thread) or the
+    /// fallback icon; an unchanged file costs nothing.
+    fn apply_art(&mut self, widgets: &CustomWidgetModelWidgets, art: ArtUpdate) {
+        match art {
+            ArtUpdate::Unchanged => {}
+            ArtUpdate::Image(texture) => {
+                if self.art_image.is_none() {
+                    clear_box(&widgets.icon_box);
+                    let img = gtk::Image::new();
+                    img.set_pixel_size(ICON_SIZE);
+                    widgets.icon_box.append(&img);
+                    self.art_image = Some(img);
+                }
+                if let Some(img) = &self.art_image {
+                    img.set_paintable(Some(&texture));
+                }
+            }
+            ArtUpdate::Fallback => {
+                if self.art_image.take().is_some() || widgets.icon_box.first_child().is_none() {
+                    clear_box(&widgets.icon_box);
+                    if !self.icon.trim().is_empty() {
+                        let img = gtk::Image::from_icon_name(self.icon.trim());
+                        img.set_pixel_size(ICON_SIZE);
+                        widgets.icon_box.append(&img);
+                    }
+                }
+            }
+        }
+    }
+
     /// Apply one JSON-mode poll to the pill.
     fn apply_json(&mut self, widgets: &CustomWidgetModelWidgets, parsed: Option<JsonOutput>) {
         let root = &widgets.root;
@@ -376,6 +421,10 @@ impl CustomWidgetModel {
             return;
         };
         root.set_visible(j.visible);
+        if !j.visible {
+            // Hidden by its own output: keep polling so it can come back.
+            self.shown.set(true);
+        }
         self.label = j.text.clone();
         self.set_json_glyph(widgets, j.glyph.clone());
         self.swap_json_classes(root, j.css_classes());
@@ -600,6 +649,72 @@ fn split_state_output(stdout: &str) -> (Option<String>, String) {
     (None, stdout.to_string())
 }
 
+/// What a poll does to the art image.
+#[derive(Debug)]
+pub(crate) enum ArtUpdate {
+    /// Same file as shown (path and mtime): keep it.
+    Unchanged,
+    /// A new image, decoded on a blocking thread.
+    Image(gtk::gdk::Texture),
+    /// No (readable) art: show the configured icon.
+    Fallback,
+}
+
+/// The art file last shown, by path and modification time.
+#[derive(Debug, Default)]
+pub(crate) struct ArtTracker {
+    shown: Option<Option<(String, SystemTime)>>,
+}
+
+impl ArtTracker {
+    /// What to do for `path`: `None` when it is what is shown already,
+    /// else the file to load (`Some(None)`: no existing file, show the
+    /// fallback icon).
+    pub(crate) fn next(&mut self, path: Option<&str>) -> Option<Option<String>> {
+        let key = path.and_then(|p| {
+            let mtime = std::fs::metadata(p).and_then(|m| m.modified()).ok()?;
+            Some((p.to_string(), mtime))
+        });
+        if self.shown.as_ref() == Some(&key) {
+            return None;
+        }
+        let load = key.as_ref().map(|(p, _)| p.clone());
+        self.shown = Some(key);
+        Some(load)
+    }
+
+    /// Forget the shown file (its load failed), so the next poll retries.
+    fn forget(&mut self) {
+        self.shown = None;
+    }
+}
+
+/// Turn the exec's art path into an [`ArtUpdate`], decoding a changed
+/// file on a blocking thread.
+async fn art_update(seen: &mut ArtTracker, path: Option<String>) -> ArtUpdate {
+    match seen.next(path.as_deref()) {
+        None => ArtUpdate::Unchanged,
+        Some(None) => ArtUpdate::Fallback,
+        Some(Some(file)) => {
+            let decoded =
+                tokio::task::spawn_blocking(move || gtk::gdk::Texture::from_filename(file)).await;
+            match decoded {
+                Ok(Ok(texture)) => ArtUpdate::Image(texture),
+                _ => {
+                    seen.forget();
+                    ArtUpdate::Fallback
+                }
+            }
+        }
+    }
+}
+
+fn clear_box(b: &gtk::Box) {
+    while let Some(child) = b.first_child() {
+        b.remove(&child);
+    }
+}
+
 fn split_art_output(stdout: &str) -> (Option<String>, String, bool) {
     let mut lines = stdout.lines();
     let first = lines.next().unwrap_or("").trim();
@@ -635,7 +750,29 @@ fn truncate(s: &str, max: u32) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{JsonOutput, render, split_art_output, truncate};
+    use super::{ArtTracker, JsonOutput, render, split_art_output, truncate};
+    use std::time::{Duration, SystemTime};
+
+    #[test]
+    fn art_reloads_only_when_the_file_changes() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let a = dir.path().join("a.png");
+        std::fs::write(&a, b"x").expect("write");
+        let a = a.to_string_lossy().into_owned();
+        let mut t = ArtTracker::default();
+        assert_eq!(t.next(Some(&a)), Some(Some(a.clone())), "first: load");
+        assert_eq!(t.next(Some(&a)), None, "same file: skip");
+        // Rewritten in place (same path, new mtime): load again.
+        let f = std::fs::File::options().write(true).open(&a).expect("open");
+        f.set_modified(SystemTime::now() + Duration::from_secs(5))
+            .expect("mtime");
+        assert_eq!(t.next(Some(&a)), Some(Some(a.clone())));
+        assert_eq!(t.next(Some(&a)), None);
+        // No art (or a missing file): the fallback once, then nothing.
+        assert_eq!(t.next(None), Some(None));
+        assert_eq!(t.next(Some("/nonexistent/art.png")), None);
+        assert_eq!(t.next(Some(&a)), Some(Some(a.clone())));
+    }
 
     #[test]
     fn art_output_splits_three_fields() {
