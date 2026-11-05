@@ -533,7 +533,14 @@ impl Component for AppLauncherModel {
         runtime.register(Box::new(PlayerctlProvider::new()));
         runtime.register(Box::new(archpkgs_provider));
         runtime.register(Box::new(FileSearchProvider::new()));
-        runtime.register(Box::new(WebappProvider::new()));
+        // Same favicon switch as `web` sites (Settings → Launcher).
+        runtime.register(Box::new(WebappProvider::new(|| {
+            config_manager()
+                .config()
+                .launcher()
+                .web_site_favicons()
+                .get_untracked()
+        })));
         runtime.register(Box::new(WireplumberProvider::new()));
         runtime.register(Box::new(BluetoothProvider::new()));
         runtime.register(Box::new(SshProvider::new()));

@@ -390,7 +390,7 @@ impl Component for LauncherSettingsModel {
                             },
                             gtk::Label {
                                 add_css_class: "label-small",
-                                set_label: "Fetch each site's favicon once (the domain is sent to Google's favicon service) and cache it.",
+                                set_label: "Fetch the favicon of each site and new web app once (the domain is sent to Google's favicon service) and cache it.",
                                 set_halign: gtk::Align::Start,
                                 set_xalign: 0.0,
                                 set_wrap: true,

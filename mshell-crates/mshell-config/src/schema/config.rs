@@ -638,8 +638,9 @@ pub struct Launcher {
     /// `Name|https://url` entry each (a bare URL or domain works too).
     /// Listed most-recently-opened first.
     pub web_sites: Vec<String>,
-    /// Fetch favicons for `web_sites` (the domain is sent to Google's
-    /// favicon service; icons are cached in ~/.cache/margo/favicons).
+    /// Fetch favicons for `web_sites` and for web apps made with `webapp`
+    /// (the domain is sent to Google's favicon service; icons are cached
+    /// in ~/.cache/margo/favicons and ~/.local/share/margo/webapps).
     pub web_site_favicons: bool,
 }
 

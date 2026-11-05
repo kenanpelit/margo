@@ -352,16 +352,20 @@ pub struct WebappProvider {
     icons_dir: PathBuf,
     browsers: Vec<(PathBuf, &'static str)>,
     apps: RefCell<Vec<WebApp>>,
-    fetch_icons: bool,
+    /// Whether to fetch the site's favicon (the domain goes to Google's
+    /// favicon service): `launcher.web_site_favicons`, read when a web app
+    /// is created so a Settings toggle applies at once.
+    fetch_icons: Rc<dyn Fn() -> bool>,
 }
 
 impl WebappProvider {
-    pub fn new() -> Self {
+    /// `fetch_icons` reports the live `launcher.web_site_favicons` setting.
+    pub fn new(fetch_icons: impl Fn() -> bool + 'static) -> Self {
         Self::with_dirs(
             applications_dir(),
             icons_dir(),
             installed_browsers(find_in_path),
-            true,
+            fetch_icons,
         )
     }
 
@@ -369,14 +373,14 @@ impl WebappProvider {
         apps_dir: PathBuf,
         icons_dir: PathBuf,
         browsers: Vec<(PathBuf, &'static str)>,
-        fetch_icons: bool,
+        fetch_icons: impl Fn() -> bool + 'static,
     ) -> Self {
         let me = Self {
             apps: RefCell::new(list_webapps(&apps_dir)),
             apps_dir,
             icons_dir,
             browsers,
-            fetch_icons,
+            fetch_icons: Rc::new(fetch_icons),
         };
         me.refresh();
         me
@@ -419,7 +423,7 @@ impl WebappProvider {
                 let label: &'static str = label;
                 let apps_dir = self.apps_dir.clone();
                 let icons_dir = self.icons_dir.clone();
-                let fetch = self.fetch_icons;
+                let fetch_icons = self.fetch_icons.clone();
                 LauncherItem {
                     id: format!("webapp:create:{label}"),
                     name: format!("Create web app “{}” in {label}", req.name),
@@ -430,6 +434,7 @@ impl WebappProvider {
                     provider_name: NAME.into(),
                     usage_key: None,
                     on_activate: Rc::new(move || {
+                        let fetch = fetch_icons();
                         let (req, bin, apps_dir, icons_dir) = (
                             req.clone(),
                             bin.clone(),
@@ -496,12 +501,6 @@ impl WebappProvider {
             "list-add-symbolic",
         ));
         rows
-    }
-}
-
-impl Default for WebappProvider {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -734,7 +733,7 @@ mod tests {
             apps.clone(),
             icons.clone(),
             vec![(PathBuf::from("/usr/bin/helium-browser"), "Helium")],
-            false,
+            || false,
         );
         assert!(p.handles_command("webapp"));
         assert!(!p.handles_command("webapps"));
@@ -757,8 +756,50 @@ mod tests {
         assert!(p.can_delete(&rows[0]));
         p.delete_item(&rows[0]);
         assert_eq!(p.search("webapp")[0].id, "webapp:hint");
-        let none = WebappProvider::with_dirs(apps.clone(), icons.clone(), vec![], false);
+        let none = WebappProvider::with_dirs(apps.clone(), icons.clone(), vec![], || false);
         assert_eq!(none.search("webapp a.com")[0].id, "webapp:nobrowser");
+        let _ = std::fs::remove_dir_all(&apps);
+        let _ = std::fs::remove_dir_all(&icons);
+    }
+
+    #[test]
+    fn create_reads_the_favicon_setting_when_activated() {
+        // `launcher.web_site_favicons = false` must stop the web app maker
+        // from sending the domain to Google too, and a toggle must apply
+        // without restarting the shell: the setting is read on activation.
+        let apps = temp("favapps");
+        let icons = temp("favicons");
+        let setting = Rc::new(std::cell::Cell::new(true));
+        let reads = Rc::new(std::cell::Cell::new(0u32));
+        let p = WebappProvider::with_dirs(
+            apps.clone(),
+            icons.clone(),
+            vec![(PathBuf::from("/usr/bin/helium-browser"), "Helium")],
+            {
+                let (setting, reads) = (setting.clone(), reads.clone());
+                move || {
+                    reads.set(reads.get() + 1);
+                    setting.get()
+                }
+            },
+        );
+        let row = p.search("webapp Mail https://mail.example.org").remove(0);
+        setting.set(false);
+        let before = reads.get();
+        (row.on_activate)();
+        assert_eq!(reads.get(), before + 1, "setting not read on activation");
+
+        let desktop = apps.join("margo-webapp-mail.desktop");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !desktop.exists() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let content = std::fs::read_to_string(&desktop).expect("web app created");
+        assert!(
+            !content.contains(&icons.display().to_string()),
+            "icon fetched with favicons off: {content}"
+        );
+        assert_eq!(std::fs::read_dir(&icons).unwrap().count(), 0);
         let _ = std::fs::remove_dir_all(&apps);
         let _ = std::fs::remove_dir_all(&icons);
     }
