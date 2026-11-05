@@ -227,6 +227,10 @@ pub struct RawClient {
     /// An X11 window running through XWayland. `false` on older margo.
     #[serde(default)]
     pub xwayland: bool,
+    /// Minimize order of a minimized (non-scratchpad) window, larger =
+    /// later; 0 when not minimized or on a margo that predates the field.
+    #[serde(default)]
+    pub minimized_order: u64,
     pub tags: u32,
     pub monitor: String,
     pub monitor_idx: i32,

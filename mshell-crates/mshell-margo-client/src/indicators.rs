@@ -121,6 +121,38 @@ pub fn scratchpad_chips(clients: &[crate::state_json::RawClient]) -> Vec<Scratch
     chips
 }
 
+/// One minimized window, for the Scratchpads pill's restore chips.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MinimizedChip {
+    pub id: u64,
+    pub app_id: String,
+    pub title: String,
+}
+
+/// The minimized windows (not hidden scratchpads, which have their own
+/// chips), most recently minimized first — the order `restore_last` walks.
+/// A margo without `minimized_order` reports 0 for all; they then keep
+/// window-id order.
+pub fn minimized_chips(clients: &[crate::state_json::RawClient]) -> Vec<MinimizedChip> {
+    let mut windows: Vec<&crate::state_json::RawClient> = clients
+        .iter()
+        .filter(|c| c.minimized && !c.scratchpad)
+        .collect();
+    windows.sort_by(|a, b| {
+        b.minimized_order
+            .cmp(&a.minimized_order)
+            .then(a.id.cmp(&b.id))
+    });
+    windows
+        .into_iter()
+        .map(|c| MinimizedChip {
+            id: c.id,
+            app_id: c.app_id.clone(),
+            title: c.title.clone(),
+        })
+        .collect()
+}
+
 /// Most characters a chip label shows before it is cut with "…".
 pub const CHIP_LABEL_MAX: usize = 12;
 
@@ -306,6 +338,36 @@ mod tests {
         assert_eq!(ids, [3, 4, 9], "by app id (case-insensitive), then id");
         assert!(chips[0].shown && !chips[1].shown);
         assert!(scratchpad_chips(&[raw(1, "a", false, false)]).is_empty());
+    }
+
+    #[test]
+    fn minimized_chips_are_newest_first_and_skip_scratchpads() {
+        let min = |id: u64, order: u64| crate::state_json::RawClient {
+            minimized: true,
+            minimized_order: order,
+            ..raw(id, "app", false, false)
+        };
+        let mut hidden_pad = raw(7, "pad", true, false);
+        hidden_pad.minimized = true;
+        let clients = [
+            min(1, 2),
+            raw(2, "open", false, false),
+            min(3, 5),
+            hidden_pad,
+            min(4, 1),
+        ];
+        let ids: Vec<u64> = minimized_chips(&clients).iter().map(|c| c.id).collect();
+        assert_eq!(
+            ids,
+            [3, 1, 4],
+            "restore_last order; no scratchpad, no open window"
+        );
+        // An older margo without the order field: window-id order.
+        let ids: Vec<u64> = minimized_chips(&[min(9, 0), min(2, 0)])
+            .iter()
+            .map(|c| c.id)
+            .collect();
+        assert_eq!(ids, [2, 9]);
     }
 
     #[test]

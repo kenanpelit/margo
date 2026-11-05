@@ -56,6 +56,7 @@ pub(crate) struct BehaviourModel {
     axis_scroll_factor: f64,
     scratchpad_cross_monitor: bool,
     single_scratchpad: bool,
+    minimize_restore_in_place: bool,
     syncobj_enable: bool,
     allow_shortcuts_inhibit: bool,
     idleinhibit_ignore_visible: bool,
@@ -307,7 +308,7 @@ impl Component for BehaviourModel {
                             connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetInt("hot_corner_dwell_ms", s.value() as i64)) } },
                 },
 
-                gtk::Label { add_css_class: "label-large-bold", set_label: "Scroll & scratchpad", set_halign: gtk::Align::Start },
+                gtk::Label { add_css_class: "label-large-bold", set_label: "Scroll, scratchpad & minimize", set_halign: gtk::Align::Start },
 
                 gtk::Box {
                     add_css_class: "boxed-list",
@@ -333,6 +334,12 @@ impl Component for BehaviourModel {
                         #[template_child] title { set_label: "Auto-hide other scratchpads" },
                         gtk::Switch { set_valign: gtk::Align::Center, set_active: model.single_scratchpad,
                             connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("single_scratchpad", s.is_active())) } },
+                    #[template] Row {
+                        set_widget_name: "setting:conf:minimize_restore_in_place",
+                        #[template_child] title { set_label: "Restore minimized windows in place" },
+                        #[template_child] desc { set_label: "Off: a restored window comes to the tag you are on. On: it goes back to its own tag and the view follows." },
+                        gtk::Switch { set_valign: gtk::Align::Center, set_active: model.minimize_restore_in_place,
+                            connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("minimize_restore_in_place", s.is_active())) } },
                 },
 
                 gtk::Expander {
@@ -418,6 +425,7 @@ impl Component for BehaviourModel {
             axis_scroll_factor: read_f64("axis_scroll_factor", 1.0),
             scratchpad_cross_monitor: read_bool("scratchpad_cross_monitor", true),
             single_scratchpad: read_bool("single_scratchpad", true),
+            minimize_restore_in_place: read_bool("minimize_restore_in_place", false),
             syncobj_enable: read_bool("syncobj_enable", false),
             allow_shortcuts_inhibit: read_bool("allow_shortcuts_inhibit", true),
             idleinhibit_ignore_visible: read_bool("idleinhibit_ignore_visible", false),

@@ -1065,7 +1065,11 @@ mod tests {
         // Guards parser↔OPTION_KEYS drift: a key handled by the parser
         // but missing from OPTION_KEYS would wrongly warn W001 here
         // (the exact regression these knobs hit during development).
-        for key in ["tag_carousel", "edge_scroller_focus_allow_speed"] {
+        for key in [
+            "tag_carousel",
+            "edge_scroller_focus_allow_speed",
+            "minimize_restore_in_place",
+        ] {
             let r = validate_str(&format!("{key} = 1\n"));
             assert!(
                 !r.warnings().any(|w| w.code == "W001"),

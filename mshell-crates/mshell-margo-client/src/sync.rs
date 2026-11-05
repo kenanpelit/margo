@@ -252,6 +252,10 @@ fn apply(service: &MargoService, state: &StateJson) {
     if service.scratchpads.get() != scratchpads {
         service.scratchpads.set(scratchpads);
     }
+    let minimized = crate::indicators::minimized_chips(&state.clients);
+    if service.minimized.get() != minimized {
+        service.minimized.set(minimized);
+    }
 
     // Mirror the active tag's window list (change-only — a title edit on
     // another tag must not repaint the tag row's icons).
@@ -1114,6 +1118,7 @@ mod apply_tests {
             keymode: Reactive::new(None),
             scroller: Reactive::new(None),
             scratchpads: Reactive::new(Vec::new()),
+            minimized: Reactive::new(Vec::new()),
             active_tag_windows: Reactive::new(Vec::new()),
             config_errors: Reactive::new(Vec::new()),
             active_layout: Reactive::new(None),

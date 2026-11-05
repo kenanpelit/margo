@@ -170,7 +170,13 @@ pub struct MargoClient {
     pub fullscreen_mode: FullscreenMode,
     pub is_fake_fullscreen: bool,
     pub is_maximized_screen: bool,
+    /// Hidden from every tag: a tucked-away scratchpad, or a window the
+    /// user / app / taskbar minimized (see [`Self::is_user_minimized`]).
     pub is_minimized: bool,
+    /// Minimize order, for `restore_last`: larger = minimized later. 0
+    /// while not minimized (and for hidden scratchpads, which have their
+    /// own toggle).
+    pub minimized_seq: u64,
     pub is_urgent: bool,
     pub is_global: bool,
     pub is_unglobal: bool,
@@ -340,6 +346,7 @@ impl MargoClient {
             is_fake_fullscreen: false,
             is_maximized_screen: false,
             is_minimized: false,
+            minimized_seq: 0,
             is_urgent: false,
             is_global: false,
             is_unglobal: false,
@@ -431,6 +438,14 @@ impl MargoClient {
         self.group_id.is_some() && !self.group_active
     }
 
+    /// Minimized by the user, the app (`xdg_toplevel.set_minimized`, an X11
+    /// iconify) or a taskbar (wlr foreign-toplevel) — as opposed to a hidden
+    /// scratchpad, which also carries `is_minimized` but comes back through
+    /// its own toggle.
+    pub fn is_user_minimized(&self) -> bool {
+        self.is_minimized && !self.is_in_scratchpad
+    }
+
     pub fn is_visible_on(&self, mon: usize, tagset: u32) -> bool {
         // Hidden scratchpads (in_scratchpad without `show`) are
         // unmapped from the scene but remain in `clients` so the next
@@ -439,6 +454,11 @@ impl MargoClient {
         // so guarding it here keeps the rest of the codebase from
         // each having to learn about the scratchpad show flag.
         if self.is_in_scratchpad && !self.is_scratchpad_show {
+            return false;
+        }
+        // A minimized window keeps its tags (so `restore` can put it back)
+        // but is off every tag until restored — same chokepoint.
+        if self.is_minimized {
             return false;
         }
         // Non-active members of a tabbed group collapse to the active

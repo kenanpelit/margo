@@ -3,7 +3,8 @@
 //! margo already advertises the read-only `ext-foreign-toplevel-list-v1`
 //! via smithay's `ForeignToplevelListState`. This module adds the wlr
 //! *write-side* manager so taskbars / docks (mshell, Waybar) can act on
-//! toplevels — activate, close, (un)fullscreen — not merely list them.
+//! toplevels — activate, close, (un)fullscreen, (un)minimize — not merely
+//! list them.
 //!
 //! Design is **additive**: the smithay ext-list keeps running untouched.
 //! We track our own toplevel set, refreshed once per repaint by
@@ -68,6 +69,8 @@ pub trait WlrForeignToplevelHandler {
     fn wlr_ftl_close(&mut self, surface: WlSurface);
     fn wlr_ftl_set_fullscreen(&mut self, surface: WlSurface);
     fn wlr_ftl_unset_fullscreen(&mut self, surface: WlSurface);
+    fn wlr_ftl_set_minimized(&mut self, surface: WlSurface);
+    fn wlr_ftl_unset_minimized(&mut self, surface: WlSurface);
 }
 
 impl WlrForeignToplevelState {
@@ -125,17 +128,37 @@ impl ToplevelData {
     }
 }
 
-/// Hash of everything `refresh` mirrors, per toplevel in order: surface,
-/// title, app id, fullscreen, focused. Equal fingerprints mean `refresh`
-/// would send nothing. Hashing borrows; it allocates nothing.
+/// One toplevel's mirrored fields, in [`toplevel_fingerprint`] order:
+/// surface, title, app id, then the `fullscreen`, `focused` and
+/// `minimized` states.
+pub type ToplevelKey<'a, S> = (S, &'a str, &'a str, bool, bool, bool);
+
+/// Hash of everything `refresh` mirrors, per toplevel in order. Equal
+/// fingerprints mean `refresh` would send nothing. Hashing borrows; it
+/// allocates nothing.
 pub fn toplevel_fingerprint<'a, S: Hash + 'a>(
-    toplevels: impl Iterator<Item = (S, &'a str, &'a str, bool, bool)>,
+    toplevels: impl Iterator<Item = ToplevelKey<'a, S>>,
 ) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    for (surface, title, app_id, fullscreen, focused) in toplevels {
-        (surface, title, app_id, fullscreen, focused).hash(&mut hasher);
+    for key in toplevels {
+        key.hash(&mut hasher);
     }
     hasher.finish()
+}
+
+/// The wlr `state` array for a toplevel: fullscreen, activated (focused)
+/// and minimized, in protocol enum values.
+fn wire_states(fullscreen: bool, focused: bool, minimized: bool) -> Vec<u32> {
+    use zwlr_foreign_toplevel_handle_v1::State;
+    [
+        (fullscreen, State::Fullscreen),
+        (focused, State::Activated),
+        (minimized, State::Minimized),
+    ]
+    .into_iter()
+    .filter(|(on, _)| *on)
+    .map(|(_, s)| s as u32)
+    .collect()
 }
 
 /// Diff `state.clients` against the tracked toplevel set and emit the wlr
@@ -154,6 +177,7 @@ pub fn refresh(state: &mut MargoState) {
                 client.app_id.as_str(),
                 client.is_fullscreen,
                 Some(i) == focused_idx,
+                client.is_minimized,
             ))
         }));
     if state.protocols.wlr_foreign_toplevel.last_fingerprint == Some(fingerprint) {
@@ -174,13 +198,11 @@ pub fn refresh(state: &mut MargoState) {
         let Some(surface) = client.window.wl_surface().map(|s| s.into_owned()) else {
             continue;
         };
-        let mut states = Vec::new();
-        if client.is_fullscreen {
-            states.push(zwlr_foreign_toplevel_handle_v1::State::Fullscreen as u32);
-        }
-        if Some(i) == focused_idx {
-            states.push(zwlr_foreign_toplevel_handle_v1::State::Activated as u32);
-        }
+        let states = wire_states(
+            client.is_fullscreen,
+            Some(i) == focused_idx,
+            client.is_minimized,
+        );
         alive.insert(surface.clone());
         snaps.push(Snap {
             surface,
@@ -356,11 +378,11 @@ where
             Request::Close => state.wlr_ftl_close(surface),
             Request::SetFullscreen { .. } => state.wlr_ftl_set_fullscreen(surface),
             Request::UnsetFullscreen => state.wlr_ftl_unset_fullscreen(surface),
-            // v1: margo is a tiling WM — no minimize/maximize concept.
+            Request::SetMinimized => state.wlr_ftl_set_minimized(surface),
+            Request::UnsetMinimized => state.wlr_ftl_unset_minimized(surface),
+            // margo is a tiling WM — no maximize concept.
             Request::SetMaximized
             | Request::UnsetMaximized
-            | Request::SetMinimized
-            | Request::UnsetMinimized
             | Request::SetRectangle { .. }
             | Request::Destroy => {}
             _ => {}
@@ -396,17 +418,34 @@ macro_rules! delegate_wlr_foreign_toplevel {
 
 #[cfg(test)]
 mod tests {
-    use super::toplevel_fingerprint;
+    use super::{toplevel_fingerprint, wire_states};
+    use smithay::reexports::wayland_protocols_wlr::foreign_toplevel::v1::server::zwlr_foreign_toplevel_handle_v1::State;
+
+    #[test]
+    fn wire_states_carry_minimized() {
+        assert!(wire_states(false, false, false).is_empty());
+        assert_eq!(
+            wire_states(true, true, true),
+            vec![
+                State::Fullscreen as u32,
+                State::Activated as u32,
+                State::Minimized as u32
+            ]
+        );
+        assert_eq!(
+            wire_states(false, false, true),
+            vec![State::Minimized as u32]
+        );
+    }
 
     #[test]
     fn fingerprint_tracks_every_mirrored_field() {
         let base = [
-            (1_u32, "Firefox", "firefox", false, true),
-            (2, "kitty", "kitty", false, false),
+            (1_u32, "Firefox", "firefox", false, true, false),
+            (2, "kitty", "kitty", false, false, false),
         ];
-        let fp = |list: &[(u32, &'static str, &'static str, bool, bool)]| {
-            toplevel_fingerprint(list.iter().copied())
-        };
+        let fp =
+            |list: &[super::ToplevelKey<'static, u32>]| toplevel_fingerprint(list.iter().copied());
         assert_eq!(fp(&base), fp(&base), "unchanged list → refresh skipped");
         let mut retitled = base;
         retitled[0].1 = "Firefox — new tab";
@@ -418,6 +457,9 @@ mod tests {
         let mut fullscreen = base;
         fullscreen[1].3 = true;
         assert_ne!(fp(&base), fp(&fullscreen));
+        let mut minimized = base;
+        minimized[1].5 = true;
+        assert_ne!(fp(&base), fp(&minimized));
         assert_ne!(fp(&base), fp(&base[..1]), "closed window");
     }
 }

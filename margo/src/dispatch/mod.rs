@@ -715,6 +715,23 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
                 state.toggle_scratchpad_id(arg.i as u64);
             }
         }
+        // Minimize: the focused window, or the window with stable id arg 1.
+        "minimize" | "minimize_window" | "minimizewindow" => {
+            if arg.i > 0 {
+                state.minimize_window_id(arg.i as u64);
+            } else {
+                state.minimize_focused();
+            }
+        }
+        "restore_last" | "restorelast" | "restore-last" | "unminimize" => {
+            state.restore_last_minimized();
+        }
+        "restore_all" | "restoreall" | "restore-all" => state.restore_all_minimized(),
+        "restore_window" | "restorewindow" | "restore-window" => {
+            if arg.i > 0 {
+                state.restore_minimized_id(arg.i as u64);
+            }
+        }
         // mango-here equivalent — bring a window to the current tag,
         // launch it if it isn't running. Three args mirror
         // toggle_named_scratchpad:

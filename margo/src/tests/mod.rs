@@ -32,6 +32,7 @@ mod client;
 mod config_no_effect;
 mod fixture;
 mod server;
+mod wlr_ftl_client;
 mod wlr_output_client;
 
 mod active_output;
@@ -58,6 +59,7 @@ mod keymode;
 mod layer_shell;
 mod lock_keys;
 mod logical_output_area;
+mod minimize;
 mod mirror;
 mod mosaic_layout;
 mod move_client;

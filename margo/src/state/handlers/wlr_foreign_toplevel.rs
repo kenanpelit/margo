@@ -5,7 +5,8 @@
 //!   (same path as `xdg-activation`'s `request_activation`).
 //! - `close`           → `send_close` (Wayland) / X11 close.
 //! - `(un)fullscreen`  → `set_client_fullscreen`.
-//! - maximize/minimize → no-op (margo is a tiling WM).
+//! - `(un)minimized`   → `minimize_client` / `restore_minimized`.
+//! - maximize          → no-op (margo is a tiling WM).
 
 use smithay::desktop::WindowSurface;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
@@ -58,6 +59,12 @@ impl MargoState {
         // Scratchpads keep their scratchpad state (mango 565aca89).
         if self.clients[idx].is_in_scratchpad {
             self.activate_scratchpad_client(idx);
+            return;
+        }
+        // A minimized window is unmapped: activating it restores it (dock
+        // click, xdg-activation, `focuswindowid`), which also focuses it.
+        if self.clients[idx].is_user_minimized() {
+            self.restore_minimized(idx);
             return;
         }
 
@@ -147,6 +154,18 @@ impl WlrForeignToplevelHandler for MargoState {
     fn wlr_ftl_unset_fullscreen(&mut self, surface: WlSurface) {
         if let Some(idx) = self.client_idx_for_surface(&surface) {
             self.set_client_fullscreen(idx, false);
+        }
+    }
+
+    fn wlr_ftl_set_minimized(&mut self, surface: WlSurface) {
+        if let Some(idx) = self.client_idx_for_surface(&surface) {
+            self.minimize_client(idx);
+        }
+    }
+
+    fn wlr_ftl_unset_minimized(&mut self, surface: WlSurface) {
+        if let Some(idx) = self.client_idx_for_surface(&surface) {
+            self.restore_minimized(idx);
         }
     }
 }

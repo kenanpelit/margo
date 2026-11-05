@@ -48,6 +48,7 @@ pub(super) const BOOL_KEYS: &[&str] = &[
     "left_handed",
     "log_to_file",
     "middle_button_emulation",
+    "minimize_restore_in_place",
     "monly",
     "mosaic_auto_overflow_tag",
     "mosaic_overflow_stack",

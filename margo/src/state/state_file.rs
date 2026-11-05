@@ -306,6 +306,10 @@ impl MargoState {
                     "floated_by_layout": c.floated_by_layout,
                     "fullscreen": c.is_fullscreen,
                     "minimized": c.is_minimized,
+                    // Minimize order of a minimized (non-scratchpad) window,
+                    // larger = later; 0 otherwise. The Scratchpads pill
+                    // lists minimized windows newest first by it.
+                    "minimized_order": if c.is_user_minimized() { c.minimized_seq } else { 0 },
                     "urgent": c.is_urgent,
                     "scratchpad": c.is_in_scratchpad,
                     // Scratchpad on screen (vs tucked away), and whether it

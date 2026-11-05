@@ -981,6 +981,12 @@ pub struct Config {
     pub scratchpad_height_ratio: f32,
     pub single_scratchpad: bool,
 
+    // minimize
+    /// Where a minimized window comes back: `false` (default) onto the
+    /// focused monitor's current tag, like a scratchpad summon; `true` to
+    /// its own tag and monitor, switching the view there.
+    pub minimize_restore_in_place: bool,
+
     /// Global wallpaper path (W6.1). Painted by margo's own renderer as
     /// the bottom-most element behind every window and layer surface.
     /// Resolution chain when this field is `None`:
@@ -1335,6 +1341,8 @@ impl Default for Config {
             scratchpad_width_ratio: 0.8,
             scratchpad_height_ratio: 0.9,
             single_scratchpad: true,
+
+            minimize_restore_in_place: false,
 
             rootcolor: Rgba([
                 0x32_u8 as f32 / 255.0,

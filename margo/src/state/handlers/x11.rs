@@ -225,6 +225,20 @@ impl XwmHandler for MargoState {
 
     fn move_request(&mut self, _xwm: XwmId, _window: X11Surface, _button: u32) {}
 
+    /// An X11 iconify (`_NET_WM_STATE_HIDDEN` / `WM_CHANGE_STATE`): the
+    /// same minimize the xdg path and taskbars get.
+    fn minimize_request(&mut self, _xwm: XwmId, window: X11Surface) {
+        if let Some(idx) = self.find_x11_client(&window) {
+            self.minimize_client(idx);
+        }
+    }
+
+    fn unminimize_request(&mut self, _xwm: XwmId, window: X11Surface) {
+        if let Some(idx) = self.find_x11_client(&window) {
+            self.restore_minimized(idx);
+        }
+    }
+
     fn allow_selection_access(&mut self, xwm: XwmId, _selection: SelectionTarget) -> bool {
         let Some(keyboard) = self.seat.get_keyboard() else {
             return false;

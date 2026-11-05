@@ -24,6 +24,8 @@
 use super::{FocusTarget, MargoState, matches_rule_text};
 use crate::layout::Rect;
 
+mod minimize;
+
 /// How `summon` / `focusapp` combine the app-id and title patterns when both
 /// are given (ported from a niri run-or-raise helper). The 4th bind field
 /// selects it; defaults to `And`.
@@ -152,6 +154,9 @@ impl MargoState {
         // absolute screen position — using the absolute coords
         // baked at first-map time would put the panel on whichever
         // monitor it was originally arranged for.
+        // A minimized window promoted to a scratchpad (a named-scratchpad
+        // bind matching it) drops its minimized order / X11 hidden hint.
+        self.clear_minimized(idx);
         let c = &mut self.clients[idx];
         c.is_in_scratchpad = true;
         c.is_scratchpad_show = true;
@@ -426,7 +431,7 @@ impl MargoState {
         self.clients[idx].tags = target_tagset;
         self.clients[idx].monitor = target_mon;
         if was_minimized {
-            self.clients[idx].is_minimized = false;
+            self.clear_minimized(idx);
         }
 
         if source_mon != target_mon && source_mon < self.monitors.len() {

@@ -627,6 +627,46 @@ pub const ACTIONS: &[Action] = &[
                  that is already a scratchpad; honours `single_scratchpad`.",
     },
     Action {
+        name: "minimize",
+        aliases: &["minimize_window", "minimizewindow"],
+        args: "[ID]",
+        group: Group::Scratchpad,
+        summary: "Minimize the focused window, or the window with stable id ID.",
+        detail: "The window leaves every tag until restored (`restore_last`, \
+                 `restore_all`, `restore_window`, a click in the Scratchpads \
+                 pill or a dock, or any activation). A shown scratchpad is \
+                 tucked away instead. Apps' own minimize buttons and taskbars \
+                 (wlr-foreign-toplevel) do the same.",
+    },
+    Action {
+        name: "restore_last",
+        aliases: &["restorelast", "restore-last", "unminimize"],
+        args: "",
+        group: Group::Scratchpad,
+        summary: "Restore the most recently minimized window.",
+        detail: "Onto the focused monitor's current tag, or back to its own tag \
+                 with `minimize_restore_in_place = 1`. No-op when nothing is \
+                 minimized.",
+    },
+    Action {
+        name: "restore_all",
+        aliases: &["restoreall", "restore-all"],
+        args: "",
+        group: Group::Scratchpad,
+        summary: "Restore every minimized window.",
+        detail: "Oldest first, so the most recently minimized one ends up \
+                 focused.",
+    },
+    Action {
+        name: "restore_window",
+        aliases: &["restorewindow", "restore-window"],
+        args: "<ID>",
+        group: Group::Scratchpad,
+        summary: "Restore one minimized window by its stable id (arg 1).",
+        detail: "What the shell's Scratchpads pill sends. No-op unless that \
+                 window is minimized.",
+    },
+    Action {
         name: "summon",
         aliases: &["taghere", "tag_here", "tag-here", "bring_here", "bringhere"],
         args: "<APPID> <TITLE|none> <SPAWN> [OP]",

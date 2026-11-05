@@ -79,11 +79,11 @@ pub(super) const PAGE_KEYWORDS: &[(&str, &str)] = &[
     ),
     (
         "behaviour",
-        "focus sloppy warp cursor drag tile swap snap hot corner overview scroll axis scratchpad tearing sync syncobj xwayland inhibit",
+        "focus sloppy warp cursor drag tile swap snap hot corner overview scroll axis scratchpad minimize restore tearing sync syncobj xwayland inhibit",
     ),
     (
         "behavior",
-        "focus sloppy warp cursor drag tile swap snap hot corner overview scroll axis scratchpad tearing sync syncobj xwayland inhibit",
+        "focus sloppy warp cursor drag tile swap snap hot corner overview scroll axis scratchpad minimize restore tearing sync syncobj xwayland inhibit",
     ),
     (
         "window_rules",

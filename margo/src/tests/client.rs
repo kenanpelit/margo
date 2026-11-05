@@ -141,6 +141,9 @@ pub struct ClientState {
     /// surface protocol id, surface-local x y), `"motion 0 15 20"`,
     /// `"up 0"`, `"frame"`, `"cancel"`.
     pub touch_events: Vec<String>,
+    /// What a bound `zwlr_foreign_toplevel_manager_v1` reported (see
+    /// `wlr_ftl_client.rs`).
+    pub foreign_toplevels: super::wlr_ftl_client::ForeignToplevelEvents,
 }
 
 /// Sync sentinel: each `roundtrip` mints one and the fixture spins

@@ -507,6 +507,10 @@ pub struct MargoService {
     /// when there are none or the running margo predates the fields. The
     /// scratchpad chips pill reads this.
     pub scratchpads: Reactive<Vec<crate::indicators::ScratchpadChip>>,
+    /// The minimized windows, most recently minimized first. Empty when
+    /// none (or on a margo without minimize). The Scratchpads pill lists
+    /// them as restore chips.
+    pub minimized: Reactive<Vec<crate::indicators::MinimizedChip>>,
     /// The windows on the focused output's active tag (visible ones, in
     /// client order). The tag row's optional app icons read this.
     pub active_tag_windows: Reactive<Vec<crate::indicators::TagWindow>>,
@@ -562,6 +566,7 @@ impl MargoService {
             keymode: Reactive::new(None),
             scroller: Reactive::new(None),
             scratchpads: Reactive::new(Vec::new()),
+            minimized: Reactive::new(Vec::new()),
             active_tag_windows: Reactive::new(Vec::new()),
             active_layout: Reactive::new(None),
             config_errors: Reactive::new(Vec::new()),

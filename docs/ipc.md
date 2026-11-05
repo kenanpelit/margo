@@ -49,7 +49,9 @@ the left edge, `x >= viewport_width` = off the right).
 
 Each `clients[]` entry carries `scratchpad` (in the scratchpad set),
 `scratchpad_shown` (on screen now) and `named_scratchpad`, plus `xwayland`
-(an X11 client running through XWayland).
+(an X11 client running through XWayland). `minimized` is true for a hidden
+scratchpad and for a minimized window; a minimized (non-scratchpad) window
+also has `minimized_order` > 0, larger = minimized later.
 
 Error frames are `{"error":"<message>"}`. Unknown verb/topic returns an
 error frame; the connection stays open.

@@ -282,6 +282,9 @@ pub(super) fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()>
         "scratchpad_height_ratio" => cfg.scratchpad_height_ratio = parse_f32(val),
         "single_scratchpad" => cfg.single_scratchpad = parse_bool(val),
 
+        // minimize
+        "minimize_restore_in_place" => cfg.minimize_restore_in_place = parse_bool(val),
+
         // wallpaper
         "wallpaper" => {
             let trimmed = val.trim();
@@ -715,6 +718,7 @@ pub const OPTION_KEYS: &[&str] = &[
     "shadows_position_y",
     "shadows_size",
     "single_scratchpad",
+    "minimize_restore_in_place",
     "sloppyfocus",
     "sloppyfocus_arrange",
     "smartgaps",

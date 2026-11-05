@@ -32,6 +32,7 @@
 //!   the configure. smithay's defaults are `send_configure()` with
 //!   no state change, which leaves Helium / Firefox / mpv stuck
 //!   windowed even after the client requested fullscreen.
+//! * `minimize_request` — `minimize_client` (`state/scratchpad/minimize.rs`).
 
 use smithay::{
     desktop::{PopupKind, Window},
@@ -499,6 +500,15 @@ impl XdgShellHandler for MargoState {
             return;
         };
         self.set_client_fullscreen(idx, true);
+    }
+
+    /// The app's own minimize (a CSD minimize button, `gtk_window_minimize`).
+    /// xdg-shell has no unminimize request: the window comes back through
+    /// `restore_*`, a taskbar or any activation.
+    fn minimize_request(&mut self, toplevel: ToplevelSurface) {
+        if let Some(idx) = self.client_idx_for_surface(toplevel.wl_surface()) {
+            self.minimize_client(idx);
+        }
     }
 
     fn unmaximize_request(&mut self, toplevel: ToplevelSurface) {
