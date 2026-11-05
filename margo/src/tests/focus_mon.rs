@@ -103,3 +103,48 @@ fn focus_mon_is_noop_with_single_output() {
         "single-output focus_mon must not move the pointer",
     );
 }
+
+/// Map a window on monitor `mon` (new windows open under the pointer
+/// when nothing is focused); returns its client index.
+fn map_window_on(fx: &mut Fixture, mon: usize) -> usize {
+    fx.server.state.focus_surface(None);
+    park_pointer_on(fx, mon);
+    let id = fx.add_client();
+    let (_toplevel, surface) = fx.client(id).create_toplevel();
+    surface.commit();
+    fx.client(id).flush();
+    fx.roundtrip(id);
+    let idx = fx.server.state.clients.len() - 1;
+    assert_eq!(fx.server.state.clients[idx].monitor, mon);
+    idx
+}
+
+/// eDP-1 is focused on tag 1; a window on DP-3 has tag 4 while DP-3 shows
+/// tag 2. Clicking it in the dock (or an xdg-activation) switched the
+/// *focused* monitor to tag 4 and gave keyboard focus to the still hidden
+/// window.
+#[test]
+fn activating_a_window_on_another_monitors_hidden_tag_shows_it_there() {
+    let mut fx = Fixture::new();
+    fx.add_output("eDP-1", (1920, 1200));
+    fx.add_output("DP-3", (2560, 1440));
+    fx.add_keyboard();
+    let hidden = map_window_on(&mut fx, 1);
+    fx.server.state.clients[hidden].tags = 1 << 3;
+    fx.server.state.view_tag_on(1, 1 << 1);
+    let here = map_window_on(&mut fx, 0);
+    assert_eq!(fx.server.state.focused_client_idx(), Some(here));
+    let edp_tags = fx.server.state.monitors[0].current_tagset();
+
+    fx.server.state.activate_window_idx(hidden);
+
+    let st = &fx.server.state;
+    assert_eq!(
+        st.monitors[0].current_tagset(),
+        edp_tags,
+        "eDP-1 keeps its tag"
+    );
+    assert_eq!(st.monitors[1].current_tagset(), 1 << 3, "DP-3 shows tag 4");
+    assert_eq!(st.focused_client_idx(), Some(hidden));
+    assert!(st.clients[hidden].is_visible_on(1, st.monitors[1].current_tagset()));
+}

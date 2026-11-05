@@ -235,7 +235,16 @@ impl MargoState {
         } else {
             current_mon
         };
-        if mon_idx >= self.monitors.len() {
+        self.view_tag_on(mon_idx, tagmask);
+    }
+
+    /// Show `tagmask` on monitor `mon_idx` — [`Self::view_tag`] once the
+    /// monitor is picked. Activating a window on a hidden tag uses it
+    /// directly: the tag must change on the window's own monitor, not on
+    /// the focused one.
+    pub fn view_tag_on(&mut self, mon_idx: usize, tagmask: u32) {
+        let tagmask = tagmask & crate::TAGMASK;
+        if tagmask == 0 || mon_idx >= self.monitors.len() {
             return;
         }
         let seltags = self.monitors[mon_idx].seltags;

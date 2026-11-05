@@ -63,16 +63,20 @@ impl MargoState {
 
         let mask = self.clients[idx].tags;
         let mon_idx = self.clients[idx].monitor;
+        let other_monitor = mon_idx != self.focused_monitor();
         let already_visible = self
             .monitors
             .get(mon_idx)
             .map(|m| (mask & m.current_tagset()) != 0)
             .unwrap_or(false);
         if !already_visible {
-            // Lowest set bit, mirroring xdg-activation's tag jump.
+            // Lowest set bit, mirroring xdg-activation's tag jump. On the
+            // window's own monitor: `view_tag` would switch the focused
+            // one (or the tag's home) and leave the window hidden while
+            // it gets keyboard focus.
             let one_bit = mask & mask.wrapping_neg();
             let target = if one_bit != 0 { one_bit } else { mask };
-            self.view_tag(target);
+            self.view_tag_on(mon_idx, target);
         }
 
         // A parked (non-active) group member is unmapped: make it the
@@ -105,6 +109,11 @@ impl MargoState {
         // side effect of its own. `view_tag` already arranges when it
         // does run, so this call is a cheap no-op in that case.
         self.arrange_monitor(mon_idx);
+        if other_monitor {
+            // Follow it with the pointer (when `warpcursor` is on), as
+            // `focusmon` does, so sloppy focus doesn't snap back.
+            self.warp_cursor_to_focus(true);
+        }
         self.request_repaint();
     }
 }
