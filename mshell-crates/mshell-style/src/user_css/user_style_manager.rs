@@ -56,23 +56,29 @@ impl UserStyleManager {
     pub fn watch_style(&self) {
         let style = self.style.clone();
 
-        thread::spawn(move || {
-            let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
-            let mut watcher: RecommendedWatcher =
-                RecommendedWatcher::new(tx, NotifyConfig::default())
-                    .expect("config: failed to create watcher");
+        // Named so a per-thread wakeup measurement can tell it apart.
+        let spawned = thread::Builder::new()
+            .name("style-watch".into())
+            .spawn(move || {
+                let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
+                let mut watcher: RecommendedWatcher =
+                    RecommendedWatcher::new(tx, NotifyConfig::default())
+                        .expect("config: failed to create watcher");
 
-            // Watch directories (best for atomic saves: temp + rename)
-            let styles_dir = styles_dir();
+                // Watch directories (best for atomic saves: temp + rename)
+                let styles_dir = styles_dir();
 
-            if let Err(e) = std::fs::create_dir_all(&styles_dir) {
-                error!("failed to create styles dir: {e}");
-                return;
-            }
+                if let Err(e) = std::fs::create_dir_all(&styles_dir) {
+                    error!("failed to create styles dir: {e}");
+                    return;
+                }
 
-            let _ = watcher.watch(&styles_dir, RecursiveMode::NonRecursive);
+                let _ = watcher.watch(&styles_dir, RecursiveMode::NonRecursive);
 
-            watch_style_loop(rx, style);
-        });
+                watch_style_loop(rx, style);
+            });
+        if let Err(e) = spawned {
+            error!("failed to start the style watcher: {e}");
+        }
     }
 }

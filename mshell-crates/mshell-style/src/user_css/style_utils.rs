@@ -43,32 +43,79 @@ pub fn list_available_styles() -> Vec<String> {
     out
 }
 
-pub(crate) fn watch_style_loop(rx: mpsc::Receiver<notify::Result<Event>>, style: ArcStore<Style>) {
+/// What [`debounce_loop`] waits on: the notify channel in production, a
+/// scripted fake in the tests.
+pub(crate) trait EventSource<E> {
+    /// Block until the next event (or the sender is gone).
+    fn recv_blocking(&self) -> Result<E, mpsc::RecvTimeoutError>;
+    fn recv_timeout(&self, wait: Duration) -> Result<E, mpsc::RecvTimeoutError>;
+}
+
+impl<E> EventSource<E> for mpsc::Receiver<E> {
+    fn recv_blocking(&self) -> Result<E, mpsc::RecvTimeoutError> {
+        self.recv()
+            .map_err(|_| mpsc::RecvTimeoutError::Disconnected)
+    }
+
+    fn recv_timeout(&self, wait: Duration) -> Result<E, mpsc::RecvTimeoutError> {
+        mpsc::Receiver::recv_timeout(self, wait)
+    }
+}
+
+/// Call `fire` once `debounce` has passed since the last event `relevant`
+/// accepted. Returns when the sender side is dropped.
+pub(crate) fn debounce_loop<E>(
+    rx: &impl EventSource<E>,
+    debounce: Duration,
+    mut relevant: impl FnMut(E) -> bool,
+    mut fire: impl FnMut(),
+) {
     let mut pending = false;
     let mut last_event_at = Instant::now();
-    const DEBOUNCE_MS: u64 = 200;
-
     loop {
-        match rx.recv_timeout(Duration::from_millis(50)) {
-            Ok(Ok(event)) => {
-                let active_style = config_manager().config().theme().css_file().get_untracked();
-                let active_style_path: PathBuf = style_path(active_style.as_str());
-
-                if is_relevant_style_event(&event, &active_style_path) {
+        // Idle: block until the next event. Only a pending change waits on
+        // a deadline (the rest of the debounce). The old unconditional
+        // `recv_timeout(50ms)` woke this thread 20 times a second for the
+        // whole session.
+        let recv = if pending {
+            rx.recv_timeout(debounce.saturating_sub(last_event_at.elapsed()))
+        } else {
+            rx.recv_blocking()
+        };
+        match recv {
+            Ok(event) => {
+                if relevant(event) {
                     pending = true;
                     last_event_at = Instant::now();
                 }
             }
-            Ok(Err(e)) => eprintln!("config: watch error: {e}"),
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
-
-        if pending && last_event_at.elapsed() >= Duration::from_millis(DEBOUNCE_MS) {
+        if pending && last_event_at.elapsed() >= debounce {
             pending = false;
+            fire();
+        }
+    }
+}
 
+pub(crate) fn watch_style_loop(rx: mpsc::Receiver<notify::Result<Event>>, style: ArcStore<Style>) {
+    const DEBOUNCE: Duration = Duration::from_millis(200);
+    debounce_loop(
+        &rx,
+        DEBOUNCE,
+        |event| match event {
+            Ok(event) => {
+                let active_style = config_manager().config().theme().css_file().get_untracked();
+                is_relevant_style_event(&event, &style_path(active_style.as_str()))
+            }
+            Err(e) => {
+                eprintln!("config: watch error: {e}");
+                false
+            }
+        },
+        || {
             let active = config_manager().config().theme().css_file().get_untracked();
-
             match load_style(active) {
                 Ok(new_style) => {
                     style.patch(new_style);
@@ -76,8 +123,8 @@ pub(crate) fn watch_style_loop(rx: mpsc::Receiver<notify::Result<Event>>, style:
                 }
                 Err(e) => eprintln!("style: reload failed (keeping last-good): {e}"),
             }
-        }
-    }
+        },
+    );
 }
 
 pub(crate) fn is_relevant_style_event(event: &Event, active_style_path: &PathBuf) -> bool {
@@ -105,4 +152,65 @@ pub(crate) fn is_relevant_style_event(event: &Event, active_style_path: &PathBuf
         }
         false
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::RefCell;
+    use std::collections::VecDeque;
+
+    /// Replays scripted results and logs how the loop waited.
+    struct Script {
+        results: RefCell<VecDeque<Result<bool, mpsc::RecvTimeoutError>>>,
+        calls: RefCell<Vec<&'static str>>,
+    }
+
+    impl Script {
+        fn next(&self) -> Result<bool, mpsc::RecvTimeoutError> {
+            self.results
+                .borrow_mut()
+                .pop_front()
+                .unwrap_or(Err(mpsc::RecvTimeoutError::Disconnected))
+        }
+    }
+
+    impl EventSource<bool> for Script {
+        fn recv_blocking(&self) -> Result<bool, mpsc::RecvTimeoutError> {
+            self.calls.borrow_mut().push("block");
+            self.next()
+        }
+
+        fn recv_timeout(&self, wait: Duration) -> Result<bool, mpsc::RecvTimeoutError> {
+            self.calls.borrow_mut().push("timeout");
+            // A timeout really waits, so the debounce deadline passes.
+            std::thread::sleep(wait);
+            self.next()
+        }
+    }
+
+    #[test]
+    fn idle_blocks_and_only_a_pending_change_uses_a_timeout() {
+        let rx = Script {
+            results: RefCell::new(VecDeque::from([
+                Ok(false), // irrelevant event: still idle
+                Ok(true),  // the active style changed
+                Err(mpsc::RecvTimeoutError::Timeout),
+            ])),
+            calls: RefCell::new(Vec::new()),
+        };
+        let mut fired = 0;
+        debounce_loop(&rx, Duration::from_millis(20), |e| e, || fired += 1);
+        assert_eq!(fired, 1);
+        // Idle waits never time out (no 20 Hz wakeup); the one timed wait
+        // is the debounce, then it blocks again until the channel closes.
+        let calls = rx.calls.borrow();
+        assert_eq!(calls.first(), Some(&"block"));
+        assert_eq!(calls.last(), Some(&"block"));
+        assert_eq!(
+            calls.iter().filter(|c| **c == "timeout").count(),
+            1,
+            "{calls:?}"
+        );
+    }
 }
