@@ -178,15 +178,44 @@ pub fn resolve_sound_path(path: &str, seed: u64) -> Option<std::path::PathBuf> {
 }
 
 /// Play a user-configured sound file, or a random file from a folder (see
-/// [`resolve_sound_path`]). Missing / undecodable sounds are silent.
-pub fn play_sound_path_or_folder(path: &str) {
+/// [`resolve_sound_path`]). Returns `false` when the path resolves to no
+/// playable file (moved, deleted, empty folder) so the caller can fall back
+/// to the default sound instead of staying silent; that case is logged once
+/// per path. An undecodable file still counts as played (silent).
+pub fn play_sound_path_or_folder(path: &str) -> bool {
     let seed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.subsec_nanos() as u64 ^ d.as_secs())
         .unwrap_or(0);
-    if let Some(file) = resolve_sound_path(path, seed) {
-        play_notification_file(&file.to_string_lossy());
+    match resolve_sound_path(path, seed) {
+        Some(file) => {
+            play_notification_file(&file.to_string_lossy());
+            true
+        }
+        None => {
+            if first_miss(path) {
+                tracing::warn!(
+                    path,
+                    "sound: no playable file at this path; using the default sound"
+                );
+            }
+            false
+        }
     }
+}
+
+/// `true` the first time `path` is reported missing (one warning per path,
+/// not one per notification).
+fn first_miss(path: &str) -> bool {
+    static WARNED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+    let Ok(mut warned) = WARNED.lock() else {
+        return false;
+    };
+    if warned.iter().any(|p| p == path) {
+        return false;
+    }
+    warned.push(path.to_string());
+    true
 }
 
 /// Fire-and-forget playback of already-fetched/generated audio bytes (e.g.
@@ -340,6 +369,22 @@ mod tests {
         assert!(!is_safe_sound_file(dir.to_str().unwrap()), "a directory");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_missing_sound_reports_not_played_so_the_caller_can_fall_back() {
+        assert!(!play_sound_path_or_folder(
+            "/nonexistent/mshell-sounds-test.ogg"
+        ));
+        assert!(!play_sound_path_or_folder("   "));
+    }
+
+    #[test]
+    fn a_missing_sound_is_warned_about_once_per_path() {
+        let path = format!("/nonexistent/mshell-sounds-warn-{}.ogg", std::process::id());
+        assert!(first_miss(&path));
+        assert!(!first_miss(&path));
+        assert!(first_miss(&format!("{path}.other")));
     }
 
     #[test]

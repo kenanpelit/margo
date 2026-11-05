@@ -280,7 +280,8 @@ impl Component for PopupNotificationsModel {
 
 /// Play the notification sound for a freshly-shown toast, honouring the
 /// whole decision ladder: master toggle → spec `suppress-sound` hint →
-/// quiet hours → per-urgency toggles → a matching `sound_rules` entry →
+/// quiet hours → per-urgency toggles → a matching `sound_rules` entry (if
+/// its sound still exists) →
 /// client `sound-file` hint (when allowed) or the built-in chime. DND never reaches here — wayle drops
 /// the popup itself.
 fn maybe_play_sound(n: &Notification) {
@@ -322,14 +323,17 @@ fn maybe_play_sound(n: &Notification) {
         return;
     }
     // A matching per-app / per-contact rule wins over the client's own
-    // sound and the built-in chime.
+    // sound and the built-in chime — when its sound still exists. A rule
+    // whose file / folder is gone falls through to the usual sound instead
+    // of leaving that contact's notifications silent (logged once).
     let rules = cfg.clone().notifications().sound_rules().get_untracked();
     if !rules.is_empty() {
         let app = n.app_name.get().unwrap_or_default();
         let summary = n.summary.get();
         let body = n.body.get().unwrap_or_default();
-        if let Some(rule) = first_sound_rule(&rules, &app, &summary, &body) {
-            mshell_sounds::play_sound_path_or_folder(&rule.sound);
+        if let Some(rule) = first_sound_rule(&rules, &app, &summary, &body)
+            && mshell_sounds::play_sound_path_or_folder(&rule.sound)
+        {
             return;
         }
     }

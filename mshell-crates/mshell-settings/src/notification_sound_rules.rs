@@ -3,6 +3,11 @@
 //! it (entry row + `ok-button-primary` Add, `notification-mute-row` rows
 //! with a trash button); kept in its own file because the notification
 //! page is already large.
+//!
+//! The first matching rule wins, so rows reorder like every other ordered
+//! Settings list (grip drag + ↑/↓, DESIGN.md §5). A path that holds no
+//! playable sound is refused when adding, and an existing rule whose file
+//! has gone shows a "missing" badge (the default chime plays for it).
 
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
@@ -26,8 +31,10 @@ pub(crate) fn build_sound_rules_section() -> (gtk::Box, EffectScope) {
 
     let hint = gtk::Label::new(Some(
         "The first rule whose text appears in the chosen part of a notification \
-         (case-insensitive) plays its sound instead of the chime. A folder plays \
-         one of its .ogg / .mp3 files at random. Needs notification sounds on.",
+         (case-insensitive) plays its sound instead of the chime; drag or use the \
+         arrows to change the order. A folder plays one of its .ogg / .mp3 files \
+         at random; if the sound is gone the chime plays. Needs notification \
+         sounds on.",
     ));
     hint.add_css_class("label-small");
     hint.set_halign(gtk::Align::Start);
@@ -44,6 +51,7 @@ pub(crate) fn build_sound_rules_section() -> (gtk::Box, EffectScope) {
     let field = gtk::DropDown::from_strings(&labels);
     field.set_valign(gtk::Align::Center);
     let sound = gtk::Entry::new();
+    sound.add_css_class("sound-rule-path");
     sound.set_hexpand(true);
     sound.set_placeholder_text(Some("Sound file or folder"));
     let add = gtk::Button::with_label("Add");
@@ -55,11 +63,31 @@ pub(crate) fn build_sound_rules_section() -> (gtk::Box, EffectScope) {
     input.append(&add);
     section.append(&input);
 
+    // Shown only after a refused add: the path holds no playable sound.
+    let not_found = gtk::Label::new(Some(
+        "No .ogg / .mp3 file at that path (or the folder has none).",
+    ));
+    not_found.add_css_class("label-small");
+    not_found.add_css_class("sound-rule-missing");
+    not_found.set_halign(gtk::Align::Start);
+    not_found.set_visible(false);
+    section.append(&not_found);
+
     let list = gtk::Box::new(gtk::Orientation::Vertical, 4);
     section.append(&list);
 
+    {
+        // Typing again clears the "not found" state.
+        let not_found = not_found.clone();
+        sound.connect_changed(move |e| {
+            e.remove_css_class("error");
+            not_found.set_visible(false);
+        });
+    }
+
     let submit = {
         let (pattern, field, sound) = (pattern.clone(), field.clone(), sound.clone());
+        let not_found = not_found.clone();
         move || {
             let rule = SoundRule {
                 pattern: pattern.text().trim().to_string(),
@@ -70,6 +98,11 @@ pub(crate) fn build_sound_rules_section() -> (gtk::Box, EffectScope) {
                 sound: expand_home(sound.text().trim()),
             };
             if rule.pattern.is_empty() || rule.sound.is_empty() {
+                return;
+            }
+            if !sound_exists(&rule.sound) {
+                sound.add_css_class("error");
+                not_found.set_visible(true);
                 return;
             }
             config_manager().update_config(move |c| c.notifications.sound_rules.push(rule));
@@ -114,9 +147,21 @@ fn rebuild_rows(list: &gtk::Box, rules: &[SoundRule]) {
     while let Some(child) = list.first_child() {
         list.remove(&child);
     }
+    let count = rules.len();
     for (idx, rule) in rules.iter().enumerate() {
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         row.add_css_class("notification-mute-row");
+
+        let grip = gtk::Image::from_icon_name("list-drag-handle-symbolic");
+        grip.add_css_class("reorder-grip");
+        grip.set_valign(gtk::Align::Center);
+        grip.set_tooltip_text(Some("Drag to reorder"));
+        row.append(&grip);
+        crate::reorder_dnd::attach_grip_drag(&grip, &row, move |delta| {
+            config_manager().update_config(move |c| {
+                move_rule(&mut c.notifications.sound_rules, idx, delta);
+            });
+        });
 
         let text = gtk::Box::new(gtk::Orientation::Vertical, 0);
         text.set_hexpand(true);
@@ -133,6 +178,48 @@ fn rebuild_rows(list: &gtk::Box, rules: &[SoundRule]) {
         text.append(&detail);
         row.append(&text);
 
+        if !sound_exists(&rule.sound) {
+            let badge = gtk::Label::new(Some("missing"));
+            badge.add_css_class("label-small");
+            badge.add_css_class("sound-rule-missing");
+            badge.set_valign(gtk::Align::Center);
+            badge.set_tooltip_text(Some(
+                "No playable sound at this path any more — the default chime plays instead.",
+            ));
+            row.append(&badge);
+        }
+
+        for (icon, tip, name, delta, enabled) in [
+            (
+                "go-up-symbolic",
+                "Move up",
+                "Move sound rule up",
+                -1,
+                idx > 0,
+            ),
+            (
+                "go-down-symbolic",
+                "Move down",
+                "Move sound rule down",
+                1,
+                idx + 1 < count,
+            ),
+        ] {
+            let btn = gtk::Button::new();
+            btn.add_css_class("ok-button-surface");
+            btn.set_valign(gtk::Align::Center);
+            btn.set_tooltip_text(Some(tip));
+            btn.set_child(Some(&gtk::Image::from_icon_name(icon)));
+            btn.set_sensitive(enabled);
+            mshell_common::a11y::name(&btn, name);
+            btn.connect_clicked(move |_| {
+                config_manager().update_config(move |c| {
+                    move_rule(&mut c.notifications.sound_rules, idx, delta);
+                });
+            });
+            row.append(&btn);
+        }
+
         let play = gtk::Button::new();
         play.add_css_class("ok-button-surface");
         play.set_valign(gtk::Align::Center);
@@ -142,7 +229,9 @@ fn rebuild_rows(list: &gtk::Box, rules: &[SoundRule]) {
         )));
         mshell_common::a11y::name(&play, "Play sound");
         let path = rule.sound.clone();
-        play.connect_clicked(move |_| mshell_sounds::play_sound_path_or_folder(&path));
+        play.connect_clicked(move |_| {
+            mshell_sounds::play_sound_path_or_folder(&path);
+        });
         row.append(&play);
 
         let remove = gtk::Button::new();
@@ -164,10 +253,68 @@ fn rebuild_rows(list: &gtk::Box, rules: &[SoundRule]) {
     }
 }
 
+/// Whether `path` resolves to a playable sound (a file, or a folder with an
+/// .ogg / .mp3 in it) — the same check the player makes.
+fn sound_exists(path: &str) -> bool {
+    mshell_sounds::resolve_sound_path(path, 0).is_some()
+}
+
+/// Move the rule at `from` by `delta` positions, clamped to the list.
+/// Returns whether anything moved.
+fn move_rule(rules: &mut Vec<SoundRule>, from: usize, delta: i32) -> bool {
+    if from >= rules.len() || delta == 0 {
+        return false;
+    }
+    let last = rules.len() as i64 - 1;
+    let to = (from as i64 + i64::from(delta)).clamp(0, last) as usize;
+    if to == from {
+        return false;
+    }
+    let rule = rules.remove(from);
+    rules.insert(to, rule);
+    true
+}
+
 /// `~/x` → `$HOME/x` so the stored path works for the sound player.
 fn expand_home(path: &str) -> String {
     match (path.strip_prefix("~/"), std::env::var("HOME")) {
         (Some(rest), Ok(home)) => format!("{home}/{rest}"),
         _ => path.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rules(names: &[&str]) -> Vec<SoundRule> {
+        names
+            .iter()
+            .map(|n| SoundRule {
+                pattern: n.to_string(),
+                field: SoundRuleField::default(),
+                sound: format!("/s/{n}.ogg"),
+            })
+            .collect()
+    }
+
+    fn names(r: &[SoundRule]) -> Vec<&str> {
+        r.iter().map(|r| r.pattern.as_str()).collect()
+    }
+
+    /// First match wins, so order matters: a rule can be moved instead of
+    /// deleted and re-added.
+    #[test]
+    fn a_rule_moves_by_the_delta_and_clamps_at_the_ends() {
+        let mut r = rules(&["a", "b", "c"]);
+        assert!(move_rule(&mut r, 2, -1));
+        assert_eq!(names(&r), ["a", "c", "b"]);
+        assert!(move_rule(&mut r, 0, 5));
+        assert_eq!(names(&r), ["c", "b", "a"]);
+        assert!(!move_rule(&mut r, 0, -1), "already first");
+        assert!(!move_rule(&mut r, 2, 1), "already last");
+        assert!(!move_rule(&mut r, 7, -1), "out of range");
+        assert!(!move_rule(&mut r, 1, 0));
+        assert_eq!(names(&r), ["c", "b", "a"]);
     }
 }

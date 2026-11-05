@@ -143,6 +143,19 @@
   transition: background-color var(--motion-fast) var(--ease-standard);
 }
 
+// Settings → Notifications → sounds per app or contact: a rule whose sound
+// file / folder is gone (badge on the row, and the message under the add
+// row when a typed path holds no playable sound). Warning tier, like the
+// Startup page's missing-script badge.
+.sound-rule-missing {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.sound-rule-path.error {
+  box-shadow: inset 0 0 0 var(--border-width) var(--error);
+}
+
 // ── 2FA / OTP one-click copy chip ────────────────────────────────────
 // Soft secondary-container fill (same tier as the clipboard's active
 // tab segment) so the chip invites the click without shouting. Flat:
