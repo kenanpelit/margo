@@ -20,6 +20,7 @@ pub mod logout;
 pub mod margo;
 pub mod media;
 pub mod mvpn;
+pub mod netstat;
 pub mod network;
 pub mod notifications;
 pub mod picker;

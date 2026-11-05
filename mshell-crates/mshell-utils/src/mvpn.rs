@@ -227,38 +227,6 @@ pub fn pick_tunnel_interface(names: &[String]) -> Option<String> {
         .map(|(_, n)| n.clone())
 }
 
-/// Bytes/s between two counter readings. A counter that went backwards
-/// (tunnel re-created between samples) reads as 0, not a huge spike.
-pub fn counter_rate(prev: u64, cur: u64, secs: f64) -> u64 {
-    if secs <= 0.0 || cur < prev {
-        return 0;
-    }
-    ((cur - prev) as f64 / secs).round() as u64
-}
-
-/// `(rx_bytes, tx_bytes)` of `iface` from sysfs, `None` when it's gone.
-pub fn read_iface_counters(iface: &str) -> Option<(u64, u64)> {
-    let read = |f: &str| -> Option<u64> {
-        std::fs::read_to_string(format!("/sys/class/net/{iface}/statistics/{f}"))
-            .ok()?
-            .trim()
-            .parse()
-            .ok()
-    };
-    Some((read("rx_bytes")?, read("tx_bytes")?))
-}
-
-/// Interface names from `/sys/class/net`.
-pub fn list_interfaces() -> Vec<String> {
-    std::fs::read_dir("/sys/class/net")
-        .map(|rd| {
-            rd.filter_map(|e| e.ok())
-                .map(|e| e.file_name().to_string_lossy().into_owned())
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -281,13 +249,6 @@ mod tests {
         assert_eq!(pick_tunnel_interface(&other).as_deref(), Some("wg1"));
         let none: Vec<String> = ["lo", "wlan0"].iter().map(|s| s.to_string()).collect();
         assert_eq!(pick_tunnel_interface(&none), None);
-    }
-
-    #[test]
-    fn counter_rates() {
-        assert_eq!(counter_rate(1_000, 3_000, 2.0), 1_000);
-        assert_eq!(counter_rate(5_000, 100, 2.0), 0, "reset counter");
-        assert_eq!(counter_rate(0, 100, 0.0), 0);
     }
 
     #[test]

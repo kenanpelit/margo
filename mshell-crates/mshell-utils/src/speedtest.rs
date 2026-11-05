@@ -12,7 +12,6 @@
 //! tool and forwards [`SpeedEvent`]s over a channel.
 
 use serde::Deserialize;
-use std::collections::BTreeMap;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -288,50 +287,7 @@ pub fn parse_legacy_json(s: &str) -> Option<SpeedResult> {
 }
 
 // ── Live gauge for the legacy backend ──────────────────────────────────────
-
-/// `/proc/net/dev` → per-interface (rx, tx) byte counters, `lo` excluded.
-pub fn parse_proc_net_dev(s: &str) -> BTreeMap<String, (u64, u64)> {
-    let mut map = BTreeMap::new();
-    for line in s.lines().skip(2) {
-        let Some((name, rest)) = line.split_once(':') else {
-            continue;
-        };
-        let name = name.trim();
-        if name == "lo" {
-            continue;
-        }
-        let f: Vec<u64> = rest
-            .split_whitespace()
-            .filter_map(|x| x.parse().ok())
-            .collect();
-        if f.len() >= 9 {
-            map.insert(name.to_string(), (f[0], f[8]));
-        }
-    }
-    map
-}
-
-/// Live (rx, tx) bytes/s between two snapshots: the busiest interface per
-/// direction, not the sum — with a VPN up the same bytes cross both the
-/// tunnel and the physical link, so summing would double the reading.
-pub fn busiest_rates(
-    prev: &BTreeMap<String, (u64, u64)>,
-    cur: &BTreeMap<String, (u64, u64)>,
-    secs: f64,
-) -> (f64, f64) {
-    if secs <= 0.0 {
-        return (0.0, 0.0);
-    }
-    let mut rx: f64 = 0.0;
-    let mut tx: f64 = 0.0;
-    for (name, &(r, t)) in cur {
-        if let Some(&(pr, pt)) = prev.get(name) {
-            rx = rx.max(r.saturating_sub(pr) as f64 / secs);
-            tx = tx.max(t.saturating_sub(pt) as f64 / secs);
-        }
-    }
-    (rx, tx)
-}
+// (counters: `crate::netstat`)
 
 /// Which phase the legacy test is in, judged by the dominant direction.
 /// Below ~1 Mbit/s both ways it is still pinging / picking a server.
@@ -480,7 +436,7 @@ async fn run_legacy(tx: &UnboundedSender<SpeedEvent>) -> Result<SpeedResult, Str
         .map_err(|e| format!("speedtest-cli: {e}"))?;
     let output = child.wait_with_output();
     tokio::pin!(output);
-    let mut prev = read_net_dev().await;
+    let mut prev = crate::netstat::read_proc_net_dev();
     let mut prev_at = Instant::now();
     loop {
         tokio::select! {
@@ -494,9 +450,9 @@ async fn run_legacy(tx: &UnboundedSender<SpeedEvent>) -> Result<SpeedResult, Str
                     .ok_or_else(|| "speedtest-cli returned unreadable output".to_string());
             }
             _ = tokio::time::sleep(LIVE_INTERVAL) => {
-                let cur = read_net_dev().await;
+                let cur = crate::netstat::read_proc_net_dev();
                 let now = Instant::now();
-                let (rx, txb) = busiest_rates(&prev, &cur, now.duration_since(prev_at).as_secs_f64());
+                let (rx, txb) = crate::netstat::busiest_rates(&prev, &cur, now.duration_since(prev_at).as_secs_f64());
                 prev = cur;
                 prev_at = now;
                 let phase = infer_phase(rx, txb);
@@ -513,13 +469,6 @@ async fn run_legacy(tx: &UnboundedSender<SpeedEvent>) -> Result<SpeedResult, Str
 
 fn last_line(s: &str) -> String {
     s.lines().last().unwrap_or(s).trim().to_string()
-}
-
-async fn read_net_dev() -> BTreeMap<String, (u64, u64)> {
-    tokio::fs::read_to_string("/proc/net/dev")
-        .await
-        .map(|s| parse_proc_net_dev(&s))
-        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -627,6 +576,7 @@ mod tests {
 
     #[test]
     fn live_rates_take_busiest_interface_not_sum() {
+        use crate::netstat::{busiest_rates, parse_proc_net_dev};
         let a = parse_proc_net_dev(NET_DEV_A);
         assert!(!a.contains_key("lo"));
         assert_eq!(a.get("wg0-mullvad"), Some(&(900_000, 150_000)));

@@ -231,7 +231,9 @@ impl Component for NetworkModel {
         );
 
         // Live throughput — from the shared SysinfoService (per-interface
-        // rx/tx rates), summed across non-loopback interfaces. `watch()`
+        // rx/tx rates), summed across the physical links only
+        // (`netstat::is_virtual`: a VPN tunnel's bytes also cross the
+        // Wi-Fi/Ethernet link, so counting both doubled the reading). `watch()`
         // yields the current value first, then on every change; one
         // service poll feeds the pill, so there's no per-pill loop.
         sender.command(|out, shutdown| async move {
@@ -246,7 +248,7 @@ impl Component for NetworkModel {
                             let mut down = 0u64;
                             let mut up = 0u64;
                             for iface in &ifaces {
-                                if iface.interface == "lo" {
+                                if mshell_utils::netstat::is_virtual(&iface.interface) {
                                     continue;
                                 }
                                 down = down.saturating_add(iface.rx_bytes_per_sec);
@@ -359,41 +361,6 @@ impl Component for NetworkModel {
             self.mode,
         );
     }
-}
-
-/// Read the cumulative rx / tx byte counters across all real
-/// network interfaces from `/proc/net/dev`. Skips `lo` and the
-/// usual virtual prefixes so VPN tunnels / bridges / docker
-/// veths don't double-count the physical link's traffic.
-pub(crate) async fn read_net_totals() -> (u64, u64) {
-    let raw = match tokio::fs::read_to_string("/proc/net/dev").await {
-        Ok(r) => r,
-        Err(_) => return (0, 0),
-    };
-    let mut rx_total: u64 = 0;
-    let mut tx_total: u64 = 0;
-    for line in raw.lines() {
-        let Some((iface, rest)) = line.split_once(':') else {
-            continue;
-        };
-        let iface = iface.trim();
-        if iface == "lo"
-            || iface.starts_with("veth")
-            || iface.starts_with("br-")
-            || iface.starts_with("docker")
-            || iface.starts_with("virbr")
-        {
-            continue;
-        }
-        let cols: Vec<&str> = rest.split_whitespace().collect();
-        // /proc/net/dev column layout: rx bytes is col 0, tx
-        // bytes is col 8 (after the 8 rx-side counters).
-        if cols.len() >= 9 {
-            rx_total += cols[0].parse::<u64>().unwrap_or(0);
-            tx_total += cols[8].parse::<u64>().unwrap_or(0);
-        }
-    }
-    (rx_total, tx_total)
 }
 
 /// Format a bytes/sec figure into a compact bar-friendly string:

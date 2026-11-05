@@ -243,8 +243,7 @@ pub(crate) fn gather_interfaces() -> Vec<VpnInterface> {
             VpnKind::OpenVpn
         };
 
-        let rx_bytes = read_stat(&path, "rx_bytes");
-        let tx_bytes = read_stat(&path, "tx_bytes");
+        let (rx_bytes, tx_bytes) = mshell_utils::netstat::iface_counters(n).unwrap_or_default();
         let (ipv4, ipv6) = ip_map.get(n).cloned().unwrap_or_default();
 
         out.push(VpnInterface {
@@ -280,13 +279,6 @@ fn read_vpn_state() -> (bool, String) {
         })
         .collect();
     (true, lines.join("\n"))
-}
-
-fn read_stat(iface_path: &std::path::Path, stat: &str) -> u64 {
-    std::fs::read_to_string(iface_path.join("statistics").join(stat))
-        .ok()
-        .and_then(|s| s.trim().parse::<u64>().ok())
-        .unwrap_or(0)
 }
 
 /// Map interface name → (IPv4 addrs, IPv6 addrs) via `getifaddrs(3)`.

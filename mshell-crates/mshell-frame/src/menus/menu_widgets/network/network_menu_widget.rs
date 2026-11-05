@@ -34,8 +34,8 @@
 
 use super::speed_test::{SpeedTestInput, SpeedTestModel};
 use crate::bars::bar_widgets::network::{
-    LinkKind, NetworkState, SpeedSample, WifiNetwork, format_speed, read_net_totals,
-    read_network_state, wifi_signal_icon,
+    LinkKind, NetworkState, SpeedSample, WifiNetwork, format_speed, read_network_state,
+    wifi_signal_icon,
 };
 use crate::menus::reveal_poll::RevealGate;
 use mshell_common::WatcherToken;
@@ -651,7 +651,7 @@ fn start_speed_sampler(sender: &ComponentSender<NetworkMenuWidgetModel>, visible
         // Read the baseline immediately (we only start when revealed) so
         // the first delta lands after one interval, not two.
         let mut prev: Option<(u64, u64)> = if visible.is_revealed() {
-            Some(read_net_totals().await)
+            Some(mshell_utils::netstat::read_physical_totals())
         } else {
             None
         };
@@ -666,7 +666,7 @@ fn start_speed_sampler(sender: &ComponentSender<NetworkMenuWidgetModel>, visible
                 // measures a fresh 2 s window, not the whole hidden period.
                 prev = None;
             }
-            let cur = read_net_totals().await;
+            let cur = mshell_utils::netstat::read_physical_totals();
             if let Some(p) = prev {
                 let secs = SPEED_INTERVAL.as_secs().max(1);
                 let down = cur.0.saturating_sub(p.0) / secs;

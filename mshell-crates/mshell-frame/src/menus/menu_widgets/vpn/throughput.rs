@@ -16,9 +16,8 @@ use crate::menus::menu_widgets::network::network_menu_widget::{
     draw_graph, peak_text, push_capped, set_idle,
 };
 use crate::menus::reveal_poll::RevealGate;
-use mshell_utils::mvpn::{
-    counter_rate, list_interfaces, pick_tunnel_interface, read_iface_counters,
-};
+use mshell_utils::mvpn::pick_tunnel_interface;
+use mshell_utils::netstat::{counter_rate, iface_counters as read_iface_counters, list_interfaces};
 use relm4::gtk::prelude::{BoxExt, DrawingAreaExt, DrawingAreaExtManual, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::cell::RefCell;
