@@ -112,6 +112,8 @@ check:
     ./scripts/install-parity.sh
     ./scripts/test-install-parity.sh
     ./scripts/test-install-arch.sh
+    ./scripts/optdepends-drift.sh
+    ./scripts/test-optdepends-drift.sh
     ./scripts/test-retire-old-sync-variables.sh
     ./scripts/mtune-debrand-gate.sh
     cargo build --locked -p mctl -p mshellctl -p mdots

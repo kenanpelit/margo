@@ -1,0 +1,154 @@
+# Every external program the Rust code runs or probes, and the Arch package
+# that provides it. Checked by scripts/optdepends-drift.sh:
+#   * a tool the code names (Command::new("x"), command_exists("x"),
+#     which("x"), on_path("x"), …) must have a row here, and
+#   * a row's package must be in the PKGBUILD's depends or optdepends.
+# Columns: <tool> <package> <why>. Package `-` = not a packaging matter
+# (base / base-devel, margo's own binaries, or a program the user picks and
+# margo merely detects); the reason says which. Tool `-` = a package the code
+# needs without naming a program (a D-Bus service, a plugin file).
+#
+# ── Required (PKGBUILD depends) ────────────────────────────────────────────
+cage                        cage                       mlogind native-resolution greeter host
+foot                        foot                       mlogind greeter terminal
+grim                        grim                       mscreenshot capture
+notify-send                 libnotify                  toasts
+wl-copy                     wl-clipboard               clipboard copy
+wl-paste                    wl-clipboard               clipboard paste
+gsettings                   glib2                      GTK theme / colour-scheme sync
+dbus-update-activation-environment dbus               session environment import
+pactl                       libpulse                   audio sinks / sources
+pipewire                    pipewire                   audio/screencast doctor probe
+pw-cli                      pipewire                   mdots audio facts
+pw-dump                     pipewire                   privacy pill (mic/camera users)
+gtk4-launch                 gtk4                       launching desktop apps (launcher, dock)
+# ── Optional (PKGBUILD optdepends) ─────────────────────────────────────────
+tesseract                   tesseract                  screenshot-region OCR
+-                           tesseract-data-eng         English data for tesseract OCR
+zbarimg                     zbar                       screenshot-region QR decoding
+gpu-screen-recorder         gpu-screen-recorder        hardware-encoded screen recording
+swappy                      swappy                     screenshot annotation
+satty                       satty                      screenshot annotation
+yt-dlp                      yt-dlp                     mshellctl play of streaming URLs
+topgrade                    topgrade                   system-update backend (AUR)
+arch-audit                  arch-audit                 security advisories in the update menu
+checkupdates                pacman-contrib             update count without sudo or the db lock
+scrcpy                      scrcpy                     Android mirroring from the Valent menu
+adb                         android-tools              device discovery for scrcpy
+gh                          github-cli                 GitHub menu
+-                           valent                     phone integration pill/menu over D-Bus (AUR)
+-                           udisks2                    removable-drive pill over D-Bus
+-                           noise-suppression-for-voice microphone noise suppression (RNNoise LADSPA plugin)
+speedtest-cli               speedtest-cli              network speed test
+age-keygen                  age                        mdots secrets
+sops                        sops                       mdots secrets
+bluetoothctl                bluez-utils                Bluetooth launcher provider
+cava                        cava                       audio visualizer pill
+fd                          fd                         launcher file search
+plocate                     plocate                    launcher file search (indexed)
+pass                        pass                       launcher password provider
+playerctl                   playerctl                  media keys on the lock screen, launcher media provider
+qalc                        libqalculate               calculator units / currency / percent
+smartctl                    smartmontools              drive health in the CPU dashboard
+iw                          iw                         Wi-Fi hotspot
+wlr-randr                   wlr-randr                  mlayout monitor apply / capture
+wpctl                       wireplumber                launcher audio provider
+xdg-open                    xdg-utils                  opening URLs and files
+xdg-mime                    xdg-utils                  default-application lookup
+matugen                     matugen                    wallpaper colour themes
+pkexec                      polkit                     privileged actions (power, firewall)
+git                         git                        mdots repos, mtm plugins, launcher providers
+curl                        curl                       public-IP widget, downloads
+fzf                         fzf                        mtm pickers
+tmux                        tmux                       mtm
+cliphist                    cliphist                   mtm clip history
+ufw                         ufw                        firewall pill
+podman                      podman                     containers pill
+mullvad                     mullvad-vpn                mvpn
+nmcli                       networkmanager             network pill
+powerprofilesctl            power-profiles-daemon      power profiles, mpower
+# ── Not a packaging matter ─────────────────────────────────────────────────
+sh                          -                          base
+bash                        -                          base
+true                        -                          base (tests)
+date                        -                          base
+df                          -                          base
+uname                       -                          base
+kill                        -                          base
+pgrep                       -                          base (procps-ng)
+pkill                       -                          base (procps-ng)
+fuser                       -                          base (psmisc)
+lsblk                       -                          base (util-linux)
+setsid                      -                          base (util-linux)
+stdbuf                      -                          base (coreutils)
+timeout                     -                          base (coreutils)
+tar                         -                          base
+ip                          -                          base (iproute2)
+ss                          -                          base (iproute2)
+ping                        -                          base (iputils)
+lspci                       -                          base (pciutils)
+systemctl                   -                          base (systemd)
+systemd-run                 -                          base (systemd)
+journalctl                  -                          base (systemd)
+coredumpctl                 -                          base (systemd)
+busctl                      -                          base (systemd)
+localectl                   -                          base (systemd)
+timedatectl                 -                          base (systemd)
+pacman                      -                          base
+bsdtar                      -                          base (libarchive, a pacman dependency)
+vercmp                      -                          base (pacman)
+makepkg                     -                          base (pacman)
+which                       -                          base-devel (needed to build this package)
+sudo                        -                          base-devel
+diff                        -                          base-devel (diffutils)
+diff3                       -                          base-devel (diffutils)
+update-desktop-database     -                          probed; desktop-file-utils is pulled by every desktop
+margo                       -                          this package
+mcal                        -                          this package
+mctl                        -                          this package
+mdots                       -                          this package
+mgreet                      -                          this package
+mkeys                       -                          this package
+mlayout                     -                          this package
+mlock                       -                          this package
+mlogind                     -                          this package
+mpicker                     -                          this package
+mpower                      -                          this package
+mscreenshot                 -                          this package
+mshellctl                   -                          this package
+mtune                       -                          this package
+mvpn                        -                          this package
+askpass                     -                          the user's SUDO_ASKPASS helper, probed
+helium-browser              -                          the user's browser, probed for yt-dlp cookies
+claude                      -                          the user's AI agent CLI, probed
+alacritty                   -                          the user's terminal, probed
+kitty                       -                          the user's terminal, probed
+bat                         -                          the user's pager, probed
+nano                        -                          the user's editor, probed
+vim                         -                          the user's editor, probed
+rofi                        -                          the user's launcher, probed
+wofi                        -                          the user's launcher, probed
+fuzzel                      -                          the user's launcher, probed
+clipse                      -                          alternative to cliphist, probed (AUR)
+speedtest                   -                          Ookla CLI, preferred over speedtest-cli when present (AUR)
+xrandr                      -                          mdots X11 facts, probed
+apt                         -                          mdots: the user's package manager, probed
+dnf                         -                          mdots: the user's package manager, probed
+yay                         -                          mdots: the user's AUR helper, probed
+paru                        -                          mdots: the user's AUR helper, probed
+flatpak                     -                          mdots / update pill: used when installed
+nix                         -                          mdots Nix backend, used when installed
+nix-channel                 -                          mdots Nix backend, used when installed
+nix-shell                   -                          mdots Nix backend, used when installed
+home-manager                -                          mdots Nix backend, used when installed
+snapper                     -                          mdots backup: used when installed
+timeshift                   -                          mdots backup: used when installed
+aa-enabled                  -                          mdots security facts, probed
+getenforce                  -                          mdots security facts, probed
+mokutil                     -                          mdots security facts, probed
+tpm2_getcap                 -                          mdots security facts, probed
+nft                         -                          mdots security facts, probed
+iptables                    -                          mdots security facts, probed
+firewall-cmd                -                          mdots security facts, probed
+efibootmgr                  -                          mdots boot facts, probed
+jack_control                -                          mdots audio facts, probed

@@ -107,8 +107,15 @@ makedepends=(
   mpv             # mshellctl links libmpv directly (build.rs -lmpv) for the wallpaper engine
 )
 optdepends=(
+  # Every external program the code runs is listed in
+  # scripts/runtime-tools.txt with the package that provides it;
+  # scripts/optdepends-drift.sh (CI) fails when the code starts running a
+  # program that has no row there, or a row's package is missing below.
+  # Each feature degrades gracefully (a hint or an error toast) without it.
   # Sessions & XDG plumbing
   "xdg-desktop-portal-wlr: alternative wlroots-native screencast backend (not used by default; margo-portal serves ScreenCast/Screenshot natively)"
+  "xdg-utils: xdg-open / xdg-mime for opening links, files and default apps"
+  "polkit: pkexec for privileged actions (power menu, firewall widget)"
   # Toolkit Wayland backends (for non-GTK apps under margo)
   "qt5-wayland: Qt5 native Wayland backend"
   "qt6-wayland: Qt6 native Wayland backend"
@@ -116,6 +123,10 @@ optdepends=(
   "swappy: post-capture annotation editor for mscreenshot"
   "satty: alternative annotation editor for mscreenshot"
   "wf-recorder: screen recording via wlr-screencopy"
+  "gpu-screen-recorder: hardware-encoded screen recording backend"
+  "tesseract: OCR of a screenshot region (mscreenshot / mshell screenshot menu)"
+  "tesseract-data-eng: English language data for the screenshot OCR"
+  "zbar: QR-code decoding of a screenshot region (zbarimg)"
   "yt-dlp: \`mshellctl play play\`/\`download\` of YouTube + other streaming URLs"
   # Clipboard managers — mshell clipboard widget + mshellshare paste
   "copyq: clipboard manager via wlr-data-control"
@@ -125,15 +136,44 @@ optdepends=(
   # here so an `optdepends` install pulls a complete experience.
   "networkmanager: NetworkManager backend for mshell network + ndns"
   "bluez: Bluez backend for mshell bluetooth widget"
+  "bluez-utils: bluetoothctl for the launcher Bluetooth provider"
   "upower: UPower backend for mshell battery widget"
   "power-profiles-daemon: power profile switching for mshell + the mpower auto-profile service"
   "brightnessctl: brightness fallback when DDC/CI is unavailable"
   "iwd: alternative wireless backend for the network widget"
+  "iw: Wi-Fi hotspot from the network menu"
+  "speedtest-cli: network menu speed test"
   "ufw: needed by the mshell nufw firewall widget"
   "podman: needed by the mshell npodman widget"
   "mullvad-vpn: the VPN daemon driven by the mvpn binary (CLI + GTK panel)"
   "blocky: local DNS resolver controlled by the ndns widget"
   "curl: used by the nip public-IP widget (already pulled by base)"
+  "udisks2: removable-drive pill (mount / unmount / eject)"
+  "smartmontools: drive health in the CPU dashboard"
+  "cava: audio visualizer pill"
+  "wireplumber: wpctl for the launcher audio provider"
+  "noise-suppression-for-voice: microphone noise suppression (RNNoise LADSPA plugin)"
+  "matugen: wallpaper-derived colour themes"
+  "github-cli: the GitHub menu (gh)"
+  "valent: phone integration pill and menu (AUR)"
+  "scrcpy: Android screen mirroring from the Valent menu"
+  "android-tools: adb device discovery for scrcpy mirroring"
+  # System updates pill / menu
+  "pacman-contrib: checkupdates for the update count (no sudo, no db lock)"
+  "arch-audit: security advisories in the system-update menu"
+  "topgrade: alternative system-update backend (AUR)"
+  # Launcher providers
+  "fd: launcher file search"
+  "plocate: launcher file search from the locate index"
+  "pass: launcher password-store provider"
+  "playerctl: launcher media provider + media keys on the lock screen"
+  "libqalculate: calculator units, currency and percentages (qalc)"
+  # mlayout (per-tag layout profiles)
+  "wlr-randr: mlayout monitor apply / capture"
+  # mdots (dotfiles manager) + mtm + launcher git providers
+  "git: mdots repositories, mtm plugins"
+  "age: mdots secrets (age-keygen)"
+  "sops: mdots encrypted secrets"
   # mlogind (TUI login manager)
   "fprintd: opt-in fingerprint login for mlogind (pam_fprintd)"
   # mtm (native tmux manager)
