@@ -100,6 +100,10 @@ pub struct NetworkConfig {
     /// Wi-Fi interface for the hotspot (e.g. `wlan0`). Empty = the first
     /// NetworkManager Wi-Fi device.
     pub hotspot_interface: String,
+    /// Seconds to confirm an IP / gateway / DNS change made in Settings on
+    /// a connection that is in use; unconfirmed, the saved profile comes
+    /// back. `0` = off (the change is just applied).
+    pub ip_confirm_seconds: u32,
 }
 
 /// Home-network login automation (Settings → Network · Network Console menu).

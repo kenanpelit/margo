@@ -238,6 +238,19 @@ menu closes. Treat a screenshot of it as the password. Enterprise (802.1X)
 networks cannot be shared this way. Needs `qrencode`; the clipboard source
 needs `wl-paste`.
 
+## Confirming IP changes (Settings → Network)
+
+A static address or gateway typo on the connection you are using takes the
+machine offline. Turn on **Settings → Network → (a connection) → Edit →
+General → Confirm IP changes** (`network.ip_confirm_seconds`, 30 s; `0` =
+off, the default) and an IP / gateway / DNS / route change to a connection
+that is **in use** asks *Keep these network settings?* with a countdown.
+**Keep** keeps them; **Revert now**, or no answer in time, restores the saved
+profile and re-activates it. The rollback is a transient systemd user timer
+(`margo-net-rollback-<uuid>`), armed before anything is written, so it still
+runs if the shell restarts in the meantime. Changes to inactive profiles and
+non-IP settings (autoconnect, metered, Wi-Fi password) apply directly.
+
 ## Phone screen mirroring (Valent menu)
 
 The Valent menu ends with a **Screen mirroring** card: every adb device

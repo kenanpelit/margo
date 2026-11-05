@@ -21,6 +21,7 @@ pub mod logout;
 pub mod margo;
 pub mod media;
 pub mod mvpn;
+pub mod net_rollback;
 pub mod netstat;
 pub mod network;
 pub mod nm_wifi;

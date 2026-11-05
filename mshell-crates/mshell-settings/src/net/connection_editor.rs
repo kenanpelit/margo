@@ -7,6 +7,13 @@
 //!
 //! Integration: the editor is embedded inside the Network settings page as
 //! a child of its internal `gtk::Stack`; no separate toplevel is created.
+//!
+//! **Confirm window** (`network.ip_confirm_seconds`, off at 0): an IP /
+//! gateway / DNS / route change to a connection that is in use first arms
+//! a rollback in systemd (`mshell_utils::net_rollback`), then applies the
+//! change and shows *Keep these network settings?* with a countdown. Keep
+//! cancels the rollback; Revert now, or no answer in time, restores the
+//! saved profile — even if the shell restarts meanwhile.
 
 use std::net::IpAddr;
 
@@ -15,6 +22,7 @@ use relm4::gtk::prelude::{BoxExt, ButtonExt, EditableExt, EntryExt, OrientableEx
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
 use crate::net::nmcli;
+use mshell_utils::net_rollback::{self, IpSettings};
 
 // ── EditorFields ─────────────────────────────────────────────────────────────
 
@@ -39,6 +47,61 @@ pub(crate) struct EditorFields {
     pub ipv6_dns: String,
     pub ipv6_dns_search: String,
     pub ipv6_routes: String,
+    /// `GENERAL.STATE` is `activated`: the connection is carrying traffic.
+    pub active: bool,
+}
+
+impl EditorFields {
+    /// The IP part as loaded: the profile a rollback restores.
+    pub(crate) fn ip(&self) -> IpSettings {
+        IpSettings {
+            ipv4_method: self.ipv4_method.clone(),
+            ipv4_addresses: self.ipv4_addresses.clone(),
+            ipv4_gateway: self.ipv4_gateway.clone(),
+            ipv4_dns: self.ipv4_dns.clone(),
+            ipv4_dns_search: self.ipv4_dns_search.clone(),
+            ipv4_routes: self.ipv4_routes.clone(),
+            ipv6_method: self.ipv6_method.clone(),
+            ipv6_addresses: self.ipv6_addresses.clone(),
+            ipv6_gateway: self.ipv6_gateway.clone(),
+            ipv6_dns: self.ipv6_dns.clone(),
+            ipv6_dns_search: self.ipv6_dns_search.clone(),
+            ipv6_routes: self.ipv6_routes.clone(),
+        }
+    }
+}
+
+/// Whether applying `writes` must go through the confirm window.
+pub(crate) fn needs_confirm(
+    confirm_secs: u32,
+    active: bool,
+    saved: &IpSettings,
+    writes: &[(&str, &str)],
+) -> bool {
+    confirm_secs > 0 && active && saved.changed_by(writes)
+}
+
+/// The confirm banner's countdown line.
+pub(crate) fn countdown_text(secs_left: u32) -> String {
+    match secs_left {
+        0 => "Rolling back to the saved settings…".to_string(),
+        1 => "Rolling back to the saved settings in 1 second".to_string(),
+        n => format!("Rolling back to the saved settings in {n} seconds"),
+    }
+}
+
+/// Seconds the confirm window lasts when switched on from the editor.
+const DEFAULT_CONFIRM_SECS: u32 = 30;
+
+fn confirm_seconds() -> u32 {
+    use mshell_config::config_manager::config_manager;
+    use mshell_config::schema::config::{ConfigStoreFields, NetworkConfigStoreFields};
+    use reactive_graph::traits::GetUntracked;
+    config_manager()
+        .config()
+        .network()
+        .ip_confirm_seconds()
+        .get_untracked()
 }
 
 // ── Validation helpers (pure — testable) ─────────────────────────────────────
@@ -131,6 +194,16 @@ pub(crate) struct ConnectionEditorModel {
     // UI state
     loading: bool,
     error: String,
+    /// The profile as loaded (what a rollback restores) and whether the
+    /// connection is in use.
+    saved_ip: IpSettings,
+    active: bool,
+    /// The confirm window is open: seconds left.
+    confirm_left: Option<u32>,
+    /// Bumped per confirm window so a stale countdown tick is ignored.
+    confirm_gen: u64,
+    /// `network.ip_confirm_seconds` > 0.
+    confirm_enabled: bool,
 }
 
 impl Default for ConnectionEditorModel {
@@ -156,6 +229,11 @@ impl Default for ConnectionEditorModel {
             psk: String::new(),
             loading: false,
             error: String::new(),
+            saved_ip: IpSettings::default(),
+            active: false,
+            confirm_left: None,
+            confirm_gen: 0,
+            confirm_enabled: false,
         }
     }
 }
@@ -188,6 +266,20 @@ pub(crate) enum ConnectionEditorInput {
     Apply,
     /// Go back without saving.
     Back,
+    /// Applied under the confirm window: start the countdown.
+    ConfirmStarted,
+    /// One countdown second for the window `generation`.
+    ConfirmTick(u64),
+    /// Keep the new settings (cancel the rollback).
+    Keep,
+    /// Restore the saved settings now.
+    RevertNow,
+    /// The rollback ran (or failed): reload the profile.
+    RolledBack(Result<(), String>),
+    /// Settings switch: guard IP changes with the confirm window.
+    SetConfirmEnabled(bool),
+    /// Applying failed (already toasted): stop the spinner, keep the form.
+    ApplyFailed,
 }
 
 #[derive(Debug)]
@@ -261,6 +353,46 @@ impl Component for ConnectionEditorModel {
                 set_label: &model.error,
                 #[watch]
                 set_visible: !model.error.is_empty(),
+            },
+
+            // ── Confirm window (IP change on a connection in use) ─────
+            gtk::Box {
+                add_css_class: "net-confirm-banner",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 12,
+                #[watch]
+                set_visible: model.confirm_left.is_some(),
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_hexpand: true,
+                    set_valign: gtk::Align::Center,
+                    gtk::Label {
+                        add_css_class: "label-medium-bold",
+                        set_halign: gtk::Align::Start,
+                        set_label: "Keep these network settings?",
+                    },
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        set_halign: gtk::Align::Start,
+                        set_xalign: 0.0,
+                        set_wrap: true,
+                        #[watch]
+                        set_label: &countdown_text(model.confirm_left.unwrap_or(0)),
+                    },
+                },
+                gtk::Button {
+                    add_css_class: "ok-button-surface",
+                    set_valign: gtk::Align::Center,
+                    set_label: "Revert now",
+                    connect_clicked => ConnectionEditorInput::RevertNow,
+                },
+                gtk::Button {
+                    add_css_class: "ok-button-primary",
+                    set_valign: gtk::Align::Center,
+                    set_label: "Keep",
+                    connect_clicked => ConnectionEditorInput::Keep,
+                },
             },
 
             // ── Tab switcher ──────────────────────────────────────────
@@ -359,6 +491,42 @@ impl Component for ConnectionEditorModel {
                                 connect_selected_notify[sender] => move |dd| {
                                     sender.input(ConnectionEditorInput::MeteredChanged(dd.selected()));
                                 } @metered_handler,
+                            },
+                        },
+
+                        // Confirm-window row (`network.ip_confirm_seconds`).
+                        gtk::Box {
+                            add_css_class: "action-row",
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 20,
+
+                            gtk::Box {
+                                set_orientation: gtk::Orientation::Vertical,
+                                set_valign: gtk::Align::Center,
+                                set_hexpand: true,
+                                gtk::Label {
+                                    add_css_class: "label-medium-bold",
+                                    set_halign: gtk::Align::Start,
+                                    set_label: "Confirm IP changes",
+                                },
+                                gtk::Label {
+                                    add_css_class: "label-small",
+                                    set_halign: gtk::Align::Start,
+                                    set_label: "After an IP, gateway or DNS change to a connection in use, roll back to the saved settings unless you press Keep in time. Applies to every connection.",
+                                    set_xalign: 0.0,
+                                    set_wrap: true,
+                                },
+                            },
+
+                            gtk::Switch {
+                                set_valign: gtk::Align::Center,
+                                #[watch]
+                                #[block_signal(confirm_handler)]
+                                set_active: model.confirm_enabled,
+                                connect_state_set[sender] => move |_, v| {
+                                    sender.input(ConnectionEditorInput::SetConfirmEnabled(v));
+                                    glib::Propagation::Proceed
+                                } @confirm_handler,
                             },
                         },
                     },
@@ -758,7 +926,7 @@ impl Component for ConnectionEditorModel {
                 set_halign: gtk::Align::End,
                 set_margin_top: 4,
                 #[watch]
-                set_sensitive: !model.loading,
+                set_sensitive: !model.loading && model.confirm_left.is_none(),
                 connect_clicked[sender] => move |_| {
                     sender.input(ConnectionEditorInput::Apply);
                 },
@@ -792,6 +960,9 @@ impl Component for ConnectionEditorModel {
                     conn_name: name,
                     is_wifi,
                     loading: true,
+                    confirm_enabled: confirm_seconds() > 0,
+                    // A new window must not be confused with an old tick.
+                    confirm_gen: self.confirm_gen + 1,
                     ..ConnectionEditorModel::default()
                 };
 
@@ -840,6 +1011,10 @@ impl Component for ConnectionEditorModel {
                     let ipv6_routes = nmcli::get_field(&uuid, "ipv6.routes")
                         .await
                         .unwrap_or_default();
+                    let active = nmcli::get_field(&uuid, "GENERAL.STATE")
+                        .await
+                        .unwrap_or_default()
+                        == "activated";
 
                     sender_c.input(ConnectionEditorInput::Loaded(EditorFields {
                         autoconnect,
@@ -856,6 +1031,7 @@ impl Component for ConnectionEditorModel {
                         ipv6_dns,
                         ipv6_dns_search,
                         ipv6_routes,
+                        active,
                     }));
                 });
             }
@@ -863,6 +1039,8 @@ impl Component for ConnectionEditorModel {
             // ── Loaded: populate model from nmcli read ────────────────
             ConnectionEditorInput::Loaded(fields) => {
                 self.loading = false;
+                self.saved_ip = fields.ip();
+                self.active = fields.active;
                 self.autoconnect = fields.autoconnect;
                 self.metered_idx = metered_index(&fields.metered);
                 self.ipv4_method_idx = method_index(IPV4_METHODS, &fields.ipv4_method);
@@ -988,6 +1166,9 @@ impl Component for ConnectionEditorModel {
                 let psk_val = self.psk.clone();
                 let is_wifi = self.is_wifi;
                 let uuid = self.uuid.clone();
+                let confirm_secs = confirm_seconds();
+                let active = self.active;
+                let saved_ip = self.saved_ip.clone();
 
                 self.loading = true;
 
@@ -1045,11 +1226,38 @@ impl Component for ConnectionEditorModel {
                         .map(|(k, v)| (k.as_str(), v.as_str()))
                         .collect();
 
+                    // An IP change to a connection in use is guarded: the
+                    // rollback is armed in systemd *before* anything is
+                    // written, so failing to arm means nothing changes.
+                    let guard = needs_confirm(confirm_secs, active, &saved_ip, &kv);
+                    if guard {
+                        let (id, saved) = (uuid.clone(), saved_ip.clone());
+                        let armed = mshell_services::tokio_rt()
+                            .spawn(
+                                async move { net_rollback::arm(&id, &saved, confirm_secs).await },
+                            )
+                            .await
+                            .unwrap_or_else(|_| Err("cancelled".into()));
+                        if let Err(e) = armed {
+                            mshell_launcher::notify::toast(
+                                "Network",
+                                format!("Not applied — the rollback could not be armed: {e}"),
+                            );
+                            sender_c.input(ConnectionEditorInput::ApplyFailed);
+                            return;
+                        }
+                    }
+
                     if let Err(e) = nmcli::modify(&uuid, &kv).await {
                         mshell_launcher::notify::toast("Network", &e);
-                        // Send a no-op Loaded so the spinner stops; the user
-                        // can fix and retry.
-                        sender_c.input(ConnectionEditorInput::Loaded(EditorFields::default()));
+                        if guard {
+                            // Nothing was written: drop the armed rollback.
+                            let id = uuid.clone();
+                            let _ = mshell_services::tokio_rt()
+                                .spawn(async move { net_rollback::keep(&id).await })
+                                .await;
+                        }
+                        sender_c.input(ConnectionEditorInput::ApplyFailed);
                         return;
                     }
 
@@ -1064,7 +1272,7 @@ impl Component for ConnectionEditorModel {
                             .unwrap_or_else(|_| Err("the password save was cancelled".into()));
                         if let Err(e) = saved {
                             mshell_launcher::notify::toast("Network", &e);
-                            sender_c.input(ConnectionEditorInput::Loaded(EditorFields::default()));
+                            sender_c.input(ConnectionEditorInput::ApplyFailed);
                             return;
                         }
                     }
@@ -1072,7 +1280,95 @@ impl Component for ConnectionEditorModel {
                     // Best-effort reconnect — ignore errors (VPN / offline).
                     let _ = nmcli::up(&uuid).await;
 
-                    sender_c.output(ConnectionEditorOutput::Closed).ok();
+                    if guard {
+                        sender_c.input(ConnectionEditorInput::ConfirmStarted);
+                    } else {
+                        sender_c.output(ConnectionEditorOutput::Closed).ok();
+                    }
+                });
+            }
+
+            // ── Confirm window ────────────────────────────────────────
+            ConnectionEditorInput::ApplyFailed => self.loading = false,
+            ConnectionEditorInput::ConfirmStarted => {
+                self.loading = false;
+                self.confirm_gen += 1;
+                self.confirm_left = Some(confirm_seconds().max(1));
+                schedule_tick(&sender, self.confirm_gen);
+            }
+            ConnectionEditorInput::ConfirmTick(generation) => {
+                if generation == self.confirm_gen
+                    && let Some(left) = self.confirm_left
+                {
+                    if left <= 1 {
+                        // systemd's timer restores the profile now; re-read
+                        // it once that had time to land.
+                        self.confirm_left = None;
+                        let s = sender.clone();
+                        glib::timeout_add_seconds_local_once(3, move || {
+                            s.input(ConnectionEditorInput::RolledBack(Ok(())));
+                        });
+                    } else {
+                        self.confirm_left = Some(left - 1);
+                        schedule_tick(&sender, generation);
+                    }
+                }
+            }
+            ConnectionEditorInput::Keep => {
+                self.confirm_gen += 1;
+                self.confirm_left = None;
+                let uuid = self.uuid.clone();
+                let sender_c = sender.clone();
+                glib::spawn_future_local(async move {
+                    let kept = mshell_services::tokio_rt()
+                        .spawn(async move { net_rollback::keep(&uuid).await })
+                        .await
+                        .unwrap_or_else(|_| Err("cancelled".into()));
+                    match kept {
+                        Ok(()) => {
+                            sender_c.output(ConnectionEditorOutput::Closed).ok();
+                        }
+                        Err(e) => mshell_launcher::notify::toast(
+                            "Network",
+                            format!("Could not cancel the rollback: {e}"),
+                        ),
+                    }
+                });
+            }
+            ConnectionEditorInput::RevertNow => {
+                self.confirm_gen += 1;
+                self.confirm_left = None;
+                self.loading = true;
+                let uuid = self.uuid.clone();
+                let sender_c = sender.clone();
+                glib::spawn_future_local(async move {
+                    let reverted = mshell_services::tokio_rt()
+                        .spawn(async move { net_rollback::revert_now(&uuid).await })
+                        .await
+                        .unwrap_or_else(|_| Err("cancelled".into()));
+                    sender_c.input(ConnectionEditorInput::RolledBack(reverted));
+                });
+            }
+            ConnectionEditorInput::RolledBack(result) => {
+                match result {
+                    Ok(()) => mshell_launcher::notify::toast(
+                        "Network",
+                        "Restored the saved network settings",
+                    ),
+                    Err(e) => {
+                        self.error = format!("Rollback failed: {e}");
+                    }
+                }
+                sender.input(ConnectionEditorInput::Load(
+                    self.uuid.clone(),
+                    self.conn_name.clone(),
+                    self.is_wifi,
+                ));
+            }
+            ConnectionEditorInput::SetConfirmEnabled(on) => {
+                self.confirm_enabled = on;
+                mshell_config::config_manager::config_manager().update_config(|c| {
+                    c.network.ip_confirm_seconds = if on { DEFAULT_CONFIRM_SECS } else { 0 };
                 });
             }
         }
@@ -1081,11 +1377,57 @@ impl Component for ConnectionEditorModel {
     }
 }
 
+/// One countdown second from now, for window `generation`.
+fn schedule_tick(sender: &ComponentSender<ConnectionEditorModel>, generation: u64) {
+    let s = sender.clone();
+    glib::timeout_add_seconds_local_once(1, move || {
+        s.input(ConnectionEditorInput::ConfirmTick(generation));
+    });
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_an_ip_change_to_a_connection_in_use_is_guarded() {
+        let saved = IpSettings {
+            ipv4_method: "manual".into(),
+            ipv4_addresses: "192.168.0.100/24".into(),
+            ipv4_gateway: "192.168.0.1".into(),
+            ipv4_dns: "9.9.9.9,149.112.112.112".into(),
+            ipv6_method: "disabled".into(),
+            ..IpSettings::default()
+        };
+        let gw = [("ipv4.gateway", "192.168.0.254")];
+        assert!(needs_confirm(30, true, &saved, &gw));
+        assert!(!needs_confirm(0, true, &saved, &gw), "off");
+        assert!(!needs_confirm(30, false, &saved, &gw), "inactive profile");
+        let same = [
+            ("connection.autoconnect", "yes"),
+            ("ipv4.method", "manual"),
+            ("ipv4.dns", "9.9.9.9, 149.112.112.112"),
+        ];
+        assert!(
+            !needs_confirm(30, true, &saved, &same),
+            "nothing IP changed"
+        );
+    }
+
+    #[test]
+    fn countdown_wording() {
+        assert_eq!(
+            countdown_text(30),
+            "Rolling back to the saved settings in 30 seconds"
+        );
+        assert_eq!(
+            countdown_text(1),
+            "Rolling back to the saved settings in 1 second"
+        );
+        assert_eq!(countdown_text(0), "Rolling back to the saved settings…");
+    }
 
     #[test]
     fn the_wifi_key_never_reaches_an_nmcli_argv() {
