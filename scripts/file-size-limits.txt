@@ -21,7 +21,9 @@ mshell-crates/mshell-settings/src/settings.rs 1074
 mshell-crates/mshell-config/src/schema/config.rs 1030
 # Frame component (view, init, update). Menu IDs/messages, menu state,
 # layout and plugin handlers live in frame/*.rs alongside the builders.
-mshell-crates/mshell-frame/src/frame.rs 1219
+mshell-crates/mshell-frame/src/frame.rs 883
+# layout, key handling, config effects, bar visibility and plugin handlers
+# live in frame/*.rs alongside the builders.
 # Control Center tile grid component (model, messages, update). The tile
 # registry, widgets/grid layout, visuals, pollers and probes live in tiles/*.rs.
 mshell-crates/mshell-frame/src/menus/menu_widgets/control_center/tiles.rs 713

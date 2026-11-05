@@ -273,6 +273,80 @@ impl Frame {
             }
         }
     }
+
+    /// `FrameInput::SetDrawFrame`: show or hide the drawn frame and re-inset
+    /// the bars to match.
+    pub(super) fn set_draw_frame(&self, widgets: &FrameWidgets, draw_frame: bool) {
+        widgets
+            .frame_draw_widget
+            .update_style(|s| s.draw_frame = draw_frame);
+        // The frame_draw_widget is the bars' + menus' only
+        // background (they sit transparent on top of it). With
+        // it off they'd vanish, so flip `.frame-disabled` on the
+        // shared overlay — SCSS then gives each bar/menu its own
+        // opaque standalone surface (see `_frame_fallback.scss`).
+        if draw_frame {
+            widgets.overlay.remove_css_class("frame-disabled");
+        } else {
+            widgets.overlay.add_css_class("frame-disabled");
+        }
+        self.strips.set_draw_frame(draw_frame);
+        // Toggling `.frame-disabled` changes each bar's natural height
+        // (the frameless bar adds an inset floating panel). Push the
+        // inset (margin = `frameless_gap`, or 0 when the frame is back
+        // on) to both bars now: that re-measures them and refreshes the
+        // layer-shell exclusive zone immediately, so windows follow the
+        // toggle instead of staying tiled under the old reserve. (relm4
+        // queues these, so they run after the CSS class is applied.)
+        let gap = config_manager()
+            .config()
+            .bars()
+            .frame()
+            .frameless_gap()
+            .get_untracked();
+        let disabled = !draw_frame;
+        self.top_bar
+            .sender()
+            .emit(BarInput::SetFrameInset { disabled, gap });
+        self.bottom_bar
+            .sender()
+            .emit(BarInput::SetFrameInset { disabled, gap });
+    }
+
+    /// `FrameInput::SpacerReserve`: a bar's reserved height changed.
+    pub(super) fn spacer_reserve(&self, widgets: &FrameWidgets, is_top: bool, height: i32) {
+        let spacer = if is_top {
+            &self.top_spacer
+        } else {
+            &self.bottom_spacer
+        };
+        let _ = spacer
+            .sender()
+            .send(FrameSpacerInput::HeightUpdated(height));
+        // Lock the drawn frame band to the SAME height as the layer-
+        // shell exclusive zone. The band (`top/bottom_thickness`) is
+        // otherwise driven off the bar container's *allocated* height
+        // (the `resized` listeners below), while the exclusive zone is
+        // the bar's *reserved* height (`BarOutput::ReserveHeight`,
+        // measured off `bar_center`). When the two differ the frame —
+        // which paints on the TOP layer, above tiled windows — bleeds
+        // past `work_area` by that difference, painting over the
+        // window's top/bottom border. With gaps that overhang hides in
+        // the gap; with `smartgaps` (gap → 0) the lone window sits
+        // flush against `work_area` and the overhang eats its top and
+        // bottom border. Driving the band from the reserve guarantees
+        // hole edge == work_area edge, so the border always shows.
+        if is_top {
+            widgets
+                .frame_draw_widget
+                .update_style(|s| s.top_thickness = height as f64);
+        } else {
+            widgets
+                .frame_draw_widget
+                .update_style(|s| s.bottom_thickness = height as f64);
+        }
+        self.strips.set_band(is_top, f64::from(height));
+    }
 }
 
 /// A menu's configured screen anchor, read fresh from the config store by its

@@ -375,4 +375,56 @@ impl Frame {
             ))
             .unwrap_or_default();
     }
+
+    /// `FrameInput::CloseMenus`: hide every menu and idle the ones that poll.
+    pub(super) fn close_menus(&mut self, root: &<Self as Component>::Root) {
+        self.left_revealed = false;
+        self.right_revealed = false;
+        self.top_revealed = false;
+        self.top_left_revealed = false;
+        self.top_right_revealed = false;
+        self.bottom_revealed = false;
+        self.bottom_left_revealed = false;
+        self.bottom_right_revealed = false;
+
+        // Idle every menu that was ever opened (built). The list is
+        // the same one the eager fields drove before — clock/clipboard/
+        // notification/screenshot/app-launcher/wallpaper plus the
+        // lazy-poll menus (ip/vpn-indicator/dns/vpn/ai/ufw/podman/
+        // network) that must stop their refresh I/O on close. An
+        // unbuilt (never-opened) menu was never revealed, so skipping
+        // it is a no-op.
+        for name in [
+            CLOCK_MENU,
+            CLIPBOARD_MENU,
+            NOTIFICATION_MENU,
+            SCREENSHOT_MENU,
+            APP_LAUNCHER_MENU,
+            WALLPAPER_MENU,
+            NIP_MENU,
+            NVPN_INDICATOR_MENU,
+            NDNS_MENU,
+            NVPN_MENU,
+            NAI_MENU,
+            NUFW_MENU,
+            NPODMAN_MENU,
+            NGITHUB_MENU,
+            NAGENTS_MENU,
+            NNETWORK_MENU,
+        ] {
+            if let Some(menu) = self.menus.get(name) {
+                menu.sender()
+                    .send(MenuInput::RevealChanged(false))
+                    .unwrap_or_default();
+            }
+        }
+
+        // Screenshare stays eager (bespoke portal path).
+        self.screenshare_menu
+            .sender()
+            .send(MenuInput::RevealChanged(false))
+            .unwrap_or_default();
+
+        self.sync_keyboard_mode(root);
+    }
 }

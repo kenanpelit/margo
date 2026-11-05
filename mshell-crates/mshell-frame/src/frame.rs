@@ -19,10 +19,13 @@ use crate::menus::menu::MenuInput::ForwardHyprlandScreenshareReply;
 use crate::menus::menu::{MenuInit, MenuInput, MenuModel, MenuOutput, MenuType};
 use mshell_config::schema::config::CustomMenuRow;
 
+mod bar_visibility;
 /// Self-less controller/content builders + GTK-stack attach/detach helpers.
 mod build;
+mod effects;
 mod hooks;
 mod input;
+mod keys;
 mod layout;
 mod menu_id;
 mod menu_state;
@@ -562,78 +565,7 @@ impl Component for Frame {
         // the frame edges live on the strip surfaces (`strips`).
         root.set_cursor_from_name(Some("default"));
 
-        // Re-assert keyboard interactivity once the surface actually
-        // maps. The `set_keyboard_mode(None)` above is queued before
-        // the layer surface exists; in practice the frame has been
-        // observed committing `Exclusive` at login anyway, which traps
-        // keyboard focus into this invisible full-screen layer (margo's
-        // `compute_desired_focus` honours any Exclusive Top/Overlay
-        // layer) until the user's first menu toggle finally runs
-        // `sync_keyboard_mode`. Firing it here closes that gap: at first
-        // map no menu is revealed, so it resolves to `None`.
-        {
-            let sender_map = sender.clone();
-            root.connect_map(move |w| {
-                tracing::debug!(
-                    mode = ?w.keyboard_mode(),
-                    "frame: surface mapped — re-asserting keyboard mode"
-                );
-                sender_map.input(FrameInput::SyncKeyboardMode);
-            });
-        }
-
-        // ESC closes any open menu. Belt-and-suspenders setup:
-        //
-        // 1) `ShortcutController(scope=Global)` with a `KeyvalTrigger`
-        //    on Escape — this is the global-shortcut path that fires
-        //    as soon as the layer surface receives the keypress,
-        //    regardless of which child widget has internal focus.
-        //
-        // 2) An `EventControllerKey` in `Capture` phase as a fallback,
-        //    plus a debug log so we can see whether keys are reaching
-        //    the surface at all. (Layer-shell + OnDemand keyboard
-        //    interactivity sometimes never delivers keys until the
-        //    compositor decides to grant focus.)
-        let sender_esc = sender.clone();
-        let shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::KeyvalTrigger::new(
-                gdk::Key::Escape,
-                gdk::ModifierType::empty(),
-            ))
-            .action(&gtk::CallbackAction::new(move |_, _| {
-                tracing::debug!("frame: ESC shortcut fired");
-                // If the clipboard `/` filter is open, Esc leaves search
-                // mode (vim semantics) instead of closing the menu.
-                if crate::menus::menu_widgets::clipboard::clipboard::search_is_active() {
-                    sender_esc.input(FrameInput::ClipboardExitSearch);
-                } else {
-                    sender_esc.input(FrameInput::CloseMenus);
-                }
-                gtk::glib::Propagation::Stop
-            }))
-            .build();
-        let shortcut_ctrl = gtk::ShortcutController::new();
-        shortcut_ctrl.set_scope(gtk::ShortcutScope::Global);
-        shortcut_ctrl.add_shortcut(shortcut);
-        root.add_controller(shortcut_ctrl);
-
-        let key_ctrl = gtk::EventControllerKey::new();
-        key_ctrl.set_propagation_phase(gtk::PropagationPhase::Capture);
-        let sender_esc2 = sender.clone();
-        key_ctrl.connect_key_pressed(move |_, keyval, _, _| {
-            tracing::debug!(?keyval, "frame: key_pressed");
-            if keyval == gdk::Key::Escape {
-                if crate::menus::menu_widgets::clipboard::clipboard::search_is_active() {
-                    sender_esc2.input(FrameInput::ClipboardExitSearch);
-                } else {
-                    sender_esc2.input(FrameInput::CloseMenus);
-                }
-                gtk::glib::Propagation::Stop
-            } else {
-                gtk::glib::Propagation::Proceed
-            }
-        });
-        root.add_controller(key_ctrl);
+        keys::install_key_handlers(&root, &sender);
 
         let base_config = config_manager().config();
         let untracked_config = base_config.clone().get_untracked();
@@ -664,99 +596,7 @@ impl Component for Frame {
 
         hooks::push_background_hooks(&mut effects);
 
-        let config = base_config.clone();
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            let config = config.clone();
-            let enable_frame = config.clone().bars().frame().enable_frame().get();
-            // Subscribe to the inset too, so editing `frameless_gap` re-fires
-            // this effect → `SetDrawFrame` re-reads the fresh gap and re-pushes
-            // the inset to the bars (live slider, no shell restart).
-            let _ = config.bars().frame().frameless_gap().get();
-            sender_clone.input(FrameInput::SetDrawFrame(enable_frame));
-        });
-
-        let config = base_config.clone();
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            let config = config.clone();
-            let expansion_type = config.menus().left_menu_expansion_type().get();
-            sender_clone.input(FrameInput::SetLeftMenuExpansionType(expansion_type));
-        });
-
-        let config = base_config.clone();
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            let config = config.clone();
-            let expansion_type = config.menus().right_menu_expansion_type().get();
-            sender_clone.input(FrameInput::SetRightMenuExpansionType(expansion_type));
-        });
-
-        let menu_config = base_config.clone();
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            // Each StoreField accessor (`.menus()`) consumes its receiver, so
-            // every position read needs a fresh clone of the config handle.
-            // `pos!` packages that clone-then-read so the per-menu lines stay
-            // one-liners. Reading a menu's position also subscribes this effect
-            // to that menu — which is why the side-placed menus below are read
-            // into `_` (purely to re-fire when their position changes).
-            // Collect every menu's position into one ordered Vec. The
-            // `.get()` both reads the value AND subscribes this effect to
-            // that menu (so a position change re-fires it), and the
-            // collected snapshot lets `RepositionMenus` skip the
-            // destructive restack when nothing moved (the config store is
-            // coarse: any write re-fires this effect).
-            let mut positions: Vec<Position> = Vec::new();
-            macro_rules! pos {
-                ($menu:ident) => {
-                    positions.push(menu_config.clone().menus().$menu().position().get())
-                };
-            }
-            pos!(clock_menu);
-            pos!(clipboard_menu);
-            pos!(notification_menu);
-            pos!(screenshot_menu);
-            pos!(app_launcher_menu);
-            pos!(wallpaper_menu);
-            pos!(screenshare_menu);
-            pos!(ufw_menu);
-            pos!(dns_menu);
-            pos!(podman_menu);
-            pos!(github_menu);
-            pos!(agents_menu);
-            pos!(notes_menu);
-            pos!(ip_menu);
-            pos!(vpn_indicator_menu);
-            pos!(network_menu);
-            pos!(power_menu);
-            pos!(media_player_menu);
-            pos!(mtune_menu);
-            pos!(lyrics_menu);
-            pos!(session_menu);
-            pos!(settings_menu);
-            pos!(cpu_dashboard_menu);
-            pos!(audio_dashboard_menu);
-            pos!(mdash_menu);
-            pos!(bluetooth_menu);
-            pos!(system_update_menu);
-            pos!(valent_menu);
-            pos!(weather_menu);
-            pos!(keep_awake_menu);
-            pos!(twilight_menu);
-            pos!(keybinds_menu);
-            pos!(alarmclock_menu);
-            pos!(dock_menu);
-            pos!(control_center_menu);
-            pos!(ssh_menu);
-            pos!(usb_menu);
-            pos!(discord_voice_menu);
-            pos!(crashes_menu);
-            pos!(vpn_menu);
-            pos!(ai_menu);
-            pos!(margo_layout_menu);
-            sender_clone.input(FrameInput::RepositionMenus(positions));
-        });
+        effects::push_frame_effects(&mut effects, &base_config, &sender);
 
         let monitor_clone = params.monitor.clone();
         let top_spacer = FrameSpacerModel::builder()
@@ -859,40 +699,7 @@ impl Component for Frame {
     ) {
         match message {
             FrameInput::SetDrawFrame(draw_frame) => {
-                widgets
-                    .frame_draw_widget
-                    .update_style(|s| s.draw_frame = draw_frame);
-                // The frame_draw_widget is the bars' + menus' only
-                // background (they sit transparent on top of it). With
-                // it off they'd vanish, so flip `.frame-disabled` on the
-                // shared overlay — SCSS then gives each bar/menu its own
-                // opaque standalone surface (see `_frame_fallback.scss`).
-                if draw_frame {
-                    widgets.overlay.remove_css_class("frame-disabled");
-                } else {
-                    widgets.overlay.add_css_class("frame-disabled");
-                }
-                self.strips.set_draw_frame(draw_frame);
-                // Toggling `.frame-disabled` changes each bar's natural height
-                // (the frameless bar adds an inset floating panel). Push the
-                // inset (margin = `frameless_gap`, or 0 when the frame is back
-                // on) to both bars now: that re-measures them and refreshes the
-                // layer-shell exclusive zone immediately, so windows follow the
-                // toggle instead of staying tiled under the old reserve. (relm4
-                // queues these, so they run after the CSS class is applied.)
-                let gap = config_manager()
-                    .config()
-                    .bars()
-                    .frame()
-                    .frameless_gap()
-                    .get_untracked();
-                let disabled = !draw_frame;
-                self.top_bar
-                    .sender()
-                    .emit(BarInput::SetFrameInset { disabled, gap });
-                self.bottom_bar
-                    .sender()
-                    .emit(BarInput::SetFrameInset { disabled, gap });
+                self.set_draw_frame(widgets, draw_frame);
             }
             FrameInput::QueueFrameRedraw => {
                 widgets.frame_draw_widget.queue_draw();
@@ -939,37 +746,7 @@ impl Component for Frame {
                     .emit(BarInput::HiddenBar(verb, target));
             }
             FrameInput::SpacerReserve { is_top, height } => {
-                let spacer = if is_top {
-                    &self.top_spacer
-                } else {
-                    &self.bottom_spacer
-                };
-                let _ = spacer
-                    .sender()
-                    .send(FrameSpacerInput::HeightUpdated(height));
-                // Lock the drawn frame band to the SAME height as the layer-
-                // shell exclusive zone. The band (`top/bottom_thickness`) is
-                // otherwise driven off the bar container's *allocated* height
-                // (the `resized` listeners below), while the exclusive zone is
-                // the bar's *reserved* height (`BarOutput::ReserveHeight`,
-                // measured off `bar_center`). When the two differ the frame —
-                // which paints on the TOP layer, above tiled windows — bleeds
-                // past `work_area` by that difference, painting over the
-                // window's top/bottom border. With gaps that overhang hides in
-                // the gap; with `smartgaps` (gap → 0) the lone window sits
-                // flush against `work_area` and the overhang eats its top and
-                // bottom border. Driving the band from the reserve guarantees
-                // hole edge == work_area edge, so the border always shows.
-                if is_top {
-                    widgets
-                        .frame_draw_widget
-                        .update_style(|s| s.top_thickness = height as f64);
-                } else {
-                    widgets
-                        .frame_draw_widget
-                        .update_style(|s| s.bottom_thickness = height as f64);
-                }
-                self.strips.set_band(is_top, f64::from(height));
+                self.spacer_reserve(widgets, is_top, height);
             }
             FrameInput::ToggleAppLauncherMenuWithTab(tab) => {
                 // If the launcher is already visible AND already
@@ -1074,54 +851,7 @@ impl Component for Frame {
                 }
             }
             FrameInput::CloseMenus => {
-                self.left_revealed = false;
-                self.right_revealed = false;
-                self.top_revealed = false;
-                self.top_left_revealed = false;
-                self.top_right_revealed = false;
-                self.bottom_revealed = false;
-                self.bottom_left_revealed = false;
-                self.bottom_right_revealed = false;
-
-                // Idle every menu that was ever opened (built). The list is
-                // the same one the eager fields drove before — clock/clipboard/
-                // notification/screenshot/app-launcher/wallpaper plus the
-                // lazy-poll menus (ip/vpn-indicator/dns/vpn/ai/ufw/podman/
-                // network) that must stop their refresh I/O on close. An
-                // unbuilt (never-opened) menu was never revealed, so skipping
-                // it is a no-op.
-                for name in [
-                    CLOCK_MENU,
-                    CLIPBOARD_MENU,
-                    NOTIFICATION_MENU,
-                    SCREENSHOT_MENU,
-                    APP_LAUNCHER_MENU,
-                    WALLPAPER_MENU,
-                    NIP_MENU,
-                    NVPN_INDICATOR_MENU,
-                    NDNS_MENU,
-                    NVPN_MENU,
-                    NAI_MENU,
-                    NUFW_MENU,
-                    NPODMAN_MENU,
-                    NGITHUB_MENU,
-                    NAGENTS_MENU,
-                    NNETWORK_MENU,
-                ] {
-                    if let Some(menu) = self.menus.get(name) {
-                        menu.sender()
-                            .send(MenuInput::RevealChanged(false))
-                            .unwrap_or_default();
-                    }
-                }
-
-                // Screenshare stays eager (bespoke portal path).
-                self.screenshare_menu
-                    .sender()
-                    .send(MenuInput::RevealChanged(false))
-                    .unwrap_or_default();
-
-                self.sync_keyboard_mode(root);
+                self.close_menus(root);
             }
             FrameInput::BarToggleTop => {
                 self.top_bar.sender().emit(BarInput::ToggleRevealed);
@@ -1130,79 +860,13 @@ impl Component for Frame {
                 self.bottom_bar.sender().emit(BarInput::ToggleRevealed);
             }
             FrameInput::BarToggleAll(exclude_hidden_by_default) => {
-                if exclude_hidden_by_default {
-                    if config_manager()
-                        .config()
-                        .bars()
-                        .top_bar()
-                        .reveal_by_default()
-                        .get_untracked()
-                    {
-                        self.top_bar.sender().emit(BarInput::ToggleRevealed);
-                    }
-                    if config_manager()
-                        .config()
-                        .bars()
-                        .bottom_bar()
-                        .reveal_by_default()
-                        .get_untracked()
-                    {
-                        self.bottom_bar.sender().emit(BarInput::ToggleRevealed);
-                    }
-                } else {
-                    self.top_bar.sender().emit(BarInput::ToggleRevealed);
-                    self.bottom_bar.sender().emit(BarInput::ToggleRevealed);
-                }
+                self.bars_toggle_all(exclude_hidden_by_default);
             }
             FrameInput::BarRevealAll(exclude_hidden_by_default) => {
-                if exclude_hidden_by_default {
-                    if config_manager()
-                        .config()
-                        .bars()
-                        .top_bar()
-                        .reveal_by_default()
-                        .get_untracked()
-                    {
-                        self.top_bar.sender().emit(BarInput::SetRevealed(true));
-                    }
-                    if config_manager()
-                        .config()
-                        .bars()
-                        .bottom_bar()
-                        .reveal_by_default()
-                        .get_untracked()
-                    {
-                        self.bottom_bar.sender().emit(BarInput::SetRevealed(true));
-                    }
-                } else {
-                    self.top_bar.sender().emit(BarInput::SetRevealed(true));
-                    self.bottom_bar.sender().emit(BarInput::SetRevealed(true));
-                }
+                self.bars_reveal_all(exclude_hidden_by_default);
             }
             FrameInput::BarHideAll(exclude_hidden_by_default) => {
-                if exclude_hidden_by_default {
-                    if config_manager()
-                        .config()
-                        .bars()
-                        .top_bar()
-                        .reveal_by_default()
-                        .get_untracked()
-                    {
-                        self.top_bar.sender().emit(BarInput::SetRevealed(false));
-                    }
-                    if config_manager()
-                        .config()
-                        .bars()
-                        .bottom_bar()
-                        .reveal_by_default()
-                        .get_untracked()
-                    {
-                        self.bottom_bar.sender().emit(BarInput::SetRevealed(false));
-                    }
-                } else {
-                    self.top_bar.sender().emit(BarInput::SetRevealed(false));
-                    self.bottom_bar.sender().emit(BarInput::SetRevealed(false));
-                }
+                self.bars_hide_all(exclude_hidden_by_default);
             }
         }
         self.sync_overlay(root);
