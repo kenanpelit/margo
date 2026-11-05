@@ -172,15 +172,57 @@ pub(crate) fn last_upgrade_time() -> Option<i64> {
         .map(|d| d.as_secs() as i64)
 }
 
-/// Fetch + parse the feed (blocking; run on a worker thread).
+type FeedResponse = Option<(Option<String>, Vec<NewsItem>)>;
+
+#[derive(Default)]
+struct FeedMemo {
+    checked: Option<u64>,
+    etag: Option<String>,
+    items: Vec<NewsItem>,
+}
+impl FeedMemo {
+    fn get(
+        &mut self,
+        now: u64,
+        fetch: impl FnOnce(Option<&str>) -> Result<FeedResponse, String>,
+    ) -> Result<Vec<NewsItem>, String> {
+        if self.checked.is_some_and(|t| now.saturating_sub(t) < 3600) {
+            return Ok(self.items.clone());
+        }
+        if let Some((etag, items)) = fetch(self.etag.as_deref())? {
+            self.etag = etag;
+            self.items = items;
+        }
+        self.checked = Some(now);
+        Ok(self.items.clone())
+    }
+}
+
+/// Fetch + parse the feed off the GTK thread. All panels share an
+/// hour-long TTL and ETag validator (304 keeps the parsed posts).
 pub(crate) fn fetch_blocking() -> Result<Vec<NewsItem>, String> {
-    let body = ureq::get(FEED_URL)
-        .timeout(std::time::Duration::from_secs(15))
-        .call()
-        .map_err(|e| format!("news: {e}"))?
-        .into_string()
-        .map_err(|e| format!("news: {e}"))?;
-    Ok(parse_feed(&body))
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<FeedMemo>> = std::sync::OnceLock::new();
+    let mut cache = CACHE
+        .get_or_init(Default::default)
+        .lock()
+        .map_err(|e| e.to_string())?;
+    cache.get(super::now_secs(), |etag| {
+        let mut req = ureq::get(FEED_URL).timeout(std::time::Duration::from_secs(15));
+        if let Some(etag) = etag {
+            req = req.set("If-None-Match", etag);
+        }
+        let response = match req.call() {
+            Ok(r) => r,
+            Err(ureq::Error::Status(304, _)) => return Ok(None),
+            Err(e) => return Err(format!("news: {e}")),
+        };
+        if response.status() == 304 {
+            return Ok(None);
+        }
+        let etag = response.header("ETag").map(String::from);
+        let body = response.into_string().map_err(|e| format!("news: {e}"))?;
+        Ok(Some((etag, parse_feed(&body))))
+    })
 }
 
 /// What the panel needs: the unread posts, computed off the GTK thread.
@@ -199,6 +241,28 @@ mod tests {
     use super::*;
 
     const FEED: &str = include_str!("testdata/arch-news.xml");
+
+    #[test]
+    fn news_is_cached_for_an_hour_then_revalidated() {
+        let mut cache = FeedMemo::default();
+        let mut calls = 0;
+        for now in [100, 101, 3700] {
+            let items = cache
+                .get(now, |etag| {
+                    calls += 1;
+                    if calls == 1 {
+                        assert!(etag.is_none());
+                        Ok(Some((Some("v1".into()), parse_feed(FEED))))
+                    } else {
+                        assert_eq!(etag, Some("v1"));
+                        Ok(None) // HTTP 304
+                    }
+                })
+                .unwrap();
+            assert_eq!(items.len(), 3);
+        }
+        assert_eq!(calls, 2);
+    }
 
     #[test]
     fn parses_the_real_feed() {

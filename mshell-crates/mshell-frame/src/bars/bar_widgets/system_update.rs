@@ -8,6 +8,7 @@
 //! upgrade logic lives in [`crate::system_update`] so the pill, the
 //! panel, and the launcher all share one implementation.
 
+use crate::system_update::LAST_PROBE_SECS;
 use crate::system_update::{self, ProbeConfig, Source, UpdateReport};
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
@@ -18,7 +19,7 @@ use reactive_graph::traits::{Get, GetUntracked};
 use relm4::gtk::Orientation;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tokio::sync::Notify;
 
@@ -29,15 +30,6 @@ const STARTUP_DELAY: Duration = Duration::from_secs(10);
 /// Defensive floor on the configured interval so we never hammer the
 /// repo mirrors.
 const MIN_INTERVAL: Duration = Duration::from_secs(60);
-
-/// Shared across every per-output SystemUpdate instance in this
-/// process: unix-secs of the last probe (0 = none). A multi-monitor
-/// setup has one pill (and one poll task) per output; this makes them
-/// probe once per interval *total* instead of once per monitor — which
-/// is what was firing the AUR helper (and its sudo) several times on
-/// every start. Seeded from the on-disk cache so the dedup also spans
-/// restarts.
-static LAST_PROBE_SECS: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) struct SystemUpdateModel {
     /// `None` until the first probe completes (rendered as

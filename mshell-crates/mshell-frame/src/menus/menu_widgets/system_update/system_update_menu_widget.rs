@@ -57,6 +57,7 @@ pub(crate) struct SystemUpdateMenuWidgetModel {
     config_error: Option<String>,
     /// `IgnorePkg` from pacman.conf (shown read-only under Hidden).
     pacman_ignored: Vec<String>,
+    auxiliary_checked: Option<std::time::Instant>,
 }
 
 /// What the review view's buttons do.
@@ -74,15 +75,15 @@ pub(crate) enum ConfigAction {
 pub(crate) enum SystemUpdateMenuWidgetInput {
     /// Re-probe every enabled source.
     Refresh,
+    AutoRefresh,
     /// Open a terminal and run the full upgrade.
     Update,
     /// Enable / disable a source (repo / AUR / Flatpak). Persists
     /// to config, then re-probes.
     ToggleSource(Source, bool),
     /// The panel was revealed (`true`) / hidden (`false`). On reveal
-    /// we re-probe — that's the *only* automatic probe, so the AUR
-    /// helper (and its sudo) runs when the user opens the panel, not
-    /// on every shell start.
+    /// we use a fresh cached report, probing only when it is stale.
+    /// Merely building the panel never triggers a probe.
     ParentRevealChanged(bool),
     /// Mark every fetched news post read (hides the card).
     MarkNewsRead,
@@ -590,6 +591,7 @@ impl Component for SystemUpdateMenuWidgetModel {
             config_busy: false,
             config_error: None,
             pacman_ignored: Vec::new(),
+            auxiliary_checked: None,
         };
         let widgets = view_output!();
 
@@ -629,10 +631,15 @@ impl Component for SystemUpdateMenuWidgetModel {
         _root: &Self::Root,
     ) {
         match message {
-            SystemUpdateMenuWidgetInput::Refresh => {
+            SystemUpdateMenuWidgetInput::Refresh | SystemUpdateMenuWidgetInput::AutoRefresh => {
+                if self.refreshing {
+                    return;
+                }
+                let force = matches!(message, SystemUpdateMenuWidgetInput::Refresh);
                 self.refreshing = true;
-                sender.oneshot_command(async {
-                    let report = system_update::probe_with_audit(ProbeConfig::from_config()).await;
+                sender.oneshot_command(async move {
+                    let report =
+                        system_update::panel_report(ProbeConfig::from_config(), force).await;
                     SystemUpdateMenuWidgetCommandOutput::Loaded(report)
                 });
             }
@@ -640,7 +647,14 @@ impl Component for SystemUpdateMenuWidgetModel {
                 // Probe only when the panel actually opens (not on
                 // build/startup). Hidden → nothing.
                 if visible {
-                    sender.input(SystemUpdateMenuWidgetInput::Refresh);
+                    sender.input(SystemUpdateMenuWidgetInput::AutoRefresh);
+                    if self
+                        .auxiliary_checked
+                        .is_some_and(|t| t.elapsed().as_secs() < 600)
+                    {
+                        return;
+                    }
+                    self.auxiliary_checked = Some(std::time::Instant::now());
                     sender.input(SystemUpdateMenuWidgetInput::ScanConfigs);
                     sender.oneshot_command(async {
                         SystemUpdateMenuWidgetCommandOutput::PacmanIgnored(

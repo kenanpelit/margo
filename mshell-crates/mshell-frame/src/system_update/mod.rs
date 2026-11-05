@@ -31,6 +31,10 @@ use reactive_graph::traits::GetUntracked;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
+/// Single-flight cadence shared by pills and published panel probes.
+pub(crate) static LAST_PROBE_SECS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
 /// Where a pending update comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum Source {
@@ -150,8 +154,62 @@ pub(crate) fn save_cache(report: &UpdateReport) {
     }
 }
 
+/// Minimum age for an automatic panel refresh. Explicit Refresh always probes.
+const PANEL_TTL: u64 = 600;
+
+#[derive(Default)]
+struct ProbeMemo {
+    cached: Option<(ProbeConfig, u64, UpdateReport)>,
+}
+impl ProbeMemo {
+    async fn get<F, Fut>(
+        &mut self,
+        cfg: ProbeConfig,
+        now: u64,
+        force: bool,
+        probe: F,
+    ) -> UpdateReport
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = UpdateReport>,
+    {
+        if !force
+            && let Some((key, checked, report)) = &self.cached
+            && *key == cfg
+            && now.saturating_sub(*checked) < PANEL_TTL
+        {
+            return report.clone();
+        }
+        let report = probe().await;
+        self.cached = Some((cfg, now, report.clone()));
+        report
+    }
+}
+
+/// Every automatic reveal shares this memo/lock, so two monitors cannot
+/// start duplicate probes. Seed with the pill's disk cache on first use.
+pub(crate) async fn panel_report(cfg: ProbeConfig, force: bool) -> UpdateReport {
+    static MEMO: std::sync::OnceLock<tokio::sync::Mutex<ProbeMemo>> = std::sync::OnceLock::new();
+    let mut memo = MEMO
+        .get_or_init(|| tokio::sync::Mutex::new(ProbeMemo::default()))
+        .lock()
+        .await;
+    // Prefer a newer report published by any pill/background run.
+    if let Some((ts, report)) = load_cache()
+        && memo.cached.as_ref().is_none_or(|(_, old, _)| ts > *old)
+    {
+        memo.cached = Some((cfg, ts, report));
+    }
+    memo.get(cfg, now_secs(), force, || async {
+        let report = probe_with_audit(cfg).await;
+        publish_report(report.clone());
+        report
+    })
+    .await
+}
+
 /// Which sources to probe — mirrors the config toggles.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ProbeConfig {
     pub(crate) repo: bool,
     pub(crate) aur: bool,
@@ -454,14 +512,18 @@ pub(crate) fn find_in_path(binary: &str, path: &std::ffi::OsStr) -> bool {
 }
 
 pub(crate) async fn which(binary: &str) -> bool {
-    tokio::process::Command::new("which")
-        .arg(binary)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .await
-        .map(|s| s.success())
-        .unwrap_or(false)
+    // PATH is stable for this process. Cache negative results too: no
+    // fork/exec of `which` on every panel open or scheduled probe.
+    static PATH_CACHE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, bool>>,
+    > = std::sync::OnceLock::new();
+    let cache = PATH_CACHE.get_or_init(Default::default);
+    let Ok(mut cache) = cache.lock() else {
+        return on_path(binary);
+    };
+    *cache
+        .entry(binary.to_string())
+        .or_insert_with(|| on_path(binary))
 }
 
 // ── Fresh reports (published after a background run) ────────────
@@ -488,6 +550,7 @@ fn deliver_report(tx: &tokio::sync::watch::Sender<Option<UpdateReport>>, report:
 }
 
 pub(crate) fn publish_report(report: UpdateReport) {
+    LAST_PROBE_SECS.store(now_secs(), std::sync::atomic::Ordering::Relaxed);
     save_cache(&report);
     deliver_report(&fresh_channel().0, report);
 }
@@ -832,6 +895,31 @@ mod tests {
         assert_eq!(report.count(Source::Flatpak), 0);
         assert!(!report.is_empty());
         assert!(UpdateReport::default().is_empty());
+    }
+
+    #[tokio::test]
+    async fn two_reveals_share_one_probe_and_refresh_bypasses_ttl() {
+        let mut cache = ProbeMemo::default();
+        let calls = std::sync::atomic::AtomicUsize::new(0);
+        let cfg = ProbeConfig {
+            repo: true,
+            aur: false,
+            flatpak: false,
+        };
+        for (now, force, expected) in [
+            (100, false, 1),
+            (101, false, 1),
+            (102, true, 2),
+            (800, false, 3),
+        ] {
+            cache
+                .get(cfg, now, force, || async {
+                    calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    UpdateReport::default()
+                })
+                .await;
+            assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), expected);
+        }
     }
 
     #[test]
