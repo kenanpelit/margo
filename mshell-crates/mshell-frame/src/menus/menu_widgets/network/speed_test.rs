@@ -381,3 +381,7 @@ fn draw_gauge(area: &gtk::DrawingArea, cr: &gtk::cairo::Context, w: i32, h: i32,
         let _ = cr.stroke();
     }
 }
+
+#[path = "speed_test_tests.rs"]
+#[cfg(test)]
+mod speed_test_tests;
