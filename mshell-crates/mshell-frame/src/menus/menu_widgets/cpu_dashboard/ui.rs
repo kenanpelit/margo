@@ -8,13 +8,6 @@
 use relm4::gtk;
 use relm4::gtk::prelude::{BoxExt, ListBoxRowExt, WidgetExt};
 
-/// Remove every row from a list (rebuilt each poll, like podman's lists).
-pub(crate) fn clear_list(list: &gtk::ListBox) {
-    while let Some(child) = list.first_child() {
-        list.remove(&child);
-    }
-}
-
 /// A non-interactive list row wrapping `child`.
 pub(crate) fn plain_row(child: &impl gtk::prelude::IsA<gtk::Widget>) -> gtk::ListBoxRow {
     let row = gtk::ListBoxRow::new();
@@ -37,28 +30,80 @@ pub(crate) fn placeholder_row(text: &str) -> gtk::ListBoxRow {
 
 /// Title + subtitle column (hexpand) — the Adwaita ActionRow text block.
 pub(crate) fn title_block(title: &str, subtitle: &str) -> gtk::Box {
-    let texts = gtk::Box::builder()
+    let t = live_title_block();
+    set_title(&t, title, subtitle);
+    t.block
+}
+
+/// A [`title_block`] whose labels stay reachable, for rows updated in
+/// place across polls. The subtitle hides while empty.
+pub(crate) struct LiveTitle {
+    pub block: gtk::Box,
+    pub title: gtk::Label,
+    pub subtitle: gtk::Label,
+}
+
+pub(crate) fn live_title_block() -> LiveTitle {
+    let block = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .hexpand(true)
         .valign(gtk::Align::Center)
         .build();
-    let t = gtk::Label::builder()
-        .label(title)
+    let title = gtk::Label::builder()
         .css_classes(["label-medium-bold"])
         .xalign(0.0)
         .ellipsize(gtk::pango::EllipsizeMode::End)
         .build();
-    texts.append(&t);
-    if !subtitle.is_empty() {
-        let s = gtk::Label::builder()
-            .label(subtitle)
-            .css_classes(["label-small", "dim-label"])
-            .xalign(0.0)
-            .ellipsize(gtk::pango::EllipsizeMode::End)
-            .build();
-        texts.append(&s);
+    block.append(&title);
+    let subtitle = gtk::Label::builder()
+        .css_classes(["label-small", "dim-label"])
+        .xalign(0.0)
+        .ellipsize(gtk::pango::EllipsizeMode::End)
+        .visible(false)
+        .build();
+    block.append(&subtitle);
+    LiveTitle {
+        block,
+        title,
+        subtitle,
     }
-    texts
+}
+
+/// Set a [`LiveTitle`]'s texts, touching only what changed.
+pub(crate) fn set_title(t: &LiveTitle, title: &str, subtitle: &str) {
+    set_text(&t.title, title);
+    set_text(&t.subtitle, subtitle);
+    if t.subtitle.is_visible() == subtitle.is_empty() {
+        t.subtitle.set_visible(!subtitle.is_empty());
+    }
+}
+
+/// Set a label's text only when it differs (no relayout when unchanged).
+pub(crate) fn set_text(label: &gtk::Label, text: &str) {
+    if label.label() != text {
+        label.set_label(text);
+    }
+}
+
+/// Toggle a CSS class on `widget` to match `on`.
+pub(crate) fn set_class(widget: &impl WidgetExt, class: &str, on: bool) {
+    if widget.has_css_class(class) != on {
+        if on {
+            widget.add_css_class(class);
+        } else {
+            widget.remove_css_class(class);
+        }
+    }
+}
+
+/// Replace `slot` with `new` and say whether it changed (a poll that
+/// returns what is already shown skips its re-render).
+pub(crate) fn replace_if_changed<T: PartialEq>(slot: &mut T, new: T) -> bool {
+    if *slot == new {
+        return false;
+    }
+    *slot = new;
+    true
 }
 
 /// A trailing right-aligned metric (tabular figures, fixed width so the
@@ -110,4 +155,17 @@ pub(crate) fn text_button(label: &str, danger: bool) -> gtk::Button {
         &["ok-button-surface", "label-small"]
     });
     b
+}
+
+#[cfg(test)]
+mod tests {
+    use super::replace_if_changed;
+
+    #[test]
+    fn an_unchanged_poll_skips_the_render() {
+        let mut shown = Some(Ok::<_, String>(vec![1, 2]));
+        assert!(!replace_if_changed(&mut shown, Some(Ok(vec![1, 2]))));
+        assert!(replace_if_changed(&mut shown, Some(Ok(vec![1, 3]))));
+        assert_eq!(shown, Some(Ok(vec![1, 3])));
+    }
 }

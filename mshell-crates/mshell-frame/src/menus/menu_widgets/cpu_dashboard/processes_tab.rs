@@ -5,6 +5,7 @@
 //! AND this tab is the visible one; the `/proc` sweep runs on a blocking
 //! thread (DESIGN.md §13.4 — never on the GTK thread).
 
+use super::keyed_rows::KeyedRows;
 use super::procs::{
     KillResult, ProcRow, ProcSnapshot, ProcSort, ProcTracker, fmt_kb, fmt_rate, group_by_window,
     read_snapshot, row_matches, send_signal, sort_rows,
@@ -13,10 +14,12 @@ use super::ui;
 use crate::menus::reveal_poll::RevealPoll;
 use mshell_services::margo_service;
 use relm4::gtk::prelude::{
-    BoxExt, ButtonExt, EditableExt, OrientableExt, ToggleButtonExt, WidgetExt,
+    AccessibleExtManual, BoxExt, ButtonExt, EditableExt, OrientableExt, ToggleButtonExt, WidgetExt,
 };
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::cell::RefCell;
 use std::path::Path;
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
@@ -47,6 +50,8 @@ pub(crate) struct ProcessesTabModel {
     /// EPERM on the last attempt: offer the pkexec path.
     needs_admin: Option<(i32, &'static str)>,
     list: gtk::ListBox,
+    /// The rows on screen, kept across polls (only changed rows rebuild).
+    shown: KeyedRows<RowKey, LiveRow>,
     sort_buttons: Vec<(ProcSort, gtk::Button)>,
 }
 
@@ -232,7 +237,7 @@ impl Component for ProcessesTabModel {
             sort_buttons.push((sort, b));
         }
 
-        let model = ProcessesTabModel {
+        let mut model = ProcessesTabModel {
             poll,
             in_flight: false,
             tracker: ProcTracker::default(),
@@ -245,13 +250,12 @@ impl Component for ProcessesTabModel {
             status: String::new(),
             needs_admin: None,
             list: list.clone(),
+            shown: KeyedRows::default(),
             sort_buttons,
         };
         let widgets = view_output!();
         crate::menus::list_fit::mark_menu_list(&widgets.fill_list, 380);
-        model
-            .list
-            .append(&ui::placeholder_row("Reading processes…"));
+        model.render(&sender);
         ComponentParts { model, widgets }
     }
 
@@ -362,100 +366,342 @@ impl Component for ProcessesTabModel {
 }
 
 impl ProcessesTabModel {
-    fn render(&self, sender: &ComponentSender<Self>) {
-        ui::clear_list(&self.list);
-        let mut rows: Vec<ProcRow> = self
-            .rows
-            .iter()
-            .filter(|r| row_matches(r, &self.query))
-            .cloned()
-            .collect();
-        sort_rows(&mut rows, self.sort);
-        if rows.is_empty() {
-            let text = if self.rows.is_empty() {
-                "Reading processes…"
-            } else {
-                "No process matches the search"
-            };
-            self.list.append(&ui::placeholder_row(text));
-            return;
-        }
-        if self.group {
-            let clients: Vec<(i32, String)> = margo_service()
+    fn render(&mut self, sender: &ComponentSender<Self>) {
+        let clients: Option<Vec<(i32, String)>> = self.group.then(|| {
+            margo_service()
                 .clients
                 .get()
                 .iter()
                 .map(|c| (c.pid.get(), c.class.get()))
                 .filter(|(pid, _)| *pid > 0)
-                .collect();
-            let mut shown = 0;
-            for g in group_by_window(&rows, &clients, self.sort) {
-                if shown >= MAX_ROWS {
-                    break;
-                }
-                let title = g
+                .collect()
+        });
+        let views = row_views(&self.rows, &self.query, self.sort, clients.as_deref());
+        self.shown.sync(
+            &self.list,
+            views,
+            |_, v| live_row(v, sender),
+            update_row,
+            |r| &r.row,
+        );
+    }
+}
+
+/// What one list row shows, keyed so a poll updates the same row.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum RowKey {
+    Placeholder,
+    Group(Option<String>),
+    Proc(i32),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum RowView {
+    Placeholder(&'static str),
+    Group {
+        title: String,
+        subtitle: String,
+        cpu: String,
+        rss: String,
+    },
+    Proc {
+        pid: i32,
+        name: String,
+        subtitle: String,
+        cpu: String,
+        rss: String,
+        cmdline: String,
+        /// Listed under a window group (indented).
+        member: bool,
+    },
+}
+
+/// The rows to show, in order: filtered by `query`, sorted, capped at
+/// [`MAX_ROWS`]; grouped under their window when `clients` is given.
+fn row_views(
+    all: &[ProcRow],
+    query: &str,
+    sort: ProcSort,
+    clients: Option<&[(i32, String)]>,
+) -> Vec<(RowKey, RowView)> {
+    let mut rows: Vec<ProcRow> = all
+        .iter()
+        .filter(|r| row_matches(r, query))
+        .cloned()
+        .collect();
+    sort_rows(&mut rows, sort);
+    if rows.is_empty() {
+        let text = if all.is_empty() {
+            "Reading processes…"
+        } else {
+            "No process matches the search"
+        };
+        return vec![(RowKey::Placeholder, RowView::Placeholder(text))];
+    }
+    let Some(clients) = clients else {
+        return rows
+            .iter()
+            .take(MAX_ROWS)
+            .map(|r| (RowKey::Proc(r.pid), proc_view(r, false)))
+            .collect();
+    };
+    let mut out = Vec::new();
+    for g in group_by_window(&rows, clients, sort) {
+        if out.len() >= MAX_ROWS {
+            break;
+        }
+        let subtitle = format!(
+            "{} process{} · {} swap",
+            g.members.len(),
+            if g.members.len() == 1 { "" } else { "es" },
+            fmt_kb(g.swap_kb)
+        );
+        out.push((
+            RowKey::Group(g.app.clone()),
+            RowView::Group {
+                title: g
                     .app
                     .clone()
-                    .unwrap_or_else(|| "Other processes".to_string());
-                let subtitle = format!(
-                    "{} process{} · {} swap",
-                    g.members.len(),
-                    if g.members.len() == 1 { "" } else { "es" },
-                    fmt_kb(g.swap_kb)
-                );
-                let body = ui::row_body(
-                    &title,
-                    &subtitle,
-                    &[
-                        ui::value_label(&format!("{:.1}%", g.cpu), 6, "").into(),
-                        ui::value_label(&fmt_kb(g.rss_kb), 7, "").into(),
-                    ],
-                );
-                body.add_css_class("cpu-dashboard-group-head");
-                self.list.append(&ui::plain_row(&body));
-                shown += 1;
-                for i in g.members.iter().take(MAX_GROUP_MEMBERS) {
-                    if let Some(r) = rows.get(*i) {
-                        let row = self.proc_row(r, sender);
-                        row.add_css_class("cpu-dashboard-group-member");
-                        self.list.append(&row);
-                        shown += 1;
-                    }
-                }
-            }
-        } else {
-            for r in rows.iter().take(MAX_ROWS) {
-                self.list.append(&self.proc_row(r, sender));
+                    .unwrap_or_else(|| "Other processes".to_string()),
+                subtitle,
+                cpu: format!("{:.1}%", g.cpu),
+                rss: fmt_kb(g.rss_kb),
+            },
+        ));
+        for i in g.members.iter().take(MAX_GROUP_MEMBERS) {
+            if let Some(r) = rows.get(*i) {
+                out.push((RowKey::Proc(r.pid), proc_view(r, true)));
             }
         }
     }
+    out
+}
 
-    fn proc_row(&self, r: &ProcRow, sender: &ComponentSender<Self>) -> gtk::ListBoxRow {
-        let mut sub = format!("{}", r.pid);
-        if r.swap_kb > 0 {
-            sub.push_str(&format!(" · swap {}", fmt_kb(r.swap_kb)));
+fn proc_view(r: &ProcRow, member: bool) -> RowView {
+    let mut sub = format!("{}", r.pid);
+    if r.swap_kb > 0 {
+        sub.push_str(&format!(" · swap {}", fmt_kb(r.swap_kb)));
+    }
+    if let Some((rd, wr)) = r.io_bps
+        && rd + wr > 0
+    {
+        sub.push_str(&format!(" · R {} W {}", fmt_rate(rd), fmt_rate(wr)));
+    }
+    RowView::Proc {
+        pid: r.pid,
+        name: r.name.clone(),
+        subtitle: sub,
+        cpu: format!("{:.1}%", r.cpu),
+        rss: fmt_kb(r.rss_kb),
+        cmdline: r.cmdline.clone(),
+        member,
+    }
+}
+
+/// One list row's widgets, kept across polls.
+struct LiveRow {
+    row: gtk::ListBoxRow,
+    kind: LiveKind,
+}
+
+enum LiveKind {
+    Placeholder(gtk::Label),
+    Item {
+        body: gtk::Box,
+        text: ui::LiveTitle,
+        cpu: gtk::Label,
+        rss: gtk::Label,
+        /// Process rows: the ✕ button and who it ends. The click reads the
+        /// row's current target, so it always matches what the row shows.
+        kill: Option<(gtk::Button, Rc<RefCell<(i32, String)>>)>,
+    },
+}
+
+fn live_row(view: &RowView, sender: &ComponentSender<ProcessesTabModel>) -> LiveRow {
+    let item = |kill: Option<(gtk::Button, Rc<RefCell<(i32, String)>>)>| {
+        let text = ui::live_title_block();
+        let cpu = ui::value_label("", 6, "");
+        let rss = ui::value_label("", 7, "");
+        let body = gtk::Box::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .spacing(10)
+            .build();
+        body.append(&text.block);
+        body.append(&cpu);
+        body.append(&rss);
+        if let Some((b, _)) = &kill {
+            body.append(b);
         }
-        if let Some((rd, wr)) = r.io_bps
-            && rd + wr > 0
-        {
-            sub.push_str(&format!(" · R {} W {}", fmt_rate(rd), fmt_rate(wr)));
+        let row = ui::plain_row(&body);
+        LiveRow {
+            row,
+            kind: LiveKind::Item {
+                body,
+                text,
+                cpu,
+                rss,
+                kill,
+            },
         }
-        let kill = ui::icon_button("close-symbolic", &format!("End {} ({})", r.name, r.pid));
-        let (pid, name) = (r.pid, r.name.clone());
-        let s = sender.clone();
-        kill.connect_clicked(move |_| s.input(ProcessesTabInput::AskKill(pid, name.clone())));
-        let body = ui::row_body(
-            &r.name,
-            &sub,
-            &[
-                ui::value_label(&format!("{:.1}%", r.cpu), 6, "").into(),
-                ui::value_label(&fmt_kb(r.rss_kb), 7, "").into(),
-                kill.into(),
-            ],
+    };
+    match view {
+        RowView::Placeholder(_) => {
+            let label = gtk::Label::builder()
+                .css_classes(["label-small", "dim-label"])
+                .xalign(0.0)
+                .wrap(true)
+                .build();
+            LiveRow {
+                row: ui::plain_row(&label),
+                kind: LiveKind::Placeholder(label),
+            }
+        }
+        RowView::Group { .. } => {
+            let r = item(None);
+            if let LiveKind::Item { body, .. } = &r.kind {
+                body.add_css_class("cpu-dashboard-group-head");
+            }
+            r
+        }
+        RowView::Proc { pid, name, .. } => {
+            let target = Rc::new(RefCell::new((*pid, name.clone())));
+            let button = ui::icon_button("close-symbolic", &kill_name(*pid, name));
+            let s = sender.clone();
+            let t = target.clone();
+            button.connect_clicked(move |_| {
+                let (pid, name) = t.borrow().clone();
+                s.input(ProcessesTabInput::AskKill(pid, name));
+            });
+            item(Some((button, target)))
+        }
+    }
+}
+
+fn kill_name(pid: i32, name: &str) -> String {
+    format!("End {name} ({pid})")
+}
+
+/// Bring a kept row up to date, touching only what changed.
+fn update_row(r: &LiveRow, view: &RowView) {
+    match (&r.kind, view) {
+        (LiveKind::Placeholder(label), RowView::Placeholder(text)) => ui::set_text(label, text),
+        (
+            LiveKind::Item { text, cpu, rss, .. },
+            RowView::Group {
+                title,
+                subtitle,
+                cpu: c,
+                rss: m,
+            },
+        ) => {
+            ui::set_title(text, title, subtitle);
+            ui::set_text(cpu, c);
+            ui::set_text(rss, m);
+        }
+        (
+            LiveKind::Item {
+                body,
+                text,
+                cpu,
+                rss,
+                kill,
+            },
+            RowView::Proc {
+                pid,
+                name,
+                subtitle,
+                cpu: c,
+                rss: m,
+                cmdline,
+                member,
+            },
+        ) => {
+            ui::set_title(text, name, subtitle);
+            ui::set_text(cpu, c);
+            ui::set_text(rss, m);
+            ui::set_class(&r.row, "cpu-dashboard-group-member", *member);
+            let tip = (!cmdline.is_empty()).then_some(cmdline.as_str());
+            if body.tooltip_text().as_deref() != tip {
+                body.set_tooltip_text(tip);
+            }
+            if let Some((button, target)) = kill
+                && target.borrow().1 != *name
+            {
+                *target.borrow_mut() = (*pid, name.clone());
+                let label = kill_name(*pid, name);
+                button.update_property(&[gtk::accessible::Property::Label(&label)]);
+                button.set_tooltip_text(Some(&label));
+            }
+        }
+        // A key always maps to the same view kind (RowKey ↔ RowView).
+        _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn proc(pid: i32, ppid: i32, name: &str, cpu: f32) -> ProcRow {
+        ProcRow {
+            pid,
+            ppid,
+            uid: 1000,
+            name: name.to_string(),
+            cmdline: format!("/usr/bin/{name}"),
+            cpu,
+            rss_kb: 1024,
+            swap_kb: 0,
+            io_bps: None,
+        }
+    }
+
+    fn keys(v: &[(RowKey, RowView)]) -> Vec<RowKey> {
+        v.iter().map(|(k, _)| k.clone()).collect()
+    }
+
+    #[test]
+    fn flat_rows_are_keyed_by_pid_in_sort_order() {
+        let rows = vec![proc(10, 1, "a", 1.0), proc(20, 1, "b", 5.0)];
+        let v = row_views(&rows, "", ProcSort::Cpu, None);
+        assert_eq!(keys(&v), [RowKey::Proc(20), RowKey::Proc(10)]);
+        // Same pids, other values: same keys (the rows are reused).
+        let again = vec![proc(10, 1, "a", 9.0), proc(20, 1, "b", 0.5)];
+        let v2 = row_views(&again, "", ProcSort::Cpu, None);
+        let mut k1 = keys(&v);
+        let mut k2 = keys(&v2);
+        k1.sort_by_key(|k| format!("{k:?}"));
+        k2.sort_by_key(|k| format!("{k:?}"));
+        assert_eq!(k1, k2);
+    }
+
+    #[test]
+    fn rows_cap_and_placeholders() {
+        let many: Vec<ProcRow> = (2..200).map(|p| proc(p, 1, "x", 0.0)).collect();
+        assert_eq!(row_views(&many, "", ProcSort::Cpu, None).len(), MAX_ROWS);
+        assert_eq!(
+            row_views(&[], "", ProcSort::Cpu, None),
+            vec![(
+                RowKey::Placeholder,
+                RowView::Placeholder("Reading processes…")
+            )]
         );
-        if !r.cmdline.is_empty() {
-            body.set_tooltip_text(Some(&r.cmdline));
-        }
-        ui::plain_row(&body)
+        assert_eq!(
+            row_views(&many, "nomatch", ProcSort::Cpu, None),
+            vec![(
+                RowKey::Placeholder,
+                RowView::Placeholder("No process matches the search")
+            )]
+        );
+    }
+
+    #[test]
+    fn grouped_rows_mark_members() {
+        let rows = vec![proc(100, 1, "firefox", 3.0), proc(101, 100, "tab", 1.0)];
+        let clients = vec![(100, "firefox".to_string())];
+        let v = row_views(&rows, "", ProcSort::Cpu, Some(&clients));
+        assert_eq!(v[0].0, RowKey::Group(Some("firefox".into())));
+        assert!(matches!(v[1].1, RowView::Proc { member: true, .. }));
+        assert_eq!(v.len(), 3);
     }
 }

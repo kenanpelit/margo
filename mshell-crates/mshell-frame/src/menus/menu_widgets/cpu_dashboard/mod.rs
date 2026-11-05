@@ -5,6 +5,7 @@ pub(crate) mod fan;
 pub(crate) mod fan_section;
 pub(crate) mod gpu;
 pub(crate) mod gpu_section;
+pub(crate) mod keyed_rows;
 pub(crate) mod ports;
 pub(crate) mod ports_tab;
 pub(crate) mod processes_tab;

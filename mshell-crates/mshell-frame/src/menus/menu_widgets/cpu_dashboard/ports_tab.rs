@@ -298,11 +298,14 @@ impl Component for PortsTabModel {
         match msg {
             PortsTabCmd::Scanned(rows) => {
                 self.in_flight = false;
-                self.rows = Some(rows.map(|mut r| {
+                let rows = Some(rows.map(|mut r| {
                     sort_ports(&mut r);
                     r
                 }));
-                self.render(&sender);
+                // Nothing new listening: keep the rows (and hover) as is.
+                if ui::replace_if_changed(&mut self.rows, rows) {
+                    self.render(&sender);
+                }
             }
             PortsTabCmd::AdminDone(res) => {
                 self.status = match res {

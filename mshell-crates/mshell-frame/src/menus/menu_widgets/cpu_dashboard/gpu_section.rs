@@ -9,6 +9,7 @@ use super::gpu::{
     ClientKey, DrmClient, DrmFd, GpuProc, GtSample, Igpu, busy_pct, find_drm_fds, find_igpu,
     gpu_procs, read_clients, sample_gt,
 };
+use super::keyed_rows::KeyedRows;
 use super::procs::fmt_kb;
 use super::ui;
 use crate::menus::reveal_poll::RevealPoll;
@@ -50,6 +51,7 @@ pub(crate) struct GpuSectionModel {
     gt_rows: Vec<GtRow>,
     procs: Vec<GpuProc>,
     proc_list: gtk::ListBox,
+    proc_rows: KeyedRows<i32, GpuProcRow>,
 }
 
 #[derive(Debug)]
@@ -111,6 +113,7 @@ impl Component for GpuSectionModel {
             gt_rows: Vec::new(),
             procs: Vec::new(),
             proc_list: proc_list.clone(),
+            proc_rows: KeyedRows::default(),
         };
         let widgets = view_output!();
         if let Some(gpu) = &model.igpu {
@@ -201,27 +204,76 @@ impl Component for GpuSectionModel {
         self.fds = data.fds;
         self.prev_at = Some(now);
 
-        ui::clear_list(&self.proc_list);
-        for p in self.procs.iter().take(MAX_PROCS) {
-            let sub = if p.engine.is_empty() {
-                format!("{}", p.pid)
-            } else {
-                format!("{} · {}", p.pid, p.engine)
-            };
-            let name = if p.name.is_empty() {
-                p.pid.to_string()
-            } else {
-                p.name.clone()
-            };
-            self.proc_list.append(&ui::plain_row(&ui::row_body(
-                &name,
-                &sub,
-                &[
-                    ui::value_label(&format!("{:.0}%", p.busy), 5, "").into(),
-                    ui::value_label(&fmt_kb(p.resident_kb), 7, "").into(),
-                ],
-            )));
-        }
+        let views: Vec<(i32, GpuProcView)> = self
+            .procs
+            .iter()
+            .take(MAX_PROCS)
+            .map(|p| (p.pid, gpu_proc_view(p)))
+            .collect();
+        self.proc_rows.sync(
+            &self.proc_list,
+            views,
+            |_, _| gpu_proc_row(),
+            |r, v| {
+                ui::set_title(&r.text, &v.name, &v.subtitle);
+                ui::set_text(&r.busy, &v.busy);
+                ui::set_text(&r.rss, &v.rss);
+            },
+            |r| &r.row,
+        );
+    }
+}
+
+/// One iGPU process row's texts.
+#[derive(Debug, Clone, PartialEq)]
+struct GpuProcView {
+    name: String,
+    subtitle: String,
+    busy: String,
+    rss: String,
+}
+
+fn gpu_proc_view(p: &GpuProc) -> GpuProcView {
+    GpuProcView {
+        name: if p.name.is_empty() {
+            p.pid.to_string()
+        } else {
+            p.name.clone()
+        },
+        subtitle: if p.engine.is_empty() {
+            format!("{}", p.pid)
+        } else {
+            format!("{} · {}", p.pid, p.engine)
+        },
+        busy: format!("{:.0}%", p.busy),
+        rss: fmt_kb(p.resident_kb),
+    }
+}
+
+/// An iGPU process row, kept across polls and updated in place.
+struct GpuProcRow {
+    row: gtk::ListBoxRow,
+    text: ui::LiveTitle,
+    busy: gtk::Label,
+    rss: gtk::Label,
+}
+
+fn gpu_proc_row() -> GpuProcRow {
+    let text = ui::live_title_block();
+    let busy = ui::value_label("", 5, "");
+    let rss = ui::value_label("", 7, "");
+    let body = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(10)
+        .build();
+    body.append(&text.block);
+    body.append(&busy);
+    body.append(&rss);
+    GpuProcRow {
+        row: ui::plain_row(&body),
+        text,
+        busy,
+        rss,
     }
 }
 

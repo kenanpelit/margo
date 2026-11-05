@@ -231,7 +231,12 @@ impl Component for DrivesTabModel {
 
     fn update_cmd(&mut self, msg: Self::CommandOutput, _s: ComponentSender<Self>, _r: &Self::Root) {
         match msg {
-            DrivesTabCmd::Sys(d) => self.drives = d,
+            DrivesTabCmd::Sys(d) => {
+                // Same drives at the same temperatures: nothing to redraw.
+                if !ui::replace_if_changed(&mut self.drives, d) {
+                    return;
+                }
+            }
             DrivesTabCmd::Unprivileged(None) => self.smart = SmartState::NoTool,
             DrivesTabCmd::Unprivileged(Some((devices, reads))) => {
                 self.devices = devices;
