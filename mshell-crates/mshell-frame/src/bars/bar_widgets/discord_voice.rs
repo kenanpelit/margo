@@ -10,7 +10,7 @@ use crate::discord;
 use mshell_utils::discord::{DiscordState, DiscordStatus, pill_label};
 use relm4::gtk::Orientation;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
-use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use relm4::{Component, ComponentParts, ComponentSender, RelmWidgetExt, gtk};
 
 pub(crate) struct DiscordVoiceModel {
     state: DiscordState,
@@ -46,12 +46,9 @@ impl Component for DiscordVoiceModel {
     view! {
         #[root]
         gtk::Box {
+            add_css_class: "discord-voice-bar-widget",
             #[watch]
-            set_css_classes: if model.state.in_voice() {
-                &["discord-voice-bar-widget", "active"]
-            } else {
-                &["discord-voice-bar-widget"]
-            },
+            set_class_active: ("active", model.state.in_voice()),
             set_hexpand: model._orientation == Orientation::Vertical,
             set_vexpand: model._orientation == Orientation::Horizontal,
             set_halign: gtk::Align::Center,

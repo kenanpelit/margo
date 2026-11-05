@@ -12,6 +12,7 @@
 pub(crate) mod auto_dnd;
 pub(crate) mod monitor;
 
+use crate::bars::pill_classes::PillClasses;
 use monitor::PrivacyLive;
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
@@ -58,8 +59,9 @@ impl Component for PrivacyModel {
     view! {
         #[root]
         gtk::Box {
+            set_css_classes: &["ok-button-surface", "ok-bar-widget", "privacy-bar-widget"],
             #[watch]
-            set_css_classes: &model.root_classes(),
+            set_state_classes: (&state_class_set(), &model.state_classes()),
             set_halign: gtk::Align::Center,
             set_valign: gtk::Align::Center,
             set_has_tooltip: true,
@@ -170,18 +172,23 @@ impl PrivacyModel {
         active || !self.hide_inactive
     }
 
-    fn root_classes(&self) -> Vec<&'static str> {
-        let mut classes = vec![
-            "ok-button-surface",
-            "ok-bar-widget",
-            "privacy-bar-widget",
-            self.accent_class,
-        ];
+    /// The root's state classes: the accent variant, plus `active` while a
+    /// sensor is in use. Toggled with `set_state_classes` so the
+    /// `.bar-pill-std` class `bar.rs` adds survives a state change.
+    fn state_classes(&self) -> Vec<&'static str> {
+        let mut classes = vec![self.accent_class];
         if self.live.is_active() {
             classes.push("active");
         }
         classes
     }
+}
+
+/// Every state class the root may carry (see `PrivacyModel::state_classes`).
+fn state_class_set() -> Vec<&'static str> {
+    let mut all: Vec<&'static str> = PrivacyAccent::all().iter().map(|a| a.css_class()).collect();
+    all.push("active");
+    all
 }
 
 // ── View helpers ─────────────────────────────────────────────────────────

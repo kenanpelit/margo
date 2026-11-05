@@ -178,7 +178,25 @@ hits=$(find mshell-crates/mshell-frame/src -name '*.rs' 2>/dev/null \
         }' || true)
 report "L12" "icon-only view! button without an accessible name (update_property Label + tooltip)" "$hits"
 
+# L13 — no `#[watch] set_css_classes` on a bar pill's root widget: it
+# replaces the whole class list on every update and drops the
+# `.bar-pill-std` class bar.rs adds after init. Toggle state classes with
+# `#[watch] set_class_active: (…)` or `pill_classes::set_state_classes`.
+# The root's own properties are the lines between `#[root]` and its first
+# child widget / named child.
+hits=$(find mshell-crates/mshell-frame/src/bars/bar_widgets -name '*.rs' 2>/dev/null \
+    | xargs awk '
+        FNR == 1 { state = 0; watch = 0 }
+        /#\[root\]/ { state = 1; watch = 0; next }
+        state == 1 && /\{[[:space:]]*$/ { state = 2; next }
+        state == 2 && (/^[[:space:]]*#\[(name|local_ref|template)/ || /^[[:space:]]*[A-Za-z_:]+[[:space:]]*\{[[:space:]]*$/) { state = 0 }
+        state == 2 {
+            if ($0 ~ /set_css_classes/ && watch) print FILENAME ":" FNR
+            watch = ($0 ~ /#\[watch\]/)
+        }' || true)
+report "L13" "#[watch] set_css_classes on a bar pill root (drops .bar-pill-std; use set_class_active)" "$hits"
+
 if [ "$fail" -ne 0 ]; then
     exit 1
 fi
-echo "design-lint OK: L1–L7, L10–L12 clean."
+echo "design-lint OK: L1–L7, L10–L13 clean."

@@ -8,7 +8,7 @@
 use crate::ssh;
 use relm4::gtk::Orientation;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, OrientableExt, WidgetExt};
-use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use relm4::{Component, ComponentParts, ComponentSender, RelmWidgetExt, gtk};
 use std::time::Duration;
 
 const POLL: Duration = Duration::from_secs(10);
@@ -52,12 +52,9 @@ impl Component for SshSessionsModel {
         #[root]
         #[name = "root"]
         gtk::Box {
+            add_css_class: "ssh-sessions-bar-widget",
             #[watch]
-            set_css_classes: if model.active > 0 {
-                &["ssh-sessions-bar-widget", "active"]
-            } else {
-                &["ssh-sessions-bar-widget"]
-            },
+            set_class_active: ("active", model.active > 0),
             set_hexpand: model._orientation == Orientation::Vertical,
             set_vexpand: model._orientation == Orientation::Horizontal,
             set_halign: gtk::Align::Center,

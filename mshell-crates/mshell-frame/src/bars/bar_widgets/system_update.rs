@@ -9,6 +9,7 @@
 //! panel, and the launcher all share one implementation.
 
 use crate::system_update::LAST_PROBE_SECS;
+use crate::bars::pill_classes::PillClasses;
 use crate::system_update::{self, ProbeConfig, Source, UpdateReport};
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
@@ -78,8 +79,9 @@ impl Component for SystemUpdateModel {
         #[root]
         #[name = "root"]
         gtk::Box {
+            set_css_classes: &["ok-button-surface", "ok-bar-widget", "system-update-bar-widget"],
             #[watch]
-            set_css_classes: &css_classes(model.report.as_ref()),
+            set_state_classes: (STATE_CLASSES, state_classes(model.report.as_ref())),
             set_hexpand: model._orientation == Orientation::Vertical,
             set_vexpand: model._orientation == Orientation::Horizontal,
             set_halign: gtk::Align::Center,
@@ -319,18 +321,16 @@ fn count_of(report: Option<&UpdateReport>) -> usize {
     report.map(|r| r.total()).unwrap_or(0)
 }
 
-fn css_classes(report: Option<&UpdateReport>) -> Vec<&'static str> {
-    let mut classes = vec![
-        "ok-button-surface",
-        "ok-bar-widget",
-        "system-update-bar-widget",
-    ];
+/// The root's state classes (toggled with `set_state_classes`, so the
+/// `.bar-pill-std` class `bar.rs` adds survives a state change).
+const STATE_CLASSES: &[&str] = &["error", "has-updates"];
+
+fn state_classes(report: Option<&UpdateReport>) -> &'static [&'static str] {
     match report {
-        Some(r) if r.error.is_some() => classes.push("error"),
-        Some(r) if r.total() > 0 => classes.push("has-updates"),
-        _ => {}
+        Some(r) if r.error.is_some() => &["error"],
+        Some(r) if r.total() > 0 => &["has-updates"],
+        _ => &[],
     }
-    classes
 }
 
 fn icon_for(report: Option<&UpdateReport>) -> &'static str {

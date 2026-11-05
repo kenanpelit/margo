@@ -11,7 +11,7 @@ use futures::StreamExt;
 use mshell_idle::inhibitor::IdleInhibitor;
 use relm4::gtk::Orientation;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, OrientableExt, WidgetExt};
-use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use relm4::{Component, ComponentParts, ComponentSender, RelmWidgetExt, gtk};
 use std::time::Duration;
 
 pub(crate) struct KeepAwakeModel {
@@ -54,12 +54,9 @@ impl Component for KeepAwakeModel {
         #[root]
         #[name = "root"]
         gtk::Box {
+            add_css_class: "keep-awake-bar-widget",
             #[watch]
-            set_css_classes: if model.active {
-                &["keep-awake-bar-widget", "active"]
-            } else {
-                &["keep-awake-bar-widget"]
-            },
+            set_class_active: ("active", model.active),
             set_hexpand: model._orientation == Orientation::Vertical,
             set_vexpand: model._orientation == Orientation::Horizontal,
             set_halign: gtk::Align::Center,

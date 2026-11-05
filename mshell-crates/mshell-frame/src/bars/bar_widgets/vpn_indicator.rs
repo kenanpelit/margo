@@ -30,7 +30,7 @@
 
 use relm4::gtk::Orientation;
 use relm4::gtk::prelude::{ButtonExt, WidgetExt};
-use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use relm4::{Component, ComponentParts, ComponentSender, RelmWidgetExt, gtk};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -56,27 +56,6 @@ pub(crate) struct VpnIndicatorInit {
     pub(crate) orientation: Orientation,
 }
 
-impl VpnIndicatorModel {
-    /// Root CSS classes; adds `.connected` while a tunnel is up so the
-    /// glyph tints `--primary` (DESIGN.md §3).
-    fn css_classes(&self) -> &'static [&'static str] {
-        if self.up {
-            &[
-                "vpn-indicator-bar-widget",
-                "ok-button-surface",
-                "ok-bar-widget",
-                "connected",
-            ]
-        } else {
-            &[
-                "vpn-indicator-bar-widget",
-                "ok-button-surface",
-                "ok-bar-widget",
-            ]
-        }
-    }
-}
-
 #[relm4::component(pub)]
 impl Component for VpnIndicatorModel {
     type CommandOutput = ();
@@ -91,8 +70,13 @@ impl Component for VpnIndicatorModel {
             // §3 active-state tinting — a live tunnel adds the
             // `.connected` class so the glyph tints `--primary`
             // (SCSS in `_vpn_indicator.scss`).
+            set_css_classes: &[
+                "vpn-indicator-bar-widget",
+                "ok-button-surface",
+                "ok-bar-widget",
+            ],
             #[watch]
-            set_css_classes: model.css_classes(),
+            set_class_active: ("connected", model.up),
             set_hexpand: model._orientation == Orientation::Vertical,
             set_vexpand: model._orientation == Orientation::Horizontal,
             set_halign: gtk::Align::Center,

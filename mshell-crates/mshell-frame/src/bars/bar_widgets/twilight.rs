@@ -10,7 +10,7 @@
 use crate::twilight::{self, TwilightStatus};
 use relm4::gtk::Orientation;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, OrientableExt, WidgetExt};
-use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use relm4::{Component, ComponentParts, ComponentSender, RelmWidgetExt, gtk};
 use std::time::Duration;
 
 const POLL: Duration = Duration::from_secs(5);
@@ -55,12 +55,9 @@ impl Component for TwilightModel {
         #[root]
         #[name = "root"]
         gtk::Box {
+            add_css_class: "twilight-bar-widget",
             #[watch]
-            set_css_classes: if model.status.enabled {
-                &["twilight-bar-widget", "active"]
-            } else {
-                &["twilight-bar-widget"]
-            },
+            set_class_active: ("active", model.status.enabled),
             set_hexpand: model._orientation == Orientation::Vertical,
             set_vexpand: model._orientation == Orientation::Horizontal,
             set_halign: gtk::Align::Center,

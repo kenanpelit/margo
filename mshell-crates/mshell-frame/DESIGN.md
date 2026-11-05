@@ -332,9 +332,13 @@ A bar pill is a thin status chip that lives in a bar slot. It must:
    in-memory state**, not persisted.
 4. Multi-metric clusters carry the `severity_class` on the inner
    cluster Box (so label + icon tint together), not the outer pill.
-5. Tooltip = at-a-glance summary + the interaction hints
+5. State classes on the root (`active`, `connected`, `error`, …) are
+   toggled one at a time — `#[watch] set_class_active: ("active", cond)`
+   or `set_state_classes` — never by a `#[watch] set_css_classes`, which
+   would drop the `.bar-pill-std` class `bar.rs` adds (lint L13).
+6. Tooltip = at-a-glance summary + the interaction hints
    ("Click: open …  ·  Right-click: …").
-6. Icons are symbolic (`*-symbolic`). Volume/mic/bluetooth/battery
+7. Icons are symbolic (`*-symbolic`). Volume/mic/bluetooth/battery
    pick the icon by level/state via the `mshell_utils` helpers.
 
 Settling on whether a pill *opens a menu*: if yes it's registered as
@@ -1151,6 +1155,7 @@ NOT appear" with the grep that finds it.
 | L10 | hard | No hardcoded colour in mshell **Rust** (§1) | `RGBA::new(<literal>`, a `"#rrggbb[aa]"` literal or cairo `set_source_rgb[a](<literals>)` outside `mshell-matugen` / `mshell-style`. Exceptions: unit tests, comments, and a same-line `// design-lint: allow-colour <why>` marker for colours that must not theme (a neutral scrim over arbitrary screen content, a value written to another tool's config). Read theme colours from CSS instead. |
 | L11 | hard | No hand-rolled XDG base-dir lookup in mshell Rust | `env::var[_os]("XDG_{CONFIG,DATA,STATE,CACHE}_HOME" / "XDG_RUNTIME_DIR")` outside `margo-fs`. Use `margo_fs::xdg` (one rule for margo and mshell; see docs/config-conventions.md §1). Exceptions: unit tests, comments, a `// design-lint: allow-xdg <why>` marker on the line above (testable `_from(var, home)` seams). |
 | L12 | hard | Icon-only buttons have an accessible name (§13.8) | `Button::from_icon_name(` in mshell-frame with no `mshell_common::a11y::name(&btn, …)` within 8 lines, and a view! `gtk::Button { … gtk::Image … }` block with no text child, tooltip or `update_property: &[gtk::accessible::Property::Label(…)]`. Bar pills are named centrally (`a11y::name_pill` with the pill's display name in `bar.rs`). Exception: a same-line `// design-lint: allow-unnamed <why>`. |
+| L13 | hard | A bar pill root never re-applies its whole class list (§4) | `#[watch] set_css_classes` among a `bars/bar_widgets` view's `#[root]` properties: it replaces every class on each update and drops the `.bar-pill-std` class `bar.rs` adds after init (the pill then loses the standard height / hover / islands surface after its first state change). Toggle state classes instead: `#[watch] set_class_active: ("active", cond)`, or `bars::pill_classes::PillClasses::set_state_classes` for a set. |
 
 "hard" = fails CI; "warn" = reported, doesn't block. Every hard rule's
 grep is written so a clean tree returns **zero** matches — if it

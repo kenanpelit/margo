@@ -10,7 +10,7 @@
 use crate::removable_drives::{self, DrivesState};
 use relm4::gtk::Orientation;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, OrientableExt, WidgetExt};
-use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use relm4::{Component, ComponentParts, ComponentSender, RelmWidgetExt, gtk};
 
 pub(crate) struct UsbModel {
     state: DrivesState,
@@ -50,12 +50,9 @@ impl Component for UsbModel {
         #[root]
         #[name = "root"]
         gtk::Box {
+            add_css_class: "usb-bar-widget",
             #[watch]
-            set_css_classes: if model.state.drives.iter().any(|d| d.any_mounted()) {
-                &["usb-bar-widget", "active"]
-            } else {
-                &["usb-bar-widget"]
-            },
+            set_class_active: ("active", model.state.drives.iter().any(|d| d.any_mounted())),
             #[watch]
             set_visible: model.state.available && !model.state.drives.is_empty(),
             set_hexpand: model._orientation == Orientation::Vertical,
