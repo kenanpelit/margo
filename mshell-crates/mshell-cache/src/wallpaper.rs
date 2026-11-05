@@ -13,6 +13,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, mpsc};
+use std::time::{Duration, Instant};
 use tracing::{info, warn};
 
 // ── Cache paths ──────────────────────────────────────────────────────────────
@@ -29,7 +30,10 @@ pub fn source_path() -> PathBuf {
 /// The displayed (screen-sized, theme-filtered) wallpaper on disk:
 /// `[u32 LE width][u32 LE height][RGBA pixels]`. mshell itself never reads it
 /// back; it is the hand-off to `mlogind`'s greeter-backdrop sync
-/// (`mlogind/src/theme_sync.rs`), which blurs a copy for `mgreet`.
+/// (`mlogind/src/theme_sync.rs`), which blurs a copy for `mgreet` when a
+/// session starts and ends. An automatic rotation is therefore not written
+/// at once (see [`Persisted`]): it waits for the next lock or quit
+/// ([`flush_display_cache`]), at most [`MAX_DEFERRED`].
 fn display_cache_path() -> PathBuf {
     cache_dir().join("wallpaper.raw")
 }
@@ -197,6 +201,11 @@ pub fn current_wallpaper_image() -> Option<WallpaperImage> {
 /// Set a new wallpaper from a source image. Copies it to the cache dir
 /// and applies the current theme filter if enabled.
 pub fn set_wallpaper(path: &Path) {
+    set_wallpaper_from(path, Origin::User);
+}
+
+/// [`set_wallpaper`] for a change the user didn't ask for just now.
+fn set_wallpaper_from(path: &Path, origin: Origin) {
     info!("set wallpaper to {}", path.display());
     let dir = cache_dir();
     fs::create_dir_all(&dir).ok();
@@ -212,6 +221,9 @@ pub fn set_wallpaper(path: &Path) {
         let _ = fs::write(current_path_file(), p);
     }
 
+    if origin == Origin::Rotation {
+        NEXT_IS_ROTATION.store(true, Ordering::SeqCst);
+    }
     refilter();
 }
 
@@ -444,6 +456,18 @@ fn list_wallpapers_in(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
 /// Step the wallpaper in the given direction within `wallpaper_dir`
 /// and apply it. No-op when the directory has no images.
 pub fn cycle_wallpaper(direction: CycleDirection) {
+    cycle_wallpaper_from(direction, Origin::User);
+}
+
+/// The automatic rotation's step: like [`cycle_wallpaper`], but the new
+/// image is not written for the greeter until the next lock or quit (at
+/// most 30 minutes later), so a rotation every few minutes doesn't rewrite
+/// a screen-sized raw file each time.
+pub fn rotate_wallpaper(direction: CycleDirection) {
+    cycle_wallpaper_from(direction, Origin::Rotation);
+}
+
+fn cycle_wallpaper_from(direction: CycleDirection, origin: Origin) {
     let list = list_wallpapers();
     if list.is_empty() {
         return;
@@ -459,7 +483,7 @@ pub fn cycle_wallpaper(direction: CycleDirection) {
         .unwrap_or(0);
     let target_idx = cycle_target(current_idx, list.len(), direction, nanos);
 
-    set_wallpaper(&list[target_idx]);
+    set_wallpaper_from(&list[target_idx], origin);
 }
 
 /// The index to step to in a `len`-long (non-empty) list from `current`, the
@@ -492,7 +516,10 @@ fn cycle_target(
 /// Clear the wallpaper entirely.
 pub fn clear_wallpaper() {
     fs::remove_file(source_path()).ok();
-    fs::remove_file(display_cache_path()).ok();
+    if let Ok(mut p) = PERSISTED.lock() {
+        *p = Persisted::default();
+        fs::remove_file(display_cache_path()).ok();
+    }
     if let Ok(mut inner) = WALLPAPER_INNER.lock() {
         inner.cancel_token.store(true, Ordering::Relaxed);
         inner.image = None;
@@ -511,6 +538,9 @@ pub fn has_wallpaper() -> bool {
 /// (the three config effects all fire on creation; a theme switch can flip
 /// several keys at once) collapses into one decode.
 static REFILTER_QUEUED: AtomicBool = AtomicBool::new(false);
+
+/// Set by [`rotate_wallpaper`]: the next refilter shows a rotated image.
+static NEXT_IS_ROTATION: AtomicBool = AtomicBool::new(false);
 
 /// Schedule a re-decode of the current wallpaper with the current filter
 /// settings. Debounced to one run per main-loop idle. Never touches
@@ -533,6 +563,7 @@ struct Job {
     /// Monitor sizes in device pixels; the decode covers the largest.
     targets: Vec<(u32, u32)>,
     cancel: Arc<AtomicBool>,
+    origin: Origin,
 }
 
 /// The single wallpaper worker thread. Jobs queue on the channel; the worker
@@ -599,11 +630,17 @@ fn start_refilter() {
         inner.cancel_token = cancel.clone();
     }
 
+    let origin = if NEXT_IS_ROTATION.swap(false, Ordering::SeqCst) {
+        Origin::Rotation
+    } else {
+        Origin::User
+    };
     let job = Job {
         path,
         filter: should_filter.then_some((theme, strength)),
         targets: monitor_pixel_sizes(),
         cancel,
+        origin,
     };
     if let Some(tx) = WORKER.as_ref()
         && tx.send(job).is_err()
@@ -620,6 +657,7 @@ fn run_job(job: Job) {
         filter,
         targets,
         cancel,
+        origin,
     } = job;
     if cancel.load(Ordering::Relaxed) {
         return;
@@ -672,36 +710,134 @@ fn run_job(job: Job) {
         bump_revision();
     });
 
-    persist_if_changed(width, height, &bytes);
+    if let Ok(mut p) = PERSISTED.lock() {
+        p.offer(
+            width,
+            height,
+            bytes,
+            origin,
+            Instant::now(),
+            &mut write_display_cache,
+        );
+    }
 }
 
 // ── Disk persistence ─────────────────────────────────────────────────────────
 // Format: [u32 LE width][u32 LE height][width*height*4 bytes RGBA]
 
-/// Hash of the pixels last written to [`display_cache_path`], so a refilter
-/// that produces the same image (a theme switch with the filter off, a
-/// monitor hotplug) doesn't rewrite the file.
-static LAST_PERSISTED: Mutex<Option<u64>> = Mutex::new(None);
+/// Why a new image is on screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Origin {
+    /// Picked, refiltered, or shown at start: write it for the greeter now.
+    User,
+    /// The automatic rotation: the write can wait (see [`Persisted`]).
+    Rotation,
+}
+
+/// The longest a rotated image goes unwritten. The next lock or quit
+/// writes it sooner; this bounds how stale the greeter's copy can be when
+/// the machine is rebooted or powered off without either.
+const MAX_DEFERRED: Duration = Duration::from_secs(30 * 60);
+
+/// Whether an image from `origin` is written now, `since_write` after the
+/// last write (`None` = nothing written yet).
+fn write_now(origin: Origin, since_write: Option<Duration>) -> bool {
+    match origin {
+        Origin::User => true,
+        Origin::Rotation => since_write.is_none_or(|d| d >= MAX_DEFERRED),
+    }
+}
+
+/// What reached [`display_cache_path`], and a rotated image waiting for it.
+///
+/// The file only matters when `mlogind` reads it, at the start and end of
+/// a session. Writing every rotation (5 minutes by default) rewrote a
+/// screen-sized raw file 12 times an hour, about 4 GB a day of SSD writes,
+/// for one read per login.
+#[derive(Default)]
+struct Persisted {
+    /// Hash of the pixels last written, so an identical image (a theme
+    /// switch with the filter off, a monitor hotplug) isn't rewritten.
+    last_hash: Option<u64>,
+    last_write: Option<Instant>,
+    /// A rotated image not written yet. `glib::Bytes` is the texture's own
+    /// buffer, shared, not a copy.
+    pending: Option<(u32, u32, glib::Bytes)>,
+}
+
+static PERSISTED: LazyLock<Mutex<Persisted>> = LazyLock::new(Mutex::default);
+
+impl Persisted {
+    /// A new image is on screen: write it now or keep it for [`Self::flush`].
+    fn offer(
+        &mut self,
+        width: u32,
+        height: u32,
+        rgba: glib::Bytes,
+        origin: Origin,
+        now: Instant,
+        write: &mut impl FnMut(u32, u32, &[u8]) -> std::io::Result<()>,
+    ) {
+        let since = self.last_write.map(|t| now.saturating_duration_since(t));
+        if write_now(origin, since) {
+            self.pending = None;
+            self.write(width, height, &rgba, now, write);
+        } else {
+            self.pending = Some((width, height, rgba));
+        }
+    }
+
+    /// Write the image a rotation left pending, if any.
+    fn flush(
+        &mut self,
+        now: Instant,
+        write: &mut impl FnMut(u32, u32, &[u8]) -> std::io::Result<()>,
+    ) {
+        if let Some((width, height, rgba)) = self.pending.take() {
+            self.write(width, height, &rgba, now, write);
+        }
+    }
+
+    fn write(
+        &mut self,
+        width: u32,
+        height: u32,
+        rgba: &[u8],
+        now: Instant,
+        write: &mut impl FnMut(u32, u32, &[u8]) -> std::io::Result<()>,
+    ) {
+        let hash = image_hash(width, height, rgba);
+        if self.last_hash == Some(hash) {
+            return;
+        }
+        match write(width, height, rgba) {
+            Ok(()) => {
+                self.last_hash = Some(hash);
+                self.last_write = Some(now);
+            }
+            Err(e) => warn!("failed to persist wallpaper: {e}"),
+        }
+    }
+}
+
+/// Write a rotated wallpaper that is still waiting for the greeter's copy.
+/// Call when the session locks and before the shell quits. Blocking (one
+/// screen-sized file write); a no-op when nothing is pending.
+pub fn flush_display_cache() {
+    if let Ok(mut p) = PERSISTED.lock() {
+        p.flush(Instant::now(), &mut write_display_cache);
+    }
+}
+
+fn write_display_cache(width: u32, height: u32, rgba: &[u8]) -> std::io::Result<()> {
+    write_raw_atomic(&display_cache_path(), width, height, rgba)
+}
 
 fn image_hash(width: u32, height: u32, rgba: &[u8]) -> u64 {
     let mut hasher = std::hash::DefaultHasher::new();
     (width, height).hash(&mut hasher);
     rgba.hash(&mut hasher);
     hasher.finish()
-}
-
-fn persist_if_changed(width: u32, height: u32, rgba: &[u8]) {
-    let hash = image_hash(width, height, rgba);
-    let Ok(mut last) = LAST_PERSISTED.lock() else {
-        return;
-    };
-    if *last == Some(hash) {
-        return;
-    }
-    match write_raw_atomic(&display_cache_path(), width, height, rgba) {
-        Ok(()) => *last = Some(hash),
-        Err(e) => warn!("failed to persist wallpaper: {e}"),
-    }
 }
 
 /// Write the raw `[w][h][RGBA]` file via a temp file + rename, so a reader
@@ -766,6 +902,109 @@ mod tests {
                 assert!(scale <= 1.0 || (w, h) == (sw, sh), "{sw}x{sh} -> {w}x{h}");
             }
         }
+    }
+
+    /// Records each write's first pixel byte.
+    fn recorder(log: &mut Vec<u8>) -> impl FnMut(u32, u32, &[u8]) -> std::io::Result<()> + '_ {
+        move |_, _, rgba| {
+            log.push(rgba[0]);
+            Ok(())
+        }
+    }
+
+    fn image(fill: u8) -> glib::Bytes {
+        glib::Bytes::from_owned(vec![fill; 2 * 2 * 4])
+    }
+
+    #[test]
+    fn rotations_wait_for_a_lock_and_user_changes_write_at_once() {
+        let t0 = Instant::now();
+        let min = |m: u64| t0 + Duration::from_secs(m * 60);
+        let mut log = Vec::new();
+        let mut p = Persisted::default();
+        // Start-up / a picked wallpaper: written now.
+        p.offer(2, 2, image(1), Origin::User, t0, &mut recorder(&mut log));
+        assert_eq!(log, [1]);
+        // Two rotations without a lock: nothing written.
+        p.offer(
+            2,
+            2,
+            image(2),
+            Origin::Rotation,
+            min(5),
+            &mut recorder(&mut log),
+        );
+        p.offer(
+            2,
+            2,
+            image(3),
+            Origin::Rotation,
+            min(10),
+            &mut recorder(&mut log),
+        );
+        assert_eq!(log, [1]);
+        // The lock writes the newest one, once.
+        p.flush(min(11), &mut recorder(&mut log));
+        p.flush(min(12), &mut recorder(&mut log));
+        assert_eq!(log, [1, 3]);
+        // A rotation long after the last write goes straight out.
+        p.offer(
+            2,
+            2,
+            image(4),
+            Origin::Rotation,
+            min(45),
+            &mut recorder(&mut log),
+        );
+        assert_eq!(log, [1, 3, 4]);
+        // A user change drops a pending rotation and writes itself.
+        p.offer(
+            2,
+            2,
+            image(5),
+            Origin::Rotation,
+            min(50),
+            &mut recorder(&mut log),
+        );
+        p.offer(
+            2,
+            2,
+            image(6),
+            Origin::User,
+            min(51),
+            &mut recorder(&mut log),
+        );
+        p.flush(min(52), &mut recorder(&mut log));
+        assert_eq!(log, [1, 3, 4, 6]);
+        // The same pixels again are not rewritten.
+        p.offer(
+            2,
+            2,
+            image(6),
+            Origin::User,
+            min(53),
+            &mut recorder(&mut log),
+        );
+        assert_eq!(log, [1, 3, 4, 6]);
+    }
+
+    #[test]
+    fn a_failed_write_is_retried_by_the_next_change() {
+        let t0 = Instant::now();
+        let mut p = Persisted::default();
+        let mut fail = |_: u32, _: u32, _: &[u8]| Err(std::io::Error::other("disk full"));
+        p.offer(2, 2, image(1), Origin::User, t0, &mut fail);
+        let mut log = Vec::new();
+        // Nothing was written, so a rotation isn't deferred behind it.
+        p.offer(
+            2,
+            2,
+            image(1),
+            Origin::Rotation,
+            t0,
+            &mut recorder(&mut log),
+        );
+        assert_eq!(log, [1]);
     }
 
     #[test]

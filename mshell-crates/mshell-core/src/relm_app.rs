@@ -1,7 +1,7 @@
 use crate::ipc::init_ipc_shell_service;
 use crate::monitors;
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
-use mshell_cache::wallpaper::{CycleDirection, cycle_wallpaper};
+use mshell_cache::wallpaper::{CycleDirection, rotate_wallpaper};
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
     BarsStoreFields, ConfigStoreFields, DockStoreFields, FrameStoreFields, GeneralStoreFields,
@@ -1084,7 +1084,7 @@ impl Component for Shell {
 /// Drive the automatic wallpaper rotation.
 ///
 /// Runs on the GTK main loop (not a tokio task) so config reads
-/// and `cycle_wallpaper` — which kicks glib work — happen on the
+/// and `rotate_wallpaper` — which kicks glib work — happen on the
 /// right thread. Wakes every 30 s and rotates once the configured
 /// interval has elapsed; while rotation is disabled it keeps the
 /// elapsed clock fresh so re-enabling doesn't fire immediately.
@@ -1121,7 +1121,7 @@ fn spawn_wallpaper_rotation_timer() {
                     WallpaperRotationMode::Random => CycleDirection::Random,
                     WallpaperRotationMode::Sequential => CycleDirection::Next,
                 };
-                cycle_wallpaper(direction);
+                rotate_wallpaper(direction);
                 last_rotation.set(Instant::now());
             }
         } else {

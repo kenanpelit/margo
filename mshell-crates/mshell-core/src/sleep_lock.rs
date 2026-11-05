@@ -73,6 +73,11 @@ pub fn spawn() {
         let mut locked = margo_service().session_locked.watch();
         while let Some(state) = locked.next().await {
             set_compositor_locked(state);
+            if state == Some(true) {
+                // A rotated wallpaper waits for the lock to be written for
+                // the login screen (mshell_cache::wallpaper).
+                tokio::task::spawn_blocking(mshell_cache::wallpaper::flush_display_cache);
+            }
         }
     });
     tokio::spawn(async {

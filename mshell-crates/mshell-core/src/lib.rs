@@ -574,6 +574,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     // Settings changes are persisted with a short debounce; write anything
     // still queued before the process exits.
     mshell_config::config_manager::config_manager().flush();
+    // And the rotated wallpaper the login screen hasn't got yet.
+    mshell_cache::wallpaper::flush_display_cache();
     info!("Goodbye!");
 
     Ok(())
