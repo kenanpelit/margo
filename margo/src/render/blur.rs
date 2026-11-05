@@ -113,6 +113,87 @@ pub fn mip_size(region_w: i32, region_h: i32, level: i32) -> (i32, i32) {
     (w.max(1), h.max(1))
 }
 
+/// How many consecutive draws a pool slot may sit at more than twice the
+/// area it is used for before it is shrunk to the size in use.
+pub const SHRINK_AFTER_DRAWS: u32 = 120;
+
+/// What to do with a pool slot of `slot` size asked to hold `want`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SlotPlan {
+    /// Keep the texture; carry the new over-size streak.
+    Keep { oversized_draws: u32 },
+    /// Re-allocate the texture at this size.
+    Resize(i32, i32),
+}
+
+/// Pool slot sizing: grow to fit, and give memory back once a slot has
+/// been far larger than needed for [`SHRINK_AFTER_DRAWS`] draws in a row.
+pub fn plan_slot(slot: (i32, i32), want: (i32, i32), oversized_draws: u32) -> SlotPlan {
+    if slot.0 < want.0 || slot.1 < want.1 {
+        // Grow to the larger of both on each axis, so a wide bar and a
+        // tall window in the same frame don't re-allocate in turn.
+        return SlotPlan::Resize(slot.0.max(want.0), slot.1.max(want.1));
+    }
+    let slot_area = i64::from(slot.0) * i64::from(slot.1);
+    let want_area = i64::from(want.0) * i64::from(want.1);
+    if want_area * 2 >= slot_area {
+        return SlotPlan::Keep { oversized_draws: 0 };
+    }
+    let streak = oversized_draws.saturating_add(1);
+    if streak >= SHRINK_AFTER_DRAWS {
+        SlotPlan::Resize(want.0, want.1)
+    } else {
+        SlotPlan::Keep {
+            oversized_draws: streak,
+        }
+    }
+}
+
+/// How long the pool may sit unused before its textures are freed.
+pub const POOL_IDLE_RELEASE: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Whether a pool last used at `last_use` should be freed at `now`.
+pub fn pool_idle(last_use: Option<std::time::Instant>, now: std::time::Instant) -> bool {
+    last_use.is_some_and(|t| now.saturating_duration_since(t) >= POOL_IDLE_RELEASE)
+}
+
+/// Delay for the single idle-pool cleanup timer. A timer must release
+/// scratch textures even when the output stops rendering altogether.
+fn cleanup_delay(
+    last_use: Option<std::time::Instant>,
+    armed: bool,
+    now: std::time::Instant,
+) -> Option<std::time::Duration> {
+    if armed {
+        return None;
+    }
+    last_use.map(|t| POOL_IDLE_RELEASE.saturating_sub(now.saturating_duration_since(t)))
+}
+
+/// Claim the one cleanup timer, when needed. No timer exists while blur
+/// has never run or its pool is already empty.
+pub fn next_cleanup_delay() -> Option<std::time::Duration> {
+    CACHED.with(|slot| {
+        let mut borrow = slot.borrow_mut();
+        let gl = borrow.ready_mut()?;
+        if gl.pool.is_empty() {
+            return None;
+        }
+        let delay = cleanup_delay(gl.last_use, gl.cleanup_armed, std::time::Instant::now())?;
+        gl.cleanup_armed = true;
+        Some(delay)
+    })
+}
+
+/// Release ownership after the timer fired (or insertion failed).
+pub fn cleanup_timer_finished() {
+    CACHED.with(|slot| {
+        if let Some(gl) = slot.borrow_mut().ready_mut() {
+            gl.cleanup_armed = false;
+        }
+    });
+}
+
 /// Lazily-compiled GL programs + a small per-renderer FBO/texture pool
 /// for the ping-pong chain. Cached thread-local, mirroring the
 /// `shadow::shader` pattern (the renderer lives on a single thread).
@@ -127,8 +208,14 @@ struct BlurGl {
     /// Pool of (texture, fbo) pairs reused across frames. Index 0 is
     /// the captured background; the rest are the down/up mip chain.
     /// Each entry tracks its current allocated size so we only
-    /// re-`TexImage2D` when the region grows.
+    /// re-`TexImage2D` when the region grows, or shrinks for good
+    /// ([`plan_slot`]); the whole pool is freed after
+    /// [`POOL_IDLE_RELEASE`] without a blur pass ([`release_idle_pool`]).
     pool: Vec<PoolTex>,
+    /// When a blur pass last used the pool.
+    last_use: Option<std::time::Instant>,
+    /// One idle cleanup timer, independent of output frame scheduling.
+    cleanup_armed: bool,
     /// Fullscreen-quad vertex buffer (two triangles, NDC).
     quad_vbo: ffi::types::GLuint,
     /// FBO the last up pass renders through into a per-element
@@ -141,6 +228,8 @@ struct PoolTex {
     fbo: ffi::types::GLuint,
     w: i32,
     h: i32,
+    /// Consecutive uses at under half its area ([`plan_slot`]).
+    oversized_draws: u32,
 }
 
 thread_local! {
@@ -197,6 +286,45 @@ pub fn shader(renderer: &mut GlesRenderer) -> Option<BlurReady> {
     })
 }
 
+/// Free the blur scratch textures once no blur pass has run for
+/// [`POOL_IDLE_RELEASE`]: one full-output blur sizes the pool to the
+/// output (about 35 MB at 1440p with the mip chain), which would otherwise
+/// stay allocated for the session. Cheap when there is nothing to free
+/// (a thread-local check); call it once per rendered frame.
+pub fn release_idle_pool(renderer: &mut GlesRenderer) {
+    let idle = CACHED.with(|slot| {
+        slot.borrow_mut().ready_mut().is_some_and(|gl| {
+            !gl.pool.is_empty() && pool_idle(gl.last_use, std::time::Instant::now())
+        })
+    });
+    if !idle {
+        return;
+    }
+    // SAFETY: `with_context` makes the renderer's GL context current; the
+    // pool's names were created in it.
+    let freed = renderer.with_context(|gl| unsafe {
+        CACHED.with(|slot| {
+            let mut borrow = slot.borrow_mut();
+            let Some(blur_gl) = borrow.ready_mut() else {
+                return 0;
+            };
+            let n = blur_gl.pool.len();
+            for p in blur_gl.pool.drain(..) {
+                gl.DeleteTextures(1, &p.tex);
+                gl.DeleteFramebuffers(1, &p.fbo);
+            }
+            blur_gl.last_use = None;
+            n
+        })
+    });
+    match freed {
+        Ok(n) => {
+            tracing::debug!(target: "margo::render::blur", "freed {n} idle blur scratch textures")
+        }
+        Err(e) => tracing::warn!(target: "margo::render::blur", "free idle blur pool: {e:?}"),
+    }
+}
+
 /// # Safety
 /// Must be called with a current GL context (inside `with_context`).
 unsafe fn compile_blur_gl(gl: &ffi::Gles2) -> Result<BlurGl, GlesError> {
@@ -239,6 +367,8 @@ unsafe fn compile_blur_gl(gl: &ffi::Gles2) -> Result<BlurGl, GlesError> {
         up_prog,
         composite_prog,
         pool: Vec::new(),
+        last_use: None,
+        cleanup_armed: false,
         quad_vbo,
         cache_fbo,
     })
@@ -246,8 +376,9 @@ unsafe fn compile_blur_gl(gl: &ffi::Gles2) -> Result<BlurGl, GlesError> {
 
 impl BlurGl {
     /// Ensure pool slot `idx` exists and is at least `w`×`h`, growing
-    /// (re-allocating the backing texture) when the region grows.
-    /// Returns the (texture, fbo) for that slot.
+    /// (re-allocating the backing texture) when the region grows and
+    /// shrinking it when [`plan_slot`] says it has been oversized long
+    /// enough. Returns the (texture, fbo) for that slot.
     ///
     /// # Safety
     /// Current GL context required.
@@ -284,12 +415,16 @@ impl BlurGl {
                 fbo,
                 w: 0,
                 h: 0,
+                oversized_draws: 0,
             });
         }
         let slot = &mut self.pool[idx];
-        if slot.w < w || slot.h < h {
-            let nw = slot.w.max(w);
-            let nh = slot.h.max(h);
+        let plan = plan_slot((slot.w, slot.h), (w, h), slot.oversized_draws);
+        if let SlotPlan::Keep { oversized_draws } = plan {
+            slot.oversized_draws = oversized_draws;
+        }
+        if let SlotPlan::Resize(nw, nh) = plan {
+            slot.oversized_draws = 0;
             // SAFETY: same GL-context contract as the pool fill above; `slot.tex` was created by this pool.
             unsafe {
                 gl.BindTexture(ffi::TEXTURE_2D, slot.tex);
@@ -765,6 +900,7 @@ unsafe fn blur_backdrop(
     if passes == 0 {
         return None;
     }
+    blur_gl.last_use = Some(std::time::Instant::now());
 
     // SAFETY: caller holds the GL context (render path); all GL objects used were created in that context.
     unsafe {
@@ -832,8 +968,8 @@ unsafe fn blur_backdrop(
                 // Half-texel offset based on the *source* resolution.
                 (0.5 / src_w as f32, 0.5 / src_h as f32),
                 params.radius as f32,
-                // The destination texture may be larger than the mip (pool
-                // grows monotonically); render into the [0,mw]×[0,mh]
+                // The destination texture may be larger than the mip (a
+                // pool slot fits the largest recent region); render into the [0,mw]×[0,mh]
                 // sub-rect and sample that same sub-rect on the next pass.
                 (mw as f32 / slot_w as f32, mh as f32 / slot_h as f32),
             );
@@ -1401,6 +1537,75 @@ mod tests {
             framebuffer_rect(bar, Transform::_270, fb),
             Rectangle::new((0, 780).into(), (40, 300).into())
         );
+    }
+
+    #[test]
+    fn pool_slots_grow_to_fit() {
+        assert_eq!(plan_slot((0, 0), (300, 40), 0), SlotPlan::Resize(300, 40));
+        // Grows on the axis that is short, keeps the other.
+        assert_eq!(
+            plan_slot((300, 40), (200, 80), 0),
+            SlotPlan::Resize(300, 80)
+        );
+    }
+
+    #[test]
+    fn a_slot_used_at_its_size_is_kept() {
+        assert_eq!(
+            plan_slot((300, 80), (300, 80), 7),
+            SlotPlan::Keep { oversized_draws: 0 }
+        );
+        // Over half the area in use: not worth a re-allocation.
+        assert_eq!(
+            plan_slot((300, 80), (250, 60), 7),
+            SlotPlan::Keep { oversized_draws: 0 }
+        );
+    }
+
+    #[test]
+    fn an_oversized_slot_shrinks_after_a_while() {
+        // A full-output blur (2560x1440) went away; a 300x40 bar blur is
+        // all that is left. The slot must not stay output-sized forever.
+        let (slot, want) = ((2560, 1440), (300, 40));
+        let mut streak = 0;
+        let mut plans = Vec::new();
+        for _ in 0..SHRINK_AFTER_DRAWS {
+            let plan = plan_slot(slot, want, streak);
+            if let SlotPlan::Keep { oversized_draws } = plan {
+                streak = oversized_draws;
+            }
+            plans.push(plan);
+        }
+        assert!(
+            plans[..plans.len() - 1]
+                .iter()
+                .all(|p| matches!(p, SlotPlan::Keep { .. })),
+            "no re-allocation churn while the size settles"
+        );
+        assert_eq!(plans.last(), Some(&SlotPlan::Resize(300, 40)));
+    }
+
+    #[test]
+    fn unused_blur_memory_has_a_timer_even_if_no_more_frames_render() {
+        let now = std::time::Instant::now();
+        assert_eq!(
+            cleanup_delay(Some(now), false, now),
+            Some(POOL_IDLE_RELEASE)
+        );
+        assert_eq!(cleanup_delay(Some(now), true, now), None);
+        assert_eq!(cleanup_delay(None, false, now), None);
+        assert_eq!(
+            cleanup_delay(Some(now), false, now + POOL_IDLE_RELEASE),
+            Some(std::time::Duration::ZERO)
+        );
+    }
+
+    #[test]
+    fn the_pool_is_freed_only_after_it_sat_idle() {
+        let t = std::time::Instant::now();
+        assert!(!pool_idle(None, t));
+        assert!(!pool_idle(Some(t), t + POOL_IDLE_RELEASE / 2));
+        assert!(pool_idle(Some(t), t + POOL_IDLE_RELEASE));
     }
 
     #[test]

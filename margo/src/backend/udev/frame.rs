@@ -543,6 +543,9 @@ fn render_output(
         let _ = crate::render::linear_composite::encoder_shader(renderer);
         let _ = crate::render::linear_composite::decoder_shader(renderer);
     }
+    // Give the blur scratch textures back once blur has gone unused for
+    // a while (no-op otherwise; outside any frame, so GL is free to use).
+    crate::render::blur::release_idle_pool(renderer);
     take_pending_snapshots(renderer, od, state);
     take_pending_open_close_captures(renderer, od, state);
     super::take_mru_thumbnails(renderer, od, state);

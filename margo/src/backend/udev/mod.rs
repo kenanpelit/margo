@@ -2017,6 +2017,29 @@ fn repaint_tick(backend_data: &Rc<RefCell<BackendData>>, state: &mut MargoState)
             drain_active_cast_frames(renderer, outputs, state);
         }
     }
+    arm_blur_cleanup(backend_data, state);
+}
+
+/// A one-shot cleanup wake while blur scratch textures exist. It does
+/// no rendering and never touches KMS; a static desktop still releases the
+/// unused pool after the last blurred surface disappears.
+fn arm_blur_cleanup(backend_data: &Rc<RefCell<BackendData>>, state: &mut MargoState) {
+    let Some(delay) = crate::render::blur::next_cleanup_delay() else {
+        return;
+    };
+    let backend = backend_data.clone();
+    let timer = smithay::reexports::calloop::timer::Timer::from_duration(delay);
+    if let Err(e) = state.loop_handle.insert_source(timer, move |_, _, state| {
+        crate::render::blur::cleanup_timer_finished();
+        crate::render::blur::release_idle_pool(&mut backend.borrow_mut().renderer);
+        // Blur may have run since this timer was armed. Keep exactly one
+        // timer for its updated deadline; otherwise the pool is now empty.
+        arm_blur_cleanup(&backend, state);
+        smithay::reexports::calloop::timer::TimeoutAction::Drop
+    }) {
+        crate::render::blur::cleanup_timer_finished();
+        warn!("blur cleanup timer: {e}");
+    }
 }
 
 #[cfg(test)]
