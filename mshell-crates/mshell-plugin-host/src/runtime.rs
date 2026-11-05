@@ -9,7 +9,6 @@
 //! Compiled only under `--features wasm`.
 
 use anyhow::Result;
-use mshell_process::SpawnReaped;
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
