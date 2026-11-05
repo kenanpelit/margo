@@ -16,10 +16,13 @@ impl MargoState {
         source: Option<&str>,
         target: Option<&str>,
     ) -> Result<(), MirrorError> {
+        // The current target is out of the layout only because it shows
+        // the mirror: it is a usable output here, for the default pair too
+        // (`mirror_output eDP-1` again, or naming the target to swap).
         let names: Vec<(String, bool)> = self
             .monitors
             .iter()
-            .map(|m| (m.name.clone(), m.enabled))
+            .map(|m| (m.name.clone(), m.enabled || self.mirror.is_target(&m.name)))
             .collect();
         let views: Vec<OutputView<'_>> = names
             .iter()

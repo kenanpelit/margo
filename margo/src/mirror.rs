@@ -68,8 +68,10 @@ pub enum MirrorChange {
 #[derive(Debug, Clone, Copy)]
 pub struct OutputView<'a> {
     pub name: &'a str,
-    /// Enabled in the layout. A current mirror target reads as disabled
-    /// here (it left the layout); the state machine accounts for that.
+    /// Enabled in the layout. A current mirror target may read as
+    /// disabled (it left the layout); [`MirrorState::start`] accounts for
+    /// that. `default_pair` only sees what it is given: the compositor
+    /// passes the target as enabled.
     pub enabled: bool,
 }
 

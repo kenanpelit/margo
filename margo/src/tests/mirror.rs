@@ -182,3 +182,22 @@ fn reversing_the_direction_swaps_which_output_is_out_of_the_layout() {
     assert!(st.monitors[idx(&fx, "DP-3")].enabled);
     assert!(!st.monitors[idx(&fx, "eDP-1")].enabled);
 }
+
+#[test]
+fn naming_one_output_while_mirroring_finds_the_pair() {
+    // The target reads as disabled while mirroring; the default pair used
+    // to see one enabled output and refuse with "needs two enabled outputs".
+    let mut fx = laptop_and_monitor();
+    let st = &mut fx.server.state;
+    st.start_mirror(Some("eDP-1"), Some("DP-3")).unwrap();
+
+    // Repeating the source: already mirroring exactly that.
+    assert_eq!(st.start_mirror(Some("eDP-1"), None), Ok(()));
+    assert!(st.mirror.is_source("eDP-1") && st.mirror.is_target("DP-3"));
+    assert_eq!(st.start_mirror(None, Some("DP-3")), Ok(()));
+    assert!(st.mirror.is_source("eDP-1") && st.mirror.is_target("DP-3"));
+
+    // Naming the current target as source swaps the direction.
+    assert_eq!(st.start_mirror(Some("DP-3"), None), Ok(()));
+    assert!(st.mirror.is_source("DP-3") && st.mirror.is_target("eDP-1"));
+}
