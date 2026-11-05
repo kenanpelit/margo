@@ -1,6 +1,7 @@
 pub mod atomic_write;
 pub mod config_manager;
 pub mod config_utils;
+pub mod control_center_tiles;
 pub mod doc_store;
 mod errors;
 pub mod migration;

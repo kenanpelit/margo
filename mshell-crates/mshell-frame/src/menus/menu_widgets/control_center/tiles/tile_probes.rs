@@ -1,10 +1,16 @@
 //! Service-state probes for the control-center tiles: the pure/async helpers
 //! that read live system state (battery, disk, twilight, UFW, podman, Wi-Fi,
 //! Bluetooth, audio, VPN, Valent, airplane) into the `(subtitle, is_active)`
-//! shape the tile widgets render. Kept separate from `tiles.rs` so the widget
-//! wiring stays readable and these I/O helpers are independently reviewable.
+//! shape the tile widgets render. Kept separate from the widget wiring so these I/O helpers are
+//! independently reviewable; their tests live here too.
 
-use super::*;
+use super::{BatterySnapshot, DiskUsage};
+use crate::bars::bar_widgets::podman::{PodmanSummary, fetch_podman_summary};
+use crate::bars::bar_widgets::ufw::{Status as UfwStatus, fetch_ufw_status_only};
+use mshell_services::{
+    audio_service, battery_service, bluetooth_service, line_power_service, network_service,
+};
+use std::time::Duration;
 
 pub(super) fn read_battery() -> BatterySnapshot {
     let Some(service) = battery_service() else {
@@ -379,5 +385,186 @@ pub(super) fn read_airplane_state() -> (bool, bool) {
         (!enabled, true)
     } else {
         (false, false)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        PodmanMachine, mirror_tile_state, podman_tile_state, twilight_mode_label,
+        twilight_subtitle, valent_state_from_report,
+    };
+    use crate::bars::bar_widgets::podman::PodmanSummary;
+
+    /// The Podman tile reads the shared poll's summary: machines win,
+    /// containers otherwise.
+    #[test]
+    fn podman_tile_from_shared_summary() {
+        let busy = PodmanSummary {
+            running_containers: 2,
+            ..Default::default()
+        };
+        assert_eq!(podman_tile_state(None, &busy), ("2 running".into(), true));
+        assert_eq!(
+            podman_tile_state(Some(&[]), &PodmanSummary::default()),
+            ("Idle".into(), false)
+        );
+        let broken = PodmanSummary {
+            error: Some("no podman".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            podman_tile_state(None, &broken),
+            ("Unavailable".into(), false)
+        );
+        let machines = [
+            PodmanMachine {
+                name: "dev".into(),
+                running: true,
+            },
+            PodmanMachine {
+                name: "old".into(),
+                running: false,
+            },
+        ];
+        assert_eq!(
+            podman_tile_state(Some(&machines), &busy),
+            ("dev".into(), true)
+        );
+        assert_eq!(
+            podman_tile_state(Some(&machines[1..]), &busy),
+            ("Stopped".into(), false)
+        );
+    }
+    use crate::twilight::TwilightStatus;
+    use crate::valent::{Device, ValentReport};
+
+    fn device(name: &str, reachable: bool, paired: bool) -> Device {
+        Device {
+            name: name.to_string(),
+            reachable,
+            paired,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn twilight_mode_labels() {
+        assert_eq!(twilight_mode_label("geo"), "Auto");
+        assert_eq!(twilight_mode_label("manual"), "Manual");
+        assert_eq!(twilight_mode_label("static"), "Static");
+        assert_eq!(twilight_mode_label("schedule"), "Schedule");
+        assert_eq!(twilight_mode_label("???"), "On"); // fallback differs from twilight.rs
+    }
+
+    #[test]
+    fn twilight_subtitle_off_when_disabled() {
+        let s = TwilightStatus {
+            enabled: false,
+            ..Default::default()
+        };
+        assert_eq!(twilight_subtitle(&s), "Off");
+    }
+
+    #[test]
+    fn twilight_subtitle_mode_with_and_without_temp() {
+        let s = TwilightStatus {
+            enabled: true,
+            mode: "schedule".into(),
+            current_temp_k: Some(3500),
+            ..Default::default()
+        };
+        assert_eq!(twilight_subtitle(&s), "Schedule \u{b7} 3500K");
+
+        let s2 = TwilightStatus {
+            enabled: true,
+            mode: "geo".into(),
+            current_temp_k: None,
+            ..Default::default()
+        };
+        assert_eq!(twilight_subtitle(&s2), "Auto");
+    }
+
+    #[test]
+    fn mirror_tile_shows_the_pair_the_refusal_or_off() {
+        use mshell_margo_client::ctl::MirrorStatus;
+        let on = MirrorStatus {
+            active: Some(("eDP-1".into(), "DP-3".into())),
+            error: None,
+            supported: true,
+        };
+        assert_eq!(
+            mirror_tile_state(&on),
+            ("eDP-1 \u{2192} DP-3".to_string(), true)
+        );
+        let refused = MirrorStatus {
+            active: None,
+            error: Some("mirroring needs two enabled outputs".into()),
+            supported: true,
+        };
+        assert_eq!(
+            mirror_tile_state(&refused),
+            ("Needs a second display".to_string(), false)
+        );
+        let idle = MirrorStatus {
+            supported: true,
+            ..Default::default()
+        };
+        assert_eq!(mirror_tile_state(&idle), ("Off".to_string(), false));
+        assert_eq!(
+            mirror_tile_state(&MirrorStatus::default()),
+            ("Unavailable".to_string(), false)
+        );
+    }
+
+    #[test]
+    fn valent_state_daemon_unavailable() {
+        let r = ValentReport {
+            daemon_available: false,
+            ..Default::default()
+        };
+        assert_eq!(
+            valent_state_from_report(&r),
+            ("Unavailable".to_string(), false)
+        );
+    }
+
+    #[test]
+    fn valent_state_no_devices_vs_not_reachable() {
+        let r = ValentReport {
+            daemon_available: true,
+            devices: vec![],
+        };
+        assert_eq!(
+            valent_state_from_report(&r),
+            ("No devices".to_string(), false)
+        );
+
+        let r = ValentReport {
+            daemon_available: true,
+            devices: vec![device("Phone", false, true)],
+        };
+        assert_eq!(
+            valent_state_from_report(&r),
+            ("Not reachable".to_string(), false)
+        );
+    }
+
+    #[test]
+    fn valent_state_one_and_many_connected() {
+        let r = ValentReport {
+            daemon_available: true,
+            devices: vec![device("Phone", true, true)],
+        };
+        assert_eq!(valent_state_from_report(&r), ("Phone".to_string(), true));
+
+        let r = ValentReport {
+            daemon_available: true,
+            devices: vec![device("A", true, true), device("B", true, true)],
+        };
+        assert_eq!(
+            valent_state_from_report(&r),
+            ("2 connected".to_string(), true)
+        );
     }
 }
