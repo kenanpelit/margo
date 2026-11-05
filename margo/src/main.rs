@@ -420,6 +420,9 @@ fn on_loop_iteration(state: &mut MargoState) {
     // `watch` snapshot frame here, once per iteration and at most
     // 60 a second (a held-back frame is flushed by a timer).
     state.flush_ipc_if_dirty();
+    // A locker that died while the session is locked is restarted (the
+    // session stays locked); cheap no-op while unlocked.
+    state.check_lock_owner(std::time::Instant::now());
     let now = utils::now_ms();
     if animation::animation_tick_due(
         state.animation_presented_since_tick,
@@ -1030,6 +1033,24 @@ fn start_dbus_services(event_loop: &EventLoop<'static, MargoState>, margo: &mut 
                 Ok(conn) => margo.dbus_servers.conn_screen_cast = Some(conn),
                 Err(e) => warn!("ScreenCast D-Bus start failed: {e}"),
             },
+        }
+    }
+
+    // ── logind Unlock → the authenticated escape from a session lock ─────────
+    // `loginctl unlock-session` from a TTY / ssh ends a lock whose locker
+    // can't be restarted (force_unlock only restarts it).
+    #[cfg(feature = "dbus")]
+    {
+        let (tx, rx) = calloop::channel::channel::<()>();
+        match event_loop
+            .handle()
+            .insert_source(rx, |event, _, state: &mut MargoState| {
+                if let calloop::channel::Event::Msg(()) = event {
+                    state.logind_unlock();
+                }
+            }) {
+            Ok(_) => crate::dbus::logind_unlock::start(tx),
+            Err(e) => warn!("logind Unlock calloop source insert failed: {e}"),
         }
     }
 }

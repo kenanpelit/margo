@@ -134,6 +134,8 @@ pub struct ClientState {
     /// `zwp_pointer_gesture_*` events in arrival order, e.g.
     /// `"pinch begin 2"`, `"swipe end"`.
     pub gesture_events: Vec<String>,
+    /// `ext_session_lock_v1.finished` arrived on one of this client's locks.
+    pub session_lock_finished: bool,
 }
 
 /// Sync sentinel: each `roundtrip` mints one and the fixture spins
@@ -210,6 +212,11 @@ impl Client {
         let _cb = self.display.sync(&self.qh, done.clone());
         self.connection.flush().expect("client flush");
         SyncDone { done }
+    }
+
+    /// Whether margo sent `finished` on a session lock of this client.
+    pub fn session_lock_finished(&self) -> bool {
+        self.state.session_lock_finished
     }
 
     /// Convenience: list every global the server advertised, in
@@ -972,16 +979,18 @@ impl Dispatch<ExtSessionLockManagerV1, ()> for ClientState {
 
 impl Dispatch<ExtSessionLockV1, ()> for ClientState {
     fn event(
-        _: &mut Self,
+        state: &mut Self,
         _: &ExtSessionLockV1,
-        _: ext_session_lock_v1::Event,
+        event: ext_session_lock_v1::Event,
         _: &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        // Locked / Finished events arrive on the lock proxy; tests
-        // check `state.session_locked` rather than tracking these
-        // explicitly.
+        // `locked` is checked through `state.session_locked` on the server
+        // side; `finished` is recorded for the logind-unlock tests.
+        if matches!(event, ext_session_lock_v1::Event::Finished) {
+            state.session_lock_finished = true;
+        }
     }
 }
 

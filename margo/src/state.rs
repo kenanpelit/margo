@@ -26,6 +26,7 @@ mod repaint;
 pub(crate) use groups::GroupLock;
 mod input_timers;
 mod interactive_grab;
+pub(crate) mod lock_guard;
 pub mod mru_switcher;
 mod output_pending;
 mod overview;
@@ -133,15 +134,6 @@ pub fn client_is_unrestricted(client: &smithay::reexports::wayland_server::Clien
     client
         .get_data::<MargoClientData>()
         .is_none_or(|data| !data.restricted)
-}
-
-/// Whether `force_unlock` may tear down the current lock: only once the
-/// owning locker is gone. A live locker is never overridden, even with no
-/// lock surface left: unplugging every monitor drops all lock surfaces of a
-/// working lock, so "no surface" is no proof that the lock is stuck. A hung
-/// but live locker has to be killed (TTY, ssh) first.
-pub fn force_unlock_allowed(owner_alive: bool) -> bool {
-    !owner_alive
 }
 
 // One-line tag for focus targets; only used in tracing so we don't have to
@@ -592,6 +584,8 @@ pub struct MargoState {
     /// and so `force_unlock` only acts once that owner is gone.
     pub session_lock_owner:
         Option<smithay::reexports::wayland_protocols::ext::session_lock::v1::server::ext_session_lock_v1::ExtSessionLockV1>,
+    /// Restarts a dead locker while the session stays locked.
+    pub lock_guard: lock_guard::LockGuard,
     /// Human-readable name of the keyboard's currently active xkb
     /// layout (e.g. "English (US)", "Turkish"). Cached here and
     /// published in state snapshot so the shell's keyboard-layout pill
@@ -850,6 +844,7 @@ impl MargoState {
             groups_locked: false,
             session_locked: false,
             session_lock_owner: None,
+            lock_guard: Default::default(),
             current_kb_layout: String::new(),
             lock_keys: LockKeys::default(),
             keyboard_shortcuts_inhibiting_surfaces: std::collections::HashMap::new(),
@@ -1064,57 +1059,25 @@ impl MargoState {
     #[cfg(not(feature = "a11y"))]
     pub fn publish_a11y_window_list(&mut self) {}
 
-    /// Force-tear-down a stuck session lock from the compositor side.
-    ///
-    /// Use case: the locker crashed or hung so there is nothing to type a
-    /// password into, and recovery would otherwise mean a TTY. Reachable from
-    /// the `force_unlock` action (keybind, whitelisted in `handle_keyboard`
-    /// while locked, and `mctl dispatch`).
-    ///
-    /// It only acts once the owning locker is gone (see
-    /// [`force_unlock_allowed`]). While the locker lives the request is
-    /// logged and ignored, whatever its surfaces look like; otherwise the
-    /// action would be a password bypass.
-    ///
-    /// We don't try to nicely tell the locker to release; we just clear our
-    /// state, drop the lock surfaces, and re-show toplevels.
+    /// The `force_unlock` action (keybind, whitelisted in `handle_keyboard`
+    /// while locked, and `mctl dispatch`). Despite its name it never
+    /// unlocks: with the locker gone it starts the locker again so the
+    /// session asks for the password (see `state::lock_guard`); while a
+    /// locker lives it does nothing. The only unlock without the locker is
+    /// `loginctl unlock-session` from a TTY / ssh ([`Self::logind_unlock`]).
     pub fn force_unlock(&mut self) {
-        if !self.session_locked && self.lock_surfaces.is_empty() {
-            tracing::info!("force_unlock: nothing to do (already unlocked)");
+        if !self.session_locked {
+            tracing::info!("force_unlock: nothing to do (not locked)");
             return;
         }
-        let owner_alive = self
-            .session_lock_owner
-            .as_ref()
-            .is_some_and(|lock| lock.is_alive());
-        if !force_unlock_allowed(owner_alive) {
+        if self.lock_owner_alive() {
             tracing::warn!("force_unlock: ignored, a live locker holds the lock");
             return;
         }
-        tracing::warn!(
-            "force_unlock: tearing down stuck lock (lock_surfaces={})",
-            self.lock_surfaces.len()
+        self.restart_locker(
+            lock_guard::LockerTrigger::ForceUnlock,
+            std::time::Instant::now(),
         );
-        self.session_locked = false;
-        self.mark_state_dirty();
-        self.session_lock_owner = None;
-        self.lock_surfaces.clear();
-        self.finish_lock_deferred_maps();
-        self.arrange_all();
-        self.refresh_keyboard_focus();
-        let _ = crate::utils::spawn([
-            "notify-send",
-            "-a",
-            "margo",
-            "-i",
-            "preferences-system",
-            "-u",
-            "critical",
-            "-t",
-            "3000",
-            "Margo",
-            "Lock force-cleared",
-        ]);
     }
 }
 

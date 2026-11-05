@@ -354,6 +354,27 @@ the current mode returns to `default`. While the session is locked, only
 they are looked up in the current mode first and then in `default`, so they
 keep working over the lock screen whatever mode was active when it locked.
 
+### When the lock screen crashes
+
+If the locker (mlock) dies while the session is locked — OOM-killed,
+crashed — the session **stays locked** and margo starts `mlock` again on its
+own, which asks for the password as usual. Margo retries up to 3 times within
+a minute (giving each start 5 s to take the lock), then waits a minute and
+tries again; until a locker is back the screen stays black. A `force_unlock`
+bind (allowed over the lock screen) restarts the locker right away; it never
+unlocks the session without your password, whatever state the locker is in.
+
+If no locker can start at all, unlock from outside the locked seat — switch
+to a TTY (`ctrl+alt+F3`) or ssh in, log in, and run:
+
+```bash
+loginctl list-sessions          # find the graphical session's id
+loginctl unlock-session <ID>    # or: loginctl unlock-sessions
+```
+
+margo listens for logind's `Unlock` signal on its session and ends the lock;
+a still-running locker is told to exit.
+
 ## Gestures
 
 Touchpad (and touchscreen) swipes map to dispatch actions with `gesturebind`,
@@ -500,7 +521,7 @@ Every action below can be bound to a key (`bind`), a mouse button (`mousebind`),
 | `theme`, `set_theme` | `<preset>` | Live-swap the visual preset: `default` / `minimal` / `gaudy` (no config reload). |
 | `session_save` / `session_load` | | Save / restore per-monitor tag + layout state (`session.json`). |
 | `setkeymode` | `<MODE>` | Switch keymode (per-mode bind sets, like vim modes). Ignored for a mode no bind declares; see [Key modes and the lock screen](#key-modes-and-the-lock-screen). |
-| `force_unlock` | | Tear down a stuck `ext_session_lock` from the compositor side. Only acts once the locker process is gone; ignored while the locker lives, even with no lock surface (for example after unplugging every monitor). Not bound by default. |
+| `force_unlock` | | Restart a crashed lock screen. Never unlocks: with the locker gone it starts `mlock` again and the session stays locked until you type your password; ignored while a locker lives. See [When the lock screen crashes](#when-the-lock-screen-crashes). Not bound by default. |
 | `quit` | | Exit the compositor cleanly. |
 | `debug_dump`, `diagnose` | | Dump compositor state (clients, monitors, layouts) to the log. |
 

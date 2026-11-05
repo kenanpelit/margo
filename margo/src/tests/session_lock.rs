@@ -194,10 +194,9 @@ fn force_unlock_is_refused_through_dispatch_too() {
     assert!(fx.server.state.session_locked);
 }
 
-#[test]
-fn force_unlock_recovers_once_the_locker_is_dead() {
-    // The escape hatch still exists for its real use: the locker crashed and
-    // left the session locked with nothing to type a password into.
+/// Lock with a live locker, then kill it: the state `force_unlock` and the
+/// locker watchdog act on.
+fn locked_with_a_dead_locker() -> Fixture {
     let (mut fx, id, keep) = locked_by_live_client();
     drop(keep);
     fx.kill_client(id);
@@ -205,11 +204,130 @@ fn force_unlock_recovers_once_the_locker_is_dead() {
         fx.server.state.session_locked,
         "a dead locker keeps the lock"
     );
+    fx
+}
+
+fn spawns() -> u32 {
+    crate::state::lock_guard::test_spawn_count()
+}
+
+#[test]
+fn force_unlock_with_a_dead_locker_restarts_it_and_keeps_the_session_locked() {
+    // force_unlock used to tear the lock down here without any password:
+    // anyone at the keyboard could open the session after mlock was
+    // OOM-killed. It now only restarts the locker.
+    let mut fx = locked_with_a_dead_locker();
+    let before = spawns();
 
     fx.server.state.force_unlock();
 
+    assert!(fx.server.state.session_locked, "never unlocks without auth");
+    assert_eq!(spawns(), before + 1, "the locker is started again");
+    let _ =
+        crate::dispatch::dispatch_action(&mut fx.server.state, "force_unlock", &Default::default());
+    assert!(fx.server.state.session_locked);
+    assert_eq!(
+        spawns(),
+        before + 1,
+        "a second press inside the grace period waits"
+    );
+}
+
+#[test]
+fn a_dead_locker_is_restarted_automatically_with_a_bound() {
+    use crate::state::lock_guard::{MAX_AUTO_RESPAWNS, RESPAWN_WINDOW, SPAWN_GRACE};
+    let mut fx = locked_with_a_dead_locker();
+    let before = spawns();
+    let mut t = std::time::Instant::now();
+    // Polled every loop iteration; each grace period another try.
+    for _ in 0..(MAX_AUTO_RESPAWNS + 3) {
+        fx.server.state.check_lock_owner(t);
+        fx.server
+            .state
+            .check_lock_owner(t + std::time::Duration::from_millis(16));
+        t += SPAWN_GRACE;
+    }
+    assert_eq!(spawns(), before + MAX_AUTO_RESPAWNS);
+    assert!(
+        fx.server.state.session_locked,
+        "giving up keeps the session locked"
+    );
+    fx.server.state.check_lock_owner(t + RESPAWN_WINDOW);
+    assert_eq!(
+        spawns(),
+        before + MAX_AUTO_RESPAWNS + 1,
+        "retries after the window"
+    );
+    assert!(fx.server.state.session_locked);
+}
+
+#[test]
+fn a_restarted_locker_takes_over_and_its_unlock_opens_the_session() {
+    let mut fx = locked_with_a_dead_locker();
+    fx.server.state.check_lock_owner(std::time::Instant::now());
+
+    // What the respawned mlock does: lock, show a surface, authenticate.
+    let id = fx.add_client();
+    let lock = fx.client(id).create_session_lock();
+    fx.roundtrip(id);
+    assert!(fx.server.state.session_locked);
+    assert!(
+        fx.server.state.lock_owner_alive(),
+        "the new locker owns the lock"
+    );
+
+    let before = spawns();
+    fx.server.state.check_lock_owner(std::time::Instant::now());
+    fx.server.state.force_unlock();
+    assert_eq!(spawns(), before, "a live locker is never replaced");
+
+    lock.unlock_and_destroy();
+    fx.client(id).flush();
+    fx.roundtrip(id);
+    assert!(!fx.server.state.session_locked);
+}
+
+#[test]
+fn force_unlock_and_the_watchdog_do_nothing_while_unlocked() {
+    let mut fx = Fixture::new();
+    fx.add_output("DP-1", (1920, 1080));
+    let before = spawns();
+    fx.server.state.force_unlock();
+    fx.server.state.check_lock_owner(std::time::Instant::now());
+    assert!(!fx.server.state.session_locked);
+    assert_eq!(spawns(), before);
+}
+
+#[test]
+fn force_unlock_with_a_live_locker_neither_unlocks_nor_spawns() {
+    let (mut fx, _id, _keep) = locked_by_live_client();
+    let before = spawns();
+    fx.server.state.force_unlock();
+    fx.server.state.check_lock_owner(std::time::Instant::now());
+    assert!(fx.server.state.session_locked);
+    assert_eq!(spawns(), before);
+}
+
+#[test]
+fn logind_unlock_opens_a_lock_whose_locker_is_dead() {
+    // `loginctl unlock-session` from a TTY / ssh: the authenticated escape
+    // for a locker that can't be restarted.
+    let mut fx = locked_with_a_dead_locker();
+    fx.server.state.logind_unlock();
     assert!(!fx.server.state.session_locked);
     assert!(fx.server.state.lock_surfaces.is_empty());
+}
+
+#[test]
+fn logind_unlock_also_ends_a_live_lock_and_tells_the_locker() {
+    let (mut fx, id, _keep) = locked_by_live_client();
+    fx.server.state.logind_unlock();
+    assert!(!fx.server.state.session_locked);
+    fx.roundtrip(id);
+    assert!(
+        fx.client(id).session_lock_finished(),
+        "the locker gets `finished` so it exits instead of lingering"
+    );
 }
 
 #[test]
@@ -375,4 +493,19 @@ fn a_lock_surface_follows_its_outputs_size() {
     fx.roundtrip(id);
 
     assert_eq!(size(&fx), Some((960, 540)));
+}
+
+#[test]
+fn a_failed_respawn_is_retried_even_when_the_loop_is_otherwise_idle() {
+    let mut fx = locked_with_a_dead_locker();
+    let before = spawns();
+    fx.server.state.check_lock_owner(std::time::Instant::now());
+    assert_eq!(spawns(), before + 1);
+    // No keys, frames or clients wake the loop after the failed start.
+    std::thread::sleep(
+        crate::state::lock_guard::SPAWN_GRACE + std::time::Duration::from_millis(100),
+    );
+    fx.dispatch();
+    assert_eq!(spawns(), before + 2, "the retry timer wakes the idle loop");
+    assert!(fx.server.state.session_locked);
 }

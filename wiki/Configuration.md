@@ -185,7 +185,7 @@ Comma-separated aliases are interchangeable. Generated from the same source as
 | `theme`, `set_theme` | `<preset>` | Live-swap preset: `default` / `minimal` / `gaudy`. |
 | `session_save` / `session_load` | | Save / restore per-monitor tag + layout state. |
 | `setkeymode` | `<MODE>` | Switch keymode (vim-like mode sets). |
-| `force_unlock` | | Tear down a stuck `ext_session_lock` (only once the locker process is gone). |
+| `force_unlock` | | Restart a crashed lock screen (never unlocks; the session stays locked until the password is typed). Unlock from a TTY with `loginctl unlock-session <id>`. |
 | `quit` | | Exit the compositor cleanly. |
 | `debug_dump`, `diagnose` | | Dump compositor state to the log. |
 

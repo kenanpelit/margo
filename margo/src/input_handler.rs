@@ -672,11 +672,11 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                 // Without `Forward` here the lock screen never sees a single
                 // keystroke and there's no way to unlock.
                 if state.session_locked {
-                    // Whitelisted escape hatch: a `force_unlock`
+                    // Whitelisted recovery bind: a `force_unlock`
                     // keybind is matched even while the session is
-                    // locked, so the user can recover from a crashed
-                    // locker without a TTY. `force_unlock` itself
-                    // refuses while a live locker shows its surface.
+                    // locked, so the user can bring a crashed locker
+                    // back without a TTY. It restarts the locker and
+                    // never unlocks (see `state::lock_guard`).
                     // Everything else is forwarded to the lock surface.
                     // Synthetic keys never reach a binding over the lock:
                     // a client with a virtual keyboard must not be able to
@@ -698,7 +698,9 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                         );
                         if let Some(kb) = matched {
                             if matches!(kb.action.as_str(), "force_unlock" | "force-unlock") {
-                                tracing::warn!("lock: force_unlock keybind hit, breaking out");
+                                tracing::warn!(
+                                    "lock: force_unlock keybind hit, restarting a dead locker"
+                                );
                                 let action = kb.action.clone();
                                 let arg = kb.arg.clone();
                                 crate::dispatch::dispatch_action(state, &action, &arg);

@@ -147,7 +147,7 @@ Ready-to-copy session glue (a Wayland-session `.desktop`, a uwsm wrapper, the `m
 
 ## Lock highlights
 
-- **`mlock`** uses `ext-session-lock-v1`, so the compositor cooperates: locked sessions stay locked across mlock crashes, and only `margo`'s `force_unlock` keybind can break out. Renders a blurred wallpaper, large clock, time-of-day greeting, avatar (`~/.face` or AccountsService), frosted password card with shake-on-fail and an attempt counter. Authenticates the session owner via PAM. Battery indicator and `F1/F2/F3` power keys with a two-press confirmation banner.
+- **`mlock`** uses `ext-session-lock-v1`, so the compositor cooperates: locked sessions stay locked across mlock crashes: margo starts mlock again (the `force_unlock` bind restarts it on demand, it never unlocks), and `loginctl unlock-session` from a TTY is the only unlock without the password prompt. Renders a blurred wallpaper, large clock, time-of-day greeting, avatar (`~/.face` or AccountsService), frosted password card with shake-on-fail and an attempt counter. Authenticates the session owner via PAM. Battery indicator and `F1/F2/F3` power keys with a two-press confirmation banner.
 
 ## Login manager (`mlogind` + `mgreet`)
 

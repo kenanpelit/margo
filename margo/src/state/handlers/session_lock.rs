@@ -70,20 +70,12 @@ impl SessionLockHandler for MargoState {
 
     fn unlock(&mut self) {
         tracing::info!("session_lock: unlock() called");
-        self.session_locked = false;
-        self.mark_state_dirty();
-        self.session_lock_owner = None;
-        self.lock_surfaces.clear();
-        // Toplevels may have completed their initial configure while locked.
-        // They stayed deliberately deferred so they could neither map nor
-        // steal focus; finish those maps now that the desktop is visible.
-        self.finish_lock_deferred_maps();
-        self.arrange_all();
-        // After unlock, push focus back to a real window — by default
-        // current_focus is still pointing at the (now-dead) lock surface
-        // and the user has to nudge the mouse before any keys reach the
-        // toplevel underneath.
-        self.refresh_keyboard_focus();
+        // The locker authenticated the user: drop the lock state, reset
+        // the locker-restart budget, finish the maps deferred while locked
+        // (they stayed deferred so they could neither map nor steal focus)
+        // and push focus back to a real window, so keys reach the toplevel
+        // without nudging the mouse first.
+        self.end_session_lock();
     }
 
     fn new_surface(&mut self, surface: LockSurface, output: WlOutput) {

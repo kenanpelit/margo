@@ -96,8 +96,12 @@ Expected lines (substring match):
 * [ ] Press Enter → unlock, your previous focus is restored.
 * [ ] With the lock screen up and working, `mctl dispatch force_unlock`
       (or a `force_unlock` bind) does nothing — the log says it was ignored.
-* [ ] Repeat with a stuck lock: kill the lock client (`pkill -9 mlock`),
-      then `force_unlock` (bind or `mctl dispatch`) tears the lock down.
+* [ ] Locker crash (from a second VT or ssh, keep it open): `pkill -9 mlock`.
+      The session stays locked and a new mlock asks for the password within
+      a second or two (log: "the locker is gone, starting mlock").
+* [ ] `force_unlock` (bind) with mlock dead restarts it and does not unlock.
+* [ ] Escape: with the session locked, from the second VT run
+      `loginctl unlock-session <id>` — the lock ends and mlock exits.
 
 ## 6. Window rules
 

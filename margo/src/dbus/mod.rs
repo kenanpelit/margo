@@ -32,6 +32,7 @@ pub mod cast_ids;
 pub mod gnome_shell_introspect;
 pub mod gnome_shell_screenshot;
 pub mod ipc_output;
+pub mod logind_unlock;
 pub mod mutter_display_config;
 pub mod mutter_screen_cast;
 pub mod mutter_service_channel;

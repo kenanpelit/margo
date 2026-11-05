@@ -1078,10 +1078,12 @@ pub const ACTIONS: &[Action] = &[
         aliases: &["force-unlock"],
         args: "",
         group: Group::System,
-        summary: "Tear down a stuck `ext_session_lock` from the compositor side.",
-        detail: "Only acts on a stuck lock: the locking client died, or it \
-                 has shown no lock surface for 10 s. While a live lock screen \
-                 is up the request is ignored, so it can't skip the password. \
+        summary: "Restart a crashed lock screen (never unlocks).",
+        detail: "With the session locked and the locker gone, starts `mlock` \
+                 again; the session stays locked until the password is typed. \
+                 Ignored while a locker lives and while unlocked. margo also \
+                 restarts a dead locker on its own. The only unlock without \
+                 the locker is `loginctl unlock-session` from a TTY or ssh. \
                  Not bound by default.",
     },
     Action {
