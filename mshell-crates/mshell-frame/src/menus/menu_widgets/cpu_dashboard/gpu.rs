@@ -330,11 +330,24 @@ pub(crate) fn gpu_procs(
 /// A DRM fd found by `find_drm_fds`: `(pid, fd number)`.
 pub(crate) type DrmFd = (i32, String);
 
-/// Sweep `<proc_root>/*/fd/*` for fds pointing at `/dev/dri/*`. This
-/// readlinks every open fd on the system (~11k here, a few ms), so the
-/// caller repeats it only every few polls and re-reads the known fds in
-/// between. Blocking: call off the GTK thread.
+/// Sweep `<proc_root>/*/fd/*` for fds pointing at `/dev/dri/*`, in our
+/// own processes only: [`read_clients`] can read nobody else's fdinfo, so
+/// readlinking another user's fds (about half of the ~11k open fds here)
+/// was wasted work. The caller still repeats this only every few polls
+/// and re-reads the known fds in between. Blocking: call off the GTK
+/// thread.
 pub(crate) fn find_drm_fds(proc_root: &Path) -> Vec<DrmFd> {
+    use std::os::unix::fs::MetadataExt;
+    let own = std::fs::metadata(proc_root.join("self"))
+        .ok()
+        .map(|m| m.uid());
+    find_drm_fds_of(proc_root, own)
+}
+
+/// [`find_drm_fds`] for the processes of `uid` (every process when
+/// `None`: the owner is unknown).
+fn find_drm_fds_of(proc_root: &Path, uid: Option<u32>) -> Vec<DrmFd> {
+    use std::os::unix::fs::MetadataExt;
     let mut out = Vec::new();
     let Ok(dir) = std::fs::read_dir(proc_root) else {
         return out;
@@ -347,6 +360,12 @@ pub(crate) fn find_drm_fds(proc_root: &Path) -> Vec<DrmFd> {
         else {
             continue;
         };
+        // `/proc/<pid>` is owned by the process's (effective) uid.
+        if let Some(uid) = uid
+            && entry.metadata().map(|m| m.uid()).ok() != Some(uid)
+        {
+            continue;
+        }
         let Ok(fds) = std::fs::read_dir(entry.path().join("fd")) else {
             continue;
         };
@@ -496,6 +515,25 @@ mod tests {
         // A closed fd simply drops out.
         let (gone, _) = read_clients(root, &[(2199, "99".to_string())]);
         assert!(gone.is_empty());
+    }
+
+    #[test]
+    fn drm_sweep_skips_other_users_processes() {
+        use std::os::unix::fs::MetadataExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        let p = root.join("4242");
+        std::fs::create_dir_all(p.join("fd")).expect("mkdir");
+        std::os::unix::fs::symlink("/dev/dri/card0", p.join("fd/7")).expect("ln");
+        let me = std::fs::metadata(&p).expect("stat").uid();
+        assert_eq!(find_drm_fds_of(root, Some(me)), [(4242, "7".to_string())]);
+        // Another user's process: its fds are never readlinked.
+        assert!(find_drm_fds_of(root, Some(me.wrapping_add(1))).is_empty());
+        assert_eq!(
+            find_drm_fds_of(root, None).len(),
+            1,
+            "owner unknown: sweep all"
+        );
     }
 
     #[test]
