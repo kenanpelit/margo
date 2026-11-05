@@ -73,7 +73,7 @@ jobs:
           pacman -Syu --noconfirm --needed \
             git rustup clang pkgconf pcre2 libxkbcommon
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Rust (rust-toolchain.toml pin)
         run: rustup toolchain install
@@ -114,7 +114,7 @@ jobs:
             git rustup clang pkgconf pcre2 libxkbcommon
           rustup toolchain install nightly --profile minimal
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
         with:
