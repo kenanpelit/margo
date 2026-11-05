@@ -25,8 +25,9 @@
 //!  startup:
 //!    main.rs → init_user_scripting(&mut state)
 //!      ↪ build engine (parked on state), compile AST
-//!      ↪ eval script body → on_*(...) pushes Hook{handler, ast}
-//!        into state.script_hooks
+//!      ↪ drop the hooks an earlier run of the same file registered
+//!      ↪ eval script body → on_*(...) adds Hook{handler, ast} to
+//!        state.script_hooks (a repeat replaces its copy; capped per event)
 //!  runtime:
 //!    state.focus_surface(...)
 //!      ↪ fire_focus_change(state)
@@ -81,11 +82,29 @@ pub struct ScriptingState {
     engine: Engine,
 }
 
+/// Most hooks one event keeps. Every event runs all of its hooks on the
+/// compositor thread, so a script that registers in a loop (or a hook
+/// body that registers capturing closures) must not grow that without
+/// bound; registrations past the cap are dropped with a warning.
+pub const MAX_HOOKS_PER_EVENT: usize = 64;
+
 /// One registered hook: the handler plus the AST of the script that
 /// registered it (needed to resolve `Fn("name")` handlers).
 pub struct Hook {
     handler: FnPtr,
     ast: Rc<AST>,
+}
+
+impl Hook {
+    /// Whether `other` is the same registration again: same script file,
+    /// same function, and no captured values (a capturing closure can hold
+    /// different data each time, so it never counts as a repeat).
+    fn same_registration(&self, other: &Hook) -> bool {
+        self.ast.source() == other.ast.source()
+            && self.handler.fn_name() == other.handler.fn_name()
+            && !self.handler.is_curried()
+            && !other.handler.is_curried()
+    }
 }
 
 /// Registered hooks, on `MargoState::script_hooks`.
@@ -385,8 +404,44 @@ enum HookKind {
     WindowClose,
     OutputChange,
 }
+impl HookKind {
+    const ALL: [HookKind; 5] = [
+        HookKind::FocusChange,
+        HookKind::TagSwitch,
+        HookKind::WindowOpen,
+        HookKind::WindowClose,
+        HookKind::OutputChange,
+    ];
+}
+
+/// Add `hook` to `list`: a repeat of an existing registration
+/// ([`Hook::same_registration`]) replaces it in place, anything past
+/// [`MAX_HOOKS_PER_EVENT`] is dropped.
+fn insert_hook(list: &mut Vec<Hook>, kind: HookKind, hook: Hook) {
+    if let Some(slot) = list.iter_mut().find(|h| h.same_registration(&hook)) {
+        *slot = hook;
+    } else if list.len() < MAX_HOOKS_PER_EVENT {
+        list.push(hook);
+    } else {
+        warn!(
+            ?kind,
+            max = MAX_HOOKS_PER_EVENT,
+            "rhai: too many hooks for this event, ignoring the new one"
+        );
+    }
+}
 
 impl ScriptingHooks {
+    /// Drop every hook the script at `source` registered, before that
+    /// script runs again: re-running a file replaces its hooks instead of
+    /// adding another copy of each.
+    fn remove_source(&mut self, source: &str) {
+        for kind in HookKind::ALL {
+            self.list_mut(kind)
+                .retain(|h| h.ast.source() != Some(source));
+        }
+    }
+
     fn list_mut(&mut self, kind: HookKind) -> &mut Vec<Hook> {
         match kind {
             HookKind::FocusChange => &mut self.on_focus_change,
@@ -523,7 +578,9 @@ pub fn init_plugins(state: &mut MargoState) {
 ///     the live compositor stays up.
 ///   * Hook registrations inside the script (e.g. an
 ///     `on_focus_change(...)` call) DO persist after this run,
-///     same as init.rhai. Use case: live-edit your hook list.
+///     same as init.rhai. Running the same file again replaces the
+///     hooks its previous run registered. Use case: live-edit your
+///     hook list.
 ///   * Called from inside a running script or hook (a hook that
 ///     dispatches `run_script`), it refuses with a warning: the
 ///     engine is checked out by the outer eval.
@@ -583,7 +640,11 @@ fn compile(state: &mut MargoState, source: Source<'_>) -> Option<Rc<AST>> {
         Source::Text(src, path) => (sc.engine.compile(src).map_err(|e| e.to_string()), path),
     };
     match result {
-        Ok(ast) => Some(Rc::new(ast)),
+        Ok(mut ast) => {
+            // Hooks are keyed by the file that registered them.
+            ast.set_source(path.to_string_lossy().as_ref());
+            Some(Rc::new(ast))
+        }
         Err(e) => {
             error!(path = %path.display(), error = %e, "rhai: compile error");
             None
@@ -592,8 +653,13 @@ fn compile(state: &mut MargoState, source: Source<'_>) -> Option<Rc<AST>> {
 }
 
 /// Run a compiled script's top-level statements once. Hooks it registers
-/// are tied to `ast`. `None` when the engine is unavailable.
+/// are tied to `ast`; the hooks an earlier run of the same file
+/// registered are dropped first. `None` when the engine is unavailable.
 fn eval(state: &mut MargoState, ast: Rc<AST>) -> Option<Result<(), Box<rhai::EvalAltResult>>> {
+    state.scripting.as_ref()?;
+    if let Some(source) = ast.source() {
+        state.script_hooks.remove_source(source);
+    }
     with_engine(state, |engine| {
         set_current_ast(Some(Rc::clone(&ast)));
         engine.run_ast_with_scope(&mut Scope::new(), &ast)
@@ -640,7 +706,8 @@ fn with_engine<R>(state: &mut MargoState, f: impl FnOnce(&Engine) -> R) -> Optio
 
 /// Register `handler` for `kind`, tied to the AST of the script that is
 /// running (so `Fn("name")` handlers resolve against the file that
-/// defines `name`).
+/// defines `name`). Registering the same function from the same file
+/// again replaces the earlier copy (see [`insert_hook`]).
 fn register_hook(kind: HookKind, handler: FnPtr) {
     let Some(ast) = CURRENT_AST.with(|c| c.borrow().clone()) else {
         warn!(
@@ -650,15 +717,16 @@ fn register_hook(kind: HookKind, handler: FnPtr) {
         return;
     };
     with_state(|s| {
-        s.script_hooks.list_mut(kind).push(Hook { handler, ast });
+        insert_hook(s.script_hooks.list_mut(kind), kind, Hook { handler, ast });
     });
 }
 
 /// Fire every hook registered for `kind` with `args`.
 ///
 /// The list lives on `state.script_hooks`, outside the engine box, so a
-/// hook body can register more hooks while it runs; those are appended
-/// after the existing ones.
+/// hook body can register more hooks while it runs; those are merged in
+/// after the existing ones (a repeat replaces its earlier copy, so a hook
+/// that registers a hook doesn't grow the list on every event).
 fn fire(state: &mut MargoState, kind: HookKind, args: Vec<Dynamic>) {
     // Hot path: nothing registered, or no engine / engine checked out.
     if state.script_hooks.list_mut(kind).is_empty() || state.scripting.is_none() {
@@ -677,7 +745,9 @@ fn fire(state: &mut MargoState, kind: HookKind, args: Vec<Dynamic>) {
     });
     let dst = state.script_hooks.list_mut(kind);
     let added = std::mem::replace(dst, hooks);
-    dst.extend(added);
+    for hook in added {
+        insert_hook(dst, kind, hook);
+    }
 }
 
 #[cfg(test)]

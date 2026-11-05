@@ -162,3 +162,75 @@ fn run_script_from_inside_a_hook_does_not_break_the_running_hook() {
     run(&mut fx, "after", "on_tag_switch(|| ());");
     assert_eq!(fx.server.state.script_hooks.on_tag_switch.len(), 1);
 }
+
+#[test]
+fn re_running_a_script_replaces_its_hooks_instead_of_adding_copies() {
+    // `mctl run` / `rhai-eval` of the same file used to add another copy
+    // of every hook it registers, so a handler fired N times after N runs.
+    let mut fx = fixture();
+    let src = r#"
+        fn on_tags() { }
+        on_focus_change(|| ());
+        on_tag_switch(Fn("on_tags"));
+    "#;
+    for _ in 0..3 {
+        run(&mut fx, "rerun", src);
+    }
+    let hooks = &fx.server.state.script_hooks;
+    assert_eq!(hooks.on_focus_change.len(), 1);
+    assert_eq!(hooks.on_tag_switch.len(), 1);
+}
+
+#[test]
+fn re_running_a_script_drops_hooks_it_no_longer_registers() {
+    let mut fx = fixture();
+    run(
+        &mut fx,
+        "edit",
+        "on_focus_change(|| ()); on_window_open(|| ());",
+    );
+    run(&mut fx, "edit", "on_window_open(|| ());");
+    let hooks = &fx.server.state.script_hooks;
+    assert_eq!(
+        hooks.on_focus_change.len(),
+        0,
+        "the edited-out hook is gone"
+    );
+    assert_eq!(hooks.on_window_open.len(), 1);
+}
+
+#[test]
+fn different_scripts_keep_their_own_hooks() {
+    let mut fx = fixture();
+    run(&mut fx, "one", "on_focus_change(|| ());");
+    run(&mut fx, "two", "on_focus_change(|| ());");
+    assert_eq!(fx.server.state.script_hooks.on_focus_change.len(), 2);
+}
+
+#[test]
+fn a_hook_that_registers_a_hook_does_not_grow_the_list_on_every_event() {
+    let mut fx = fixture();
+    run(
+        &mut fx,
+        "nested-grow",
+        "on_focus_change(|| on_focus_change(|| ()));",
+    );
+    for _ in 0..5 {
+        crate::scripting::fire_focus_change(&mut fx.server.state);
+    }
+    assert_eq!(fx.server.state.script_hooks.on_focus_change.len(), 2);
+}
+
+#[test]
+fn hooks_per_event_are_capped() {
+    // Closures with distinct captures are distinct hooks, so they can't be
+    // de-duplicated; the per-event cap bounds what every event runs.
+    let mut fx = fixture();
+    run(
+        &mut fx,
+        "many",
+        "for i in 0..500 { let n = i; on_focus_change(|| n); }",
+    );
+    let n = fx.server.state.script_hooks.on_focus_change.len();
+    assert_eq!(n, crate::scripting::MAX_HOOKS_PER_EVENT);
+}

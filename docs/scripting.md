@@ -67,7 +67,7 @@ Each hook fires from a well-defined event site; the body runs synchronously on t
 | `on_window_open(fn())` | `finalize_initial_map`, after window-rules + focus | none |
 | `on_window_close(fn())` | after the client is gone, focus has shifted, arrange has run | `(app_id: String, title: String)` |
 
-Re-entrancy is guarded automatically: a hook that calls `dispatch(...)` and triggers another event will see the inner hook as a no-op rather than recursing. (Implementation: thread-local Option-take/restore.) For the same reason `dispatch("run_script", ...)` from inside a hook or script is ignored with a warning.
+Re-entrancy is guarded automatically: a hook that calls `dispatch(...)` and triggers another event will see the inner hook as a no-op rather than recursing. (Implementation: thread-local Option-take/restore.) For the same reason `dispatch("run_script", ...)` from inside a hook or script is ignored with a warning. Registering the same function from the same file again (for example a hook body that calls `on_focus_change(...)`) replaces the earlier copy, and each event keeps at most 64 hooks; further registrations are dropped with a warning.
 
 ## Live edit
 
@@ -75,7 +75,7 @@ Re-entrancy is guarded automatically: a hook that calls `dispatch(...)` and trig
 mctl run ~/.config/margo/test.rhai
 ```
 
-Eval a script against the live engine — handy for prototyping. Hook registrations inside the script persist after the run, so you can iterate on a hook without restarting margo. Falls back to standing up a fresh engine if `init.rhai` was never loaded.
+Eval a script against the live engine — handy for prototyping. Hook registrations inside the script persist after the run, so you can iterate on a hook without restarting margo: running the same file again replaces the hooks its previous run registered (it doesn't add copies), and a hook edited out of the file is gone after the next run. Falls back to standing up a fresh engine if `init.rhai` was never loaded.
 
 ## Plugin packaging
 
