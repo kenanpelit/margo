@@ -12,11 +12,14 @@
 //! hotspot started elsewhere is still detected: any active
 //! `802-11-wireless` connection whose mode is `ap` counts.
 //!
-//! An empty configured password lets NetworkManager keep the saved
-//! profile's secret (or generate one on first start), so nothing secret
-//! has to live in the shell config. A configured password is passed on
-//! the `nmcli` argv for the duration of that one call (nmcli has no
-//! stdin form for `wifi hotspot`).
+//! The password is never in the shell config or on an argv: it is a
+//! secret of the `margo-hotspot` NetworkManager profile, set over D-Bus
+//! ([`crate::hotspot_secret`], Settings → Network → Hotspot). Starting
+//! activates that profile (`nmcli connection up`, no secret involved);
+//! without a profile `nmcli device wifi hotspot` creates one and
+//! NetworkManager generates the key. A password still in the old
+//! `network.hotspot_password` key is moved into the profile once and
+//! cleared from the config ([`migrate_config_password`]).
 
 use std::collections::BTreeMap;
 use std::time::Duration;
@@ -287,9 +290,10 @@ pub fn validate(ssid: &str, password: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// `nmcli` argv for starting the AP.
-pub fn start_args(iface: &str, ssid: &str, password: &str) -> Vec<String> {
-    let mut args: Vec<String> = [
+/// `nmcli` argv creating and starting the AP when no `margo-hotspot`
+/// profile exists yet: NetworkManager generates the key.
+pub fn create_args(iface: &str, ssid: &str) -> Vec<String> {
+    [
         "device",
         "wifi",
         "hotspot",
@@ -302,12 +306,33 @@ pub fn start_args(iface: &str, ssid: &str, password: &str) -> Vec<String> {
     ]
     .iter()
     .map(|s| s.to_string())
-    .collect();
-    if !password.is_empty() {
-        args.push("password".to_string());
-        args.push(password.to_string());
-    }
-    args
+    .collect()
+}
+
+/// `nmcli` argv pointing the existing profile at the configured SSID (and
+/// keeping it off autoconnect) before it is started.
+pub fn retarget_args(ssid: &str) -> Vec<String> {
+    [
+        "connection",
+        "modify",
+        CONNECTION_NAME,
+        "802-11-wireless.ssid",
+        ssid,
+        "connection.autoconnect",
+        "no",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect()
+}
+
+/// `nmcli` argv starting the existing profile on `iface`; the key is the
+/// profile's stored secret.
+pub fn up_args(iface: &str) -> Vec<String> {
+    ["connection", "up", CONNECTION_NAME, "ifname", iface]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
 }
 
 /// Client row title: its IP when known, else the MAC.
@@ -452,13 +477,25 @@ pub async fn probe(configured_iface: &str) -> HotspotStatus {
 }
 
 /// Start the AP. `ssid` should already be [`effective_ssid`]-resolved.
-/// The profile is set to not auto-connect, so a reboot doesn't silently
-/// turn the laptop into an access point.
-pub async fn start(iface: &str, ssid: &str, password: &str) -> Result<(), String> {
-    validate(ssid, password)?;
-    let args = start_args(iface, ssid, password);
-    let argv: Vec<&str> = args.iter().map(String::as_str).collect();
-    run("nmcli", &argv, START_TIMEOUT).await?;
+/// An existing `margo-hotspot` profile is retargeted to `ssid` and started
+/// with its stored key; otherwise nmcli creates one (generated key). The
+/// profile is set to not auto-connect, so a reboot doesn't silently turn
+/// the laptop into an access point.
+pub async fn start(iface: &str, ssid: &str) -> Result<(), String> {
+    validate(ssid, "")?;
+    let nmcli = |args: Vec<String>, timeout| async move {
+        let argv: Vec<&str> = args.iter().map(String::as_str).collect();
+        run("nmcli", &argv, timeout).await
+    };
+    if crate::hotspot_secret::profile_exists()
+        .await
+        .unwrap_or(false)
+    {
+        nmcli(retarget_args(ssid), NMCLI_TIMEOUT).await?;
+        nmcli(up_args(iface), START_TIMEOUT).await?;
+        return Ok(());
+    }
+    nmcli(create_args(iface, ssid), START_TIMEOUT).await?;
     let _ = run(
         "nmcli",
         &[
@@ -512,12 +549,12 @@ pub async fn toggle(
         (None, Some(iface)) => {
             let net = config_manager().config().network();
             let ssid = effective_ssid(&net.hotspot_ssid().get_untracked(), &hostname());
-            let password = config_manager()
-                .config()
-                .network()
-                .hotspot_password()
-                .get_untracked();
-            start(&iface, &ssid, &password).await
+            // A password still in the config goes into the profile first;
+            // if that fails, do not start with a different key.
+            match migrate_config_password().await {
+                Ok(()) => start(&iface, &ssid).await,
+                Err(e) => Err(e),
+            }
         }
         (None, None) => Err("No Wi-Fi device for the hotspot".to_string()),
     };
@@ -531,6 +568,68 @@ pub async fn toggle(
         });
     }
     result
+}
+
+// Serialise migration and explicit Settings saves, so a slow migration can
+// never overwrite a newer password the user just saved.
+static SECRET_CHANGES: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// Save a new password from Settings in NetworkManager, and clear any legacy
+/// config value only after the save succeeds. Never writes the new key to YAML.
+pub async fn set_password(password: &str) -> Result<(), String> {
+    use mshell_config::config_manager::config_manager;
+    use mshell_config::schema::config::{ConfigStoreFields, NetworkConfigStoreFields};
+    use reactive_graph::traits::GetUntracked;
+
+    let _guard = SECRET_CHANGES.lock().await;
+    let ssid = effective_ssid(
+        &config_manager()
+            .config()
+            .network()
+            .hotspot_ssid()
+            .get_untracked(),
+        &hostname(),
+    );
+    crate::hotspot_secret::store_password(&ssid, password).await?;
+    clear_legacy_password().await
+}
+
+async fn clear_legacy_password() -> Result<(), String> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    relm4::gtk::glib::MainContext::default().invoke(move || {
+        let manager = mshell_config::config_manager::config_manager();
+        manager.update_config(|c| c.network.hotspot_password.clear());
+        // Do not leave the old plaintext waiting in the debounced writer
+        // after reporting a successful migration.
+        manager.flush();
+        let _ = tx.send(());
+    });
+    rx.await
+        .map_err(|_| "Could not clear the legacy hotspot setting".to_string())
+}
+
+/// Move a password still in the old `network.hotspot_password` key into the
+/// NetworkManager profile, then clear the key (on the GTK main loop, where
+/// the config store lives). A no-op when the key is empty; on failure the
+/// key is kept so the next start retries.
+pub async fn migrate_config_password() -> Result<(), String> {
+    use mshell_config::config_manager::config_manager;
+    use mshell_config::schema::config::{ConfigStoreFields, NetworkConfigStoreFields};
+    use reactive_graph::traits::GetUntracked;
+
+    let _guard = SECRET_CHANGES.lock().await;
+    let net = config_manager().config().network();
+    let password = zeroize::Zeroizing::new(net.clone().hotspot_password().get_untracked());
+    if password.is_empty() {
+        return Ok(());
+    }
+    let ssid = effective_ssid(&net.hotspot_ssid().get_untracked(), &hostname());
+    crate::hotspot_secret::store_password(&ssid, &password)
+        .await
+        .map_err(|e| format!("Could not save the hotspot password in NetworkManager: {e}"))?;
+    clear_legacy_password().await?;
+    tracing::info!("hotspot: moved the password from the shell config into NetworkManager");
+    Ok(())
 }
 
 /// The machine's hostname, for the default SSID.
@@ -680,10 +779,10 @@ fe80::1 lladdr aa:bb:cc:dd:ee:01 router REACHABLE\n";
     }
 
     #[test]
-    fn start_args_omit_empty_password() {
+    fn start_argvs_are_fixed_and_never_carry_a_secret() {
         assert_eq!(
-            start_args("wlan0", "n", ""),
-            vec![
+            create_args("wlan0", "n"),
+            [
                 "device",
                 "wifi",
                 "hotspot",
@@ -695,8 +794,42 @@ fe80::1 lladdr aa:bb:cc:dd:ee:01 router REACHABLE\n";
                 "n"
             ]
         );
-        let with = start_args("wlan0", "n", "12345678");
-        assert_eq!(&with[with.len() - 2..], &["password", "12345678"]);
+        assert_eq!(
+            retarget_args("n"),
+            [
+                "connection",
+                "modify",
+                CONNECTION_NAME,
+                "802-11-wireless.ssid",
+                "n",
+                "connection.autoconnect",
+                "no"
+            ]
+        );
+        assert_eq!(
+            up_args("wlan0"),
+            ["connection", "up", CONNECTION_NAME, "ifname", "wlan0"]
+        );
+    }
+
+    #[test]
+    fn the_password_never_reaches_an_nmcli_argv() {
+        // Any local user can read /proc/<pid>/cmdline. The secret goes to
+        // NetworkManager over D-Bus only (hotspot_secret.rs).
+        let src = include_str!("hotspot.rs");
+        let prod = src.split("#[cfg(test)]").next().unwrap();
+        for forbidden in [
+            "\"password\"",
+            "wifi-sec.psk",
+            "802-11-wireless-security.psk",
+        ] {
+            assert!(
+                !prod.contains(forbidden),
+                "hotspot.rs passes {forbidden} to nmcli"
+            );
+        }
+        // The only reader of the old config key is the one-time migration.
+        assert_eq!(prod.matches("hotspot_password()").count(), 1);
     }
 
     #[test]

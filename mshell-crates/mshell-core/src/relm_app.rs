@@ -288,6 +288,18 @@ impl Component for Shell {
 
         let polkit = PolkitPromptModel::builder().launch(()).detach();
 
+        // One-time migration of the old plaintext hotspot setting. The key
+        // is cleared only after NetworkManager accepted it; no secret is
+        // logged or put on an argv. Also retried before starting a hotspot.
+        relm4::spawn_local(async {
+            if mshell_utils::hotspot::migrate_config_password()
+                .await
+                .is_err()
+            {
+                tracing::warn!("hotspot password migration failed; will retry before starting");
+            }
+        });
+
         let sound_alerts = SoundAlertsModel::builder().launch(()).detach();
         let toast_producer = ToastProducerModel::builder().launch(()).detach();
         let audio_inhibit = AudioInhibitModel::builder()

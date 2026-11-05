@@ -11,6 +11,7 @@ pub mod denoise;
 pub mod discord;
 pub mod gtk;
 pub mod hotspot;
+pub mod hotspot_secret;
 pub mod hover_scroll;
 pub mod idle;
 pub mod key_mode;

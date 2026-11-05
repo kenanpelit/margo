@@ -47,6 +47,7 @@ wayle-battery.workspace = true
 wayle-bluetooth.workspace = true
 wayle-network.workspace = true
 wayle-power-profiles.workspace = true
+zeroize.workspace = true
 
 [dev-dependencies]
 tempfile = "3"

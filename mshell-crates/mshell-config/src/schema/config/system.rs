@@ -93,9 +93,9 @@ pub struct NetworkConfig {
     /// Wi-Fi hotspot network name (Network menu · Hotspot, Control Center
     /// Hotspot tile). Empty = `<hostname>-hotspot`.
     pub hotspot_ssid: String,
-    /// Hotspot WPA2 password (8–63 characters). Empty = let
-    /// NetworkManager keep the saved `margo-hotspot` profile's secret (or
-    /// generate one on first start), so no secret has to live here.
+    /// Legacy hotspot password, read only for migration. mshell moves it
+    /// into NetworkManager's `margo-hotspot` connection secrets once and
+    /// clears this key. Settings never writes a new password here.
     pub hotspot_password: String,
     /// Wi-Fi interface for the hotspot (e.g. `wlan0`). Empty = the first
     /// NetworkManager Wi-Fi device.

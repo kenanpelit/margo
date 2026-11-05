@@ -48,7 +48,11 @@ pub(crate) struct NetworkSettingsModel {
     proxy_ignore: String,
     proxy_pac_url: String,
     hotspot_ssid: String,
+    /// A new hotspot password being typed. Never loaded from or saved to the
+    /// config: Save stores it in NetworkManager (mshell_utils::hotspot_secret).
     hotspot_password: String,
+    /// Result line under the password row ("Saved in NetworkManager" / error).
+    hotspot_password_status: String,
     hotspot_interface: String,
     // ── Home-network login automation ──
     login_enabled: bool,
@@ -107,6 +111,7 @@ pub(crate) enum NetworkSettingsInput {
     // ── Hotspot ──
     HotspotSsidChanged(String),
     HotspotPasswordChanged(String),
+    HotspotPasswordSave,
     HotspotInterfaceChanged(String),
     // ── Home-network login automation ──
     SetLoginEnabled(bool),
@@ -132,6 +137,7 @@ pub(crate) enum NetworkSettingsCommandOutput {
     WifiChanged,
     WiredChanged,
     AvailableNetworksChanged,
+    HotspotPasswordSaved(Result<(), String>),
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -645,7 +651,7 @@ impl Component for NetworkSettingsModel {
                     },
                 },
                 gtk::Box {
-                    set_widget_name: "setting:/network/hotspot_password",
+                    set_widget_name: "hotspot-password-editor",
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 20,
                     gtk::Label {
@@ -657,7 +663,7 @@ impl Component for NetworkSettingsModel {
                     gtk::Entry {
                         set_valign: gtk::Align::Center,
                         add_css_class: "ok-entry-with-border",
-                        set_placeholder_text: Some("Keep / generate (NetworkManager)"),
+                        set_placeholder_text: Some("Kept in NetworkManager"),
                         set_visibility: false,
                         set_input_purpose: gtk::InputPurpose::Password,
                         #[watch]
@@ -665,7 +671,27 @@ impl Component for NetworkSettingsModel {
                         connect_changed[sender] => move |e| {
                             sender.input(NetworkSettingsInput::HotspotPasswordChanged(e.text().to_string()));
                         },
+                        connect_activate => NetworkSettingsInput::HotspotPasswordSave,
                     },
+                    gtk::Button {
+                        add_css_class: "ok-button-surface",
+                        set_label: "Save",
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        set_sensitive: !model.hotspot_password.is_empty(),
+                        connect_clicked => NetworkSettingsInput::HotspotPasswordSave,
+                    },
+                },
+                gtk::Label {
+                    add_css_class: "label-small",
+                    #[watch]
+                    set_label: &model.hotspot_password_status,
+                    #[watch]
+                    set_visible: !model.hotspot_password_status.is_empty(),
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
                 },
                 gtk::Box {
                     set_widget_name: "setting:/network/hotspot_interface",
@@ -966,7 +992,8 @@ impl Component for NetworkSettingsModel {
             proxy_ignore,
             proxy_pac_url,
             hotspot_ssid: network_cfg.hotspot_ssid,
-            hotspot_password: network_cfg.hotspot_password,
+            hotspot_password: String::new(),
+            hotspot_password_status: String::new(),
             hotspot_interface: network_cfg.hotspot_interface,
             login_enabled: login.enabled,
             login_wifi: login.wifi_connection,
@@ -1047,6 +1074,12 @@ impl Component for NetworkSettingsModel {
                 spawn_wired_watcher(&sender, token, || {
                     NetworkSettingsCommandOutput::StateChanged
                 });
+            }
+            NetworkSettingsCommandOutput::HotspotPasswordSaved(result) => {
+                self.hotspot_password_status = match result {
+                    Ok(()) => "Saved in NetworkManager (the margo-hotspot profile)".into(),
+                    Err(e) => e,
+                };
             }
             NetworkSettingsCommandOutput::AvailableNetworksChanged => {
                 let Some(network) = network_service() else {
@@ -1388,9 +1421,17 @@ impl Component for NetworkSettingsModel {
                 }
             }
             NetworkSettingsInput::HotspotPasswordChanged(v) => {
-                if self.hotspot_password != v {
-                    self.hotspot_password = v.clone();
-                    config_manager().update_config(|c| c.network.hotspot_password = v);
+                self.hotspot_password = v;
+            }
+            NetworkSettingsInput::HotspotPasswordSave => {
+                let password = zeroize::Zeroizing::new(std::mem::take(&mut self.hotspot_password));
+                if !password.is_empty() {
+                    self.hotspot_password_status = "Saving…".into();
+                    sender.oneshot_command(async move {
+                        NetworkSettingsCommandOutput::HotspotPasswordSaved(
+                            mshell_utils::hotspot::set_password(&password).await,
+                        )
+                    });
                 }
             }
             NetworkSettingsInput::HotspotInterfaceChanged(v) => {

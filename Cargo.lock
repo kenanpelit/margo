@@ -5593,6 +5593,7 @@ dependencies = [
  "wayle-bluetooth",
  "wayle-network",
  "wayle-power-profiles",
+ "zeroize",
 ]
 
 [[package]]
@@ -5673,6 +5674,8 @@ dependencies = [
  "wayle-network",
  "wayle-power-profiles",
  "wayle-weather",
+ "zbus",
+ "zeroize",
 ]
 
 [[package]]

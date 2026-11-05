@@ -36,6 +36,8 @@ wayle-media.workspace = true
 wayle-network.workspace = true
 wayle-power-profiles.workspace = true
 wayle-weather.workspace = true
+zbus.workspace = true
+zeroize.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
