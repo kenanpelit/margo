@@ -1,6 +1,5 @@
 //! Shell-wide background drivers started from the frame: each is a shared,
-//! idempotent singleton started by a config effect the first time its
-//! toggle is on (it handles being turned off itself).
+//! idempotent singleton driven by a config effect from its toggle.
 
 use super::*;
 
@@ -17,10 +16,9 @@ pub(super) fn push_background_hooks(effects: &mut EffectScope) {
         }
     });
 
-    // Crash notifications (systemd-coredump watcher).
+    // Crash notifications (systemd-coredump watcher): started and stopped
+    // with the toggle, so it costs nothing while off.
     effects.push(move |_| {
-        if config_manager().config().crashes().notify().get() {
-            crate::crashes::ensure_watcher();
-        }
+        crate::crashes::set_watcher(config_manager().config().crashes().notify().get());
     });
 }

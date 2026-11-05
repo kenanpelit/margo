@@ -7,31 +7,37 @@
 //!   (newest first, only our uid: a system daemon dumping core is a
 //!   sysadmin's problem, not a desktop notification).
 //! * `journalctl -b -p <level> -o json` → [`parse_journal`].
-//! * The watcher ([`ensure_watcher`]) stats `/var/lib/systemd/coredump`
-//!   every few seconds and only runs `coredumpctl` when the directory
-//!   changed. New crashes since the persisted high-water mark raise a
+//! * The watcher ([`set_watcher`]) watches `/var/lib/systemd/coredump`
+//!   with inotify (no timer) and runs `coredumpctl` once a burst of
+//!   changes there settles. New crashes since the persisted high-water
+//!   mark raise a
 //!   critical notification unless the program is muted
 //!   (`crashes.muted`). The first run only records the mark, so starting
-//!   the shell never replays old crashes.
+//!   the shell never replays old crashes. The watcher exists only while
+//!   `crashes.notify` is on.
 //!
 //! Parsers are pure and tested against output captured on the owner's
 //! machine (`testdata/`). Missing `coredumpctl` / `journalctl` degrade to
 //! "not available" in the menu and an idle watcher.
 
+use std::cell::{Cell, RefCell};
 use std::os::unix::fs::MetadataExt;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, SystemTime};
+use std::path::{Path, PathBuf};
+use std::rc::Rc;
+use std::time::Duration;
 
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, CrashesConfigStoreFields};
 use reactive_graph::prelude::GetUntracked;
+use relm4::gtk::gio::prelude::{FileExt, FileMonitorExt};
+use relm4::gtk::{gio, glib};
 use serde_json::Value;
 
 /// Where systemd-coredump stores dumps (world-readable directory).
 const COREDUMP_DIR: &str = "/var/lib/systemd/coredump";
-/// How often the watcher stats [`COREDUMP_DIR`].
-const WATCH_TICK: Duration = Duration::from_secs(5);
+/// Quiet time after the last change in [`COREDUMP_DIR`] before the
+/// watcher looks: systemd-coredump writes a temp file, then renames it.
+const SETTLE: Duration = Duration::from_secs(1);
 /// Rows kept from `coredumpctl` (newest) — the menu shows these.
 pub(crate) const MAX_CRASHES: usize = 50;
 /// Journal entries fetched for the Errors tab.
@@ -287,7 +293,13 @@ pub(crate) fn format_time(time_us: u64) -> String {
 
 // ── Watcher ─────────────────────────────────────────────────────────────
 
-static WATCHER: AtomicBool = AtomicBool::new(false);
+thread_local! {
+    /// The live directory watch while `crashes.notify` is on (GTK thread).
+    static WATCHER: RefCell<Option<DirWatch>> = const { RefCell::new(None) };
+    /// A crash check is running / another was asked for meanwhile.
+    static CHECKING: Cell<bool> = const { Cell::new(false) };
+    static CHECK_AGAIN: Cell<bool> = const { Cell::new(false) };
+}
 
 fn seen_path() -> PathBuf {
     relm4::gtk::glib::user_cache_dir()
@@ -313,51 +325,120 @@ fn write_seen(us: u64) {
     }
 }
 
-fn notify_enabled() -> bool {
-    config_manager().config().crashes().notify().get_untracked()
-}
-
 fn muted() -> Vec<String> {
     config_manager().config().crashes().muted().get_untracked()
 }
 
-/// Start the crash-notification watcher once (idempotent). It idles
-/// (one `stat` per tick) while `crashes.notify` is off.
-pub(crate) fn ensure_watcher() {
-    if WATCHER.swap(true, Ordering::SeqCst) {
+/// Start the crash-notification watcher (`on`) or drop it. Idempotent;
+/// called from the `crashes.notify` config effect on the GTK thread.
+/// Starting checks once against the persisted mark, so crashes that
+/// happened while it was off are announced then.
+pub(crate) fn set_watcher(on: bool) {
+    let started = WATCHER.with(|w| {
+        let mut w = w.borrow_mut();
+        match (on, w.is_some()) {
+            (true, false) => {
+                *w = DirWatch::new(Path::new(COREDUMP_DIR), SETTLE, check_crashes);
+                if w.is_none() {
+                    tracing::warn!("crashes: cannot watch {COREDUMP_DIR}");
+                }
+                true
+            }
+            (false, true) => {
+                *w = None;
+                false
+            }
+            _ => false,
+        }
+    });
+    if started {
+        check_crashes();
+    }
+}
+
+/// Fetch the crash list and announce what is new. One at a time: a call
+/// while a check runs makes it run once more afterwards.
+fn check_crashes() {
+    if CHECKING.with(|c| c.replace(true)) {
+        CHECK_AGAIN.with(|a| a.set(true));
         return;
     }
     relm4::spawn_local(async move {
-        let mut last_mtime: Option<SystemTime> = None;
         loop {
-            if notify_enabled() {
-                let mtime = std::fs::metadata(COREDUMP_DIR)
-                    .and_then(|m| m.modified())
-                    .ok();
-                if mtime.is_some() && mtime != last_mtime {
-                    last_mtime = mtime;
-                    // tokio::process needs the tokio runtime: run the fetch
-                    // there, keep config + state on the main loop.
-                    if let Ok(Fetch::Ok(own)) = relm4::spawn(fetch_crashes()).await {
-                        let seen = read_seen();
-                        let muted = muted();
-                        let a = to_announce(&own, seen, &muted);
-                        for c in &a.crashes {
-                            announce(c);
-                        }
-                        if Some(a.seen_us) != seen {
-                            write_seen(a.seen_us);
-                        }
-                    }
+            CHECK_AGAIN.with(|a| a.set(false));
+            // tokio::process needs the tokio runtime: run the fetch there,
+            // keep config + state on the main loop.
+            if let Ok(Fetch::Ok(own)) = relm4::spawn(fetch_crashes()).await {
+                let seen = read_seen();
+                let a = to_announce(&own, seen, &muted());
+                for c in &a.crashes {
+                    announce(c);
                 }
-            } else {
-                // Re-arm so turning it back on compares against the
-                // persisted mark (crashes while off are announced then).
-                last_mtime = None;
+                if Some(a.seen_us) != seen {
+                    write_seen(a.seen_us);
+                }
             }
-            relm4::gtk::glib::timeout_future(WATCH_TICK).await;
+            if !CHECK_AGAIN.with(Cell::get) {
+                break;
+            }
         }
+        CHECKING.with(|c| c.set(false));
     });
+}
+
+/// An inotify watch on a directory (GIO file monitor) that calls
+/// `on_change` once a burst of changes has been quiet for `settle`. No
+/// timer runs between events; dropping it stops the watch.
+struct DirWatch {
+    monitor: gio::FileMonitor,
+    alive: Rc<Cell<bool>>,
+}
+
+impl DirWatch {
+    fn new(dir: &Path, settle: Duration, on_change: impl Fn() + 'static) -> Option<Self> {
+        let monitor = gio::File::for_path(dir)
+            .monitor_directory(gio::FileMonitorFlags::WATCH_MOVES, gio::Cancellable::NONE)
+            .ok()?;
+        let alive = Rc::new(Cell::new(true));
+        let on_change = Rc::new(on_change);
+        let generation = Rc::new(Cell::new(0u64));
+        let a = alive.clone();
+        monitor.connect_changed(move |_, _, _, event| {
+            if !wakes_check(event) {
+                return;
+            }
+            // Only the last event of a burst fires, `settle` after it.
+            let mine = generation.get().wrapping_add(1);
+            generation.set(mine);
+            let (a, generation, on_change) = (a.clone(), generation.clone(), on_change.clone());
+            glib::MainContext::ref_thread_default().spawn_local(async move {
+                glib::timeout_future(settle).await;
+                if a.get() && generation.get() == mine {
+                    on_change();
+                }
+            });
+        });
+        Some(Self { monitor, alive })
+    }
+}
+
+impl Drop for DirWatch {
+    fn drop(&mut self) {
+        self.alive.set(false);
+        self.monitor.cancel();
+    }
+}
+
+/// Directory events that may mean a new dump: a file created, renamed or
+/// moved in, or a write finished.
+fn wakes_check(event: gio::FileMonitorEvent) -> bool {
+    matches!(
+        event,
+        gio::FileMonitorEvent::Created
+            | gio::FileMonitorEvent::Renamed
+            | gio::FileMonitorEvent::MovedIn
+            | gio::FileMonitorEvent::ChangesDoneHint
+    )
 }
 
 /// Raise a critical desktop notification for one crash.
@@ -388,6 +469,49 @@ fn announce(c: &Crash) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A coredump landing (temp file + rename) wakes the watcher once,
+    /// after the burst settles; nothing runs without events or once the
+    /// watch is dropped.
+    #[test]
+    fn dir_watch_debounces_and_stops_on_drop() {
+        let ctx = glib::MainContext::new();
+        ctx.with_thread_default(|| {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let hits = Rc::new(Cell::new(0u32));
+            let h = hits.clone();
+            let watch = DirWatch::new(dir.path(), Duration::from_millis(100), move || {
+                h.set(h.get() + 1);
+            })
+            .expect("watch");
+            let spin = |ms: u64| {
+                let end = std::time::Instant::now() + Duration::from_millis(ms);
+                while std::time::Instant::now() < end {
+                    ctx.iteration(false);
+                    std::thread::sleep(Duration::from_millis(2));
+                }
+            };
+            spin(150);
+            assert_eq!(hits.get(), 0, "no events, no work");
+
+            let tmp = dir.path().join(".#core.x.zst");
+            std::fs::write(&tmp, b"core").expect("write");
+            std::fs::rename(&tmp, dir.path().join("core.x.zst")).expect("rename");
+            let end = std::time::Instant::now() + Duration::from_secs(3);
+            while hits.get() == 0 && std::time::Instant::now() < end {
+                ctx.iteration(false);
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            spin(300);
+            assert_eq!(hits.get(), 1, "one check per burst");
+
+            drop(watch);
+            std::fs::write(dir.path().join("core.y.zst"), b"core").expect("write");
+            spin(400);
+            assert_eq!(hits.get(), 1, "a dropped watch does nothing");
+        })
+        .expect("own the test context");
+    }
 
     const COREDUMPS: &str = include_str!("testdata/coredumpctl.json");
     const JOURNAL: &str = include_str!("testdata/journal.json");
