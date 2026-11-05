@@ -26,6 +26,7 @@ pub(crate) enum AgentsSettingsInput {
     NotifyFinished(bool),
     ConfigDirs(String),
     Currency(u32),
+    PillPace(bool),
     Effect(AgentsConfig),
 }
 
@@ -125,6 +126,22 @@ impl Component for AgentsSettingsModel {
 
                     #[template]
                     Row {
+                        #[template_child] title { set_label: "Pace in the pill" },
+                        #[template_child] desc { set_label: "Show beside the percentage how far usage runs ahead of (↑) or behind (↓) the elapsed share of its window." },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(pace_handler)]
+                            set_active: model.cfg.pill_pace,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(AgentsSettingsInput::PillPace(v));
+                                glib::Propagation::Proceed
+                            } @pace_handler,
+                        },
+                    },
+
+                    #[template]
+                    Row {
                         #[template_child] title { set_label: "Cost currency" },
                         #[template_child] desc { set_label: "Estimated costs use LiteLLM's public model prices; EUR converts at the day's ECB rate." },
                         gtk::DropDown {
@@ -189,6 +206,7 @@ impl Component for AgentsSettingsModel {
                     set(Box::new(move |a| a.currency = c));
                 }
             }
+            AgentsSettingsInput::PillPace(v) => set(Box::new(move |a| a.pill_pace = v)),
             AgentsSettingsInput::Effect(c) => self.cfg = c,
         }
     }

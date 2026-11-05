@@ -22,16 +22,25 @@ use std::rc::Rc;
 
 pub(crate) struct AgentsModel {
     snapshot: Option<UsageSnapshot>,
+    /// `bars.widgets.agents.pill_pace`.
+    pace: bool,
     sessions: Option<SessionsSnapshot>,
     _poll: Rc<PollSubscription<UsageSnapshot>>,
     _sessions_poll: Rc<PollSubscription<SessionsSnapshot>>,
     _settings: mshell_common::scoped_effects::EffectScope,
+    _pace_effect: mshell_common::scoped_effects::EffectScope,
 }
 
 #[derive(Debug)]
 pub(crate) enum AgentsInput {
     Clicked,
     Refresh,
+}
+
+/// Config changes the pill shows at once.
+#[derive(Debug)]
+pub(crate) enum AgentsConfigChange {
+    Pace(bool),
 }
 
 #[derive(Debug)]
@@ -45,6 +54,7 @@ pub(crate) struct AgentsInit {}
 pub(crate) enum AgentsCommandOutput {
     Usage(UsageSnapshot),
     Sessions(SessionsSnapshot),
+    Config(AgentsConfigChange),
 }
 
 #[relm4::component(pub)]
@@ -172,15 +182,38 @@ impl Component for AgentsModel {
         }
         root.add_controller(right);
 
+        let mut pace_effect = mshell_common::scoped_effects::EffectScope::new();
+        {
+            use mshell_config::config_manager::config_manager;
+            use mshell_config::schema::config::{
+                AgentsConfigStoreFields, BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields,
+            };
+            use reactive_graph::prelude::Get;
+            let cs = sender.clone();
+            pace_effect.push(move |_| {
+                let v = config_manager()
+                    .config()
+                    .bars()
+                    .widgets()
+                    .agents()
+                    .pill_pace()
+                    .get();
+                let _ = cs
+                    .command_sender()
+                    .send(AgentsCommandOutput::Config(AgentsConfigChange::Pace(v)));
+            });
+        }
         let model = AgentsModel {
             snapshot: None,
+            pace: false,
             sessions: None,
             _poll: poll,
             _sessions_poll: sessions_poll,
             _settings: crate::agents::settings::watch_settings(),
+            _pace_effect: pace_effect,
         };
         let widgets = view_output!();
-        apply_visual(&widgets, &root, None, None);
+        apply_visual(&widgets, &root, None, None, false);
         ComponentParts { model, widgets }
     }
 
@@ -209,8 +242,19 @@ impl Component for AgentsModel {
                         root,
                         self.snapshot.as_ref(),
                         self.sessions.as_ref(),
+                        self.pace,
                     );
                 }
+            }
+            AgentsCommandOutput::Config(AgentsConfigChange::Pace(v)) => {
+                self.pace = v;
+                apply_visual(
+                    widgets,
+                    root,
+                    self.snapshot.as_ref(),
+                    self.sessions.as_ref(),
+                    self.pace,
+                );
             }
             AgentsCommandOutput::Sessions(s) => {
                 if self.sessions.as_ref() != Some(&s) {
@@ -225,6 +269,41 @@ impl Component for AgentsModel {
             }
         }
     }
+}
+
+/// Points `w` is over (+) or under (−) the share of it that has elapsed:
+/// 60 % used half way through is `+10`. `None` without an active window.
+pub(crate) fn pace_points(w: &limits::LimitWindow, now_ms: i64) -> Option<i64> {
+    let reset = w.resets_at.filter(|r| *r > now_ms)?;
+    if w.period_ms <= 0 {
+        return None;
+    }
+    let elapsed = (w.period_ms - (reset - now_ms)).clamp(0, w.period_ms);
+    let expected = elapsed as f64 / w.period_ms as f64 * 100.0;
+    Some((w.percent - expected).round() as i64)
+}
+
+/// `↑12` / `↓8`; empty when on pace.
+pub(crate) fn pace_text(points: Option<i64>) -> String {
+    match points {
+        Some(p) if p >= 1 => format!(" ↑{p}"),
+        Some(p) if p <= -1 => format!(" ↓{}", -p),
+        _ => String::new(),
+    }
+}
+
+/// The pill's percentage (with the pace when `with_pace`) and severity
+/// class, from the headline window.
+pub(crate) fn headline_text(s: &UsageSnapshot, with_pace: bool) -> Option<(String, &'static str)> {
+    let (text, class) = headline(s)?;
+    if !with_pace {
+        return Some((text, class));
+    }
+    let (_, w) = s.headline()?;
+    Some((
+        format!("{text}{}", pace_text(pace_points(w, s.now_ms))),
+        class,
+    ))
 }
 
 /// The pill's percentage and severity class, from the headline window.
@@ -295,12 +374,13 @@ fn apply_visual(
     root: &gtk::Box,
     s: Option<&UsageSnapshot>,
     sessions: Option<&SessionsSnapshot>,
+    with_pace: bool,
 ) {
     let cluster = &widgets.cluster;
     for c in ["calm", "warn", "danger", "stale"] {
         cluster.remove_css_class(c);
     }
-    match s.and_then(|s| headline(s).map(|h| (s, h))) {
+    match s.and_then(|s| headline_text(s, with_pace).map(|h| (s, h))) {
         Some((s, (text, severity))) => {
             widgets.label.set_label(&text);
             widgets.label.set_visible(true);
@@ -431,6 +511,33 @@ mod tests {
         let s = snap(vec![(WindowKind::Session, 100.0)]);
         assert_eq!(headline(&s), Some(("100%".to_string(), "danger")));
         assert_eq!(headline(&snap(vec![])), None);
+    }
+
+    #[test]
+    fn pace_is_points_over_the_elapsed_share() {
+        let w = |percent: f64, remaining: i64| LimitWindow {
+            kind: WindowKind::Session,
+            label: String::new(),
+            percent,
+            resets_at: Some(1_000 + remaining),
+            period_ms: 5 * limits::HOUR_MS,
+            severity: Severity::Normal,
+        };
+        // Half way through the 5-hour window.
+        let half = 150 * 60_000;
+        assert_eq!(pace_points(&w(60.0, half), 1_000), Some(10));
+        assert_eq!(pace_points(&w(42.0, half), 1_000), Some(-8));
+        assert_eq!(pace_points(&w(42.0, -1), 1_000), None, "reset passed");
+        assert_eq!(pace_text(Some(10)), " ↑10");
+        assert_eq!(pace_text(Some(-8)), " ↓8");
+        assert_eq!(pace_text(Some(0)), "");
+        let mut s = snap(vec![(WindowKind::Session, 60.0)]);
+        if let Some(u) = s.claude.usage.as_mut() {
+            u.windows[0].resets_at = Some(half);
+            u.windows[0].period_ms = 5 * limits::HOUR_MS;
+        }
+        assert_eq!(headline_text(&s, true).unwrap().0, "60% ↑10");
+        assert_eq!(headline_text(&s, false).unwrap().0, "60%");
     }
 
     #[test]

@@ -244,6 +244,14 @@ impl UsageHistory {
         out
     }
 
+    /// Sessions with any usage (subagent transcripts are part of theirs).
+    pub(crate) fn sessions(&self) -> u32 {
+        self.files
+            .values()
+            .filter(|f| !f.subagent && !f.days.is_empty())
+            .count() as u32
+    }
+
     /// Per project since `from_day` (inclusive), most tokens first. A
     /// Claude Code worktree (`<repo>/.claude/worktrees/<name>`) counts
     /// toward its repo.

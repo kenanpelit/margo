@@ -211,3 +211,37 @@ fn history_views_cover_the_last_thirty_days() {
     assert_eq!(snap.hours[21], snap.projects[0].1.tokens());
     assert_eq!(snap.hours.iter().sum::<u64>(), snap.projects[0].1.tokens());
 }
+
+#[test]
+fn history_periods_week_month_all_time_and_weekdays() {
+    use history::tests::{at, utc};
+    let dir = tempfile::tempdir().unwrap();
+    let p = dir.path().join("projects/-w");
+    std::fs::create_dir_all(&p).unwrap();
+    // 2026-11-05 is a Thursday: Monday is 11-02, the month starts 11-01.
+    let lines = [
+        at("2026-10-31T10:00:00.000Z", "oct"),
+        at("2026-11-01T10:00:00.000Z", "sun"),
+        at("2026-11-02T10:00:00.000Z", "mon"),
+        at("2026-11-05T10:00:00.000Z", "thu"),
+        at("2026-11-05T11:00:00.000Z", "thu2"),
+    ];
+    std::fs::write(p.join("s.jsonl"), lines.join("\n") + "\n").unwrap();
+    let mut h = history::UsageHistory::default();
+    h.refresh(&[dir.path().join("projects")], &utc);
+    let snap = summarize(&h, chrono::NaiveDate::from_ymd_opt(2026, 11, 5).unwrap());
+    let per = snap.today.tokens() / 2;
+    assert_eq!(
+        (
+            snap.today.messages,
+            snap.week.messages,
+            snap.month.messages,
+            snap.all.messages
+        ),
+        (2, 3, 4, 5)
+    );
+    assert_eq!(snap.weekdays, vec![per, 0, 0, 2 * per, 0, 0, 0]);
+    assert_eq!(snap.all_sessions, 1);
+    let cost = snap.today.cost(&pricing::test_table()).unwrap();
+    assert!(cost > 0.0);
+}

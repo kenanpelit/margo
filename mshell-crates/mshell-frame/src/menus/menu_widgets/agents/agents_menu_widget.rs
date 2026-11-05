@@ -540,22 +540,52 @@ const TOP_PROJECTS: usize = 5;
 /// Last 30 days: tokens (and estimated cost) per project, then a
 /// tokens-by-hour-of-day chart.
 fn history_card(container: &gtk::Box, h: &HistorySnapshot) {
-    if h.projects.is_empty() {
-        return;
-    }
     let prices = pricing::current();
     let currency = crate::agents::settings::currency();
-    container.append(&section(&format!("Last {HISTORY_DAYS} days · by project")));
-    let list = boxed_list();
-    for (project, t) in h.projects.iter().take(TOP_PROJECTS) {
-        let mut value = compact_count(t.tokens());
+    let value = |t: &crate::agents::history::Totals| {
+        let mut v = compact_count(t.tokens());
         if let Some(c) = t
             .cost(&prices)
             .and_then(|c| pricing::money(c, currency, prices.eur))
         {
-            value.push_str(&format!(" · ~{c}"));
+            v.push_str(&format!(" · ~{c}"));
         }
-        list.append(&stat_row(&sessions::tilde(project), &value));
+        v
+    };
+    container.append(&section("Tokens & estimated cost · Claude Code"));
+    let list = boxed_list();
+    for (title, t) in [
+        ("Today", &h.today),
+        ("This week", &h.week),
+        ("This month", &h.month),
+        ("All time", &h.all),
+    ] {
+        list.append(&stat_row(title, &value(t)));
+    }
+    list.append(&stat_row(
+        "All-time activity",
+        &format!(
+            "{} sessions · {} messages",
+            h.all_sessions,
+            compact_count(u64::from(h.all.messages))
+        ),
+    ));
+    container.append(&list);
+    container.append(&section("This week"));
+    let chart = boxed_list();
+    let days: Vec<String> = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        .iter()
+        .map(|d| d.to_string())
+        .collect();
+    chart.append(&bar_chart(&h.weekdays, &days));
+    container.append(&chart);
+    if h.projects.is_empty() {
+        return;
+    }
+    container.append(&section(&format!("Last {HISTORY_DAYS} days · by project")));
+    let list = boxed_list();
+    for (project, t) in h.projects.iter().take(TOP_PROJECTS) {
+        list.append(&stat_row(&sessions::tilde(project), &value(t)));
     }
     container.append(&list);
     container.append(&section(&format!("Last {HISTORY_DAYS} days · by hour")));

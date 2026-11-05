@@ -715,6 +715,9 @@ pub struct AgentsConfig {
     pub claude_config_dirs: Vec<String>,
     /// Currency of the cost estimates (EUR converts at the day's ECB rate).
     pub currency: AgentsCurrency,
+    /// Show the pace beside the pill's percentage: `↑12` = twelve points
+    /// over where the elapsed share of the window would put it, `↓8` under.
+    pub pill_pace: bool,
 }
 
 /// Currency of the AI Agents cost estimates.

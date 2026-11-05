@@ -516,6 +516,16 @@ pub(crate) const HISTORY_DAYS: i64 = 30;
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct HistorySnapshot {
+    pub(crate) today: history::Totals,
+    /// Since Monday.
+    pub(crate) week: history::Totals,
+    /// Since the 1st.
+    pub(crate) month: history::Totals,
+    /// Since the first build of the cache.
+    pub(crate) all: history::Totals,
+    pub(crate) all_sessions: u32,
+    /// Tokens per day of this week, Monday first.
+    pub(crate) weekdays: Vec<u64>,
     /// Per project over the last [`HISTORY_DAYS`], most tokens first.
     pub(crate) projects: Vec<(String, history::Totals)>,
     /// Tokens per local hour of the day over the last [`HISTORY_DAYS`].
@@ -560,19 +570,47 @@ fn history_snapshot() -> HistorySnapshot {
 
 /// The snapshot views of `h` on `today`.
 fn summarize(h: &history::UsageHistory, today: chrono::NaiveDate) -> HistorySnapshot {
-    let from = (today - chrono::Duration::days(HISTORY_DAYS - 1))
-        .format("%Y-%m-%d")
-        .to_string();
-    let mut hours = vec![0u64; 24];
-    for (_, d) in h.by_day().range(from.as_str()..) {
-        for (i, n) in d.hours.iter().enumerate().take(24) {
-            hours[i] += n;
+    use chrono::Datelike;
+    let day = |d: chrono::NaiveDate| d.format("%Y-%m-%d").to_string();
+    let from = day(today - chrono::Duration::days(HISTORY_DAYS - 1));
+    let monday = today - chrono::Duration::days(i64::from(today.weekday().num_days_from_monday()));
+    let (today_s, week_s, month_s) = (
+        day(today),
+        day(monday),
+        day(today.with_day(1).unwrap_or(today)),
+    );
+    let mut snap = HistorySnapshot {
+        projects: h.by_project(&from),
+        hours: vec![0; 24],
+        weekdays: vec![0; 7],
+        all_sessions: h.sessions(),
+        ..HistorySnapshot::default()
+    };
+    for (d, u) in h.by_day() {
+        snap.all.add(&u.totals);
+        if d > today_s.as_str() {
+            continue;
+        }
+        if d >= from.as_str() {
+            for (i, n) in u.hours.iter().enumerate().take(24) {
+                snap.hours[i] += n;
+            }
+        }
+        if d >= month_s.as_str() {
+            snap.month.add(&u.totals);
+        }
+        if d >= week_s.as_str() {
+            snap.week.add(&u.totals);
+            if let Ok(date) = chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d") {
+                let i = date.weekday().num_days_from_monday() as usize;
+                snap.weekdays[i] += u.totals.tokens();
+            }
+        }
+        if d == today_s {
+            snap.today.add(&u.totals);
         }
     }
-    HistorySnapshot {
-        projects: h.by_project(&from),
-        hours,
-    }
+    snap
 }
 
 /// Saved sessions whose prompts match every word of `query`, across
