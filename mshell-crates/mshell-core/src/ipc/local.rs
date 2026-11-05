@@ -1,5 +1,5 @@
 //! `LocalCommand`s: bus verbs that drive a shell service (Game Mode, the
-//! Pomodoro timer) rather than open a surface. Run on the GTK thread like
+//! Pomodoro timer, eye care) rather than open a surface. Run on the GTK thread like
 //! every other command, but need no frame / monitor lookup.
 
 use super::*;
@@ -20,6 +20,9 @@ pub(super) fn dispatch(cmd: LocalCommand) {
         }
         LocalCommand::Pomodoro(cmd, reply) => {
             let _ = reply.send(mshell_frame::pomodoro::run(cmd).status_line());
+        }
+        LocalCommand::EyeCare(cmd, reply) => {
+            let _ = reply.send(mshell_frame::eyecare::run(cmd).status_line());
         }
     }
 }

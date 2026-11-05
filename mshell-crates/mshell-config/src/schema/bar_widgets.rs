@@ -25,6 +25,12 @@ pub enum BarWidget {
     /// starts / pauses. Rules live in `pomodoro` (Settings → Widgets →
     /// Alarm Clock); also `mshellctl pomodoro …`.
     Pomodoro,
+    /// Eye Care pill — the 20-20-20 break reminder: minutes until the next
+    /// break, a seconds countdown during one, dim while you're away. Click
+    /// takes a break now (or ends one), right-click restarts the count.
+    /// Settings live in `eyecare` (off by default; the pill's click turns
+    /// it on). Also `mshellctl eyecare …`.
+    EyeCare,
     /// Control Center pill — system-preferences glyph that opens the
     /// Control Center menu.
     ControlCenter,
@@ -196,6 +202,7 @@ impl BarWidget {
             BarWidget::AlarmClock => "Alarm Clock",
             BarWidget::Countdown => "Countdown",
             BarWidget::Pomodoro => "Pomodoro",
+            BarWidget::EyeCare => "Eye Care",
             BarWidget::ControlCenter => "Control Center",
             BarWidget::HiddenBar => "Hidden Bar",
             BarWidget::HiddenBarNamed(_) => "Hidden Bar",
@@ -270,6 +277,7 @@ impl BarWidget {
             BarWidget::AlarmClock,
             BarWidget::Countdown,
             BarWidget::Pomodoro,
+            BarWidget::EyeCare,
             BarWidget::ControlCenter,
             BarWidget::HiddenBar,
             BarWidget::Catwalk,

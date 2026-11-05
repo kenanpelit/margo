@@ -75,6 +75,7 @@ SESSION & NOTIFICATIONS
 
 FOCUS & BREAKS
   pomodoro        Pomodoro timer — toggle / start / pause / skip / reset / status
+  eyecare         20-20-20 eye breaks — break / skip / reset / on / off / status
 
 CAPTURE
   screenshot      Region / window / output / full → file + clipboard
@@ -305,6 +306,15 @@ pub enum Commands {
         #[arg(value_enum, default_value = "status")]
         action: PomodoroAction,
     },
+    /// 20-20-20 eye-care reminder — every 20 minutes of screen time, look
+    /// ~6 m away for 20 seconds. Prints the status line after the action
+    /// (`state=active next-break-in=840s`). Off by default; `on` enables it.
+    /// Lengths live in Settings → Widgets → Eye Care.
+    Eyecare {
+        /// break | skip | reset | on | off | toggle | status (default: status).
+        #[arg(value_enum, default_value = "status")]
+        action: EyeCareAction,
+    },
     /// Calendar — today's / upcoming events and connected accounts
     /// (proxied to the `mcal` calendar tool). `calendar account setup
     /// google` connects a Google account.
@@ -377,6 +387,32 @@ impl PomodoroAction {
             Self::Skip => "skip",
             Self::Reset => "reset",
             Self::ResetAll => "reset-all",
+            Self::Status => "status",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+pub enum EyeCareAction {
+    Break,
+    Skip,
+    Reset,
+    On,
+    Off,
+    Toggle,
+    Status,
+}
+
+impl EyeCareAction {
+    /// The bus verb (`mshell_frame::eyecare::Command::parse`).
+    pub fn verb(self) -> &'static str {
+        match self {
+            Self::Break => "break",
+            Self::Skip => "skip",
+            Self::Reset => "reset",
+            Self::On => "on",
+            Self::Off => "off",
+            Self::Toggle => "toggle",
             Self::Status => "status",
         }
     }

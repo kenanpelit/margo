@@ -182,4 +182,10 @@ pub(super) enum LocalCommand {
         mshell_frame::pomodoro::Command,
         tokio::sync::oneshot::Sender<String>,
     ),
+    /// `mshellctl eyecare <verb>` — drive the 20-20-20 reminder; reply with
+    /// the resulting status line.
+    EyeCare(
+        mshell_frame::eyecare::Command,
+        tokio::sync::oneshot::Sender<String>,
+    ),
 }

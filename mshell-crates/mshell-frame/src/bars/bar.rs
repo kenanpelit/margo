@@ -1228,6 +1228,11 @@ impl BarModel {
                         }
                     }),
             ),
+            BarWidget::EyeCare => Box::new(
+                crate::bars::bar_widgets::eyecare::EyeCareModel::builder()
+                    .launch(crate::bars::bar_widgets::eyecare::EyeCareInit { orientation })
+                    .detach(),
+            ),
             BarWidget::Pomodoro => Box::new(
                 crate::bars::bar_widgets::pomodoro::PomodoroModel::builder()
                     .launch(crate::bars::bar_widgets::pomodoro::PomodoroInit { orientation })

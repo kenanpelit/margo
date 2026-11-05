@@ -1,6 +1,7 @@
 //! The time widgets: the Alarm Clock's alarms and countdowns, and the
 //! Pomodoro cycle (Alarm Clock menu's Pomodoro tab + the `Pomodoro` bar
-//! pill + `mshellctl pomodoro`).
+//! pill + `mshellctl pomodoro`), and the 20-20-20 eye-care reminder
+//! (`EyeCare` bar pill + `mshellctl eyecare`).
 
 use super::*;
 
@@ -119,6 +120,42 @@ impl Default for Pomodoro {
             sessions_before_long_break: 4,
             auto_start_breaks: false,
             auto_start_work: false,
+            notifications: true,
+            sound: true,
+        }
+    }
+}
+
+/// 20-20-20 eye-care reminder: after `active_minutes` of screen time, look
+/// at something ~6 m (20 ft) away for `break_seconds`. Only time at the
+/// keyboard counts; `away_seconds` without input is a natural break and
+/// resets the count. Off by default — nothing runs until it is enabled
+/// (Settings → Widgets → Eye Care, the pill, or `mshellctl eyecare on`).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct EyeCare {
+    /// Run the reminder.
+    pub enabled: bool,
+    /// Minutes of active screen time between breaks.
+    pub active_minutes: u32,
+    /// Length of a break in seconds.
+    pub break_seconds: u32,
+    /// Seconds without keyboard / mouse input after which you count as
+    /// away (never shorter than a break).
+    pub away_seconds: u32,
+    /// Pop a desktop notification when a break starts and ends.
+    pub notifications: bool,
+    /// Chime when a break starts and ends (skipped under Do Not Disturb).
+    pub sound: bool,
+}
+
+impl Default for EyeCare {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            active_minutes: 20,
+            break_seconds: 20,
+            away_seconds: 120,
             notifications: true,
             sound: true,
         }

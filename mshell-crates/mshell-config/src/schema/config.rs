@@ -69,6 +69,7 @@ pub struct Config {
     pub toasts: Toasts,
     pub game_mode: GameMode,
     pub pomodoro: Pomodoro,
+    pub eyecare: EyeCare,
 }
 
 /// On-screen-display capsule (volume / brightness / mic / network pulse)

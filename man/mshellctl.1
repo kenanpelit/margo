@@ -149,6 +149,16 @@ after the action, e.g.
 (default:
 .IR status ).
 Lengths and auto-start live in Settings \(-> Widgets \(-> Alarm Clock.
+.TP
+.B eyecare \fR[\fIbreak\fR | \fIskip\fR | \fIreset\fR | \fIon\fR | \fIoff\fR | \fItoggle\fR | \fIstatus\fR]
+The 20-20-20 eye-care reminder: every 20 minutes of screen time, look about
+6 m (20 ft) away for 20 seconds. Only time at the keyboard counts; stepping
+away resets the count. Off by default
+.RI ( on
+enables it). Prints one status line after the action, e.g.
+.I state=active next\-break\-in=840s
+(default:
+.IR status ).
 .SS "Capture"
 .TP
 .B screenshot \fISUBCOMMAND\fR

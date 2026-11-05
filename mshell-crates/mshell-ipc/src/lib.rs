@@ -27,6 +27,7 @@ pub trait Shell {
     fn game_mode(&self, action: &str) -> zbus::Result<()>;
     fn game_mode_status(&self) -> zbus::Result<String>;
     fn pomodoro(&self, action: &str) -> zbus::Result<String>;
+    fn eyecare(&self, action: &str) -> zbus::Result<String>;
     fn dock_toggle(&self) -> zbus::Result<()>;
     fn dock_show(&self) -> zbus::Result<()>;
     fn dock_hide(&self) -> zbus::Result<()>;

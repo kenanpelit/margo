@@ -87,6 +87,13 @@ fn alarm_clock_parts() -> Vec<PagePart> {
     ]
 }
 
+/// Eye Care: the reminder's rules (a bar-only pill, no menu geometry).
+fn eyecare_parts() -> Vec<PagePart> {
+    vec![
+        page_part!(crate::eyecare_settings::EyeCareSettingsModel => crate::eyecare_settings::EyeCareSettingsInit {}),
+    ]
+}
+
 impl WidgetEntry {
     pub(super) fn label(&self) -> &'static str {
         match self {
@@ -354,6 +361,12 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
             stack_name: "pill_countdown",
             label: "Countdown",
             icon: "alarm-symbolic",
+        },
+        WidgetEntry::Composite {
+            stack_name: "eyecare",
+            label: "Eye Care",
+            icon: "eye-symbolic",
+            parts: eyecare_parts,
         },
         WidgetEntry::Pill {
             kind: BarPillKind::KeyboardLayout,

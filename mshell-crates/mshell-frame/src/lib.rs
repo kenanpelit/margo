@@ -5,6 +5,7 @@ mod common_widgets;
 mod countdown;
 mod crashes;
 mod discord;
+pub mod eyecare;
 pub mod frame;
 mod frame_draw_widget;
 mod frame_spacer;

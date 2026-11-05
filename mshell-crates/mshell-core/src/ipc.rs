@@ -54,6 +54,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
     spawn_daily_wallpaper_task(shell_tx.clone());
     spawn_alarm_scheduler();
     mshell_frame::pomodoro::spawn_settings_watch();
+    mshell_frame::eyecare::spawn_service();
     spawn_plugin_watcher_task(shell_tx.clone());
     tokio::spawn(async move {
         if let Err(e) = start_shell_service(shell_tx).await {

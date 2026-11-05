@@ -238,6 +238,8 @@ pub(super) const SEARCH_ALIASES: &[(&str, &str)] = &[
     ("game mode", "game_mode"),
     ("gamemode", "game_mode"),
     ("pomodoro", "widgets/alarmclock"),
+    ("eye care", "widgets/eyecare"),
+    ("20-20-20", "widgets/eyecare"),
     ("on-screen keyboard", "keyboard"),
     ("keyboard", "keyboard"),
     ("lock", "lock"),

@@ -196,3 +196,29 @@
 .alarm-pomodoro-hint {
   color: var(--outline);
 }
+
+// ── Eye Care pill (20-20-20) ──────────────────────────────
+// Counting reads neutral; a running break is "live" → primary tint
+// (DESIGN.md §3); off and away are dimmed, never red — nothing is wrong.
+.eyecare-bar-time {
+  font-size: var(--font-bar);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface);
+  transition: color var(--motion-fast) var(--ease-standard);
+}
+.eyecare-bar-widget image {
+  transition: color var(--motion-fast) var(--ease-standard),
+    opacity var(--motion-fast) var(--ease-standard);
+}
+.eyecare-bar-widget.on-break {
+  image,
+  .eyecare-bar-time {
+    color: var(--primary);
+  }
+}
+.eyecare-bar-widget.off image,
+.eyecare-bar-widget.away image {
+  color: var(--on-surface-variant);
+  opacity: 0.6;
+}

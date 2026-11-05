@@ -78,6 +78,10 @@ async fn main() -> anyhow::Result<()> {
             let status: String = shell().await?.pomodoro(action.verb()).await?;
             println!("{status}");
         }
+        Commands::Eyecare { action } => {
+            let status: String = shell().await?.eyecare(action.verb()).await?;
+            println!("{status}");
+        }
         Commands::Lock { command } => mshellctl::subcommands::lock::execute(command).await?,
         Commands::Session { command } => mshellctl::subcommands::session::execute(command).await?,
         Commands::Notification { command } => {
