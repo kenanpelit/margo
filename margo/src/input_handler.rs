@@ -20,7 +20,7 @@ use smithay::{
 use tracing::{debug, info};
 
 use crate::{
-    input::{TouchPoint, TouchRelease, find_keybinding},
+    input::{TouchPoint, TouchRelease, find_keybinding, find_lock_binding},
     state::{FocusTarget, MargoState},
 };
 
@@ -682,33 +682,20 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                     // a client with a virtual keyboard must not be able to
                     // `force_unlock` or run lock-safe actions.
                     if key_state == KeyState::Pressed && !state.virtual_input {
-                        let keysym = handle.modified_sym();
                         let mods = smithay_mods_to_margo(modifiers);
-                        let mode = state.input_keyboard.mode.clone();
-                        let mut matched = find_keybinding(
+                        let latin = handle.raw_latin_sym_or_raw_current_sym();
+                        let syms: Vec<u32> = std::iter::once(handle.modified_sym())
+                            .chain(handle.raw_syms())
+                            .chain(latin)
+                            .map(|sym| sym.raw())
+                            .collect();
+                        let matched = find_lock_binding(
                             &state.config.key_bindings,
                             mods,
-                            keysym.raw(),
+                            &syms,
                             keycode.raw(),
-                            &mode,
-                            false,
+                            &state.input_keyboard.mode,
                         );
-                        if matched.is_none() {
-                            let latin = handle.raw_latin_sym_or_raw_current_sym();
-                            for sym in handle.raw_syms().into_iter().chain(latin) {
-                                matched = find_keybinding(
-                                    &state.config.key_bindings,
-                                    mods,
-                                    sym.raw(),
-                                    keycode.raw(),
-                                    &mode,
-                                    false,
-                                );
-                                if matched.is_some() {
-                                    break;
-                                }
-                            }
-                        }
                         if let Some(kb) = matched {
                             if matches!(kb.action.as_str(), "force_unlock" | "force-unlock") {
                                 tracing::warn!("lock: force_unlock keybind hit, breaking out");

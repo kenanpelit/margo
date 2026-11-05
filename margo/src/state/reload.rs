@@ -290,6 +290,16 @@ impl MargoState {
         }
         self.config = new_config;
         self.title_rules_exist = config_has_title_rules(&self.config);
+        // A keymode the new config no longer declares has no binds left:
+        // return to `default` instead of stranding the keyboard there (the
+        // state push below updates the keymode pill).
+        if !crate::input::keymode_exists(&self.config.key_bindings, &self.input_keyboard.mode) {
+            tracing::info!(
+                mode = %self.input_keyboard.mode,
+                "reload: keymode no longer declared, back to default"
+            );
+            self.input_keyboard.mode = "default".to_string();
+        }
 
         // Re-apply the file-logging knobs live so `mctl config reload`
         // (and Settings → Logging via the compositor `.conf`) takes effect

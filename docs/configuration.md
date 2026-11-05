@@ -332,6 +332,28 @@ mctl check-config            # lists shadowed binds (W004, first one wins)
 mctl check-config --strict   # …and exits 1 on any warning (CI)
 ```
 
+### Key modes and the lock screen
+
+`keymode = NAME` starts a block of binds that are live only after
+`setkeymode, NAME` (vim-style modes such as `resize`, or `passthrough` for a
+VM); binds after `keymode = common` are live in every mode, and
+`setkeymode, default` returns to the normal binds:
+
+```ini
+bind = super, r, setkeymode, resize
+keymode = resize
+bind = NONE, h, resizewin, -20, 0
+bind = NONE, Escape, setkeymode, default
+keymode = default
+```
+
+`setkeymode` ignores (and logs) a mode no bind declares, so a typo can't
+strand the keyboard in a mode where no key leads back; a reload that removes
+the current mode returns to `default`. While the session is locked, only
+`bindl` binds (the `l` suffix, e.g. volume keys) and `force_unlock` run, and
+they are looked up in the current mode first and then in `default`, so they
+keep working over the lock screen whatever mode was active when it locked.
+
 ## Gestures
 
 Touchpad (and touchscreen) swipes map to dispatch actions with `gesturebind`,
@@ -477,7 +499,7 @@ Every action below can be bound to a key (`bind`), a mouse button (`mousebind`),
 | `reload`, `reload_config` | | Reload `~/.config/margo/config.conf` in place. |
 | `theme`, `set_theme` | `<preset>` | Live-swap the visual preset: `default` / `minimal` / `gaudy` (no config reload). |
 | `session_save` / `session_load` | | Save / restore per-monitor tag + layout state (`session.json`). |
-| `setkeymode` | `<MODE>` | Switch keymode (per-mode bind sets, like vim modes). |
+| `setkeymode` | `<MODE>` | Switch keymode (per-mode bind sets, like vim modes). Ignored for a mode no bind declares; see [Key modes and the lock screen](#key-modes-and-the-lock-screen). |
 | `force_unlock` | | Tear down a stuck `ext_session_lock` from the compositor side. Only acts once the locker process is gone; ignored while the locker lives, even with no lock surface (for example after unplugging every monitor). Not bound by default. |
 | `quit` | | Exit the compositor cleanly. |
 | `debug_dump`, `diagnose` | | Dump compositor state (clients, monitors, layouts) to the log. |

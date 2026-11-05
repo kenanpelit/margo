@@ -128,31 +128,83 @@ pub fn find_keybinding<'a>(
     mode: &str,
     is_locked: bool,
 ) -> Option<&'a KeyBinding> {
-    bindings.iter().find(|kb| {
-        // mode check
-        let mode_ok =
-            kb.is_common_mode || kb.mode == mode || (kb.is_default_mode && mode == "default");
+    bindings
+        .iter()
+        .find(|kb| keybinding_matches(kb, mods, keysym, keycode, mode, is_locked))
+}
 
-        // lock check
-        let lock_ok = if is_locked { kb.lock_apply } else { true };
+/// Whether a bind may run while the session is locked: the `force_unlock`
+/// recovery bind and the binds the user tagged `l` (lock_apply).
+pub fn usable_over_lock(kb: &KeyBinding) -> bool {
+    kb.lock_apply || matches!(kb.action.as_str(), "force_unlock" | "force-unlock")
+}
 
-        if !mode_ok || !lock_ok {
-            return false;
-        }
-
-        // modifier check
-        if kb.modifiers != mods {
-            return false;
-        }
-
-        // key check
-        use margo_config::KeyType;
-        match kb.key.key_type {
-            KeyType::Sym => kb.key.keysym == keysym,
-            KeyType::Code => {
-                let mc = &kb.key.keycode;
-                keycode != 0 && (mc.code1 == keycode || mc.code2 == keycode || mc.code3 == keycode)
-            }
-        }
+/// The bind a key press runs over the lock screen, if any. `keysyms` are
+/// tried in order (the handler passes the modified sym first, then the
+/// raw / latin syms). Only [`usable_over_lock`] binds count, so a mode's
+/// ordinary bind can't shadow a lock bind on the same keys. Binds of the
+/// current keymode come first, then the `default` mode's: the lock screen
+/// is not part of a keymode, and a non-default mode ("passthrough" for a
+/// VM, "resize") must not leave the volume keys or `force_unlock` dead
+/// while locked.
+pub fn find_lock_binding<'a>(
+    bindings: &'a [KeyBinding],
+    mods: Modifiers,
+    keysyms: &[u32],
+    keycode: u32,
+    mode: &str,
+) -> Option<&'a KeyBinding> {
+    let modes: &[&str] = if mode == "default" {
+        &["default"]
+    } else {
+        &[mode, "default"]
+    };
+    modes.iter().find_map(|mode| {
+        keysyms.iter().find_map(|&sym| {
+            bindings.iter().find(|kb| {
+                usable_over_lock(kb) && keybinding_matches(kb, mods, sym, keycode, mode, false)
+            })
+        })
     })
+}
+
+/// Whether `setkeymode` may enter `mode`: `default`, or a mode the config
+/// declares binds for. Any other mode has no binds of its own, so only the
+/// `common` binds would stay live and no key could leave it again.
+pub fn keymode_exists(bindings: &[KeyBinding], mode: &str) -> bool {
+    mode == "default" || bindings.iter().any(|kb| kb.mode == mode)
+}
+
+fn keybinding_matches(
+    kb: &KeyBinding,
+    mods: Modifiers,
+    keysym: u32,
+    keycode: u32,
+    mode: &str,
+    is_locked: bool,
+) -> bool {
+    // mode check
+    let mode_ok = kb.is_common_mode || kb.mode == mode || (kb.is_default_mode && mode == "default");
+
+    // lock check
+    let lock_ok = if is_locked { kb.lock_apply } else { true };
+
+    if !mode_ok || !lock_ok {
+        return false;
+    }
+
+    // modifier check
+    if kb.modifiers != mods {
+        return false;
+    }
+
+    // key check
+    use margo_config::KeyType;
+    match kb.key.key_type {
+        KeyType::Sym => kb.key.keysym == keysym,
+        KeyType::Code => {
+            let mc = &kb.key.keycode;
+            keycode != 0 && (mc.code1 == keycode || mc.code2 == keycode || mc.code3 == keycode)
+        }
+    }
 }

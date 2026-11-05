@@ -51,7 +51,13 @@ fn snapshot_client(fx: &Fixture, id: u64) -> serde_json::Value {
 
 #[test]
 fn keymode_is_published_and_a_change_pushes_a_frame() {
-    let mut fx = Fixture::new();
+    // `setkeymode` only enters a mode the config declares binds for.
+    let config = margo_config::parse_config_str(
+        "keymode = resize\nbind = none,Escape,setkeymode,default\n",
+        None,
+    )
+    .expect("test config parses");
+    let mut fx = Fixture::with_config(config);
     fx.add_output("DP-1", (1920, 1080));
     assert_eq!(
         fx.server.state.build_state_snapshot()["keymode"],

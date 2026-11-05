@@ -54,6 +54,7 @@ mod groups;
 mod hot_corner;
 mod idle;
 mod ipc;
+mod keymode;
 mod layer_shell;
 mod lock_keys;
 mod logical_output_area;

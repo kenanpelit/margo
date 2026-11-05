@@ -821,6 +821,12 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
         "zoom" => state.zoom(),
         "setkeymode" => {
             if let Some(mode) = &arg.v
+                && !crate::input::keymode_exists(&state.config.key_bindings, mode)
+            {
+                // No binds of its own: only the `common` binds would stay
+                // live, and no key could get back to `default`.
+                tracing::warn!(mode = %mode, "setkeymode: no binds declare this keymode, ignored");
+            } else if let Some(mode) = &arg.v
                 && state.input_keyboard.mode != *mode
             {
                 debug!(mode = %mode, "key mode change");
