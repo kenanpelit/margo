@@ -286,17 +286,10 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::Translate => {
                     app_sender.emit(ShellInput::ToggleTranslateMenu(active_monitor().await));
                 }
-                IPCCommand::Agents => {
-                    app_sender.emit(ShellInput::ToggleMenu(
-                        mshell_frame::frame::MenuId::Agents,
-                        active_monitor().await,
-                    ));
-                }
-                IPCCommand::Github => {
-                    app_sender.emit(ShellInput::ToggleMenu(
-                        mshell_frame::frame::MenuId::Github,
-                        active_monitor().await,
-                    ));
+                IPCCommand::ColorPicker | IPCCommand::Agents | IPCCommand::Github => {
+                    if let Some(id) = cmd.uniform_menu() {
+                        app_sender.emit(ShellInput::ToggleMenu(id, active_monitor().await));
+                    }
                 }
                 IPCCommand::Podman => {
                     app_sender.emit(ShellInput::TogglePodmanMenu(active_monitor().await));

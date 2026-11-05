@@ -5,7 +5,9 @@ use crate::bars::bar_widgets::audio_visualizer::{AudioVisualizerInit, AudioVisua
 use crate::bars::bar_widgets::bluetooth::{BluetoothInit, BluetoothModel};
 use crate::bars::bar_widgets::clipboard::{ClipboardInit, ClipboardModel, ClipboardOutput};
 use crate::bars::bar_widgets::clock::{ClockInit, ClockModel, ClockOutput};
-use crate::bars::bar_widgets::color_picker::{ColorPickerInit, ColorPickerModel};
+use crate::bars::bar_widgets::color_picker::{
+    ColorPickerInit, ColorPickerModel, ColorPickerOutput,
+};
 use crate::bars::bar_widgets::control_center::{ControlCenterInit, ControlCenterModel};
 use crate::bars::bar_widgets::cpu_dashboard::{CpuDashboardInit, CpuDashboardModel};
 use crate::bars::bar_widgets::custom::{CustomWidgetInit, CustomWidgetModel, CustomWidgetOutput};
@@ -256,6 +258,8 @@ pub(crate) enum BarOutput {
     PrivacyClicked,
     MediaPlayerClicked,
     TranslateClicked,
+    /// ColorPicker pill right click: the colour menu (history + editor).
+    ColorPickerClicked,
     MtuneClicked,
     LyricsClicked,
     /// Margo layout switcher bar pill clicked. Frame catches and
@@ -1298,7 +1302,9 @@ impl BarModel {
             BarWidget::ColorPicker => Box::new(
                 ColorPickerModel::builder()
                     .launch(ColorPickerInit { orientation })
-                    .detach(),
+                    .forward(sender.output_sender(), |msg| match msg {
+                        ColorPickerOutput::OpenMenu => BarOutput::ColorPickerClicked,
+                    }),
             ),
             BarWidget::Lock => Box::new(
                 LockModel::builder()

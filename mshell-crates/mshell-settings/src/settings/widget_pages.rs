@@ -123,6 +123,12 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
             label: "Translate",
             icon: "preferences-desktop-locale-symbolic",
         },
+        WidgetEntry::Menu {
+            kind: MenuKind::ColorPicker,
+            stack_name: "color_picker",
+            label: "Color Picker",
+            icon: "color-select-symbolic",
+        },
         WidgetEntry::MediaPlayer,
         WidgetEntry::Tune,
         WidgetEntry::Lyrics,
@@ -309,12 +315,6 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
             stack_name: "pill_dark_mode",
             label: "Dark Mode Toggle",
             icon: "weather-clear-night-symbolic",
-        },
-        WidgetEntry::Pill {
-            kind: BarPillKind::ColorPicker,
-            stack_name: "pill_color_picker",
-            label: "ColorPicker",
-            icon: "color-select-symbolic",
         },
         WidgetEntry::Pill {
             kind: BarPillKind::Logout,

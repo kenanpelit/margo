@@ -412,6 +412,7 @@ pub(super) fn menu_position(name: &str) -> Position {
         SESSION_MENU => pos!(session_menu),
         MDASH_MENU => pos!(mdash_menu),
         MARGO_LAYOUT_MENU => pos!(margo_layout_menu),
+        COLOR_PICKER_MENU => pos!(color_picker_menu),
         NPLUGIN_PANEL_MENU => pos!(plugin_panel_menu),
         _ => Position::TopRight,
     }

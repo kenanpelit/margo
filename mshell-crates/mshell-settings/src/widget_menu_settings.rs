@@ -80,6 +80,9 @@ pub(crate) enum MenuKind {
     /// The Translate menu (`translate_menu`), opened by the Translate
     /// bar pill / `mshellctl menu translate`.
     Translate,
+    /// The Color Picker menu (`color_picker_menu`), opened by a right click
+    /// on the ColorPicker pill / `mshellctl menu color-picker`.
+    ColorPicker,
 }
 
 // ── Per-menu field dispatch ──────────────────────────────────────────────
@@ -130,6 +133,7 @@ macro_rules! menu_read {
             MenuKind::Crashes => m.crashes_menu().$field().$g(),
             MenuKind::MargoLayout => m.margo_layout_menu().$field().$g(),
             MenuKind::Translate => m.translate_menu().$field().$g(),
+            MenuKind::ColorPicker => m.color_picker_menu().$field().$g(),
         }
     }};
 }
@@ -176,6 +180,7 @@ macro_rules! menu_write {
             MenuKind::Crashes => c.menus.crashes_menu.$field = $val,
             MenuKind::MargoLayout => c.menus.margo_layout_menu.$field = $val,
             MenuKind::Translate => c.menus.translate_menu.$field = $val,
+            MenuKind::ColorPicker => c.menus.color_picker_menu.$field = $val,
         });
     };
 }
@@ -222,6 +227,7 @@ impl MenuKind {
             Self::Ufw => "UFW Firewall",
             Self::Wallpaper => "Wallpaper",
             Self::Translate => "Translate",
+            Self::ColorPicker => "Color Picker",
         }
     }
 
@@ -269,6 +275,7 @@ impl MenuKind {
             MenuKind::Network,
             MenuKind::MargoLayout,
             MenuKind::Translate,
+            MenuKind::ColorPicker,
         ]
     }
 

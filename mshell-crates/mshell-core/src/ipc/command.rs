@@ -65,6 +65,7 @@ pub(super) enum IPCCommand {
     Ai,
     Dns,
     Translate,
+    ColorPicker,
     Podman,
     Agents,
     Github,
@@ -146,4 +147,18 @@ pub(super) enum IPCCommand {
     BarToggleAll(bool),
     BarRevealAll(bool),
     BarHideAll(bool),
+}
+
+impl IPCCommand {
+    /// The menu a plain "toggle this menu" command opens through the
+    /// uniform [`ShellInput::ToggleMenu`] path.
+    pub(super) fn uniform_menu(&self) -> Option<mshell_frame::frame::MenuId> {
+        use mshell_frame::frame::MenuId;
+        match self {
+            Self::ColorPicker => Some(MenuId::ColorPicker),
+            Self::Agents => Some(MenuId::Agents),
+            Self::Github => Some(MenuId::Github),
+            _ => None,
+        }
+    }
 }

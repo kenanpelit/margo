@@ -29,6 +29,9 @@ use crate::menus::menu_widgets::clipboard::clipboard::{
     ClipboardInit, ClipboardModel, ClipboardOutput,
 };
 use crate::menus::menu_widgets::clock::{ClockInit, ClockModel};
+use crate::menus::menu_widgets::color_picker::color_picker_menu_widget::{
+    ColorPickerMenuWidgetInit, ColorPickerMenuWidgetModel, ColorPickerMenuWidgetOutput,
+};
 use crate::menus::menu_widgets::compact_audio::{CompactAudioInit, CompactAudioModel};
 use crate::menus::menu_widgets::connectivity::{ConnectivityInit, ConnectivityModel};
 use crate::menus::menu_widgets::container::{ContainerInit, ContainerModel};
@@ -450,6 +453,13 @@ pub fn build_widget(
             ThemePickerMenuWidgetModel::builder()
                 .launch(ThemePickerMenuWidgetInit {})
                 .detach(),
+        ),
+        MenuWidget::ColorPicker => Box::new(
+            ColorPickerMenuWidgetModel::builder()
+                .launch(ColorPickerMenuWidgetInit {})
+                .forward(sender.output_sender(), |msg| match msg {
+                    ColorPickerMenuWidgetOutput::CloseMenu => MenuOutput::CloseMenu,
+                }),
         ),
         MenuWidget::Translate => Box::new(
             TranslateMenuWidgetModel::builder()

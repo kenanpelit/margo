@@ -111,6 +111,7 @@ use std::fmt::Debug;
 pub(crate) enum MenuType {
     Clipboard,
     Translate,
+    ColorPicker,
     Clock,
     Notifications,
     Screenshot,
@@ -440,6 +441,12 @@ impl Component for MenuModel {
                 // bounded inner viewport lets the ListView virtualize.
                 // (Plain list menus do cap the outer scroller: GTK then
                 // squeezes their list scroller instead — see list_fit.rs.)
+            }
+            MenuType::ColorPicker => {
+                css_class = "color-picker-menu".to_string();
+                effect_widgets!(effects, base_config, sender, color_picker_menu);
+                effect_min_width!(effects, base_config, sender, color_picker_menu);
+                effect_max_height!(effects, base_config, sender, color_picker_menu);
             }
             MenuType::Translate => {
                 css_class = "translate-menu".to_string();

@@ -145,6 +145,9 @@ pub enum MenuWidget {
     /// per-program mute, plus this boot's journal errors.
     Crashes,
     ThemePicker,
+    /// ColorPicker pill's panel (right click): the selected colour with
+    /// editable HEX / RGB / HSL + alpha, and the recent picks.
+    ColorPicker,
     /// `translate` bar pill's panel — source/target language picker +
     /// swap, manual entry, result card, and a short history list.
     Translate,
@@ -225,6 +228,7 @@ impl MenuWidget {
             MenuWidget::DiscordVoice => "Discord Voice",
             MenuWidget::Crashes => "Crashes",
             MenuWidget::ThemePicker => "Theme Picker",
+            MenuWidget::ColorPicker => "Color Picker",
             MenuWidget::Translate => "Translate",
             MenuWidget::Wallpaper => "Wallpaper",
             MenuWidget::Weather => "Weather",
@@ -299,6 +303,7 @@ impl MenuWidget {
             MenuWidget::DiscordVoice,
             MenuWidget::Crashes,
             MenuWidget::ThemePicker,
+            MenuWidget::ColorPicker,
             MenuWidget::Translate,
             MenuWidget::Wallpaper,
             MenuWidget::Weather,

@@ -102,6 +102,13 @@ pub fn spawn_color_picker(delay_millis: u64) {
             return;
         }
 
+        // The Color Picker menu's Recent list. Its store is the shell's
+        // reactive state: update it on the main loop, not this task.
+        let recorded = color.clone();
+        relm4::gtk::glib::MainContext::default().invoke(move || {
+            mshell_cache::color_history::record_hex(&recorded);
+        });
+
         notify(&color).await;
     });
 }

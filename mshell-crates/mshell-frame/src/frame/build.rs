@@ -128,6 +128,7 @@ impl Frame {
                 BarOutput::LyricsClicked => FrameInput::ToggleMenu(MenuId::Lyrics),
                 BarOutput::MargoLayoutClicked => FrameInput::ToggleMenu(MenuId::MargoLayout),
                 BarOutput::TranslateClicked => FrameInput::ToggleMenu(MenuId::Translate),
+                BarOutput::ColorPickerClicked => FrameInput::ToggleMenu(MenuId::ColorPicker),
                 BarOutput::CloseMenu => FrameInput::CloseMenus,
             },
         )

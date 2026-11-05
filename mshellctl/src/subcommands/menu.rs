@@ -152,6 +152,9 @@ pub enum MenuCommands {
     /// select-or-copy + keybind flow is headless — see `mshellctl
     /// translate`)
     Translate,
+    /// Toggle the Color Picker menu (recent colours + HEX / RGB / HSL
+    /// editor)
+    ColorPicker,
     /// Close all open menus
     CloseAll,
 }
@@ -264,6 +267,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Translate => {
             shell().await?.translate_menu().await?;
+        }
+        MenuCommands::ColorPicker => {
+            shell().await?.color_picker().await?;
         }
         MenuCommands::Ai => {
             shell().await?.ai().await?;

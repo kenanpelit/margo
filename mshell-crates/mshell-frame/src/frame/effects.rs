@@ -100,6 +100,7 @@ pub(super) fn push_frame_effects(
         pos!(vpn_menu);
         pos!(ai_menu);
         pos!(margo_layout_menu);
+        pos!(color_picker_menu);
         sender_clone.input(FrameInput::RepositionMenus(positions));
     });
 }

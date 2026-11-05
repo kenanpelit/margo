@@ -48,6 +48,7 @@ pub(super) const SETTINGS_MENU: &str = "settings";
 pub(super) const MDASH_MENU: &str = "mdash";
 pub(super) const MARGO_LAYOUT_MENU: &str = "margo_layout";
 pub(super) const TRANSLATE_MENU: &str = "translate";
+pub(super) const COLOR_PICKER_MENU: &str = "color_picker";
 pub(super) const NAGENTS_MENU: &str = "agents";
 pub(super) const NGITHUB_MENU: &str = "github";
 
@@ -105,6 +106,7 @@ pub enum MenuId {
     Mdash,
     MargoLayout,
     Translate,
+    ColorPicker,
 }
 
 impl MenuId {
@@ -155,6 +157,7 @@ impl MenuId {
             MenuId::Mdash => MDASH_MENU,
             MenuId::MargoLayout => MARGO_LAYOUT_MENU,
             MenuId::Translate => TRANSLATE_MENU,
+            MenuId::ColorPicker => COLOR_PICKER_MENU,
         }
     }
 
@@ -206,6 +209,7 @@ impl MenuId {
             MenuId::Mdash => MenuType::Mdash,
             MenuId::MargoLayout => MenuType::MargoLayout,
             MenuId::Translate => MenuType::Translate,
+            MenuId::ColorPicker => MenuType::ColorPicker,
         }
     }
 }

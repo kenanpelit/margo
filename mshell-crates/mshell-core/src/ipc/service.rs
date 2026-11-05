@@ -479,6 +479,9 @@ impl IPCService {
     async fn translate_menu(&self) -> fdo::Result<()> {
         self.send(IPCCommand::Translate)
     }
+    async fn color_picker(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::ColorPicker)
+    }
     async fn podman(&self) -> fdo::Result<()> {
         self.send(IPCCommand::Podman)
     }

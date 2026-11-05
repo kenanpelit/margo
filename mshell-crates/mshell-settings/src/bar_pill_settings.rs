@@ -30,7 +30,6 @@ pub(crate) enum BarPillKind {
     DarkMode,
     KeyboardLayout,
     Keymode,
-    ColorPicker,
     // Lock has its own rich page (lock-screen background) — see
     // `lock_settings.rs` — so it's not a generic bar-pill info page.
     Logout,
@@ -51,7 +50,6 @@ impl BarPillKind {
             Self::DarkMode => "Dark Mode Toggle",
             Self::KeyboardLayout => "Keyboard Layout",
             Self::Keymode => "Keymode",
-            Self::ColorPicker => "ColorPicker",
             Self::Logout => "Logout",
             Self::MargoTags => "Margo Tags",
             Self::ScrollerRibbon => "Scroller Ribbon",
@@ -83,9 +81,6 @@ impl BarPillKind {
             }
             Self::Keymode => {
                 "Shows margo's active keymode (`setkeymode`, e.g. resize) and hides in the default mode. Click returns to the default keymode. Turn on Settings → Toasts → Keymode for a toast on every change."
-            }
-            Self::ColorPicker => {
-                "Picks a colour from the screen and copies hex/rgb to the clipboard. Click to start picking."
             }
             Self::Logout => "Logs out of the session. Confirms with a dialog.",
             Self::MargoTags => {

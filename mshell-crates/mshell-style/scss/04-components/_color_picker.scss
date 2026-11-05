@@ -1,0 +1,79 @@
+@use "../02-functions/index" as *;
+
+// Color Picker menu (MenuType::ColorPicker): selected-colour swatch +
+// HEX / RGB / HSL / alpha rows in a compact boxed list, then the Recent
+// swatches. Colours on screen are the user's data (painted in Rust);
+// everything around them is tokens.
+
+.color-picker-menu-widget {
+  padding: var(--space-1);
+}
+
+// Swatch chrome: the drawing area is clipped to this corner (nested in a
+// card-level surface, so --radius-xs / sm per DESIGN.md §1 nesting).
+.color-swatch {
+  border-radius: var(--radius-sm);
+  box-shadow: inset 0 0 0 1px var(--outline-variant);
+}
+
+.color-picker-field-row {
+  padding: var(--space-1) var(--space-2);
+}
+
+.color-picker-field-label {
+  min-width: 44px;
+  font-size: var(--font-xs);
+  font-weight: 600;
+  color: var(--on-surface-variant);
+}
+
+.color-picker-field {
+  font-variant-numeric: tabular-nums;
+  transition: box-shadow var(--motion-fast) var(--ease-standard);
+
+  &.error {
+    box-shadow: inset 0 0 0 var(--border-width) var(--error);
+  }
+}
+
+.color-picker-alpha-value {
+  min-width: 44px;
+  font-size: var(--font-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--outline);
+}
+
+.color-picker-section-label {
+  font-size: var(--font-xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+}
+
+.color-picker-history {
+  background-color: transparent;
+}
+
+.color-picker-history > flowboxchild {
+  padding: 0;
+  background: transparent;
+}
+
+// A swatch is the whole button: no tonal fill, the 14% primary wash on
+// hover and the inset focus ring on keyboard focus.
+.color-picker-history-swatch {
+  all: unset;
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  @include state-layer();
+
+  &:focus-visible {
+    box-shadow: inset 0 0 0 2px var(--primary);
+  }
+}
+
+.color-picker-empty {
+  font-size: var(--font-xs);
+  color: var(--on-surface-variant);
+}

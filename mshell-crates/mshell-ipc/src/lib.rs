@@ -99,6 +99,7 @@ pub trait Shell {
     fn ai(&self) -> zbus::Result<()>;
     fn dns(&self) -> zbus::Result<()>;
     fn translate_menu(&self) -> zbus::Result<()>;
+    fn color_picker(&self) -> zbus::Result<()>;
     fn podman(&self) -> zbus::Result<()>;
     fn github(&self) -> zbus::Result<()>;
     fn agents(&self) -> zbus::Result<()>;

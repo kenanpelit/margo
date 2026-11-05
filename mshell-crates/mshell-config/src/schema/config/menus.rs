@@ -73,6 +73,10 @@ pub struct Menus {
     /// predating it still parse.
     #[serde(default = "default_translate_menu")]
     pub translate_menu: Menu,
+    /// ColorPicker pill's panel (right click). Default-on-missing so
+    /// profiles predating it still parse.
+    #[serde(default = "default_color_picker_menu")]
+    pub color_picker_menu: Menu,
     pub media_player_menu: Menu,
     /// Dedicated `mtune` (folder-first music player) menu. Default-on-missing
     /// so profiles predating it still parse.
@@ -258,6 +262,15 @@ pub(super) fn default_github_menu() -> Menu {
         position: Position::TopRight,
         widgets: vec![MenuWidget::Github],
         minimum_width: 460,
+        maximum_height: 0,
+    }
+}
+
+pub(super) fn default_color_picker_menu() -> Menu {
+    Menu {
+        position: Position::TopRight,
+        widgets: vec![MenuWidget::ColorPicker],
+        minimum_width: 400,
         maximum_height: 0,
     }
 }
@@ -576,6 +589,7 @@ impl Default for Menus {
             privacy_menu: default_privacy_menu(),
             vpn_indicator_menu: default_vpn_indicator_menu(),
             translate_menu: default_translate_menu(),
+            color_picker_menu: default_color_picker_menu(),
             plugin_panel_menu: default_plugin_panel_menu(),
             media_player_menu: Menu {
                 position: Position::TopRight,

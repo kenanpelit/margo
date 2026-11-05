@@ -5671,6 +5671,7 @@ dependencies = [
  "gio-unix",
  "gtk4-layer-shell",
  "margo-fs",
+ "mshell-cache",
  "mshell-common",
  "mshell-config",
  "mshell-idle",
