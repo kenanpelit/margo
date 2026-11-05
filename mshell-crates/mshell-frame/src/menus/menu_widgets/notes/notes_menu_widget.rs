@@ -7,8 +7,9 @@
 //!   * **Tabs** — the shared segmented capsule driving a `gtk::Stack`.
 //!     - Scratchpad: a multi-line `gtk::TextView`. Edits debounce-
 //!       save every ~600 ms after the user stops typing.
-//!     - Notes: scrollable card list. Each card: title + body
-//!       + delete. "+ Add note" appends a new card.
+//!     - Notes: sticky cards — a theme-role tint, pin-to-top, a
+//!       checklist under the body, and archive instead of delete
+//!       ([`super::notes_tab`]).
 //!     - Todos: named pages, a show-completed filter, copy/export,
 //!       and reorderable rows with expandable details
 //!       ([`super::todos_tab`]).
@@ -20,18 +21,17 @@
 //! that fails to parse is never saved over.
 
 use super::model::{
-    ExportFormat, GENERAL_PAGE_ID, Note, NotesState, Todo, export_file_name, export_todos,
+    CheckItem, ExportFormat, GENERAL_PAGE_ID, Note, NoteColor, NotesState, Todo, export_file_name,
+    export_todos,
 };
-use super::todos_tab::{TodosTab, clear_listbox, placeholder_row};
+use super::notes_tab::NotesTab;
+use super::todos_tab::TodosTab;
 use crate::bars::bar_widgets::notes::{new_id, notes_store};
 use crate::common_widgets::segmented::{Segmented, SegmentedStyle};
 use crate::menus::menu_widgets::panel_header::PanelHeader;
 use mshell_config::toast::{ToastEvent, ToastSeverity, push_toast};
 use relm4::gtk::glib;
-use relm4::gtk::prelude::{
-    BoxExt, ButtonExt, EditableExt, ListBoxRowExt, OrientableExt, TextBufferExt, TextViewExt,
-    WidgetExt,
-};
+use relm4::gtk::prelude::{BoxExt, OrientableExt, TextBufferExt, TextViewExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::time::Duration;
 
@@ -57,7 +57,9 @@ pub(crate) struct NotesMenuWidgetModel {
     tabs: Segmented,
     stack: gtk::Stack,
     scratchpad_view: gtk::TextView,
-    notes_list: gtk::ListBox,
+    notes: NotesTab,
+    /// The Notes tab shows the archive instead of the active notes.
+    show_archive: bool,
     todos: TodosTab,
     /// Suppress the next save trigger from `scratchpad_view` so a
     /// programmatic `set_text` (after an external reload) doesn't
@@ -89,8 +91,40 @@ pub(crate) enum NotesMenuWidgetInput {
         title: String,
         body: String,
     },
-    /// Delete a note by id and persist.
+    /// Delete a note for good (from the archive) and persist.
     DeleteNote(String),
+    /// Put a note in the archive (a blank note is just removed).
+    ArchiveNote(String),
+    /// Bring an archived note back.
+    RestoreNote(String),
+    /// Show the archive (true) or the active notes.
+    SetArchiveView(bool),
+    SetPinned {
+        id: String,
+        pinned: bool,
+    },
+    SetNoteColor {
+        id: String,
+        color: NoteColor,
+    },
+    AddCheckItem {
+        note: String,
+        text: String,
+    },
+    SetCheckItem {
+        note: String,
+        item: String,
+        done: bool,
+    },
+    UpdateCheckItem {
+        note: String,
+        item: String,
+        text: String,
+    },
+    RemoveCheckItem {
+        note: String,
+        item: String,
+    },
     /// Append a todo to the current page and persist.
     AddTodo(String),
     /// Flip a todo's completed state and persist.
@@ -188,34 +222,6 @@ impl Component for NotesMenuWidgetModel {
                         set_monospace: true,
                     },
                 },
-
-                // ── Notes tab ───────────────────────────────────
-                add_named[Some("notes")] = &gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_spacing: 6,
-
-                    gtk::Button {
-                        set_css_classes: &["ok-button-surface", "ok-button-cell", "notes-add"],
-                        set_label: " + Add note",
-                        set_halign: gtk::Align::Start,
-                        connect_clicked[sender] => move |_| {
-                            sender.input(NotesMenuWidgetInput::AddNote);
-                        },
-                    },
-
-                    #[name = "fill_list1"]
-                    gtk::ScrolledWindow {
-                        set_min_content_height: 0,
-                        set_hscrollbar_policy: gtk::PolicyType::Never,
-                        set_propagate_natural_height: true,
-
-                        #[local_ref]
-                        notes_list_widget -> gtk::ListBox {
-                            add_css_class: "notes-list",
-                            set_selection_mode: gtk::SelectionMode::None,
-                        },
-                    },
-                },
             },
         }
     }
@@ -240,7 +246,8 @@ impl Component for NotesMenuWidgetModel {
         let tabs_widget = tabs.root().clone();
         let stack_widget = gtk::Stack::new();
         let scratchpad_view_widget = gtk::TextView::new();
-        let notes_list_widget = gtk::ListBox::new();
+        let notes = NotesTab::new(&sender);
+        let notes_root = notes.root.clone();
         let todos = TodosTab::new(&sender);
         let todos_root = todos.root.clone();
         let scratchpad_quiet = std::rc::Rc::new(std::cell::Cell::new(false));
@@ -296,16 +303,18 @@ impl Component for NotesMenuWidgetModel {
             tabs,
             stack: stack_widget.clone(),
             scratchpad_view: scratchpad_view_widget.clone(),
-            notes_list: notes_list_widget.clone(),
+            notes,
+            show_archive: false,
             todos,
             scratchpad_quiet,
         };
 
         let widgets = view_output!();
-        // ── Todos tab (built by `TodosTab`) ─────────────────
+        // ── Notes / Todos tabs (built by `NotesTab` / `TodosTab`) ──
+        model.stack.add_named(&notes_root, Some("notes"));
         model.stack.add_named(&todos_root, Some("todos"));
         crate::menus::list_fit::mark_menu_list(&widgets.fill_list, 420);
-        crate::menus::list_fit::mark_menu_list(&widgets.fill_list1, 400);
+        crate::menus::list_fit::mark_menu_list(&model.notes.scroller, 400);
         crate::menus::list_fit::mark_menu_list(&model.todos.scroller, 400);
         sync_view(&model, &sender);
 
@@ -337,10 +346,18 @@ impl Component for NotesMenuWidgetModel {
             NotesMenuWidgetInput::AddNote => {
                 let note = Note {
                     id: new_id(),
-                    title: String::new(),
-                    body: String::new(),
+                    ..Note::default()
                 };
-                self.edit(&sender, true, |s| s.notes.push(note.clone()));
+                self.show_archive = false;
+                // New notes go to the top of the unpinned notes.
+                self.edit(&sender, true, |s| {
+                    let at = s
+                        .notes
+                        .iter()
+                        .position(|n| !n.pinned && !n.archived)
+                        .unwrap_or(s.notes.len());
+                    s.notes.insert(at, note.clone());
+                });
             }
             NotesMenuWidgetInput::UpdateNote { id, title, body } => {
                 self.edit(&sender, false, |s| {
@@ -351,7 +368,81 @@ impl Component for NotesMenuWidgetModel {
                 });
             }
             NotesMenuWidgetInput::DeleteNote(id) => {
-                self.edit(&sender, true, |s| s.notes.retain(|n| n.id != id));
+                self.edit(&sender, true, |s| {
+                    s.delete_note(&id);
+                });
+            }
+            NotesMenuWidgetInput::ArchiveNote(id) => {
+                self.edit(&sender, true, |s| {
+                    s.archive_note(&id);
+                });
+            }
+            NotesMenuWidgetInput::RestoreNote(id) => {
+                self.edit(&sender, true, |s| {
+                    s.restore_note(&id);
+                });
+            }
+            NotesMenuWidgetInput::SetArchiveView(on) => {
+                if self.show_archive != on {
+                    self.show_archive = on;
+                    sync_view(self, &sender);
+                }
+            }
+            NotesMenuWidgetInput::SetPinned { id, pinned } => {
+                self.edit(&sender, true, |s| {
+                    if let Some(n) = s.note_mut(&id) {
+                        n.pinned = pinned;
+                    }
+                });
+            }
+            NotesMenuWidgetInput::SetNoteColor { id, color } => {
+                self.edit(&sender, true, |s| {
+                    if let Some(n) = s.note_mut(&id) {
+                        n.color = color;
+                    }
+                });
+            }
+            NotesMenuWidgetInput::AddCheckItem { note, text } => {
+                let item = CheckItem {
+                    id: new_id(),
+                    text: text.trim().to_string(),
+                    done: false,
+                };
+                if item.text.is_empty() {
+                    return;
+                }
+                self.edit(&sender, true, |s| {
+                    if let Some(n) = s.note_mut(&note) {
+                        n.checklist.push(item.clone());
+                    }
+                });
+            }
+            NotesMenuWidgetInput::SetCheckItem { note, item, done } => {
+                self.edit(&sender, true, |s| {
+                    if let Some(c) = s
+                        .note_mut(&note)
+                        .and_then(|n| n.checklist.iter_mut().find(|c| c.id == item))
+                    {
+                        c.done = done;
+                    }
+                });
+            }
+            NotesMenuWidgetInput::UpdateCheckItem { note, item, text } => {
+                self.edit(&sender, false, |s| {
+                    if let Some(c) = s
+                        .note_mut(&note)
+                        .and_then(|n| n.checklist.iter_mut().find(|c| c.id == item))
+                    {
+                        c.text.clone_from(&text);
+                    }
+                });
+            }
+            NotesMenuWidgetInput::RemoveCheckItem { note, item } => {
+                self.edit(&sender, true, |s| {
+                    if let Some(n) = s.note_mut(&note) {
+                        n.checklist.retain(|c| c.id != item);
+                    }
+                });
             }
             NotesMenuWidgetInput::AddTodo(text) => {
                 let trimmed = text.trim().to_string();
@@ -546,7 +637,7 @@ fn sync_view(model: &NotesMenuWidgetModel, sender: &ComponentSender<NotesMenuWid
     if let Some(meta) = model.header.meta() {
         meta.set_label(&format!(
             "{} notes · {} / {} todos",
-            s.notes.len(),
+            s.active_note_count(),
             open,
             s.todos.len()
         ));
@@ -562,113 +653,8 @@ fn sync_view(model: &NotesMenuWidgetModel, sender: &ComponentSender<NotesMenuWid
         model.scratchpad_quiet.set(false);
     }
 
-    // Notes list — rebuild. Card edits go through the per-row
-    // UpdateNote handler on focus-out / Enter.
-    clear_listbox(&model.notes_list);
-    if s.notes.is_empty() {
-        model.notes_list.append(&placeholder_row("No notes yet"));
-    } else {
-        for note in &s.notes {
-            model.notes_list.append(&make_note_row(note, sender));
-        }
-    }
+    // Notes list — rebuilt; card edits are debounced per card.
+    model.notes.sync(s, model.show_archive, sender);
 
     model.todos.sync(s, sender);
-}
-
-fn make_note_row(note: &Note, sender: &ComponentSender<NotesMenuWidgetModel>) -> gtk::ListBoxRow {
-    let row = gtk::ListBoxRow::new();
-    row.set_activatable(false);
-    row.set_selectable(false);
-    let outer = gtk::Box::builder()
-        .orientation(gtk::Orientation::Vertical)
-        .spacing(4)
-        .margin_top(6)
-        .margin_bottom(6)
-        .margin_start(8)
-        .margin_end(8)
-        .css_classes(vec!["notes-card"])
-        .build();
-
-    let header = gtk::Box::builder()
-        .orientation(gtk::Orientation::Horizontal)
-        .spacing(6)
-        .build();
-    let title_entry = gtk::Entry::builder()
-        .text(&note.title)
-        .placeholder_text("Title")
-        .hexpand(true)
-        .css_classes(vec!["notes-card-title"])
-        .build();
-    header.append(&title_entry);
-    let delete = gtk::Button::from_icon_name("trash-symbolic");
-    delete.add_css_class("ok-button-flat");
-    mshell_common::a11y::name(&delete, "Delete note");
-    let id_for_delete = note.id.clone();
-    let s_delete = sender.clone();
-    delete.connect_clicked(move |_| {
-        s_delete.input(NotesMenuWidgetInput::DeleteNote(id_for_delete.clone()));
-    });
-    header.append(&delete);
-    outer.append(&header);
-
-    let body_buf = gtk::TextBuffer::new(None);
-    body_buf.set_text(&note.body);
-    let body_view = gtk::TextView::with_buffer(&body_buf);
-    body_view.add_css_class("notes-card-body");
-    body_view.set_wrap_mode(gtk::WrapMode::WordChar);
-    body_view.set_top_margin(4);
-    body_view.set_bottom_margin(4);
-    body_view.set_left_margin(6);
-    body_view.set_right_margin(6);
-    body_view.set_height_request(80);
-    outer.append(&body_view);
-
-    // Persist on focus-out via a debounce so every keystroke
-    // isn't a fsync. Title + body share a single debounce token.
-    let id = note.id.clone();
-    let title_entry_clone = title_entry.clone();
-    let body_buf_clone = body_buf.clone();
-    let token = std::rc::Rc::new(std::cell::Cell::new(0u64));
-    let push_update = {
-        let token = token.clone();
-        let sender = sender.clone();
-        let id = id.clone();
-        let title_entry_clone = title_entry_clone.clone();
-        let body_buf_clone = body_buf_clone.clone();
-        move || {
-            let next = token.get().wrapping_add(1);
-            token.set(next);
-            let sender = sender.clone();
-            let id = id.clone();
-            let title_entry_clone = title_entry_clone.clone();
-            let body_buf_clone = body_buf_clone.clone();
-            let token = token.clone();
-            glib::timeout_add_local_once(SAVE_DEBOUNCE, move || {
-                if token.get() == next {
-                    let title = title_entry_clone.text().to_string();
-                    let body = body_buf_clone
-                        .text(
-                            &body_buf_clone.start_iter(),
-                            &body_buf_clone.end_iter(),
-                            false,
-                        )
-                        .to_string();
-                    let _ = sender
-                        .input_sender()
-                        .send(NotesMenuWidgetInput::UpdateNote {
-                            id: id.clone(),
-                            title,
-                            body,
-                        });
-                }
-            });
-        }
-    };
-    let push_for_title = push_update.clone();
-    title_entry.connect_changed(move |_| push_for_title());
-    body_buf.connect_changed(move |_| push_update());
-
-    row.set_child(Some(&outer));
-    row
 }

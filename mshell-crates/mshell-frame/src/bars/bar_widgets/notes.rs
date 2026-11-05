@@ -185,7 +185,15 @@ fn apply_visual(image: &gtk::Image, root: &gtk::Box, s: &NotesState) {
     } else {
         lines.push(format!("Scratchpad: {} chars", s.scratchpad.trim().len()));
     }
-    lines.push(format!("Notes: {}", s.notes.len()));
+    let archived = s.notes.len() - s.active_note_count();
+    if archived > 0 {
+        lines.push(format!(
+            "Notes: {} (+{archived} archived)",
+            s.active_note_count()
+        ));
+    } else {
+        lines.push(format!("Notes: {}", s.active_note_count()));
+    }
     lines.push(format!(
         "Todos: {} open / {} total",
         open_todos,

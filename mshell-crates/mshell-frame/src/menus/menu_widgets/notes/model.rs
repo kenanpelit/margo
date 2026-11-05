@@ -23,6 +23,10 @@ fn is_true(v: &bool) -> bool {
     *v
 }
 
+fn is_false(v: &bool) -> bool {
+    !*v
+}
+
 /// Persistent state for the Notes Hub: scratchpad text, note cards and
 /// paged todos.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -62,6 +66,101 @@ pub(crate) struct Note {
     pub(crate) id: String,
     pub(crate) title: String,
     pub(crate) body: String,
+    /// Card tint (a theme role, never a literal colour).
+    #[serde(default, skip_serializing_if = "NoteColor::is_default")]
+    pub(crate) color: NoteColor,
+    /// Pinned notes are listed first.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub(crate) pinned: bool,
+    /// Archived notes leave the list (and the counts) but are kept.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub(crate) archived: bool,
+    /// Checklist items under the body.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) checklist: Vec<CheckItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub(crate) struct CheckItem {
+    pub(crate) id: String,
+    pub(crate) text: String,
+    #[serde(default)]
+    pub(crate) done: bool,
+}
+
+/// A note card's tint. Each maps to a theme token (`_notes.scss`), so the
+/// cards re-theme with the wallpaper; amber / green / red use the stable
+/// `--warning` / `--success` / `--error` roles. An unknown value (a newer
+/// file) reads as the default tint rather than failing the whole file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum NoteColor {
+    Accent,
+    Secondary,
+    Tertiary,
+    Amber,
+    Green,
+    Red,
+    // Last: `serde(other)` catches every unknown name.
+    #[default]
+    #[serde(other)]
+    Default,
+}
+
+impl NoteColor {
+    pub(crate) const ALL: [NoteColor; 7] = [
+        Self::Default,
+        Self::Accent,
+        Self::Secondary,
+        Self::Tertiary,
+        Self::Amber,
+        Self::Green,
+        Self::Red,
+    ];
+
+    fn is_default(&self) -> bool {
+        *self == Self::Default
+    }
+
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Default => "Default",
+            Self::Accent => "Accent",
+            Self::Secondary => "Secondary",
+            Self::Tertiary => "Tertiary",
+            Self::Amber => "Amber",
+            Self::Green => "Green",
+            Self::Red => "Red",
+        }
+    }
+
+    /// CSS class on the card (`.note-color-<name>`).
+    pub(crate) fn css_class(self) -> &'static str {
+        match self {
+            Self::Default => "note-color-default",
+            Self::Accent => "note-color-accent",
+            Self::Secondary => "note-color-secondary",
+            Self::Tertiary => "note-color-tertiary",
+            Self::Amber => "note-color-amber",
+            Self::Green => "note-color-green",
+            Self::Red => "note-color-red",
+        }
+    }
+}
+
+impl Note {
+    /// Nothing typed: no title, body or checklist text.
+    pub(crate) fn is_blank(&self) -> bool {
+        self.title.trim().is_empty()
+            && self.body.trim().is_empty()
+            && self.checklist.iter().all(|c| c.text.trim().is_empty())
+    }
+
+    /// `(done, total)` checklist items.
+    pub(crate) fn checklist_progress(&self) -> (usize, usize) {
+        let done = self.checklist.iter().filter(|c| c.done).count();
+        (done, self.checklist.len())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -85,6 +184,67 @@ pub(crate) struct TodoPage {
 }
 
 impl NotesState {
+    /// Notes in display order: the active list pinned-first (stable within
+    /// each group), or the archive most-recently-archived first.
+    pub(crate) fn visible_notes(&self, archive: bool) -> Vec<&Note> {
+        if archive {
+            return self.notes.iter().rev().filter(|n| n.archived).collect();
+        }
+        let active = self.notes.iter().filter(|n| !n.archived);
+        let (pinned, rest): (Vec<&Note>, Vec<&Note>) = active.partition(|n| n.pinned);
+        pinned.into_iter().chain(rest).collect()
+    }
+
+    /// Active (not archived) notes.
+    pub(crate) fn active_note_count(&self) -> usize {
+        self.notes.iter().filter(|n| !n.archived).count()
+    }
+
+    pub(crate) fn note_mut(&mut self, id: &str) -> Option<&mut Note> {
+        self.notes.iter_mut().find(|n| n.id == id)
+    }
+
+    /// Put a note away: it leaves the list unpinned and moves to the end
+    /// of storage (= the top of the archive view). A blank note is simply
+    /// removed — there's nothing to keep.
+    pub(crate) fn archive_note(&mut self, id: &str) -> bool {
+        let Some(at) = self.notes.iter().position(|n| n.id == id && !n.archived) else {
+            return false;
+        };
+        let mut note = self.notes.remove(at);
+        if note.is_blank() {
+            return true;
+        }
+        note.archived = true;
+        note.pinned = false;
+        self.notes.push(note);
+        true
+    }
+
+    /// Bring an archived note back, at the top of the unpinned notes.
+    pub(crate) fn restore_note(&mut self, id: &str) -> bool {
+        let Some(at) = self.notes.iter().position(|n| n.id == id && n.archived) else {
+            return false;
+        };
+        let mut note = self.notes.remove(at);
+        note.archived = false;
+        let first_unpinned = self
+            .notes
+            .iter()
+            .position(|n| !n.archived && !n.pinned)
+            .or_else(|| self.notes.iter().position(|n| n.archived))
+            .unwrap_or(self.notes.len());
+        self.notes.insert(first_unpinned, note);
+        true
+    }
+
+    /// Delete a note for good (the archive's "Delete").
+    pub(crate) fn delete_note(&mut self, id: &str) -> bool {
+        let before = self.notes.len();
+        self.notes.retain(|n| n.id != id);
+        self.notes.len() != before
+    }
+
     /// Every page in tab order, General first: `(id, name)`.
     pub(crate) fn pages(&self) -> Vec<(&str, &str)> {
         std::iter::once((GENERAL_PAGE_ID, GENERAL_PAGE_NAME))
@@ -485,6 +645,114 @@ mod tests {
             export_todos(&s, Some("e"), ExportFormat::Markdown),
             "## Empty\n\n"
         );
+    }
+
+    fn note(id: &str, title: &str) -> Note {
+        Note {
+            id: id.into(),
+            title: title.into(),
+            ..Note::default()
+        }
+    }
+
+    fn ids<'a>(notes: &[&'a Note]) -> Vec<&'a str> {
+        notes.iter().map(|n| n.id.as_str()).collect()
+    }
+
+    #[test]
+    fn note_fields_round_trip_and_unknown_colour_degrades() {
+        let n = Note {
+            color: NoteColor::Amber,
+            pinned: true,
+            checklist: vec![CheckItem {
+                id: "c".into(),
+                text: "milk".into(),
+                done: true,
+            }],
+            ..note("1", "Shop")
+        };
+        let json = serde_json::to_string(&n).unwrap();
+        assert!(json.contains(r#""color":"amber""#), "{json}");
+        assert_eq!(serde_json::from_str::<Note>(&json).unwrap(), n);
+        let future: Note =
+            serde_json::from_str(r#"{"id":"1","title":"t","body":"","color":"mauve"}"#).unwrap();
+        assert_eq!(future.color, NoteColor::Default);
+        // A plain note keeps the 5.0.0 shape.
+        let plain = serde_json::to_value(note("2", "x")).unwrap();
+        assert_eq!(plain, serde_json::json!({"id":"2","title":"x","body":""}));
+    }
+
+    #[test]
+    fn pinned_notes_list_first_and_archive_is_separate() {
+        let mut s = NotesState {
+            notes: vec![note("a", "A"), note("b", "B"), note("c", "C")],
+            ..NotesState::default()
+        };
+        s.note_mut("c").unwrap().pinned = true;
+        assert_eq!(ids(&s.visible_notes(false)), ["c", "a", "b"]);
+        assert!(s.archive_note("a"));
+        assert!(s.archive_note("c"));
+        assert_eq!(ids(&s.visible_notes(false)), ["b"]);
+        // Most recently archived first, and archiving unpins.
+        assert_eq!(ids(&s.visible_notes(true)), ["c", "a"]);
+        assert!(!s.notes.iter().any(|n| n.archived && n.pinned));
+        assert_eq!(s.active_note_count(), 1);
+        assert!(!s.archive_note("a"), "already archived");
+    }
+
+    #[test]
+    fn archiving_a_blank_note_deletes_it() {
+        let mut s = NotesState {
+            notes: vec![note("blank", " "), note("keep", "K")],
+            ..NotesState::default()
+        };
+        assert!(s.archive_note("blank"));
+        assert_eq!(s.notes.len(), 1);
+        assert!(s.visible_notes(true).is_empty());
+    }
+
+    #[test]
+    fn restore_returns_to_top_of_unpinned() {
+        let mut s = NotesState {
+            notes: vec![note("p", "P"), note("a", "A"), note("old", "O")],
+            ..NotesState::default()
+        };
+        s.note_mut("p").unwrap().pinned = true;
+        s.archive_note("old");
+        assert!(s.restore_note("old"));
+        assert_eq!(ids(&s.visible_notes(false)), ["p", "old", "a"]);
+        assert!(!s.restore_note("old"), "not archived any more");
+        // Restoring into a list with only archived notes still works.
+        let mut t = NotesState {
+            notes: vec![note("x", "X"), note("y", "Y")],
+            ..NotesState::default()
+        };
+        t.archive_note("x");
+        t.archive_note("y");
+        assert!(t.restore_note("x"));
+        assert_eq!(ids(&t.visible_notes(false)), ["x"]);
+        assert!(t.delete_note("y"));
+        assert!(!t.delete_note("y"));
+    }
+
+    #[test]
+    fn checklist_progress_and_blankness() {
+        let mut n = note("1", "");
+        assert!(n.is_blank());
+        n.checklist = vec![
+            CheckItem {
+                id: "a".into(),
+                text: "one".into(),
+                done: true,
+            },
+            CheckItem {
+                id: "b".into(),
+                text: "two".into(),
+                done: false,
+            },
+        ];
+        assert!(!n.is_blank());
+        assert_eq!(n.checklist_progress(), (1, 2));
     }
 
     #[test]

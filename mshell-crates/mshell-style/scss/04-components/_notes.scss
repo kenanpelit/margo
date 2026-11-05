@@ -70,6 +70,78 @@
 .notes-card-title {
   font-weight: 600;
 }
+// Checklist progress ("2/5") — the dim metadata tier.
+.notes-card-meta {
+  padding: 0 var(--space-1);
+  font-size: var(--font-2xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--outline);
+}
+.notes-card button.pinned image {
+  color: var(--primary);
+}
+.notes-card.archived {
+  opacity: 0.85;
+}
+.notes-card-preview {
+  padding: 0 var(--space-2) var(--space-1) var(--space-2);
+  font-size: var(--font-xs);
+  color: var(--on-surface-variant);
+}
+.notes-check-row {
+  padding: 0 var(--space-1);
+}
+.notes-check-add {
+  margin-top: var(--space-1);
+  font-size: var(--font-xs);
+}
+.notes-archive-toggle {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xs);
+}
+
+// ── Note colours: one tint per theme role (never a literal) ─
+// Cards mix a little of the role into the raised card tier and carry
+// a 3px leading stripe of the full role; swatches show the role.
+$note-colours: (
+  "accent": "--primary",
+  "secondary": "--secondary",
+  "tertiary": "--tertiary",
+  "amber": "--warning",
+  "green": "--success",
+  "red": "--error",
+);
+@each $name, $token in $note-colours {
+  .notes-card.note-color-#{$name} {
+    background-color: unquote("color-mix(in srgb, var(#{$token}) 16%, var(--surface-container-high))");
+    box-shadow: inset 3px 0 0 0 var(#{$token});
+  }
+  .notes-swatch.note-color-#{$name} {
+    background-color: var(#{$token});
+  }
+}
+.notes-swatches {
+  padding: var(--space-1);
+}
+.notes-swatch {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--outline-variant);
+  transition: border-color var(--motion-fast) var(--ease-standard);
+}
+.notes-swatch.note-color-default {
+  background-color: var(--surface-container-high);
+}
+.notes-swatch.selected {
+  border: 2px solid var(--on-surface);
+}
+.notes-swatch:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
 .notes-card-body {
   border-radius: var(--radius-sm);
   background-color: transparent;
