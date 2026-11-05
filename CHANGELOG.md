@@ -5,6 +5,92 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.0] – 2026-11-05
+
+**The fifth deep review: margo now draws the shell's wallpaper (about
+100 MiB less GPU memory for mshell), every privileged action goes through
+one audited root helper with its own polkit message, a crashed locker can
+no longer unlock the session, and a long list of idle timers, per-frame
+allocations and per-monitor duplicates is gone.**
+
+### Added
+
+- **Runtime wallpaper in the compositor.** New `wallpaper_set`,
+  `wallpaper_update` and `wallpaper_clear` actions and a `get wallpaper`
+  topic: per output or `*`, every fit mode (now including `scale-down`), a
+  background colour and a crossfade. mshell hands its wallpaper to margo and
+  destroys its own four-buffer layer windows, falling back to them when
+  margo refuses (`wallpaper.compositor_draws`, on by default, with a
+  Settings toggle).
+- **`mshell-privileged`**, one small root helper with fixed verbs
+  (pacnew install/merge/remove, kill, SMART read, fan level, upgrade,
+  rollback, charge limit, logind drop-in). Each verb has its own polkit
+  action and message, and every argument is validated as root: paths
+  confined to `/etc` with no symlink followed, package files confined to
+  the pacman cache, pids re-checked by start time before a signal.
+  Packaged by the PKGBUILD, `install.sh`, Nix and `just shell`.
+- Custom pills share their exec across monitors: copies of a pill on
+  several monitors run their command once per interval.
+- Man pages, the dispatch-action reference and the widget list are now
+  generated or gated against the code; the docs site builds `--strict`.
+
+### Changed
+
+- Sizes read in IEC units (KiB, MiB, GiB) and rates in SI (kB/s, MB/s)
+  everywhere in the shell; the bar pill keeps its short form (`4.2k`).
+- One shared helper each for the `$PATH` lookup, atomic writes, opening
+  the user's terminal (`$TERMINAL` is honoured everywhere), notifications
+  and opening URLs, interface counters, the VPN status, segmented tabs and
+  panel headers. Tabs and panel action buttons now show a keyboard focus
+  ring.
+- The Control Center tiles come from one registry; the oversized margo,
+  mctl, margo-config, mdots and mtune source files are split into modules
+  (no behaviour change).
+- The SSH sessions pill reads `~/.ssh/config` through the launcher's
+  reader, so `Include` files and every alias on a `Host` line are listed.
+- Idle work cut: hidden menus arm no poll timers; the crash, CSS, upgrade,
+  Discord, udisks and disk watchers run only while shown or on change; the
+  greeter image is no longer rewritten on each wallpaper rotation; watch
+  pushes skip unchanged frames; blur scratch textures are freed when idle;
+  mirroring builds the source scene once per frame.
+- The calculator uses an in-tree evaluator instead of the AGPL `evalexpr`;
+  apps launch through GTK 4's `gtk4-launch`.
+- CI: Dependabot keeps the GitHub Actions current (`actions/checkout` 7,
+  `actions/setup-python` 7); the Arch job trusts its container checkout, so
+  the panic baseline guard runs instead of skipping itself.
+
+### Fixed
+
+- **Security:** a crashed locker no longer means a passwordless unlock;
+  the polkit cookie is never logged and only one auth dialog shows at a
+  time; pacnew Replace/Merge never writes through a symlink; background
+  upgrades never build AUR packages unreviewed; ending a process can't hit
+  one that reused its pid; hotspot passwords stay in NetworkManager; portal
+  screenshot files are private and expire.
+- **mlogind:** the session log thread could spin at 100% CPU at EOF and
+  hang the logout forever.
+- **Screencopy and outputs:** one output's capture no longer delays
+  another's; captures fail promptly during a VT switch and on a dark
+  output instead of hanging `grim`; a switched-off or unplugged output
+  withdraws its `wl_output`; captures of a mirror target show the mirrored
+  picture; DPMS is per output and a mirror target follows it.
+- **Compositor:** a virtual keyboard keeps its keymap across a reload;
+  lock-screen binds work in every keymode; X11 floating windows keep the
+  rect they set themselves; activating a window on a hidden tag shows it;
+  touchscreen fingers reach clients; the IPC accept loop no longer spins
+  when out of file descriptors; `toggle_scratchpad` honours
+  `single_scratchpad`; a changed `wallpaper =` is applied on reload; two
+  config saves in one second no longer overwrite each other.
+- **Shell:** auto-DND never loses a DND state you set during a share;
+  noise suppression and phone mirrors come back after an mshell restart;
+  with the VPN up the network speed is no longer counted twice; a custom
+  pill is rebuilt when its definition changes; Settings lists Noise
+  Suppression among the Control Center tiles and keeps every hidden
+  package visible; the screenshot menu re-checks OCR/QR/palette tools; the
+  SSH pill finds the real destination of `ssh host command`.
+- Companion tools (mkeys, mdots, mtune and others) report bad input,
+  environment or IO instead of panicking.
+
 ## [4.9.2] – 2026-11-04
 
 **Menu height settings work for every list menu: AI Agents, GitHub,
