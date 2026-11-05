@@ -93,7 +93,7 @@ impl Component for PortsTabModel {
             set_spacing: 10,
 
             gtk::SearchEntry {
-                add_css_class: "settings-search",
+                add_css_class: "menu-search",
                 set_placeholder_text: Some("Search port, process or PID…"),
                 connect_search_changed[sender] => move |e| {
                     sender.input(PortsTabInput::Search(e.text().to_string()));

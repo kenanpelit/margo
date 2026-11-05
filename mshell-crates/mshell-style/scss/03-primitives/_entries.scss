@@ -38,3 +38,19 @@
     color: var(--on-surface);
   }
 }
+
+// ── Compact menu search (DESIGN.md §1) ────────────────────────────
+// The search field inside a menu (CPU dashboard tabs, notification
+// history): a calm Adwaita --entry-radius entry with a quiet tonal fill at
+// rest and the focus ring as the only border. Menus own this class so a
+// change to the Settings window's search (.settings-search) can't restyle
+// them; the §12 panel search is the only pill.
+.menu-search {
+  background-color: var(--surface-container);
+  border-radius: var(--entry-radius);
+  transition: box-shadow var(--motion-medium) var(--ease-standard);
+
+  &:focus-within {
+    box-shadow: inset 0 0 0 2px var(--primary);
+  }
+}

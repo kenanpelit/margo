@@ -227,7 +227,7 @@ impl Component for NotificationsModel {
             // History search (DESIGN.md §12 pill query surface): filters
             // app name + summary + body as you type.
             gtk::SearchEntry {
-                add_css_class: "settings-search",
+                add_css_class: "menu-search",
                 set_placeholder_text: Some("Search notifications…"),
                 connect_search_changed[sender] => move |e| {
                     sender.input(NotificationsInput::SearchChanged(e.text().to_string()));

@@ -196,7 +196,14 @@ hits=$(find mshell-crates/mshell-frame/src/bars/bar_widgets -name '*.rs' 2>/dev/
         }' || true)
 report "L13" "#[watch] set_css_classes on a bar pill root (drops .bar-pill-std; use set_class_active)" "$hits"
 
+# L14 — menus don't borrow the Settings window's search class: a menu
+# search is the compact `.menu-search` entry (§1), so restyling Settings
+# can't restyle a menu.
+hits=$(grep -rn '"settings-search"' mshell-crates/mshell-frame/src 2>/dev/null | strip_comments \
+    | grep '"settings-search"' || true)
+report "L14" "Settings' .settings-search used in a menu (use .menu-search)" "$hits"
+
 if [ "$fail" -ne 0 ]; then
     exit 1
 fi
-echo "design-lint OK: L1–L7, L10–L13 clean."
+echo "design-lint OK: L1–L7, L10–L14 clean."

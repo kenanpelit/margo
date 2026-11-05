@@ -95,7 +95,7 @@ impl Component for ProcessesTabModel {
             set_spacing: 10,
 
             gtk::SearchEntry {
-                add_css_class: "settings-search",
+                add_css_class: "menu-search",
                 set_placeholder_text: Some("Search name, command or PID…"),
                 connect_search_changed[sender] => move |e| {
                     sender.input(ProcessesTabInput::Search(e.text().to_string()));
