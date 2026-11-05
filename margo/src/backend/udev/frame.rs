@@ -7,11 +7,10 @@
 //! signal `presented(now, refresh, 0, Vsync)` with a real page-flip
 //! timestamp instead of the submit-time approximation.
 //!
-//! Helpers live in `helpers.rs`; the actual element builders
-//! (`build_render_elements`, `serve_screencopies`,
-//! `build_cursor_elements_for_output`, `take_pending_*`) still live
-//! in `udev/mod.rs` because they reach into `MargoState` quite
-//! deeply — extracting them is a separate W-pass.
+//! Helpers live in `helpers.rs`; the element builders
+//! (`build_render_elements`, `build_cursor_elements_for_output`) in
+//! `render_elements/`, and the offscreen captures (`serve_screencopies`,
+//! `take_pending_*`) in `capture.rs`.
 
 use std::collections::HashMap;
 use std::rc::Rc;
