@@ -5086,6 +5086,7 @@ name = "mshell-cache"
 version = "5.0.0"
 dependencies = [
  "gtk4",
+ "margo-fs",
  "mshell-config",
  "mshell-image",
  "reactive_graph",

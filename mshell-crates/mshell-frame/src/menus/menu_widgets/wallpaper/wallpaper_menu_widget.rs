@@ -2,7 +2,8 @@ use crate::menus::menu_widgets::clipboard::clipboard::kbd_chip;
 use crate::menus::menu_widgets::wallpaper::parallelogram::ParallelogramPaintable;
 use gtk4_layer_shell::{KeyboardMode, LayerShell};
 use mshell_cache::wallpaper::{
-    CycleDirection, current_wallpaper_path, cycle_wallpaper, default_wallpaper_path, set_wallpaper,
+    CycleDirection, DailyCaption, WallpaperStateStoreFields, current_wallpaper_path,
+    cycle_wallpaper, daily_caption, default_wallpaper_path, set_wallpaper, wallpaper_store,
 };
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
@@ -113,6 +114,9 @@ pub(crate) struct WallpaperMenuWidgetModel {
 
     settings_visible_child: String,
 
+    /// Caption + link of the current wallpaper when it is a daily one.
+    caption: Option<DailyCaption>,
+
     apply_theme_filter: bool,
     filter_strength: f64,
 
@@ -141,6 +145,10 @@ pub(crate) enum WallpaperMenuWidgetInput {
     FocusGrid,
     /// Apply a random wallpaper (Space in the grid).
     RandomWallpaper,
+    /// "Learn more" on the daily-wallpaper caption.
+    OpenCaptionLink,
+    /// The wallpaper changed: re-read its caption.
+    CaptionEffect(Option<DailyCaption>),
 
     ChangeWallpaperDirectoryClicked,
     ContentFitChanged(ContentFit),
@@ -443,6 +451,70 @@ impl Component for WallpaperMenuWidgetModel {
 
                     add_named[Some("none")] = &gtk::Box {}
                 },
+
+                // Today's daily wallpaper: what it shows, who took it, and
+                // a link to the page about it (Bing / NASA).
+                gtk::Box {
+                    add_css_class: "wallpaper-daily-caption",
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 12,
+                    #[watch]
+                    set_visible: model.caption.is_some(),
+
+                    gtk::Image {
+                        add_css_class: "wallpaper-daily-caption-icon",
+                        set_valign: gtk::Align::Center,
+                        set_icon_name: Some("image-x-generic-symbolic"),
+                    },
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        set_valign: gtk::Align::Center,
+                        set_spacing: 2,
+
+                        gtk::Label {
+                            add_css_class: "wallpaper-daily-caption-title",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            #[watch]
+                            set_label: model.caption.as_ref().map(|c| c.headline()).unwrap_or(""),
+                        },
+                        gtk::Label {
+                            add_css_class: "wallpaper-daily-caption-detail",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            #[watch]
+                            set_visible: model.caption.as_ref().is_some_and(|c| !c.detail().is_empty()),
+                            #[watch]
+                            set_label: model.caption.as_ref().map(|c| c.detail()).unwrap_or(""),
+                        },
+                        gtk::Label {
+                            add_css_class: "wallpaper-daily-caption-credit",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            #[watch]
+                            set_visible: model.caption.as_ref().is_some_and(|c| !c.credit.is_empty()),
+                            #[watch]
+                            set_label: model.caption.as_ref().map(|c| c.credit.as_str()).unwrap_or(""),
+                        },
+                    },
+
+                    gtk::Button {
+                        add_css_class: "ok-button-surface",
+                        set_valign: gtk::Align::Center,
+                        set_label: "Learn more",
+                        set_tooltip_text: Some("Open the page about this image"),
+                        #[watch]
+                        set_visible: model.caption.as_ref().is_some_and(|c| !c.link.is_empty()),
+                        connect_clicked[sender] => move |_| {
+                            sender.input(WallpaperMenuWidgetInput::OpenCaptionLink);
+                        },
+                    },
+                },
             },
 
             gtk::Box {
@@ -666,6 +738,15 @@ impl Component for WallpaperMenuWidgetModel {
         );
 
         let mut effects = EffectScope::new();
+        // Each applied wallpaper bumps the revision; its caption (if it is
+        // a daily one) is a small sidecar read.
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let _revision = wallpaper_store().revision().get();
+            let caption = current_wallpaper_path().and_then(|p| daily_caption(&p));
+            sender_clone.input(WallpaperMenuWidgetInput::CaptionEffect(caption));
+        });
+
         let sender_clone = sender.clone();
         effects.push(move |_| {
             let config = config_manager().config();
@@ -752,6 +833,7 @@ impl Component for WallpaperMenuWidgetModel {
                 .get_untracked(),
 
             settings_visible_child: "none".to_string(),
+            caption: None,
             apply_theme_filter: config_manager()
                 .config()
                 .wallpaper()
@@ -1080,6 +1162,16 @@ impl Component for WallpaperMenuWidgetModel {
             WallpaperMenuWidgetInput::RandomWallpaper => {
                 cycle_wallpaper(CycleDirection::Random);
             }
+            WallpaperMenuWidgetInput::OpenCaptionLink => {
+                // `daily_caption` keeps only http(s) links.
+                if let Some(link) = self.caption.as_ref().map(|c| c.link.as_str())
+                    && !link.is_empty()
+                    && let Err(e) = mshell_process::desktop::open(link)
+                {
+                    tracing::warn!("wallpaper caption: open {link}: {e}");
+                }
+            }
+            WallpaperMenuWidgetInput::CaptionEffect(caption) => self.caption = caption,
             WallpaperMenuWidgetInput::SearchFilterChanged(text) => {
                 let text_lower = text.to_lowercase();
                 self.filter.set_filter_func(move |obj| {

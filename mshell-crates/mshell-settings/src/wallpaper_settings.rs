@@ -1,4 +1,4 @@
-use mshell_cache::wallpaper::{fetch_daily_wallpaper, set_wallpaper};
+use mshell_cache::wallpaper::{daily_caption, fetch_daily_wallpaper, set_wallpaper};
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
@@ -1122,7 +1122,12 @@ impl Component for WallpaperSettingsModel {
                     .and_then(|n| n.to_str())
                     .unwrap_or("wallpaper")
                     .to_string();
-                notify("Daily wallpaper", &format!("Applied {name}"));
+                // Lead with what the image shows when it came with a caption.
+                let body = daily_caption(&path)
+                    .map(|c| c.headline().to_string())
+                    .filter(|h| !h.is_empty())
+                    .unwrap_or_else(|| format!("Applied {name}"));
+                notify("Daily wallpaper", &body);
             }
             Err(e) => notify("Daily wallpaper failed", &e),
         }

@@ -59,3 +59,30 @@
     background: transparent;
     padding: var(--space-1) var(--space-6);
 }
+
+// Caption of today's daily wallpaper (Bing / NASA): one calm card under
+// the header — SemiBold headline, regular description, dim credit.
+.wallpaper-daily-caption {
+    background-color: var(--surface-container);
+    border-radius: var(--radius-md);
+    padding: var(--space-2) var(--space-3);
+}
+
+.wallpaper-daily-caption-icon {
+    color: var(--on-surface-variant);
+}
+
+.wallpaper-daily-caption-title {
+    font-weight: 600;
+    color: var(--on-surface);
+}
+
+.wallpaper-daily-caption-detail {
+    font-size: var(--font-xs);
+    color: var(--on-surface-variant);
+}
+
+.wallpaper-daily-caption-credit {
+    font-size: var(--font-2xs);
+    color: var(--outline);
+}
