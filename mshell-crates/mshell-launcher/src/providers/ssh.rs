@@ -36,21 +36,23 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-/// One host snapshot, projected from the YAML map for cheap
-/// search-time access.
+/// One host snapshot, projected from the YAML map (or an OpenSSH
+/// config's `Host` alias) for cheap search-time access. Public for the
+/// shell's SSH-sessions pill, which lists the same hosts
+/// ([`load_ssh_config`]).
 #[derive(Debug, Clone)]
-struct Host {
-    /// The map key — `kenan_e14u7`, `vhay`, etc. Passed to `ssh`
-    /// verbatim.
-    name: String,
-    /// `Hostname:` field. Hosts without this are pure templates
-    /// (inherited via `Inherits:`) and the provider filters
-    /// them out.
-    hostname: String,
+pub struct Host {
+    /// The map key / `Host` alias — `kenan_e14u7`, `vhay`, etc.
+    /// Passed to `ssh` verbatim.
+    pub name: String,
+    /// `Hostname:` field. In assh, hosts without this are pure
+    /// templates (inherited via `Inherits:`) and the provider filters
+    /// them out; an OpenSSH alias without one is kept.
+    pub hostname: String,
     /// `User:` field, empty when unset.
-    user: String,
+    pub user: String,
     /// `Port:` field as a string, empty when unset.
-    port: String,
+    pub port: String,
 }
 
 /// Minimal YAML schema — just enough to identify hosts and pull
@@ -127,8 +129,10 @@ impl Default for SshProvider {
     }
 }
 
-/// Read an OpenSSH client config (and its `Include`s) into hosts.
-fn load_ssh_config(path: &std::path::Path) -> Vec<Host> {
+/// Read an OpenSSH client config (and its `Include`s) into hosts: every
+/// literal `Host` alias once (first definition wins), sorted by name.
+/// Wildcard / negated patterns and `Match` blocks are skipped.
+pub fn load_ssh_config(path: &std::path::Path) -> Vec<Host> {
     let mut out = Vec::new();
     let mut seen = std::collections::HashSet::new();
     let base = path

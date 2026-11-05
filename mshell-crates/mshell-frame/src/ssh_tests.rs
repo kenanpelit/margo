@@ -1,6 +1,20 @@
-//! Tests for the SSH-sessions `~/.ssh/config` and `pgrep -af` parsers.
+//! Tests for the SSH-sessions `~/.ssh/config` reader and `pgrep -af` parser.
 
 use super::*;
+
+/// One config file through the shared reader.
+fn parse_hosts(text: &str) -> Vec<SshHost> {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::write(dir.path().join("config"), text).expect("write");
+    load_hosts_from(&dir.path().join("config"))
+}
+
+fn named<'a>(hosts: &'a [SshHost], name: &str) -> &'a SshHost {
+    hosts
+        .iter()
+        .find(|h| h.name == name)
+        .unwrap_or_else(|| panic!("no host {name}"))
+}
 
 fn names(hosts: &[SshHost]) -> Vec<&str> {
     hosts.iter().map(|h| h.name.as_str()).collect()
@@ -23,11 +37,20 @@ fn parses_host_blocks() {
          Host=vhay\n  Hostname = localhost\n  Port=2288\n\n\
          HOST Upper\n  HOSTNAME Up.Example\n",
     );
-    assert_eq!(names(&hosts), ["agu_admin", "draco", "vhay", "Upper"]);
-    assert_eq!(hosts[0].subtitle(), "root@agu_admin");
-    assert_eq!(hosts[1].subtitle(), "root@draco.example:45652");
-    assert_eq!(hosts[2].subtitle(), "localhost:2288");
-    assert_eq!(hosts[3].hostname, "Up.Example", "values keep their case");
+    // Sorted; every literal alias of a block is its own entry.
+    assert_eq!(names(&hosts), ["Upper", "agu_admin", "d2", "draco", "vhay"]);
+    assert_eq!(named(&hosts, "agu_admin").subtitle(), "root@agu_admin");
+    assert_eq!(
+        named(&hosts, "draco").subtitle(),
+        "root@draco.example:45652"
+    );
+    assert_eq!(named(&hosts, "d2").subtitle(), "root@draco.example:45652");
+    assert_eq!(named(&hosts, "vhay").subtitle(), "localhost:2288");
+    assert_eq!(
+        named(&hosts, "Upper").hostname,
+        "Up.Example",
+        "values keep their case"
+    );
 }
 
 #[test]
@@ -40,14 +63,14 @@ fn wildcard_blocks_are_skipped_with_their_keys() {
     assert!(hosts[0].port.is_empty());
 }
 
-/// Negated and wildcard patterns never name a host; the first literal
-/// alias on the line does.
+/// Negated and wildcard patterns never name a host; every literal alias
+/// on the line does.
 #[test]
-fn host_line_named_by_first_literal_alias() {
+fn host_line_literal_aliases_only() {
     let hosts =
         parse_hosts("Host !bad *.lan good other\n  User u\nHost !only\n  User x\nHost h?st\n");
-    assert_eq!(names(&hosts), ["good"]);
-    assert_eq!(hosts[0].user, "u");
+    assert_eq!(names(&hosts), ["good", "other"]);
+    assert_eq!(named(&hosts, "other").user, "u");
 }
 
 /// ssh_config(5): "for each parameter, the first obtained value will be
@@ -131,4 +154,28 @@ fn targets_match_hosts_by_alias_hostname_or_user() {
         &h,
         &["other@draco".into(), "dracon".into()]
     ));
+}
+
+/// `Include` is followed like ssh does (relative to `~/.ssh`, globs in
+/// the last component, cycles cut) — the launcher's reader.
+#[test]
+fn includes_are_followed() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let d = dir.path();
+    std::fs::create_dir_all(d.join("conf.d")).expect("mkdir");
+    std::fs::write(
+        d.join("config"),
+        "Include conf.d/*.conf\nHost main\n  HostName m.example\n",
+    )
+    .expect("write");
+    std::fs::write(
+        d.join("conf.d/work.conf"),
+        "Host box\n  User u\n  HostName box.example\nInclude ../config\n",
+    )
+    .expect("write");
+    std::fs::write(d.join("conf.d/skip.txt"), "Host not_included\n").expect("write");
+    let hosts = load_hosts_from(&d.join("config"));
+    assert_eq!(names(&hosts), ["box", "main"]);
+    assert_eq!(hosts[0].subtitle(), "u@box.example");
+    assert!(load_hosts_from(&d.join("missing")).is_empty());
 }

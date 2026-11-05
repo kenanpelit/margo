@@ -1,5 +1,5 @@
 //! Shared SSH-sessions client — port of the noctalia `ssh-sessions`
-//! plugin. Parses `~/.ssh/config` for `Host` entries and detects which
+//! plugin. Reads `~/.ssh/config` (and its `Include`s) for `Host` entries and detects which
 //! of them have a live `ssh` client process, so the bar pill can show
 //! an active count and the menu can list hosts (active first) and
 //! connect on click. Connections open in **kitty** (`kitty -e ssh
@@ -53,84 +53,24 @@ fn config_path() -> PathBuf {
     base.join(".ssh").join("config")
 }
 
-/// Parse `~/.ssh/config` into hosts, skipping wildcard / negated
-/// patterns and `Match` blocks. Only `Host` / `Hostname` / `User` /
-/// `Port` matter for display; comments and blanks are ignored.
-/// `Include` is not followed (the launcher's SSH provider does that).
+/// Read `~/.ssh/config` into hosts with the launcher's SSH reader
+/// (`Include` followed, every literal `Host` alias its own entry,
+/// wildcard / negated patterns and `Match` blocks skipped, sorted by
+/// name), so the pill and the launcher list the same hosts.
 pub(crate) fn load_hosts() -> Vec<SshHost> {
-    let Ok(text) = std::fs::read_to_string(config_path()) else {
-        return Vec::new();
-    };
-    parse_hosts(&text)
+    load_hosts_from(&config_path())
 }
 
-fn parse_hosts(text: &str) -> Vec<SshHost> {
-    // An empty-named entry is a block we don't list (wildcard `Host`,
-    // `Match`): it keeps the keys that follow off the previous host.
-    let mut hosts: Vec<SshHost> = Vec::new();
-    let blank = || SshHost {
-        name: String::new(),
-        hostname: String::new(),
-        user: String::new(),
-        port: String::new(),
-    };
-    for line in text.lines() {
-        let t = line.trim();
-        if t.is_empty() || t.starts_with('#') {
-            continue;
-        }
-        let lower = t.to_ascii_lowercase();
-        if let Some(rest) = strip_key(t, &lower, "host") {
-            // A single `Host` line can list several patterns; the first
-            // literal alias (no wildcard, not negated) names the block.
-            let name = rest
-                .split_whitespace()
-                .find(|a| !a.starts_with('!') && !a.contains(['*', '?']))
-                .unwrap_or("");
-            hosts.push(SshHost {
-                name: name.to_string(),
-                ..blank()
-            });
-        } else if strip_key(t, &lower, "match").is_some() {
-            hosts.push(blank());
-        } else if let Some(cur) = hosts.last_mut() {
-            if cur.name.is_empty() {
-                continue; // inside a skipped block
-            }
-            // ssh_config(5): the first obtained value is used.
-            let field = if let Some(v) = strip_key(t, &lower, "hostname") {
-                Some((&mut cur.hostname, v))
-            } else if let Some(v) = strip_key(t, &lower, "user") {
-                Some((&mut cur.user, v))
-            } else {
-                strip_key(t, &lower, "port").map(|v| (&mut cur.port, v))
-            };
-            if let Some((slot, v)) = field
-                && slot.is_empty()
-            {
-                *slot = v.to_string();
-            }
-        }
-    }
-    hosts.retain(|h| !h.name.is_empty());
-    hosts
-}
-
-/// If `line` (with `lower` = its lowercase form) begins with the
-/// case-insensitive `key` followed by whitespace, return the trimmed
-/// remainder.
-fn strip_key<'a>(line: &'a str, lower: &str, key: &str) -> Option<&'a str> {
-    let rest = lower.strip_prefix(key)?;
-    if !rest.starts_with(|c: char| c.is_whitespace() || c == '=') {
-        return None;
-    }
-    // Slice the original (preserving case) at the same offset.
-    let off = key.len();
-    Some(
-        line[off..]
-            .trim_start_matches(|c: char| c.is_whitespace() || c == '=')
-            .trim(),
-    )
+fn load_hosts_from(path: &std::path::Path) -> Vec<SshHost> {
+    mshell_launcher::providers::ssh::load_ssh_config(path)
+        .into_iter()
+        .map(|h| SshHost {
+            name: h.name,
+            hostname: h.hostname,
+            user: h.user,
+            port: h.port,
+        })
+        .collect()
 }
 
 /// Poll the live `ssh` client processes and return the set of target
