@@ -51,6 +51,7 @@ pub(super) const TRANSLATE_MENU: &str = "translate";
 pub(super) const COLOR_PICKER_MENU: &str = "color_picker";
 pub(super) const NAGENTS_MENU: &str = "agents";
 pub(super) const NGITHUB_MENU: &str = "github";
+pub(super) const NQR_MENU: &str = "qr";
 
 /// The menus that share the uniform open path: toggle the menu's reveal,
 /// then re-sync the layer surface's keyboard mode. Each maps to its
@@ -93,6 +94,7 @@ pub enum MenuId {
     Ai,
     Podman,
     Github,
+    Qr,
     Agents,
     Notes,
     Ip,
@@ -193,6 +195,7 @@ impl MenuId {
             MenuId::Ai => NAI_MENU,
             MenuId::Podman => NPODMAN_MENU,
             MenuId::Github => NGITHUB_MENU,
+            MenuId::Qr => NQR_MENU,
             MenuId::Agents => NAGENTS_MENU,
             MenuId::Notes => NNOTES_MENU,
             MenuId::Ip => NIP_MENU,
@@ -245,6 +248,7 @@ impl MenuId {
             MenuId::Ai => MenuType::Ai,
             MenuId::Podman => MenuType::Podman,
             MenuId::Github => MenuType::Github,
+            MenuId::Qr => MenuType::Qr,
             MenuId::Agents => MenuType::Agents,
             MenuId::Notes => MenuType::Notes,
             MenuId::Ip => MenuType::Ip,

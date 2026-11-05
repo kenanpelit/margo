@@ -316,6 +316,12 @@ _arguments "${_arguments_options[@]}" : \
 '--help[Print help]' \
 && ret=0
 ;;
+(qr)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
 (notes)
 _arguments "${_arguments_options[@]}" : \
 '-h[Print help]' \
@@ -634,6 +640,10 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (agents)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(qr)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -2735,6 +2745,16 @@ esac
     ;;
 esac
 ;;
+(qr)
+_arguments "${_arguments_options[@]}" : \
+'--clipboard[Encode the clipboard'\''s text]' \
+'--wifi[The Wi-Fi network this machine is connected to (the code contains its password)]' \
+'--hotspot[This machine'\''s hotspot (the code contains its password)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'::text -- Text or URL to encode (`-` reads standard input):_default' \
+&& ret=0
+;;
 (toast)
 _arguments "${_arguments_options[@]}" : \
 '--icon=[Symbolic icon name (default\: dialog-information-symbolic)]:ICON:_default' \
@@ -3698,6 +3718,10 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(qr)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (notes)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -4550,6 +4574,10 @@ _arguments "${_arguments_options[@]}" : \
     ;;
 esac
 ;;
+(qr)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (toast)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -4892,6 +4920,7 @@ _mshellctl_commands() {
 'screenrecord:Screen recording — start / stop / toggle. Drives the shell'\''s own recording engine (same as the screenshot menu'\''s recording section)' \
 'clipboard:Clipboard history — list / copy / pin / delete / clear / wipe. Drives the same store as \`mshellctl menu clipboard\`' \
 'translate:Headless translate\: select or copy text, run this (bind it to a keybind/gesture), get the result copied + toasted back. No menu panel involved — use \`mshellctl menu translate\` for manual entry' \
+'qr:Show a QR code to scan from a phone in the QR menu\: a text / URL (\`-\` = stdin), the clipboard, the Wi-Fi network this machine is on, or its hotspot (\`mshellctl menu qr\` just toggles the menu)' \
 'toast:Show a transient state-change toast — the \`notify-send\` equivalent for the toast surface. Ephemeral (no notification history); usable from scripts and startup services' \
 'gamemode:Game Mode — drop compositor effects, silence notifications, and keep the session awake while gaming. Configure what it affects in Settings → Game Mode' \
 'calendar:Calendar — today'\''s / upcoming events and connected accounts (proxied to the \`mcal\` calendar tool). \`calendar account setup google\` connects a Google account' \
@@ -5591,6 +5620,7 @@ _mshellctl__subcmd__help_commands() {
 'screenrecord:Screen recording — start / stop / toggle. Drives the shell'\''s own recording engine (same as the screenshot menu'\''s recording section)' \
 'clipboard:Clipboard history — list / copy / pin / delete / clear / wipe. Drives the same store as \`mshellctl menu clipboard\`' \
 'translate:Headless translate\: select or copy text, run this (bind it to a keybind/gesture), get the result copied + toasted back. No menu panel involved — use \`mshellctl menu translate\` for manual entry' \
+'qr:Show a QR code to scan from a phone in the QR menu\: a text / URL (\`-\` = stdin), the clipboard, the Wi-Fi network this machine is on, or its hotspot (\`mshellctl menu qr\` just toggles the menu)' \
 'toast:Show a transient state-change toast — the \`notify-send\` equivalent for the toast surface. Ephemeral (no notification history); usable from scripts and startup services' \
 'gamemode:Game Mode — drop compositor effects, silence notifications, and keep the session awake while gaming. Configure what it affects in Settings → Game Mode' \
 'calendar:Calendar — today'\''s / upcoming events and connected accounts (proxied to the \`mcal\` calendar tool). \`calendar account setup google\` connects a Google account' \
@@ -6105,6 +6135,7 @@ _mshellctl__subcmd__help__subcmd__menu_commands() {
 'podman:Toggle the Podman menu' \
 'github:Toggle the GitHub menu' \
 'agents:Toggle the AI Agents menu' \
+'qr:Toggle the QR code menu (share text / Wi-Fi with a phone)' \
 'notes:Toggle the Notes Hub menu' \
 'ip:Toggle the Public IP menu' \
 'vpn-indicator:Toggle the generic-VPN detail menu (active OpenVPN / WireGuard tunnels)' \
@@ -6295,6 +6326,11 @@ _mshellctl__subcmd__help__subcmd__menu__subcmd__power_commands() {
 _mshellctl__subcmd__help__subcmd__menu__subcmd__privacy_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help menu privacy commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__menu__subcmd__qr_commands] )) ||
+_mshellctl__subcmd__help__subcmd__menu__subcmd__qr_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help menu qr commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__help__subcmd__menu__subcmd__screenshot_commands] )) ||
 _mshellctl__subcmd__help__subcmd__menu__subcmd__screenshot_commands() {
@@ -6770,6 +6806,11 @@ _mshellctl__subcmd__help__subcmd__power__subcmd__set_commands() {
 _mshellctl__subcmd__help__subcmd__power__subcmd__status_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help power status commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__qr_commands] )) ||
+_mshellctl__subcmd__help__subcmd__qr_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help qr commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__help__subcmd__quit_commands] )) ||
 _mshellctl__subcmd__help__subcmd__quit_commands() {
@@ -7414,6 +7455,7 @@ _mshellctl__subcmd__menu_commands() {
 'podman:Toggle the Podman menu' \
 'github:Toggle the GitHub menu' \
 'agents:Toggle the AI Agents menu' \
+'qr:Toggle the QR code menu (share text / Wi-Fi with a phone)' \
 'notes:Toggle the Notes Hub menu' \
 'ip:Toggle the Public IP menu' \
 'vpn-indicator:Toggle the generic-VPN detail menu (active OpenVPN / WireGuard tunnels)' \
@@ -7539,6 +7581,7 @@ _mshellctl__subcmd__menu__subcmd__help_commands() {
 'podman:Toggle the Podman menu' \
 'github:Toggle the GitHub menu' \
 'agents:Toggle the AI Agents menu' \
+'qr:Toggle the QR code menu (share text / Wi-Fi with a phone)' \
 'notes:Toggle the Notes Hub menu' \
 'ip:Toggle the Public IP menu' \
 'vpn-indicator:Toggle the generic-VPN detail menu (active OpenVPN / WireGuard tunnels)' \
@@ -7735,6 +7778,11 @@ _mshellctl__subcmd__menu__subcmd__help__subcmd__power_commands() {
 _mshellctl__subcmd__menu__subcmd__help__subcmd__privacy_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl menu help privacy commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__menu__subcmd__help__subcmd__qr_commands] )) ||
+_mshellctl__subcmd__menu__subcmd__help__subcmd__qr_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl menu help qr commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__menu__subcmd__help__subcmd__screenshot_commands] )) ||
 _mshellctl__subcmd__menu__subcmd__help__subcmd__screenshot_commands() {
@@ -7968,6 +8016,11 @@ _mshellctl__subcmd__menu__subcmd__power_commands() {
 _mshellctl__subcmd__menu__subcmd__privacy_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl menu privacy commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__menu__subcmd__qr_commands] )) ||
+_mshellctl__subcmd__menu__subcmd__qr_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl menu qr commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__menu__subcmd__screenshot_commands] )) ||
 _mshellctl__subcmd__menu__subcmd__screenshot_commands() {
@@ -8932,6 +8985,11 @@ _mshellctl__subcmd__power__subcmd__set_commands() {
 _mshellctl__subcmd__power__subcmd__status_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl power status commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__qr_commands] )) ||
+_mshellctl__subcmd__qr_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl qr commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__quit_commands] )) ||
 _mshellctl__subcmd__quit_commands() {

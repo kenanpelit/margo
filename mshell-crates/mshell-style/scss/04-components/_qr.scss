@@ -1,0 +1,26 @@
+@use "../02-functions/index" as *;
+// QR codes — the shared code view (`common_widgets/qr_view.rs`) in the QR
+// menu and the Network menu's Wi-Fi / hotspot share. The code itself is
+// painted dark-on-light in Rust (a QR code only scans that way); this file
+// only shapes the card around it. Tokens only (DESIGN.md §1).
+
+.qr-menu-widget {
+  padding: 0;
+}
+
+// The light code sits on a tile so it reads as one object on the panel.
+.qr-view {
+  padding: var(--space-3);
+  border-radius: var(--card-radius);
+  background-color: var(--surface-container);
+}
+
+// Nested inside the tile: one notch down (§1 concentric corners).
+.qr-canvas {
+  border-radius: var(--radius-sm);
+}
+
+// Inline share in the Network menu: a little air above the revealed code.
+.network-share {
+  margin-top: var(--space-2);
+}

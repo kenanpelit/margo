@@ -60,7 +60,7 @@ parameter and use YAML tag syntax:
 
 | Token | Widget | What it does |
 | --- | --- | --- |
-| `Network` | Network Console | Wi-Fi / wired link state + live throughput, from NetworkManager (no `nmcli` polling). Click opens the network menu (Wi-Fi list, connect/disconnect, rescan, radio toggle, an on-demand speed test — Ookla `speedtest` or `speedtest-cli` — with live gauge, ping/jitter/loss and server/ISP, Wi-Fi hotspot with its connected clients — `network.hotspot_*`, needs `nmcli` + `iw`); right-click flips between speed and icon display. |
+| `Network` | Network Console | Wi-Fi / wired link state + live throughput, from NetworkManager (no `nmcli` polling). Click opens the network menu (Wi-Fi list, connect/disconnect, rescan, radio toggle, an on-demand speed test — Ookla `speedtest` or `speedtest-cli` — with live gauge, ping/jitter/loss and server/ISP, Wi-Fi hotspot with its connected clients — `network.hotspot_*`, needs `nmcli` + `iw`; a QR button on the hero and on the hotspot row shows a code a phone joins from — see [QR codes](#qr-codes)); right-click flips between speed and icon display. |
 | `Vpn` | VPN (Mullvad) | Native Mullvad pill driving the `mvpn` binary. Shield tints when the tunnel is up (relay + location in the tooltip). Click opens the VPN menu — live tunnel rx/tx graph (wg0-mullvad), connect / random / fastest, lockdown, auto-connect, quantum, plus a collapsible DNS section. |
 | `VpnIndicator` | VPN Indicator | Lights up while a *generic* VPN tunnel is up — OpenVPN (`tun*`) or WireGuard (`wg*`: wg-quick, NetworkManager). Reads `/sys/class/net` (polled); the whole pill hides while disconnected, and the active interface name shows in the tooltip. Mullvad (`wg0-mullvad`) is excluded — the dedicated `Vpn` pill covers it. No menu. |
 | `Dns` | DNS | Standalone DNS / Blocky panel (separate from the combined VPN pill). Polls DNS/VPN/Blocky state; click opens the DNS menu. |
@@ -210,6 +210,33 @@ Turn on **Settings → Notifications → Crash notifications**
 dumps core. The very first run only records the crashes already on disk, so
 turning it on never floods you with old ones.
 Needs `coredumpctl` / `journalctl` (systemd).
+
+## QR codes
+
+`mshellctl qr` opens the **QR Code** menu (`MenuWidget::Qr`, menu
+`qr_menu`, moved / resized under **Settings → Widgets → QR Code**) and shows
+a code to scan with a phone camera:
+
+| Command | Code |
+|---|---|
+| `mshellctl qr "https://…"` / `echo … \| mshellctl qr -` | the text / URL (up to 1000 bytes) |
+| `mshellctl qr --clipboard` | the clipboard's text |
+| `mshellctl qr --wifi` | the Wi-Fi network this machine is on (`WIFI:T:WPA;S:…;P:…;;`) |
+| `mshellctl qr --hotspot` | this machine's hotspot (the running one, else the `margo-hotspot` profile) |
+
+`mshellctl menu qr` just toggles the menu. In the menu, the **Text** tab
+takes typed or pasted text (Enter or *Show code*; *From clipboard*; *Copy
+image* puts the code on the clipboard as a PNG), **Wi-Fi** and **Hotspot**
+read the network from NetworkManager. The Network menu's QR buttons show the
+same Wi-Fi / hotspot codes inline.
+
+A Wi-Fi code **is** the network password. The shell reads it from
+NetworkManager over D-Bus only when you ask, hands it to `qrencode` on
+standard input (never a command line), never copies a Wi-Fi code to the
+clipboard (clipboard history would keep it) and forgets it as soon as the
+menu closes. Treat a screenshot of it as the password. Enterprise (802.1X)
+networks cannot be shared this way. Needs `qrencode`; the clipboard source
+needs `wl-paste`.
 
 ## Phone screen mirroring (Valent menu)
 

@@ -60,6 +60,7 @@ use crate::menus::menu_widgets::overview_intel::{OverviewIntelInput, OverviewInt
 use crate::menus::menu_widgets::podman::podman_menu_widget::{
     PodmanMenuWidgetInput, PodmanMenuWidgetModel,
 };
+use crate::menus::menu_widgets::qr::qr_menu_widget::{QrMenuWidgetInput, QrMenuWidgetModel};
 use crate::menus::menu_widgets::screenshare::screenshare_menu_widget::{
     ScreenshareMenuWidgetInit, ScreenshareMenuWidgetInput, ScreenshareMenuWidgetModel,
     ScreenshareMenuWidgetOutput,
@@ -125,6 +126,7 @@ pub(crate) enum MenuType {
     Ai,
     Podman,
     Github,
+    Qr,
     Agents,
     Notes,
     Ip,
@@ -523,6 +525,12 @@ impl Component for MenuModel {
                 effect_widgets!(effects, base_config, sender, agents_menu);
                 effect_min_width!(effects, base_config, sender, agents_menu);
                 effect_max_height!(effects, base_config, sender, agents_menu);
+            }
+            MenuType::Qr => {
+                css_class = "quick-settings-menu qr-menu".to_string();
+                effect_widgets!(effects, base_config, sender, qr_menu);
+                effect_min_width!(effects, base_config, sender, qr_menu);
+                effect_max_height!(effects, base_config, sender, qr_menu);
             }
             MenuType::Github => {
                 css_class = "github-menu".to_string();
@@ -1071,6 +1079,14 @@ impl Component for MenuModel {
                         controller
                             .sender()
                             .send(AgentsMenuWidgetInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<QrMenuWidgetModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(QrMenuWidgetInput::ParentRevealChanged(visible))
                             .ok();
                     }
                     if let Some(controller) =

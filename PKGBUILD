@@ -129,6 +129,7 @@ optdepends=(
   "tesseract: OCR of a screenshot region (mscreenshot / mshell screenshot menu)"
   "tesseract-data-eng: English language data for the screenshot OCR"
   "zbar: QR-code decoding of a screenshot region (zbarimg)"
+  "qrencode: QR codes to share text / Wi-Fi with a phone (mshellctl qr, Network menu)"
   "yt-dlp: \`mshellctl play play\`/\`download\` of YouTube + other streaming URLs, the launcher \`yt\` provider"
   # Clipboard managers — mshell clipboard widget + mshellshare paste
   "copyq: clipboard manager via wlr-data-control"

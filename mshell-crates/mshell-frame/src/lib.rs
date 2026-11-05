@@ -23,6 +23,11 @@ mod removable_drives;
 pub mod screen_corners;
 mod ssh;
 
+/// `mshellctl qr …`: the request the QR menu shows when it next opens, and
+/// the bus-argument validator. The IPC handler queues it, then opens the
+/// menu (`MenuId::Qr`).
+pub use crate::menus::menu_widgets::qr::{QrRequest, parse_qr_request, request as request_qr};
+
 /// Headless screenshot capture — drives the shell's own screenshot engine
 /// (the same one the screenshot menu uses: in-shell selectors + save /
 /// clipboard / editor / notify) without opening the menu. Called from the

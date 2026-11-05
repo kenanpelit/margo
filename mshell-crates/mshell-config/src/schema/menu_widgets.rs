@@ -86,6 +86,8 @@ pub enum MenuWidget {
     Agents,
     /// GitHub pill — unread notification count (gh CLI); the menu is an inbox plus the user's open PRs with CI / review state.
     Github,
+    /// QR menu — share a text / URL, the current Wi-Fi network or the hotspot as a QR code to scan from a phone (`mshellctl qr`).
+    Qr,
     Power,
     /// `privacy` bar pill's panel — live "in use now" rows (mic /
     /// camera / screen-share + which apps) plus a clearable access
@@ -210,6 +212,7 @@ impl MenuWidget {
             MenuWidget::Notifications => "Notifications",
             MenuWidget::Podman => "Podman",
             MenuWidget::Github => "GitHub",
+            MenuWidget::Qr => "QR Code",
             MenuWidget::Agents => "AI Agents",
             MenuWidget::Power => "Power Profile",
             MenuWidget::Privacy => "Privacy",
@@ -286,6 +289,7 @@ impl MenuWidget {
             MenuWidget::Notifications,
             MenuWidget::Podman,
             MenuWidget::Github,
+            MenuWidget::Qr,
             MenuWidget::Agents,
             MenuWidget::Power,
             MenuWidget::Privacy,

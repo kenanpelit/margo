@@ -25,6 +25,10 @@ pub struct Menus {
     /// predating it still parse.
     #[serde(default = "default_agents_menu")]
     pub agents_menu: Menu,
+    /// The QR menu (`mshellctl qr`, the Network menu's share). Default-on-
+    /// missing so profiles predating it still parse.
+    #[serde(default = "default_qr_menu")]
+    pub qr_menu: Menu,
     pub notes_menu: Menu,
     pub ip_menu: Menu,
     pub network_menu: Menu,
@@ -253,6 +257,15 @@ pub(super) fn default_agents_menu() -> Menu {
         position: Position::TopRight,
         widgets: vec![MenuWidget::Agents],
         minimum_width: 460,
+        maximum_height: 0,
+    }
+}
+
+pub(super) fn default_qr_menu() -> Menu {
+    Menu {
+        position: Position::TopRight,
+        widgets: vec![MenuWidget::Qr],
+        minimum_width: 360,
         maximum_height: 0,
     }
 }
@@ -540,6 +553,7 @@ impl Default for Menus {
             },
             agents_menu: default_agents_menu(),
             github_menu: default_github_menu(),
+            qr_menu: default_qr_menu(),
             podman_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Podman],

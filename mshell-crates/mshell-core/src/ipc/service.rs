@@ -517,16 +517,30 @@ impl IPCService {
         self.send(IPCCommand::Translate)
     }
     async fn color_picker(&self) -> fdo::Result<()> {
-        self.send(IPCCommand::ColorPicker)
+        self.send(IPCCommand::Menu(
+            mshell_frame::frame::MenuId::ColorPicker,
+            false,
+        ))
     }
     async fn podman(&self) -> fdo::Result<()> {
         self.send(IPCCommand::Podman)
     }
     async fn github(&self) -> fdo::Result<()> {
-        self.send(IPCCommand::Github)
+        self.send(IPCCommand::Menu(mshell_frame::frame::MenuId::Github, false))
     }
     async fn agents(&self) -> fdo::Result<()> {
-        self.send(IPCCommand::Agents)
+        self.send(IPCCommand::Menu(mshell_frame::frame::MenuId::Agents, false))
+    }
+    async fn qr_menu(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Menu(mshell_frame::frame::MenuId::Qr, false))
+    }
+    /// `mshellctl qr …`: show a QR code. `mode` is `text` (encode `text`),
+    /// `clipboard`, `wifi` or `hotspot` (`text` empty). The Wi-Fi password
+    /// never crosses the bus: the shell reads it from NetworkManager itself.
+    async fn qr(&self, mode: String, text: String) -> fdo::Result<()> {
+        let req = mshell_frame::parse_qr_request(&mode, &text).map_err(fdo::Error::InvalidArgs)?;
+        mshell_frame::request_qr(req);
+        self.send(IPCCommand::Menu(mshell_frame::frame::MenuId::Qr, true))
     }
     async fn notes(&self) -> fdo::Result<()> {
         self.send(IPCCommand::Notes)

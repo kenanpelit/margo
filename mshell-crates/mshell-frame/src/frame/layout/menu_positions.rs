@@ -47,6 +47,7 @@ macro_rules! positioned_menus {
             NAI_MENU => ai_menu,
             NPODMAN_MENU => podman_menu,
             NGITHUB_MENU => github_menu,
+            NQR_MENU => qr_menu,
             NAGENTS_MENU => agents_menu,
             NNOTES_MENU => notes_menu,
             NIP_MENU => ip_menu,

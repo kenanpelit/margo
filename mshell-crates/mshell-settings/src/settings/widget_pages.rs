@@ -239,6 +239,12 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
             icon: "github-symbolic",
         },
         WidgetEntry::Menu {
+            kind: MenuKind::Qr,
+            stack_name: "qr",
+            label: "QR Code",
+            icon: "screenshot-qr-symbolic",
+        },
+        WidgetEntry::Menu {
             kind: MenuKind::Podman,
             stack_name: "podman",
             label: "Podman",

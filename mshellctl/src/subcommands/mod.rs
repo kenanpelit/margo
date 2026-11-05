@@ -19,6 +19,7 @@ pub mod play;
 pub mod plugin;
 pub mod power;
 pub mod proxy;
+pub mod qr;
 pub mod screen_record;
 pub mod screenshot;
 pub mod session;

@@ -92,6 +92,7 @@ use crate::menus::menu_widgets::power::power_menu_widget::{
 use crate::menus::menu_widgets::privacy::privacy_menu_widget::{
     PrivacyMenuWidgetInit, PrivacyMenuWidgetModel,
 };
+use crate::menus::menu_widgets::qr::qr_menu_widget::{QrMenuWidgetInit, QrMenuWidgetModel};
 use crate::menus::menu_widgets::quick_action::quick_actions::{
     QuickActionsInit, QuickActionsModel, QuickActionsOutput,
 };
@@ -382,6 +383,11 @@ pub fn build_widget(
         MenuWidget::Github => Box::new(
             GithubMenuWidgetModel::builder()
                 .launch(GithubMenuWidgetInit {})
+                .detach(),
+        ),
+        MenuWidget::Qr => Box::new(
+            QrMenuWidgetModel::builder()
+                .launch(QrMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::Podman => Box::new(

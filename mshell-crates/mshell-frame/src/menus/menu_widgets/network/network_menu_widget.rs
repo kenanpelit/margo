@@ -31,11 +31,19 @@
 //! (`iw station dump` + `ip neigh`). Probed on reveal and every
 //! [`HOTSPOT_INTERVAL`] while the panel is visible — nmcli has no cheap
 //! client-change signal, so this is the one polled part of the panel.
+//!
+//! **Share as QR**: a QR button on the hero (while on Wi-Fi) and on the
+//! Hotspot row expands an inline code a phone camera joins from (the
+//! standard `WIFI:` payload, `menus::menu_widgets::qr::wifi_code`). The
+//! code is the network password: it is read from NetworkManager only on
+//! that click, never copied to the clipboard, and dropped when the panel
+//! hides.
 
 use super::speed_test::{SpeedTestInput, SpeedTestModel};
 use crate::bars::bar_widgets::network::{
     LinkKind, NetworkState, SpeedSample, WifiNetwork, read_network_state, wifi_signal_icon,
 };
+use crate::common_widgets::qr_view::QrView;
 use crate::menus::reveal_poll::RevealGate;
 use mshell_common::WatcherToken;
 use mshell_utils::hotspot::{self, HotspotClient, HotspotStatus};
@@ -45,8 +53,8 @@ use mshell_utils::network::{
 };
 use relm4::gtk::glib;
 use relm4::gtk::prelude::{
-    BoxExt, ButtonExt, DrawingAreaExt, DrawingAreaExtManual, ListBoxRowExt, ObjectExt,
-    OrientableExt, WidgetExt,
+    AccessibleExtManual, BoxExt, ButtonExt, DrawingAreaExt, DrawingAreaExtManual, ListBoxRowExt,
+    ObjectExt, OrientableExt, WidgetExt,
 };
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::cell::RefCell;
@@ -97,6 +105,11 @@ pub(crate) struct NetworkMenuWidgetModel {
     hotspot_switch_signal: glib::SignalHandlerId,
     hotspot_subtitle: gtk::Label,
     hotspot_clients: gtk::ListBox,
+    hotspot_share_btn: gtk::Button,
+    // ── Share as QR (Wi-Fi under the hero, hotspot under its row) ──
+    wifi_share_btn: gtk::Button,
+    wifi_share: Share,
+    hotspot_share: Share,
     // ── Speed test card (child component) ──
     speed_test: Controller<SpeedTestModel>,
 }
@@ -106,6 +119,42 @@ impl std::fmt::Debug for NetworkMenuWidgetModel {
         f.debug_struct("NetworkMenuWidgetModel")
             .field("state", &self.state)
             .finish()
+    }
+}
+
+/// One inline QR share: its revealer + code, and the generation that
+/// drops a late answer after the user collapsed it.
+struct Share {
+    revealer: gtk::Revealer,
+    view: QrView,
+    generation: u64,
+}
+
+impl Share {
+    fn new() -> Self {
+        let view = QrView::new();
+        view.root().add_css_class("network-share");
+        let revealer = gtk::Revealer::builder()
+            .transition_type(gtk::RevealerTransitionType::SlideDown)
+            .reveal_child(false)
+            .child(view.root())
+            .build();
+        Self {
+            revealer,
+            view,
+            generation: 0,
+        }
+    }
+
+    fn is_open(&self) -> bool {
+        self.revealer.reveals_child()
+    }
+
+    /// Collapse and forget the code (it is the network password).
+    fn close(&mut self) {
+        self.generation += 1;
+        self.revealer.set_reveal_child(false);
+        self.view.clear();
     }
 }
 
@@ -125,6 +174,9 @@ pub(crate) enum NetworkMenuWidgetInput {
     ParentRevealChanged(bool),
     /// Hotspot switch flipped by the user.
     SetHotspot(bool),
+    /// Show / hide the QR code of the current Wi-Fi (`false`) or of the
+    /// hotspot (`true`).
+    ToggleShare(bool),
 }
 
 #[derive(Debug)]
@@ -145,6 +197,12 @@ pub(crate) enum NetworkMenuWidgetCommandOutput {
     /// Fresh hotspot status. `true` = the probe that follows the user's
     /// start/stop (clears the busy state, success or not); `false` = a poll.
     Hotspot(HotspotStatus, bool),
+    /// `(hotspot, generation, code + caption | why not)` for a share.
+    Shared(
+        bool,
+        u64,
+        Result<(mshell_utils::qr::QrMatrix, String), String>,
+    ),
 }
 
 #[relm4::component(pub(crate))]
@@ -225,7 +283,20 @@ impl Component for NetworkMenuWidgetModel {
                     add_css_class: "network-badge",
                     set_valign: gtk::Align::Center,
                 },
+
+                #[local_ref]
+                wifi_share_btn_widget -> gtk::Button {
+                    add_css_class: "panel-action-btn",
+                    set_valign: gtk::Align::Center,
+                    set_icon_name: "screenshot-qr-symbolic",
+                    set_tooltip_text: Some("Show a QR code a phone can join this Wi-Fi from"),
+                    update_property: &[gtk::accessible::Property::Label("Share this Wi-Fi as a QR code")],
+                    set_visible: false,
+                    connect_clicked => NetworkMenuWidgetInput::ToggleShare(false),
+                },
             },
+            #[local_ref]
+            wifi_share_revealer -> gtk::Revealer {},
 
             // ── Traffic (live RX / TX + history graphs) ─────────
             gtk::Label {
@@ -360,11 +431,24 @@ impl Component for NetworkMenuWidgetModel {
                 },
 
                 #[local_ref]
+                hotspot_share_btn_widget -> gtk::Button {
+                    add_css_class: "panel-action-btn",
+                    set_valign: gtk::Align::Center,
+                    set_icon_name: "screenshot-qr-symbolic",
+                    set_tooltip_text: Some("Show a QR code a phone can join the hotspot from"),
+                    update_property: &[gtk::accessible::Property::Label("Share the hotspot as a QR code")],
+                    set_visible: false,
+                    connect_clicked => NetworkMenuWidgetInput::ToggleShare(true),
+                },
+
+                #[local_ref]
                 hotspot_switch_widget -> gtk::Switch {
                     set_valign: gtk::Align::Center,
                     set_tooltip_text: Some("Share this machine's connection over Wi-Fi (Settings → Network)"),
                 },
             },
+            #[local_ref]
+            hotspot_share_revealer -> gtk::Revealer {},
             #[local_ref]
             hotspot_clients_widget -> gtk::ListBox {
                 set_css_classes: &["network-list", "network-hotspot-clients"],
@@ -436,6 +520,12 @@ impl Component for NetworkMenuWidgetModel {
         let hotspot_switch_widget = gtk::Switch::new();
         let hotspot_subtitle_widget = gtk::Label::new(Some("…"));
         let hotspot_clients_widget = gtk::ListBox::new();
+        let hotspot_share_btn_widget = gtk::Button::new();
+        let wifi_share_btn_widget = gtk::Button::new();
+        let wifi_share = Share::new();
+        let hotspot_share = Share::new();
+        let wifi_share_revealer = wifi_share.revealer.clone();
+        let hotspot_share_revealer = hotspot_share.revealer.clone();
         let hotspot_sender = sender.clone();
         let hotspot_switch_signal = hotspot_switch_widget.connect_state_set(move |_, want_on| {
             hotspot_sender.input(NetworkMenuWidgetInput::SetHotspot(want_on));
@@ -505,6 +595,10 @@ impl Component for NetworkMenuWidgetModel {
             hotspot_switch_signal,
             hotspot_subtitle: hotspot_subtitle_widget.clone(),
             hotspot_clients: hotspot_clients_widget.clone(),
+            hotspot_share_btn: hotspot_share_btn_widget.clone(),
+            wifi_share_btn: wifi_share_btn_widget.clone(),
+            wifi_share,
+            hotspot_share,
             speed_test,
         };
         arm_wifi_watchers(&sender, &mut model.wifi_watcher_token);
@@ -553,6 +647,11 @@ impl Component for NetworkMenuWidgetModel {
             }
             NetworkMenuWidgetInput::ParentRevealChanged(visible) => {
                 self.visible.set(visible);
+                if !visible {
+                    // Off screen: no password code left behind.
+                    self.wifi_share.close();
+                    self.hotspot_share.close();
+                }
                 self.speed_test
                     .emit(SpeedTestInput::ParentRevealChanged(visible));
                 if visible && !self.poll_started {
@@ -560,6 +659,30 @@ impl Component for NetworkMenuWidgetModel {
                     start_speed_sampler(&sender, self.visible.clone());
                     start_hotspot_poller(&sender, self.visible.clone());
                 }
+            }
+            NetworkMenuWidgetInput::ToggleShare(hotspot) => {
+                let share = if hotspot {
+                    &mut self.hotspot_share
+                } else {
+                    &mut self.wifi_share
+                };
+                if share.is_open() {
+                    share.close();
+                    return;
+                }
+                share.generation += 1;
+                share
+                    .view
+                    .message("Reading the network from NetworkManager…", false);
+                share.revealer.set_reveal_child(true);
+                let generation = share.generation;
+                sender.oneshot_command(async move {
+                    NetworkMenuWidgetCommandOutput::Shared(
+                        hotspot,
+                        generation,
+                        crate::menus::menu_widgets::qr::wifi_code(hotspot).await,
+                    )
+                });
             }
             NetworkMenuWidgetInput::SetHotspot(on) => {
                 if self.hotspot_busy || on == self.hotspot.is_active() {
@@ -614,6 +737,20 @@ impl Component for NetworkMenuWidgetModel {
                 self.tx_area.queue_draw();
                 return;
             }
+            NetworkMenuWidgetCommandOutput::Shared(hotspot, generation, result) => {
+                let share = if hotspot {
+                    &self.hotspot_share
+                } else {
+                    &self.wifi_share
+                };
+                if generation == share.generation && share.is_open() {
+                    match result {
+                        Ok((matrix, caption)) => share.view.show(matrix, &caption),
+                        Err(e) => share.view.message(&e, true),
+                    }
+                }
+                return;
+            }
             NetworkMenuWidgetCommandOutput::Hotspot(status, from_action) => {
                 // A poll landing mid start/stop would flip the switch back
                 // before nmcli finished: ignore polls while busy; only the
@@ -629,6 +766,10 @@ impl Component for NetworkMenuWidgetModel {
         }
         let state = read_network_state();
         if self.state != state {
+            // Left the network the code was for: drop it.
+            if state.active_kind != LinkKind::Wifi || state.active_name != self.state.active_name {
+                self.wifi_share.close();
+            }
             self.state = state;
             sync_view(self, &sender);
         }
@@ -728,6 +869,9 @@ fn sync_hotspot(model: &NetworkMenuWidgetModel) {
     sw.set_active(on);
     sw.unblock_signal(&model.hotspot_switch_signal);
     sw.set_sensitive(st.available && !model.hotspot_busy && (on || st.wifi_interface.is_some()));
+    // The code needs a hotspot profile; one exists once it ran (or its
+    // password was set), so offer it whenever NetworkManager is there.
+    model.hotspot_share_btn.set_visible(st.available);
 
     let list = &model.hotspot_clients;
     while let Some(child) = list.first_child() {
@@ -847,6 +991,9 @@ fn sync_view(model: &NetworkMenuWidgetModel, sender: &ComponentSender<NetworkMen
             },
         ),
     };
+    model
+        .wifi_share_btn
+        .set_visible(s.active_kind == LinkKind::Wifi);
     model.hero_icon.set_icon_name(Some(icon));
     model.hero_title.set_label(&title);
     model.hero_subtitle.set_label(&subtitle);

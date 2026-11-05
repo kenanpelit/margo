@@ -107,6 +107,8 @@ pub trait Shell {
     fn podman(&self) -> zbus::Result<()>;
     fn github(&self) -> zbus::Result<()>;
     fn agents(&self) -> zbus::Result<()>;
+    fn qr_menu(&self) -> zbus::Result<()>;
+    fn qr(&self, mode: &str, text: &str) -> zbus::Result<()>;
     fn notes(&self) -> zbus::Result<()>;
     fn ip(&self) -> zbus::Result<()>;
     fn vpn_indicator(&self) -> zbus::Result<()>;

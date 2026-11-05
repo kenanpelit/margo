@@ -82,6 +82,7 @@ CAPTURE
   screenrecord    Screen recording — start / stop / toggle
   clipboard       History — list / copy / pin / delete / clear
   translate       Translate the selection / clipboard, copy + toast it
+  qr              Show a QR code — text / clipboard / Wi-Fi / hotspot
 
 COMPANION TOOLS
   calendar        Events & connected accounts           (mcal)
@@ -273,6 +274,10 @@ pub enum Commands {
         #[command(subcommand)]
         command: crate::subcommands::translate::TranslateCommands,
     },
+    /// Show a QR code to scan from a phone in the QR menu: a text / URL
+    /// (`-` = stdin), the clipboard, the Wi-Fi network this machine is on,
+    /// or its hotspot (`mshellctl menu qr` just toggles the menu).
+    Qr(crate::subcommands::qr::QrArgs),
     /// Show a transient state-change toast — the `notify-send` equivalent for
     /// the toast surface. Ephemeral (no notification history); usable from
     /// scripts and startup services.

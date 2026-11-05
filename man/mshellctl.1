@@ -190,6 +190,15 @@ the clipboard
 or a string
 .RI ( "text \fITEXT\fR" ),
 copy the result and toast it.
+.TP
+.B qr \fR[\fITEXT\fR | \fB\-\-clipboard\fR | \fB\-\-wifi\fR | \fB\-\-hotspot\fR]
+Show a QR code to scan from a phone in the QR menu: a text or URL
+.RI ( \- " reads standard input),"
+the clipboard's text, the Wi\-Fi network this machine is on, or its hotspot.
+The Wi\-Fi codes contain the network password; the shell reads it from
+NetworkManager itself and hands it to
+.BR qrencode (1)
+on standard input, never on a command line.
 .SS "Companion tools"
 .TP
 .B calendar \fISUBCOMMAND\fR
@@ -284,6 +293,7 @@ mshellctl theme list              # show every scheme name
 mshellctl doctor                  # shell health check
 mshellctl completions zsh         # emit zsh completion script
 mshellctl lock
+mshellctl qr \-\-wifi              # let a phone join this Wi\-Fi
 .EE
 .in
 .SH "SEE ALSO"

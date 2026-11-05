@@ -116,6 +116,8 @@ pub enum MenuCommands {
     Github,
     /// Toggle the AI Agents menu
     Agents,
+    /// Toggle the QR code menu (share text / Wi-Fi with a phone)
+    Qr,
     /// Toggle the Notes Hub menu
     Notes,
     /// Toggle the Public IP menu
@@ -282,6 +284,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Agents => {
             shell().await?.agents().await?;
+        }
+        MenuCommands::Qr => {
+            shell().await?.qr_menu().await?;
         }
         MenuCommands::Notes => {
             shell().await?.notes().await?;

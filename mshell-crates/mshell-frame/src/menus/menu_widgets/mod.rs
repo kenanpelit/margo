@@ -39,6 +39,7 @@ pub(crate) mod panel_header;
 pub(crate) mod podman;
 pub(crate) mod power;
 pub(crate) mod privacy;
+pub(crate) mod qr;
 pub(crate) mod quick_action;
 pub(crate) mod screen_record;
 pub(crate) mod screenshare;
