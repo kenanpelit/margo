@@ -1,5 +1,4 @@
 use mshell_common::watch;
-use mshell_process::SpawnReaped;
 use mshell_services::notification_service;
 use notify_rust::Notification;
 use relm4::{Component, ComponentSender};
@@ -19,15 +18,11 @@ pub fn show_file_saved_notification(summary: String, path: PathBuf) {
         if let Ok(handle) = handle {
             handle.wait_for_action(|action| match action {
                 "view" => {
-                    let _ = std::process::Command::new("xdg-open")
-                        .arg(&file_path)
-                        .spawn_reaped();
+                    let _ = mshell_process::desktop::open(&file_path);
                 }
                 "open_dir" => {
                     if let Some(parent) = PathBuf::from(&file_path).parent() {
-                        let _ = std::process::Command::new("xdg-open")
-                            .arg(parent)
-                            .spawn_reaped();
+                        let _ = mshell_process::desktop::open(parent);
                     }
                 }
                 _ => {}

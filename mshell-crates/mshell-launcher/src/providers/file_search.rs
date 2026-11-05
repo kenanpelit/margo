@@ -29,7 +29,6 @@ use crate::{
     scoring::make_matcher,
 };
 use margo_fs::path::on_path as command_exists;
-use mshell_process::SpawnReaped;
 use nucleo_matcher::{
     Utf32Str,
     pattern::{CaseMatching, Normalization, Pattern},
@@ -469,7 +468,7 @@ pub fn reveal_argv(path: &str) -> Vec<String> {
 }
 
 fn open_path(path: &str) {
-    if let Err(err) = Command::new("xdg-open").arg(path).spawn_reaped() {
+    if let Err(err) = mshell_process::desktop::open(path) {
         tracing::warn!(?err, path, "file search: xdg-open failed");
         toast("Files", format!("Could not open {path}"));
     }

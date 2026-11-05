@@ -304,19 +304,11 @@ async fn notify(handle: PlayerHandle) {
         .map(|p| p.trim_start_matches("file://").to_string())
         .filter(|p| std::path::Path::new(p).is_file())
         .unwrap_or_else(|| "multimedia-player-symbolic".to_string());
-    let _ = tokio::process::Command::new("notify-send")
-        .args([
-            "-a",
-            "mshell",
-            "-i",
-            &icon,
-            "-h",
-            "string:x-canonical-private-synchronous:mshell-media",
-            &name,
-            &body,
-        ])
-        .status()
-        .await;
+    mshell_process::desktop::notify(
+        mshell_process::desktop::Notice::new("mshell", name, body)
+            .icon(icon)
+            .replace("mshell-media"),
+    );
 }
 
 #[cfg(test)]

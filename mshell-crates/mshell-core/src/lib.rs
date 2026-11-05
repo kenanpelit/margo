@@ -421,16 +421,14 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                 if n > 0 {
                     mshell_config::config_manager::config_manager().reload_config();
                     let body = format!("Updated {n} plugin(s): {}", outcome.updated.join(", "));
-                    let _ = std::process::Command::new("notify-send")
-                        .args([
-                            "-a",
+                    mshell_process::desktop::notify(
+                        mshell_process::desktop::Notice::new(
                             "Plugins",
-                            "-i",
-                            "software-update-available-symbolic",
                             "Plugin updates installed",
-                            &body,
-                        ])
-                        .spawn_reaped();
+                            body,
+                        )
+                        .icon("software-update-available-symbolic"),
+                    );
                 } else if !outcome.errors.is_empty() {
                     tracing::warn!(
                         errors = ?outcome.errors,

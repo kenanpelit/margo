@@ -621,9 +621,9 @@ fn notify_transition(action: &str, s: &DnsState, ok: bool) {
             "network-wired-symbolic",
         )
     };
-    let _ = tokio::process::Command::new("notify-send")
-        .args(["-a", "Mullvad VPN", "-i", icon, &title, &body])
-        .spawn();
+    mshell_process::desktop::notify(
+        mshell_process::desktop::Notice::new("Mullvad VPN", title, body).icon(icon),
+    );
 }
 
 /// Raw `mullvad connect/disconnect` — no coupling (so the coupled wrappers

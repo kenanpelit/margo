@@ -1261,18 +1261,9 @@ impl Component for DisplaySettingsModel {
                     warn!(path = %dir.display(), error = %e, "twilight: cannot create preset dir");
                     return;
                 }
-                let dir_str = dir.display().to_string();
-                relm4::spawn(async move {
-                    match tokio::process::Command::new("xdg-open")
-                        .arg(&dir_str)
-                        .status()
-                        .await
-                    {
-                        Ok(s) if s.success() => {}
-                        Ok(s) => warn!(?s, dir = %dir_str, "xdg-open returned non-zero"),
-                        Err(e) => warn!(error = %e, dir = %dir_str, "xdg-open spawn failed"),
-                    }
-                });
+                if let Err(e) = mshell_process::desktop::open(&dir) {
+                    warn!(error = %e, dir = %dir.display(), "twilight: open preset dir failed");
+                }
                 return;
             }
             DisplaySettingsInput::PresetTempGammaEdited { name, temp, gamma } => {

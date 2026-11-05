@@ -74,17 +74,11 @@ async fn wl_copy(text: &str) -> anyhow::Result<()> {
 }
 
 async fn notify(color: &str) {
-    if let Err(e) = Command::new("notify-send")
-        .arg(format!("Copied color {color} to clipboard"))
-        .arg("--app-name")
-        .arg("Color Picker")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .await
-    {
-        error!("notify-send failed: {e}");
-    }
+    mshell_process::desktop::notify(mshell_process::desktop::Notice::new(
+        "Color Picker",
+        format!("Copied color {color} to clipboard"),
+        "",
+    ));
 }
 
 pub fn spawn_color_picker(delay_millis: u64) {

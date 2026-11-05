@@ -3,12 +3,13 @@ name = "mshell-process"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Spawn fire-and-forget child processes from mshell without leaking zombies."
+description = "Fire-and-forget side effects from mshell: reaped child processes, scopes that outlive the shell, the user's terminal, notifications, opening URLs."
 repository.workspace = true
 license.workspace = true
 
 [dependencies]
 margo-fs.workspace = true
+notify-rust.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]

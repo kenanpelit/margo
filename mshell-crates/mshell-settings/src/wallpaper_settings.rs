@@ -907,21 +907,10 @@ impl Component for WallpaperSettingsModel {
     }
 }
 
-/// Fire-and-forget desktop toast (reaped via the async runtime).
+/// Fire-and-forget desktop toast.
 fn notify(summary: &str, body: &str) {
-    let summary = summary.to_string();
-    let body = body.to_string();
-    relm4::spawn(async move {
-        let _ = tokio::process::Command::new("notify-send")
-            .args([
-                "-a",
-                "mshell",
-                "-i",
-                "preferences-desktop-wallpaper-symbolic",
-                &summary,
-                &body,
-            ])
-            .status()
-            .await;
-    });
+    mshell_process::desktop::notify(
+        mshell_process::desktop::Notice::new("mshell", summary, body)
+            .icon("preferences-desktop-wallpaper-symbolic"),
+    );
 }

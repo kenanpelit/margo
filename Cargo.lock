@@ -5326,7 +5326,6 @@ dependencies = [
  "margo-fs",
  "mshell-margo-client",
  "mshell-process",
- "notify-rust",
  "nucleo-matcher",
  "regex",
  "serde",
@@ -5498,6 +5497,7 @@ name = "mshell-process"
 version = "4.9.2"
 dependencies = [
  "margo-fs",
+ "notify-rust",
  "tempfile",
  "tracing",
 ]
@@ -5596,7 +5596,6 @@ dependencies = [
  "mshell-style",
  "mshell-translate",
  "mshell-utils",
- "notify-rust",
  "paste",
  "reactive_graph",
  "relm4",

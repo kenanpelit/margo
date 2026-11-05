@@ -245,12 +245,10 @@ impl Component for UfwMenuWidgetModel {
                     set_css_classes: &["ok-button-surface", "ok-button-cell"],
                     set_label: "ufw(8)",
                     connect_clicked => |_| {
-                        tokio::spawn(async {
-                            let _ = tokio::process::Command::new("xdg-open")
-                                .arg("https://manpages.ubuntu.com/manpages/jammy/man8/ufw.8.html")
-                                .status()
-                                .await;
-                        });
+                        let url = "https://manpages.ubuntu.com/manpages/jammy/man8/ufw.8.html";
+                        if let Err(e) = mshell_process::desktop::open(url) {
+                            tracing::warn!(error = %e, url, "ufw: open failed");
+                        }
                     },
                 },
             },

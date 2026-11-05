@@ -13,12 +13,16 @@
 //! `tokio::process` children don't need this: tokio's runtime reaps dropped
 //! children itself.
 //!
+//! [`desktop`] shows a notification and opens a URL / file in the default
+//! app (no `notify-send` / bare `xdg-open` forks).
+//!
 //! [`terminal`] opens the user's terminal running a command (one
 //! `$TERMINAL` → candidate rule, one per-emulator argv table).
 //!
 //! [`identity`] finds the [`outliving_shell`] processes an earlier mshell
 //! started, after a restart, by uid + exact scope name + argv + start time.
 
+pub mod desktop;
 pub mod identity;
 pub mod terminal;
 

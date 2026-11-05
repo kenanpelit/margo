@@ -14,7 +14,6 @@
 
 use crate::menus::reveal_poll::{RevealGate, watch_stream};
 use crate::removable_drives::{self, Crypt, Drive, DrivesState, Volume};
-use mshell_process::SpawnReaped;
 use mshell_utils::units::bytes as format_size;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, EditableExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -466,10 +465,7 @@ fn icon_button(
 
 /// Open a mount point in the user's file manager.
 fn open_folder(path: &str) {
-    if let Err(e) = std::process::Command::new("xdg-open")
-        .arg(path)
-        .spawn_reaped()
-    {
+    if let Err(e) = mshell_process::desktop::open(path) {
         removable_drives::report("Couldn't open the folder", Err(format!("xdg-open: {e}")));
     }
 }

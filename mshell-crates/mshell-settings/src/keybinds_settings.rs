@@ -457,15 +457,11 @@ pub fn warn_conflicts_toast() {
         if n == 1 { "" } else { "s" },
         combos.join("  ·  "),
     );
-    if let Err(err) = notify_rust::Notification::new()
-        .summary("Keybind conflict")
-        .body(&body)
-        .timeout(notify_rust::Timeout::Milliseconds(6000))
-        .hint(notify_rust::Hint::Category("im.received".into()))
-        .show()
-    {
-        tracing::warn!(?err, "keybind-conflict toast failed");
-    }
+    mshell_process::desktop::notify(
+        mshell_process::desktop::Notice::new("mshell", "Keybind conflict", body)
+            .timeout_ms(6000)
+            .category("im.received"),
+    );
 }
 
 /// One-line summary of the current conflicts for the Settings → Keybinds banner,

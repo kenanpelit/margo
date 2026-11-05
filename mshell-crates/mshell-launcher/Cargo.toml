@@ -13,7 +13,6 @@ dirs.workspace = true
 emojis = "0.7"
 mshell-margo-client.workspace = true
 mshell-process.workspace = true
-notify-rust.workspace = true
 nucleo-matcher = "0.3"
 regex.workspace = true
 serde.workspace = true

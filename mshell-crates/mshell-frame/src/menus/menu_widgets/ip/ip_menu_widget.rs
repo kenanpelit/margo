@@ -265,12 +265,9 @@ impl Component for IpMenuWidgetModel {
                     Some(i) if !i.ip.is_empty() => format!("https://ipinfo.io/{}", i.ip),
                     _ => "https://ipinfo.io".to_string(),
                 };
-                tokio::spawn(async move {
-                    let _ = tokio::process::Command::new("xdg-open")
-                        .arg(&url)
-                        .status()
-                        .await;
-                });
+                if let Err(e) = mshell_process::desktop::open(&url) {
+                    tracing::warn!(error = %e, %url, "ip: open failed");
+                }
             }
         }
     }

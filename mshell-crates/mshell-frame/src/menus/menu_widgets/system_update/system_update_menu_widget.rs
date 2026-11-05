@@ -18,7 +18,6 @@ use mshell_config::schema::config::{
     BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, SystemUpdateBarWidgetStoreFields,
     SystemUpdateMode,
 };
-use mshell_process::SpawnReaped;
 use reactive_graph::traits::{Get, GetUntracked};
 use relm4::gtk::glib;
 use relm4::gtk::prelude::{AccessibleExtManual, BoxExt, ButtonExt, OrientableExt, WidgetExt};
@@ -711,9 +710,9 @@ impl Component for SystemUpdateMenuWidgetModel {
                 rebuild_news(&widgets.news_list, &self.news, &sender);
             }
             SystemUpdateMenuWidgetInput::OpenUrl(url) => {
-                let _ = std::process::Command::new("xdg-open")
-                    .arg(url)
-                    .spawn_reaped();
+                if let Err(e) = mshell_process::desktop::open(&url) {
+                    tracing::warn!(error = %e, %url, "system_update: open failed");
+                }
             }
             SystemUpdateMenuWidgetInput::LoadHistory => {
                 sender.oneshot_command(async {

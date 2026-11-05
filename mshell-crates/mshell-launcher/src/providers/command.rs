@@ -255,7 +255,7 @@ pub fn complete_path(expr: &str, home: &Path, limit: usize) -> Vec<PathCompletio
 }
 
 fn open_path(path: &Path) {
-    if let Err(err) = Command::new("xdg-open").arg(path).spawn_reaped() {
+    if let Err(err) = mshell_process::desktop::open(path) {
         tracing::warn!(?err, path = %path.display(), "run: xdg-open failed");
     }
 }

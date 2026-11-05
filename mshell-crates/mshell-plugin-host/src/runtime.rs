@@ -289,10 +289,10 @@ impl Host for HostState {
     }
 
     fn notify(&mut self, summary: String, body: String) {
-        // Same bucket as `run`/`process-start`: this is a subprocess spawn
-        // (`notify-send`) like any other, and was previously ungated —
+        // Same bucket as `run`/`process-start` (it used to be a
+        // `notify-send` spawn, and was previously ungated —
         // any plugin, capabilities or not, could spam/spoof desktop
-        // notifications with attacker-controlled text.
+        // notifications with attacker-controlled text).
         if !self.capabilities.process {
             tracing::warn!(
                 plugin = self.plugin_id,
@@ -300,15 +300,13 @@ impl Host for HostState {
             );
             return;
         }
-        // `--` guards against a guest-supplied summary that starts with `-`.
-        if let Err(e) = std::process::Command::new("notify-send")
-            .arg("--")
-            .arg(&summary)
-            .arg(&body)
-            .spawn_reaped()
-        {
-            tracing::warn!(plugin = self.plugin_id, "notify failed: {e}");
-        }
+        // A D-Bus call, not a `notify-send` argv: nothing guest-supplied is
+        // ever parsed as a flag.
+        mshell_process::desktop::notify(mshell_process::desktop::Notice::new(
+            self.plugin_id.to_string(),
+            summary,
+            body,
+        ));
     }
 
     fn copy(&mut self, text: String) {

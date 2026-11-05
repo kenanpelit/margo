@@ -21,7 +21,6 @@ use crate::agents::{
     ProviderLimits, SESSIONS_POLL, SessionsSnapshot, USAGE_POLL, UsageSnapshot, request_refresh,
 };
 use crate::menus::menu_widgets::agents::sessions_page::{SessionAction, SessionsPage};
-use mshell_process::SpawnReaped;
 use mshell_utils::shared_poll::PollSubscription;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -352,11 +351,8 @@ fn run_session_action(action: SessionAction) -> Option<String> {
 }
 
 pub(crate) fn open_url(url: &str) {
-    if let Err(e) = std::process::Command::new("xdg-open")
-        .arg(url)
-        .spawn_reaped()
-    {
-        tracing::warn!(error = %e, "xdg-open failed");
+    if let Err(e) = mshell_process::desktop::open(url) {
+        tracing::warn!(error = %e, url, "open failed");
     }
 }
 

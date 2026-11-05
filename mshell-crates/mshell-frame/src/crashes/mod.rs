@@ -465,15 +465,11 @@ fn announce(c: &Crash) {
             " · no core file"
         }
     );
-    relm4::spawn_blocking(move || {
-        let _ = notify_rust::Notification::new()
-            .appname("Crashes")
-            .summary(&summary)
-            .body(&body)
+    mshell_process::desktop::notify(
+        mshell_process::desktop::Notice::new("Crashes", summary, body)
             .icon("dialog-error-symbolic")
-            .urgency(notify_rust::Urgency::Critical)
-            .show();
-    });
+            .urgency(mshell_process::desktop::Urgency::Critical),
+    );
 }
 
 #[cfg(test)]

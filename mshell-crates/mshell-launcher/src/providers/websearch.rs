@@ -28,7 +28,6 @@ use crate::{
     notify::toast,
     provider::{Provider, RefreshNotifier},
 };
-use mshell_process::SpawnReaped;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -423,7 +422,7 @@ impl WebsearchProvider {
                             mru.bump(&url);
                             mru.flush();
                         }
-                        if let Err(err) = Command::new("xdg-open").arg(&url).spawn_reaped() {
+                        if let Err(err) = mshell_process::desktop::open(&url) {
                             tracing::warn!(?err, %url, "xdg-open failed");
                         } else {
                             toast("Web", format!("Opening {name}"));
@@ -525,7 +524,7 @@ impl Provider for WebsearchProvider {
                     provider_name: "Web search".into(),
                     usage_key: Some(format!("websearch:{}", engine.keyword)),
                     on_activate: Rc::new(move || {
-                        if let Err(err) = Command::new("xdg-open").arg(&url).spawn_reaped() {
+                        if let Err(err) = mshell_process::desktop::open(&url) {
                             tracing::warn!(?err, %url, "xdg-open failed");
                         } else {
                             toast("Web search", display_for_toast.clone());

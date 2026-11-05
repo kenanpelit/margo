@@ -757,18 +757,14 @@ async fn follow_run(h: RunHandle) {
 }
 
 fn notify(title: &str, body: &str, ok: bool) {
-    use mshell_process::SpawnReaped;
     let icon = if ok {
         "software-update-available-symbolic"
     } else {
         "software-update-urgent-symbolic"
     };
-    if let Err(e) = std::process::Command::new("notify-send")
-        .args(["-a", "System Updates", "-i", icon, title, body])
-        .spawn_reaped()
-    {
-        warn!(error = %e, "system_update: notify-send failed");
-    }
+    mshell_process::desktop::notify(
+        mshell_process::desktop::Notice::new("System Updates", title, body).icon(icon),
+    );
 }
 
 #[cfg(test)]
