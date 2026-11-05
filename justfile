@@ -130,6 +130,9 @@ check:
     ./contrib/completions/generate.sh --check
     if cargo run --locked -q -p mctl -- check-config --help | grep -q -- --strict; then s=--strict; fi; cargo run --locked -q -p mctl -- check-config $s --config margo/src/config.example.conf
     cargo test --workspace --locked
+    cargo check --manifest-path fuzz/Cargo.toml --all-targets
+    cargo test --manifest-path fuzz/Cargo.toml --lib
+    cargo fmt --manifest-path fuzz/Cargo.toml -- --check
 
 # Format the whole workspace.
 fmt:

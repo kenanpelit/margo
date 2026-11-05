@@ -104,6 +104,19 @@ jobs:
         # doesn't ship, so `--workspace` is fine here.
         run: cargo test --workspace --locked
 
+      - name: fuzz targets build + test (stable)
+        # fuzz/ is its own workspace (cargo-fuzz needs nightly to *run* it,
+        # soak.yml does that weekly), so nothing above compiles it. Check the
+        # targets, test their input filter and fmt-check them here so they
+        # can't rot. Not --locked: fuzz/Cargo.lock records margo-config (a
+        # path dependency), whose version moves with every release; cargo
+        # updates that entry and whatever margo-config newly requires, and
+        # keeps every other entry as locked.
+        run: |
+          cargo check --manifest-path fuzz/Cargo.toml --all-targets
+          cargo test --manifest-path fuzz/Cargo.toml --lib
+          cargo fmt --manifest-path fuzz/Cargo.toml -- --check
+
       - name: cargo fmt (gate)
         # Formatting is deterministic on the pinned toolchain
         # (rust-toolchain.toml), so this is a hard gate.

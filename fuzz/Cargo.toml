@@ -1,6 +1,8 @@
 # cargo-fuzz targets. Not a workspace member (see the root Cargo.toml
-# `exclude`): it needs nightly + libFuzzer, so it stays out of the normal
-# build, test and clippy runs. How to run: fuzz/README.md.
+# `exclude`): running them needs nightly + libFuzzer, so it stays out of the
+# workspace build, test and clippy runs. CI checks + tests it on the pinned
+# stable toolchain (ci.yml) and fuzzes it weekly on nightly (soak.yml).
+# How to run: fuzz/README.md.
 [package]
 name = "margo-fuzz"
 version = "0.0.0"
@@ -10,6 +12,10 @@ license = "GPL-3.0-or-later"
 
 [package.metadata]
 cargo-fuzz = true
+
+[lib]
+path = "src/lib.rs"
+doc = false
 
 [dependencies]
 libfuzzer-sys = "0.4"
@@ -22,6 +28,13 @@ members = ["."]
 [[bin]]
 name = "parse_config_str"
 path = "fuzz_targets/parse_config_str.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "validate_config"
+path = "fuzz_targets/validate_config.rs"
 test = false
 doc = false
 bench = false

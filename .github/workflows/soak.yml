@@ -1,4 +1,5 @@
-# Margo proptest soak — weekly deep fuzz of the pure algebra crates.
+# Margo proptest soak — weekly deep fuzz of the pure algebra crates, plus a
+# cargo-fuzz (libFuzzer) run over margo-config's parser and validator.
 #
 # The regular ci.yml runs the proptest suites at their default case
 # count (256) as a smoke gate. This job re-runs the same suites at
@@ -80,3 +81,53 @@ jobs:
         run: |
           cargo test --locked -p ${{ matrix.crate }} \
             --test ${{ matrix.test }} -- --nocapture
+
+  # Coverage-guided fuzzing of the config text front ends: the parser
+  # (`parse_config_str`) and the validator behind `mctl check-config`
+  # (`validate_config`), which splits lines on its own and has drifted from
+  # the parser before. The targets live in fuzz/ (fuzz/README.md); ci.yml
+  # keeps them compiling on stable, this runs them on nightly for 10 minutes
+  # each. The seed corpus is the shipped example config without its comments,
+  # cut into 16-line pieces, and inputs are capped at 4 KiB: fed the whole
+  # ~95 KiB example, the sanitized validator manages ~10 runs a second; the
+  # pieces cover the same code at a few hundred.
+  fuzz:
+    name: fuzz ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [parse_config_str, validate_config]
+
+    steps:
+      - name: System dependencies (pacman)
+        run: |
+          pacman -Syu --noconfirm --needed \
+            git rustup clang pkgconf pcre2 libxkbcommon
+          rustup toolchain install nightly --profile minimal
+
+      - uses: actions/checkout@v5
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+
+      - name: Fuzz ${{ matrix.target }} (10 min)
+        run: |
+          mkdir -p fuzz/corpus/${{ matrix.target }}
+          grep -v '^[[:space:]]*#' margo/src/config.example.conf | grep -v '^[[:space:]]*$' |
+            split -l 16 - fuzz/corpus/${{ matrix.target }}/example-
+          cargo +nightly fuzz run ${{ matrix.target }} -- \
+            -max_total_time=600 -max_len=4096
+
+      # A crash or timeout leaves the input under fuzz/artifacts/; replay it
+      # with `cargo +nightly fuzz run <target> <file>` (fuzz/README.md).
+      - name: Upload the failing input
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts/
+          retention-days: 30
