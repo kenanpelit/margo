@@ -232,55 +232,76 @@ impl GammaManager {
 
 // ── fd helper ────────────────────────────────────────────────────────────────
 
-/// Write `ramp` into an anonymous temp file and return its fd.
+/// Write `ramp` into an anonymous memfd and return its fd.
 ///
-/// mkstemp → ftruncate to exact byte size → mmap → write → munmap.
+/// The compositor checks the size (`ramp_size * 3 * sizeof(u16)`) and margo
+/// reads the ramp with plain `read()` from the fd's current offset, so the
+/// file is sized with `set_len` and filled with a positional write that
+/// leaves the offset at 0.
 ///
-/// The compositor validates the fd via fstat against
-/// `ramp_size * 3 * sizeof(u16)`. ftruncate is what sets that size;
-/// a plain write_all does not, which is why the previous memfd approach
-/// produced a size mismatch error.
+/// The fd is owned from the moment it exists: an error on a later step
+/// returns that step's `io::Error` and the drop closes the fd afterwards
+/// (closing first would overwrite errno and report the wrong error).
 fn ramp_to_memfd(ramp: &[u16]) -> Result<OwnedFd> {
-    let byte_len = std::mem::size_of_val(ramp);
+    use std::os::unix::fs::FileExt;
 
-    // mkstemp + immediate unlink: anonymous temp file, cleaned up on close.
-    let raw_fd = unsafe {
-        let mut template: Vec<u8> = b"/tmp/mshell-gamma-XXXXXX".to_vec();
-        template.push(0u8);
-        let fd = libc::mkstemp(template.as_mut_ptr() as *mut libc::c_char);
-        if fd < 0 {
-            return Err(std::io::Error::last_os_error()).context("mkstemp");
-        }
-        libc::unlink(template.as_ptr() as *const libc::c_char);
-        fd
-    };
+    // SAFETY: the name is a valid NUL-terminated C string and the flags are
+    // a plain bitmask; memfd_create has no other preconditions.
+    let raw_fd = unsafe { libc::memfd_create(c"mshell-gamma".as_ptr(), libc::MFD_CLOEXEC) };
+    if raw_fd < 0 {
+        return Err(std::io::Error::last_os_error()).context("memfd_create");
+    }
+    // SAFETY: memfd_create just returned this fd and nothing else owns it.
+    let fd = unsafe { OwnedFd::from_raw_fd(raw_fd) };
 
-    // ftruncate to the exact expected size — this is what the compositor checks.
-    if unsafe { libc::ftruncate(raw_fd, byte_len as libc::off_t) } < 0 {
-        unsafe { libc::close(raw_fd) };
-        return Err(std::io::Error::last_os_error()).context("ftruncate");
+    let bytes: Vec<u8> = ramp.iter().flat_map(|v| v.to_ne_bytes()).collect();
+    let file = std::fs::File::from(fd);
+    file.set_len(bytes.len() as u64)
+        .context("size the gamma ramp memfd")?;
+    file.write_all_at(&bytes, 0)
+        .context("write the gamma ramp memfd")?;
+    Ok(OwnedFd::from(file))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read;
+    use std::os::fd::AsRawFd;
+
+    fn sample_ramp() -> Vec<u16> {
+        (0..3 * 256u32).map(|i| (i * 85) as u16).collect()
     }
 
-    // mmap and copy the ramp data in.
-    let ptr = unsafe {
-        libc::mmap(
-            std::ptr::null_mut(),
-            byte_len,
-            libc::PROT_READ | libc::PROT_WRITE,
-            libc::MAP_SHARED,
-            raw_fd,
-            0,
-        )
-    };
-    if ptr == libc::MAP_FAILED {
-        unsafe { libc::close(raw_fd) };
-        return Err(std::io::Error::last_os_error()).context("mmap");
+    #[test]
+    fn the_ramp_fd_reads_back_from_offset_zero_at_its_exact_size() {
+        // margo reads the ramp with plain read() from the fd's current
+        // offset and rejects any size other than 3 * gamma_size u16s.
+        let ramp = sample_ramp();
+        let fd = ramp_to_memfd(&ramp).expect("ramp fd");
+        let mut file = std::fs::File::from(fd);
+        assert_eq!(
+            file.metadata().expect("fstat").len(),
+            std::mem::size_of_val(ramp.as_slice()) as u64
+        );
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes).expect("read");
+        let back: Vec<u16> = bytes
+            .chunks_exact(2)
+            .map(|b| u16::from_ne_bytes([b[0], b[1]]))
+            .collect();
+        assert_eq!(back, ramp);
     }
 
-    unsafe {
-        std::ptr::copy_nonoverlapping(ramp.as_ptr() as *const u8, ptr as *mut u8, byte_len);
-        libc::munmap(ptr, byte_len);
+    #[test]
+    fn the_ramp_lives_in_an_anonymous_memfd_not_a_tmp_file() {
+        let fd = ramp_to_memfd(&sample_ramp()).expect("ramp fd");
+        let link =
+            std::fs::read_link(format!("/proc/self/fd/{}", fd.as_raw_fd())).expect("fd link");
+        assert!(
+            link.to_string_lossy().starts_with("/memfd:mshell-gamma"),
+            "{}",
+            link.display()
+        );
     }
-
-    Ok(unsafe { OwnedFd::from_raw_fd(raw_fd) })
 }
