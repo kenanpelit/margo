@@ -147,29 +147,122 @@ fn is_progress_line(line: &str) -> bool {
         || l.starts_with("Installing runtime/")
 }
 
+/// The whole log at once.
+#[cfg(test)]
 pub(crate) fn parse_log(text: &str, keep: usize) -> LogState {
-    let mut state = LogState::default();
-    let mut lines: Vec<String> = Vec::new();
-    for raw in text.lines() {
-        let line = clean_line(raw);
-        if let Some(ts) = line.strip_prefix("::START ") {
-            state.started = ts.trim().parse().ok();
-            continue;
-        }
-        if let Some(code) = line.strip_prefix("::EXIT ") {
-            state.exit = code.trim().parse().ok().or(Some(-1));
-            continue;
-        }
-        if is_progress_line(&line) {
-            state.done += 1;
-        }
-        if !line.trim().is_empty() {
-            lines.push(line);
+    let mut t = LogTail::new(keep);
+    t.feed(text.as_bytes());
+    t.finish()
+}
+
+/// Incremental log parser: fed the bytes appended since the last read,
+/// it keeps the markers, the progress count and the last `keep` lines,
+/// so a growing log is parsed once in total, not once per tick.
+#[derive(Debug, Clone)]
+pub(crate) struct LogTail {
+    keep: usize,
+    /// Bytes after the last `\n` (a line still being written).
+    partial: Vec<u8>,
+    started: Option<u64>,
+    exit: Option<i32>,
+    done: usize,
+    lines: std::collections::VecDeque<String>,
+}
+
+impl LogTail {
+    pub(crate) fn new(keep: usize) -> Self {
+        Self {
+            keep,
+            partial: Vec::new(),
+            started: None,
+            exit: None,
+            done: 0,
+            lines: std::collections::VecDeque::new(),
         }
     }
-    let skip = lines.len().saturating_sub(keep);
-    state.tail = lines.split_off(skip);
-    state
+
+    pub(crate) fn feed(&mut self, bytes: &[u8]) {
+        self.partial.extend_from_slice(bytes);
+        let Some(last_nl) = self.partial.iter().rposition(|b| *b == b'\n') else {
+            return;
+        };
+        let rest = self.partial.split_off(last_nl + 1);
+        let complete = std::mem::replace(&mut self.partial, rest);
+        for raw in complete[..last_nl].split(|b| *b == b'\n') {
+            self.line(&String::from_utf8_lossy(raw));
+        }
+    }
+
+    fn line(&mut self, raw: &str) {
+        let line = clean_line(raw);
+        if let Some(ts) = line.strip_prefix("::START ") {
+            self.started = ts.trim().parse().ok();
+            return;
+        }
+        if let Some(code) = line.strip_prefix("::EXIT ") {
+            self.exit = code.trim().parse().ok().or(Some(-1));
+            return;
+        }
+        if is_progress_line(&line) {
+            self.done += 1;
+        }
+        if !line.trim().is_empty() {
+            self.lines.push_back(line);
+            while self.lines.len() > self.keep {
+                self.lines.pop_front();
+            }
+        }
+    }
+
+    /// The state so far; a line still being written shows in the tail
+    /// but isn't counted until it is complete.
+    pub(crate) fn snapshot(&self) -> LogState {
+        let mut tail: Vec<String> = self.lines.iter().cloned().collect();
+        let partial = clean_line(&String::from_utf8_lossy(&self.partial));
+        if !partial.trim().is_empty() {
+            tail.push(partial);
+            let skip = tail.len().saturating_sub(self.keep);
+            tail.drain(..skip);
+        }
+        LogState {
+            started: self.started,
+            exit: self.exit,
+            done: self.done,
+            tail,
+        }
+    }
+
+    /// The final state: an unterminated last line counts as a line.
+    pub(crate) fn finish(mut self) -> LogState {
+        if !self.partial.is_empty() {
+            let raw = std::mem::take(&mut self.partial);
+            self.line(&String::from_utf8_lossy(&raw));
+        }
+        self.snapshot()
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum ReadNew {
+    /// The bytes after `offset` (possibly none).
+    Appended(Vec<u8>),
+    /// The file is shorter than what was already read: a new log.
+    Truncated,
+}
+
+/// Read what was appended to `path` since `offset`, advancing it.
+pub(crate) fn read_new(path: &std::path::Path, offset: &mut u64) -> std::io::Result<ReadNew> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = std::fs::File::open(path)?;
+    if f.metadata()?.len() < *offset {
+        *offset = 0;
+        return Ok(ReadNew::Truncated);
+    }
+    f.seek(SeekFrom::Start(*offset))?;
+    let mut buf = Vec::new();
+    f.read_to_end(&mut buf)?;
+    *offset += buf.len() as u64;
+    Ok(ReadNew::Appended(buf))
 }
 
 /// Progress 0..=1 for the bar (`expected` = pending count at start).
@@ -422,6 +515,7 @@ pub(crate) fn start(steps: Vec<String>, expected: usize) -> Result<(), String> {
         expected,
     });
     ensure_watcher();
+    wake().notify_one();
     Ok(())
 }
 
@@ -432,9 +526,28 @@ pub(crate) fn dismiss() {
     }
 }
 
-/// Spawn the single watcher (idempotent). Re-attaches to a run left
-/// by a previous shell instance, and reports one that ended or died
-/// while no shell was watching.
+/// Wakes the parked watcher when [`start`] records a run.
+fn wake() -> &'static tokio::sync::Notify {
+    static WAKE: OnceLock<tokio::sync::Notify> = OnceLock::new();
+    WAKE.get_or_init(tokio::sync::Notify::new)
+}
+
+/// A run younger than this whose pid doesn't (yet) carry the script's
+/// cmdline is still starting: spawn() can return before the child has
+/// exec'd, and systemd-run talks to the manager before it execs sh.
+const STARTUP_GRACE_SECS: u64 = 10;
+
+/// Whether a run without `::EXIT` is still going: its process carries
+/// the script's cmdline, or it was started only moments ago.
+pub(crate) fn still_running(process_ours: bool, started_at: u64, now: u64) -> bool {
+    process_ours || now.saturating_sub(started_at) < STARTUP_GRACE_SECS
+}
+
+/// Spawn the single watcher (idempotent). It checks once for a run
+/// left by a previous shell (following it, or reporting one that ended
+/// or died meanwhile), then parks until [`start`] wakes it: nothing is
+/// read while no run is recorded. A followed run's log is read
+/// incrementally, once a second.
 pub(crate) fn ensure_watcher() {
     use std::sync::atomic::{AtomicBool, Ordering};
     static STARTED: AtomicBool = AtomicBool::new(false);
@@ -443,53 +556,76 @@ pub(crate) fn ensure_watcher() {
     }
     let _ = std::fs::remove_file(legacy_pid_path());
     relm4::spawn(async move {
+        let mut reported = None;
         loop {
-            let handle = read_handle();
-            let text = tokio::fs::read_to_string(log_path())
-                .await
-                .unwrap_or_default();
-            let log = parse_log(&text, 14);
-            let expected = std::fs::read_to_string(expected_path())
-                .ok()
-                .and_then(|s| s.trim().parse().ok())
-                .unwrap_or(0);
-            let current = status();
-            let phase = if let Some(h) = handle { Some(run_phase(&log, tracked_alive(h).await)) } else { None };
-            let next = match phase {
-                Some(RunPhase::Running) => RunStatus::Running { log, expected },
-                Some(phase) => {
-                    // Ended (or died) since we last looked — maybe while
-                    // the shell was down: report it once.
-                    let mut log = log;
-                    log.exit = match phase {
-                        RunPhase::Exited(c) => Some(c),
-                        _ => None,
-                    };
-                    let (title, body) = finished_message(&log);
-                    notify(&title, &body, log.exit == Some(0));
-                    let _ = std::fs::remove_file(handle_path());
-                    RunStatus::Finished { log, expected }
-                }
-                None => current.clone(),
-            };
-            let finished_now = handle.is_some() && matches!(next, RunStatus::Finished { .. });
-            if next != current {
-                let _ = channel().0.send(next.clone());
-            }
-            if finished_now {
-                // One re-check for every pill/panel on every monitor.
-                let report = super::probe_with_audit(super::ProbeConfig::from_config()).await;
-                super::publish_report(report);
-            }
-            let delay = if matches!(next, RunStatus::Running { .. }) {
-                Duration::from_secs(1)
-            } else {
-                // Idle: just wait for the next start() (cheap wake).
-                Duration::from_secs(5)
-            };
-            tokio::time::sleep(delay).await;
+            let h = idle_until_run(read_handle, reported, wake()).await;
+            follow_run(h).await;
+            reported = Some(h);
         }
     });
+}
+
+/// Wait for a recorded run other than `skip` (one already reported
+/// whose record couldn't be removed): one check, then sleep on `wake`
+/// until [`start`] records another.
+pub(crate) async fn idle_until_run(
+    read: impl Fn() -> Option<RunHandle>,
+    skip: Option<RunHandle>,
+    wake: &tokio::sync::Notify,
+) -> RunHandle {
+    loop {
+        if let Some(h) = read().filter(|h| Some(*h) != skip) {
+            return h;
+        }
+        wake.notified().await;
+    }
+}
+
+/// Follow one run until it ends, then report it once (status,
+/// notification, a re-check for every pill) and clear its record.
+async fn follow_run(h: RunHandle) {
+    let expected = std::fs::read_to_string(expected_path())
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0);
+    let mut tail = LogTail::new(14);
+    let mut offset = 0;
+    loop {
+        // Liveness first, then read: a run that ends in between has
+        // written all of its log by the time we read it.
+        let alive = still_running(tracked_alive(h).await, h.started_at, super::now_secs());
+        match read_new(&log_path(), &mut offset) {
+            Ok(ReadNew::Appended(bytes)) => tail.feed(&bytes),
+            Ok(ReadNew::Truncated) => {
+                tail = LogTail::new(14);
+                continue;
+            }
+            Err(e) => warn!(error = %e, "system_update: reading the upgrade log failed"),
+        }
+        let log = tail.snapshot();
+        let phase = run_phase(&log, alive);
+        if phase == RunPhase::Running {
+            let next = RunStatus::Running { log, expected };
+            if status() != next {
+                let _ = channel().0.send(next);
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            continue;
+        }
+        let mut log = tail.finish();
+        log.exit = match phase {
+            RunPhase::Exited(c) => Some(c),
+            _ => None,
+        };
+        let (title, body) = finished_message(&log);
+        notify(&title, &body, log.exit == Some(0));
+        let _ = std::fs::remove_file(handle_path());
+        let _ = channel().0.send(RunStatus::Finished { log, expected });
+        // One re-check for every pill/panel on every monitor.
+        let report = super::probe_with_audit(super::ProbeConfig::from_config()).await;
+        super::publish_report(report);
+        return;
+    }
 }
 
 fn notify(title: &str, body: &str, ok: bool) {
@@ -584,6 +720,12 @@ mod tests {
             started_at: 77,
             scope: false,
         };
+        // spawn() can return before the child has exec'd sh (its
+        // cmdline is still ours then): give it a moment.
+        let until = std::time::Instant::now() + Duration::from_secs(3);
+        while !run_alive(h) && std::time::Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(10));
+        }
         assert!(run_alive(h));
         assert!(!run_alive(RunHandle {
             started_at: 76,
@@ -700,6 +842,108 @@ mod tests {
             ]
         );
         assert_eq!(clean_line("\x1b[1;34m::\x1b[0m Starting"), ":: Starting");
+    }
+
+    #[test]
+    fn the_log_parses_the_same_fed_in_any_chunks() {
+        let log = "::START 100\n:: Synchronizing\n(1/3) upgrading a\n\
+                   \r 50%\r(2/3) upgrading b\nUpdating app/x/y/z\n\
+                   ünïcode line\n(3/3) upgrading c\n::EXIT 0\npartial";
+        let whole = parse_log(log, 3);
+        let bytes = log.as_bytes();
+        for cut in 0..=bytes.len() {
+            let mut t = LogTail::new(3);
+            t.feed(&bytes[..cut]);
+            t.feed(&bytes[cut..]);
+            assert_eq!(t.finish(), whole, "split at {cut}");
+        }
+        // A line still being written shows in the live tail but is not
+        // counted until it is complete.
+        let mut t = LogTail::new(5);
+        t.feed(b"::START 1\n(1/1) upgrad");
+        let snap = t.snapshot();
+        assert_eq!(snap.done, 0);
+        assert_eq!(snap.tail, ["(1/1) upgrad"]);
+        t.feed(b"ing a\n");
+        assert_eq!(t.snapshot().done, 1);
+    }
+
+    #[test]
+    fn only_the_new_bytes_are_read() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("upgrade.log");
+        let mut f = std::fs::File::create(&p).unwrap();
+        f.write_all(b"one\n").unwrap();
+        let mut offset = 0;
+        assert_eq!(
+            read_new(&p, &mut offset).unwrap(),
+            ReadNew::Appended(b"one\n".to_vec())
+        );
+        assert_eq!(
+            read_new(&p, &mut offset).unwrap(),
+            ReadNew::Appended(Vec::new())
+        );
+        f.write_all(b"two\n").unwrap();
+        assert_eq!(
+            read_new(&p, &mut offset).unwrap(),
+            ReadNew::Appended(b"two\n".to_vec())
+        );
+        assert_eq!(offset, 8);
+        std::fs::write(&p, b"x").unwrap();
+        assert_eq!(read_new(&p, &mut offset).unwrap(), ReadNew::Truncated);
+    }
+
+    #[test]
+    fn a_run_still_starting_is_not_interrupted() {
+        // Right after spawn the pid can still show mshell's cmdline.
+        assert!(still_running(false, 100, 101));
+        assert!(!still_running(false, 100, 100 + STARTUP_GRACE_SECS));
+        assert!(still_running(true, 100, 10_000));
+    }
+
+    #[tokio::test]
+    async fn an_idle_watcher_parks_instead_of_polling() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let reads = Arc::new(AtomicUsize::new(0));
+        let handle = Arc::new(std::sync::Mutex::new(None::<RunHandle>));
+        let wake = Arc::new(tokio::sync::Notify::new());
+        let task = {
+            let (reads, handle, wake) = (reads.clone(), handle.clone(), wake.clone());
+            tokio::spawn(async move {
+                idle_until_run(
+                    || {
+                        reads.fetch_add(1, Ordering::SeqCst);
+                        *handle.lock().unwrap()
+                    },
+                    None,
+                    &wake,
+                )
+                .await
+            })
+        };
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert_eq!(reads.load(Ordering::SeqCst), 1, "one check, then parked");
+        let h = RunHandle {
+            pid: 1,
+            started_at: 2,
+            scope: false,
+        };
+        *handle.lock().unwrap() = Some(h);
+        wake.notify_one();
+        assert_eq!(task.await.unwrap(), h);
+        assert_eq!(reads.load(Ordering::SeqCst), 2);
+
+        // A run already reported (its record couldn't be removed) is
+        // not followed again.
+        let wake = tokio::sync::Notify::new();
+        let parked = tokio::time::timeout(
+            Duration::from_millis(200),
+            idle_until_run(|| Some(h), Some(h), &wake),
+        )
+        .await;
+        assert!(parked.is_err());
     }
 
     #[test]
