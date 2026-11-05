@@ -102,16 +102,98 @@ pub(super) fn build_mirror_frame(
     let dst = outputs
         .values()
         .find(|od| od.output_name == session.target)?;
-    let fit = crate::mirror::letterbox(
-        transformed_mode_size(&src.output)?,
-        transformed_mode_size(&dst.output)?,
-    )?;
+    let fit = mirror_fit(src, dst)?;
     let scene = match source_scene {
         Some(scene) => scene,
         None => std::rc::Rc::new(build_output_scene(renderer, src, state)),
     };
     let elements = super::mirror_element::MirroredElement::frame(&scene, fit);
     Some((dst.output.clone(), elements))
+}
+
+/// Which output's scene a capture of `output` shows. A mirror target is
+/// out of the layout, so its own scene is empty: a screenshot, image copy
+/// or output cast of it shows its source's scene, like the screen does.
+fn capture_scene_owner<'a>(
+    output: &'a str,
+    mirror: Option<&'a crate::mirror::MirrorSession>,
+) -> &'a str {
+    match mirror {
+        Some(m) if m.target == output => &m.source,
+        _ => output,
+    }
+}
+
+/// The active mirror's source device when `od` is its target.
+pub(super) fn mirror_source_of<'a>(
+    outputs: &'a HashMap<crtc::Handle, OutputDevice>,
+    od: &OutputDevice,
+    state: &MargoState,
+) -> Option<&'a OutputDevice> {
+    let owner = capture_scene_owner(&od.output_name, state.mirror.active());
+    if owner == od.output_name {
+        return None;
+    }
+    outputs.values().find(|o| o.output_name == owner)
+}
+
+/// How the source's picture is fitted into the target: the same letterbox
+/// for the on-screen mirror frame and for captures of the target.
+fn mirror_fit(src: &OutputDevice, dst: &OutputDevice) -> Option<crate::mirror::Letterbox> {
+    crate::mirror::letterbox(
+        transformed_mode_size(&src.output)?,
+        transformed_mode_size(&dst.output)?,
+    )
+}
+
+/// An output's own capture scene: the screencast variant of its scene
+/// (blackout filter applied, cursor per the client's request) plus the
+/// compositor wallpaper the display path adds below it.
+fn own_capture_scene(
+    renderer: &mut GlesRenderer,
+    od: &OutputDevice,
+    state: &MargoState,
+    include_cursor: bool,
+) -> Vec<MargoRenderElement> {
+    let mut elements = build_render_elements_inner(
+        renderer,
+        od,
+        state,
+        RenderTarget::Screencast { include_cursor },
+    );
+    if !state.session_locked
+        && let Some(ref wp) = state.wallpaper
+        && let Some(output_geo) = state.space.output_geometry(&od.output)
+        && let Some(wp_elem) = wp.render_element(
+            renderer,
+            output_geo.size,
+            state.config.wallpaper_fit,
+            od.output.current_scale().fractional_scale(),
+        )
+    {
+        elements.push(MargoRenderElement::Wallpaper(wp_elem));
+    }
+    elements
+}
+
+/// The scene a capture (screencopy, image copy, output cast) of `od`
+/// records. `mirror_source` ([`mirror_source_of`]) is set when `od` is the
+/// mirror target: the capture then shows the source's capture scene,
+/// letterboxed like the screen, so block-out still applies.
+pub(super) fn capture_scene(
+    renderer: &mut GlesRenderer,
+    od: &OutputDevice,
+    mirror_source: Option<&OutputDevice>,
+    state: &MargoState,
+    include_cursor: bool,
+) -> Vec<MargoRenderElement> {
+    if let Some(src) = mirror_source
+        && let Some(fit) = mirror_fit(src, od)
+    {
+        let scene = std::rc::Rc::new(own_capture_scene(renderer, src, state, include_cursor));
+        return super::mirror_element::MirroredElement::frame(&scene, fit);
+    }
+    own_capture_scene(renderer, od, state, include_cursor)
 }
 
 /// Drain `MargoState::pending_image_copy_frames` and render each
@@ -164,7 +246,8 @@ pub(super) fn drain_image_copy_frames(
             Vec<MargoRenderElement>,
         ) = match &pending.source {
             crate::PendingImageCopySource::Output(name) => {
-                let od = match outputs.iter_mut().find(|(_, od)| od.output.name() == *name) {
+                let outputs: &HashMap<_, _> = outputs;
+                let od = match outputs.iter().find(|(_, od)| od.output.name() == *name) {
                     Some((_, od)) => od,
                     None => {
                         frame.fail(CaptureFailureReason::Stopped);
@@ -181,14 +264,8 @@ pub(super) fn drain_image_copy_frames(
                     output_size.w,
                     output_size.h,
                 ));
-                let elements = build_render_elements_inner(
-                    renderer,
-                    od,
-                    state,
-                    RenderTarget::Screencast {
-                        include_cursor: false,
-                    },
-                );
+                let mirror_source = mirror_source_of(outputs, od, state);
+                let elements = capture_scene(renderer, od, mirror_source, state, false);
                 (buf_size, scale, elements)
             }
             crate::PendingImageCopySource::Toplevel(window) => {
@@ -584,12 +661,9 @@ pub(super) fn drain_active_cast_frames(
                     crate::dbus::mutter_screen_cast::CursorMode::Metadata
                 );
 
-                let output_elems = build_render_elements_inner(
-                    renderer,
-                    od,
-                    state,
-                    RenderTarget::Screencast { include_cursor },
-                );
+                let mirror_source = mirror_source_of(outputs, od, state);
+                let output_elems =
+                    capture_scene(renderer, od, mirror_source, state, include_cursor);
                 let (cursor_elems_vec, cursor_loc) = if want_metadata_cursor {
                     let (e, loc) = build_cursor_elements_for_output(renderer, od, state);
                     let v: Vec<CastRenderElement> =
@@ -2910,6 +2984,25 @@ mod mru_window_tests {
             );
             assert!(start + max <= total, "window must not run past `total`");
         }
+    }
+}
+
+#[cfg(test)]
+mod capture_owner_tests {
+    use super::capture_scene_owner;
+    use crate::mirror::MirrorSession;
+
+    #[test]
+    fn a_capture_of_the_mirror_target_shows_the_source() {
+        let m = MirrorSession {
+            source: "eDP-1".into(),
+            target: "DP-3".into(),
+        };
+        // `grim -o DP-3` while presenting: the projector's picture.
+        assert_eq!(capture_scene_owner("DP-3", Some(&m)), "eDP-1");
+        assert_eq!(capture_scene_owner("eDP-1", Some(&m)), "eDP-1");
+        assert_eq!(capture_scene_owner("HDMI-A-1", Some(&m)), "HDMI-A-1");
+        assert_eq!(capture_scene_owner("DP-3", None), "DP-3");
     }
 }
 

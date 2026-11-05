@@ -34,7 +34,7 @@ use super::{
     MargoRenderElement, OutputDevice,
     helpers::output_refresh_duration,
     mirror_element::SharedScene,
-    render_elements::{build_mirror_frame, build_output_scene},
+    render_elements::{build_mirror_frame, build_output_scene, mirror_source_of},
     serve_screencopies, take_pending_open_close_captures, take_pending_snapshots,
 };
 use crate::state::MargoState;
@@ -469,6 +469,12 @@ fn render_mirror_target(
     else {
         return;
     };
+    // Captures of the target record the source's capture scene (the
+    // target's own is empty: it is out of the layout).
+    if let Some(od) = outputs.values().find(|od| od.output == target) {
+        let source = mirror_source_of(outputs, od, state);
+        serve_screencopies(renderer, od, source, state, &elements);
+    }
     if let Some(od) = outputs.values_mut().find(|od| od.output == target) {
         render_output(renderer, od, state, reason, false, Some(elements));
     }
@@ -647,7 +653,11 @@ fn present_output(
     elements: &[MargoRenderElement],
     is_mirror: bool,
 ) {
-    serve_screencopies(renderer, od, state, elements);
+    // A mirror target's screencopies were served by `render_mirror_target`,
+    // which can reach the source's device.
+    if !is_mirror {
+        serve_screencopies(renderer, od, None, state, elements);
+    }
     // A mirror's letterbox bars are black, like a projector's.
     let clear_color = if state.session_locked || is_mirror {
         [0.0, 0.0, 0.0, 1.0]

@@ -74,9 +74,7 @@ use hotplug::rescan_outputs;
 use mode::{apply_pending_mode_changes, select_drm_mode};
 #[cfg(feature = "xdp-gnome-screencast")]
 use render_elements::drain_active_cast_frames;
-use render_elements::{
-    RenderTarget, build_render_elements, build_render_elements_inner, drain_image_copy_frames,
-};
+use render_elements::{build_render_elements, capture_scene, drain_image_copy_frames};
 
 render_elements! {
     pub MargoRenderElement<=GlesRenderer>;
@@ -1538,6 +1536,7 @@ pub(super) fn take_mru_thumbnails(
 pub(super) fn serve_screencopies(
     renderer: &mut GlesRenderer,
     od: &OutputDevice,
+    mirror_source: Option<&OutputDevice>,
     state: &mut MargoState,
     elements: &[MargoRenderElement],
 ) {
@@ -1584,9 +1583,9 @@ pub(super) fn serve_screencopies(
     // for cursor captures when no such window exists.
     let any_blocked = state.clients.iter().any(|c| c.block_out_from_screencast);
     let cursor_elements = (want_cursor && any_blocked)
-        .then(|| screencopy_capture_elements(renderer, od, state, true));
+        .then(|| capture_scene(renderer, od, mirror_source, state, true));
     let plain_elements =
-        want_plain.then(|| screencopy_capture_elements(renderer, od, state, false));
+        want_plain.then(|| capture_scene(renderer, od, mirror_source, state, false));
     let elements_for = |overlay_cursor: bool| -> &[MargoRenderElement] {
         let built = if overlay_cursor {
             cursor_elements.as_deref()
@@ -1628,36 +1627,6 @@ pub(super) fn serve_screencopies(
         let elements = elements_for(screencopy.overlay_cursor());
         render_screencopy(renderer, screencopy, elements, scale, &damage, now);
     }
-}
-
-/// The element list a screencopy captures: the screencast variant of the
-/// scene (blackout filter applied, cursor per the client's request) plus
-/// the compositor wallpaper the display path adds on top of it.
-fn screencopy_capture_elements(
-    renderer: &mut GlesRenderer,
-    od: &OutputDevice,
-    state: &MargoState,
-    include_cursor: bool,
-) -> Vec<MargoRenderElement> {
-    let mut elements = build_render_elements_inner(
-        renderer,
-        od,
-        state,
-        RenderTarget::Screencast { include_cursor },
-    );
-    if !state.session_locked
-        && let Some(ref wp) = state.wallpaper
-        && let Some(output_geo) = state.space.output_geometry(&od.output)
-        && let Some(wp_elem) = wp.render_element(
-            renderer,
-            output_geo.size,
-            state.config.wallpaper_fit,
-            od.output.current_scale().fractional_scale(),
-        )
-    {
-        elements.push(MargoRenderElement::Wallpaper(wp_elem));
-    }
-    elements
 }
 
 /// Render one screencopy into its buffer, report `damage` (buffer
