@@ -2,7 +2,8 @@ use mshell_cache::wallpaper::{fetch_daily_wallpaper, set_wallpaper};
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
-    ConfigStoreFields, WallpaperRotationMode, WallpaperStoreFields,
+    BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, WallpaperBarWidget,
+    WallpaperPillAction, WallpaperRotationMode, WallpaperStoreFields,
 };
 use mshell_config::schema::content_fit::ContentFit;
 use mshell_config::schema::wallpaper::ThemeFilterStrength;
@@ -28,7 +29,24 @@ pub(crate) struct WallpaperSettingsModel {
     daily_source: String,
     daily_locale: String,
     compositor_draws: bool,
+    /// `bars.widgets.wallpaper`: what each mouse button does on the pill.
+    pill: WallpaperBarWidget,
     _effects: EffectScope,
+}
+
+/// Which pill button a Bar pill dropdown edits.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum PillButtonSlot {
+    Left,
+    Middle,
+    Right,
+}
+
+fn pill_action_names() -> Vec<&'static str> {
+    WallpaperPillAction::all()
+        .iter()
+        .map(|a| a.display_name())
+        .collect()
 }
 
 #[derive(Debug)]
@@ -45,6 +63,7 @@ pub(crate) enum WallpaperSettingsInput {
     DailyLocaleChanged(String),
     FetchNowClicked,
     CompositorDrawsChanged(bool),
+    PillActionChanged(PillButtonSlot, WallpaperPillAction),
 
     WallpaperDirectoryEffect(String),
     ContentFitEffect(ContentFit),
@@ -57,6 +76,7 @@ pub(crate) enum WallpaperSettingsInput {
     DailyEnabledEffect(bool),
     DailySourceEffect(String),
     DailyLocaleEffect(String),
+    PillEffect(WallpaperBarWidget),
 }
 
 #[derive(Debug)]
@@ -599,6 +619,143 @@ impl Component for WallpaperSettingsModel {
                         sender.input(WallpaperSettingsInput::FetchNowClicked);
                     },
                 },
+
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Bar pill",
+                    set_halign: gtk::Align::Start,
+                },
+
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/bars/widgets/wallpaper/left_click",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Click",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "What a left click on the Wallpaper pill does.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::DropDown {
+                            set_width_request: 180,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&gtk::StringList::new(&pill_action_names())),
+                            #[watch]
+                            #[block_signal(pill_left_handler)]
+                            set_selected: model.pill.left_click.to_index(),
+                            connect_selected_notify[sender] => move |dd| {
+                                sender.input(WallpaperSettingsInput::PillActionChanged(
+                                    PillButtonSlot::Left,
+                                    WallpaperPillAction::from_index(dd.selected()),
+                                ));
+                            } @pill_left_handler,
+                        },
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/bars/widgets/wallpaper/middle_click",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Middle click",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "What a middle click on the pill does.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::DropDown {
+                            set_width_request: 180,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&gtk::StringList::new(&pill_action_names())),
+                            #[watch]
+                            #[block_signal(pill_middle_handler)]
+                            set_selected: model.pill.middle_click.to_index(),
+                            connect_selected_notify[sender] => move |dd| {
+                                sender.input(WallpaperSettingsInput::PillActionChanged(
+                                    PillButtonSlot::Middle,
+                                    WallpaperPillAction::from_index(dd.selected()),
+                                ));
+                            } @pill_middle_handler,
+                        },
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/bars/widgets/wallpaper/right_click",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Right click",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "What a right click on the pill does.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::DropDown {
+                            set_width_request: 180,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&gtk::StringList::new(&pill_action_names())),
+                            #[watch]
+                            #[block_signal(pill_right_handler)]
+                            set_selected: model.pill.right_click.to_index(),
+                            connect_selected_notify[sender] => move |dd| {
+                                sender.input(WallpaperSettingsInput::PillActionChanged(
+                                    PillButtonSlot::Right,
+                                    WallpaperPillAction::from_index(dd.selected()),
+                                ));
+                            } @pill_right_handler,
+                        },
+                    },
+                },
             }
         }
     }
@@ -710,6 +867,12 @@ impl Component for WallpaperSettingsModel {
             sender_clone.input(WallpaperSettingsInput::DailyLocaleEffect(value));
         });
 
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let value = config_manager().config().bars().widgets().wallpaper().get();
+            sender_clone.input(WallpaperSettingsInput::PillEffect(value));
+        });
+
         let model = WallpaperSettingsModel {
             wallpaper_directory: "".to_string(),
             content_fit: config_manager()
@@ -762,6 +925,12 @@ impl Component for WallpaperSettingsModel {
                 .config()
                 .wallpaper()
                 .compositor_draws()
+                .get_untracked(),
+            pill: config_manager()
+                .config()
+                .bars()
+                .widgets()
+                .wallpaper()
                 .get_untracked(),
             _effects: effects,
         };
@@ -879,6 +1048,17 @@ impl Component for WallpaperSettingsModel {
             WallpaperSettingsInput::CompositorDrawsEffect(v) => self.compositor_draws = v,
             WallpaperSettingsInput::DailySourceEffect(s) => self.daily_source = s,
             WallpaperSettingsInput::DailyLocaleEffect(l) => self.daily_locale = l,
+            WallpaperSettingsInput::PillActionChanged(slot, action) => {
+                config_manager().update_config(|c| {
+                    let pill = &mut c.bars.widgets.wallpaper;
+                    match slot {
+                        PillButtonSlot::Left => pill.left_click = action,
+                        PillButtonSlot::Middle => pill.middle_click = action,
+                        PillButtonSlot::Right => pill.right_click = action,
+                    }
+                });
+            }
+            WallpaperSettingsInput::PillEffect(pill) => self.pill = pill,
         }
 
         self.update_view(widgets, sender);

@@ -96,6 +96,9 @@ pub struct BarWidgets {
     /// Privacy indicator — mic / camera / screen-share watchdog pill.
     #[serde(default)]
     pub privacy: PrivacyWidgetConfig,
+    /// Wallpaper pill — what each mouse button does.
+    #[serde(default)]
+    pub wallpaper: WallpaperBarWidget,
     /// User-defined pills, referenced from a bar slot via `!Custom <name>`.
     pub custom_widgets: Vec<CustomWidgetConfig>,
 }
@@ -252,6 +255,97 @@ impl PatchField for CatwalkDisplay {
         if *self != new {
             *self = new;
             notify(path);
+        }
+    }
+}
+
+/// What a mouse button does on the
+/// [`crate::schema::bar_widgets::BarWidget::Wallpaper`] pill. The steps walk
+/// the same list `mshellctl wallpaper next|prev|random` does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, Store, JsonSchema)]
+pub enum WallpaperPillAction {
+    /// Nothing.
+    #[default]
+    None,
+    /// Open the wallpaper menu.
+    OpenPicker,
+    /// Switch to the next wallpaper.
+    Next,
+    /// Switch to the previous wallpaper.
+    Previous,
+    /// Switch to a random wallpaper.
+    Random,
+}
+
+impl PatchField for WallpaperPillAction {
+    fn patch_field(
+        &mut self,
+        new: Self,
+        path: &StorePath,
+        notify: &mut dyn FnMut(&StorePath),
+        _keys: Option<&KeyMap>,
+    ) {
+        if *self != new {
+            *self = new;
+            notify(path);
+        }
+    }
+}
+
+impl WallpaperPillAction {
+    /// Every action, in the order the Settings dropdown lists them.
+    pub fn all() -> &'static [Self] {
+        &[
+            Self::None,
+            Self::OpenPicker,
+            Self::Next,
+            Self::Previous,
+            Self::Random,
+        ]
+    }
+
+    /// Dropdown label.
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Self::None => "Nothing",
+            Self::OpenPicker => "Open the picker",
+            Self::Next => "Next wallpaper",
+            Self::Previous => "Previous wallpaper",
+            Self::Random => "Random wallpaper",
+        }
+    }
+
+    /// Position in [`Self::all`].
+    pub fn to_index(self) -> u32 {
+        Self::all().iter().position(|a| *a == self).unwrap_or(0) as u32
+    }
+
+    /// The action at dropdown index `idx` ([`Self::None`] when out of range).
+    pub fn from_index(idx: u32) -> Self {
+        Self::all().get(idx as usize).copied().unwrap_or_default()
+    }
+}
+
+/// Settings for the [`crate::schema::bar_widgets::BarWidget::Wallpaper`]
+/// pill. The defaults keep the pill as it always was: a click opens the
+/// picker, the other buttons do nothing.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct WallpaperBarWidget {
+    /// Left click.
+    pub left_click: WallpaperPillAction,
+    /// Middle click.
+    pub middle_click: WallpaperPillAction,
+    /// Right click.
+    pub right_click: WallpaperPillAction,
+}
+
+impl Default for WallpaperBarWidget {
+    fn default() -> Self {
+        Self {
+            left_click: WallpaperPillAction::OpenPicker,
+            middle_click: WallpaperPillAction::None,
+            right_click: WallpaperPillAction::None,
         }
     }
 }
@@ -764,5 +858,44 @@ impl VerticalMenuExpansion {
             VerticalMenuExpansion::ExpandUp,
             VerticalMenuExpansion::ExpandDown,
         ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wallpaper_pill_defaults_keep_the_old_click() {
+        // A profile saved before the key existed has no `wallpaper:` block.
+        let widgets: BarWidgets = yaml_serde::from_str("lyrics: {}\n").unwrap();
+        assert_eq!(widgets.wallpaper, WallpaperBarWidget::default());
+        assert_eq!(
+            widgets.wallpaper.left_click,
+            WallpaperPillAction::OpenPicker
+        );
+        assert_eq!(widgets.wallpaper.middle_click, WallpaperPillAction::None);
+        assert_eq!(widgets.wallpaper.right_click, WallpaperPillAction::None);
+    }
+
+    #[test]
+    fn wallpaper_pill_partial_block_keeps_the_other_defaults() {
+        let w: WallpaperBarWidget = yaml_serde::from_str("middle_click: Next\n").unwrap();
+        assert_eq!(w.middle_click, WallpaperPillAction::Next);
+        assert_eq!(w.left_click, WallpaperPillAction::OpenPicker);
+        let back = yaml_serde::to_string(&w).unwrap();
+        assert!(back.contains("middle_click: Next"), "{back}");
+    }
+
+    #[test]
+    fn wallpaper_pill_action_index_round_trips() {
+        for (i, a) in WallpaperPillAction::all().iter().enumerate() {
+            assert_eq!(a.to_index(), i as u32);
+            assert_eq!(WallpaperPillAction::from_index(i as u32), *a);
+        }
+        assert_eq!(
+            WallpaperPillAction::from_index(99),
+            WallpaperPillAction::None
+        );
     }
 }

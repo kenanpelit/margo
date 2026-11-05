@@ -109,7 +109,7 @@ parameter and use YAML tag syntax:
 | `Keyboard` | On-Screen Keyboard | Toggles `mkeys`, margo's GTK on-screen keyboard. |
 | `ColorPicker` | ColorPicker | Picks a colour from the screen and copies hex/rgb to the clipboard. |
 | `Screenshot` | Screenshot | Takes a screenshot (region / window / output → file + clipboard). |
-| `Wallpaper` | Wallpaper | Opens the wallpaper picker / rotates the wallpaper. |
+| `Wallpaper` | Wallpaper | Opens the wallpaper picker. Each mouse button is configurable in Settings → Theme → Wallpaper → Bar pill (`bars.widgets.wallpaper.left_click` / `middle_click` / `right_click`: `OpenPicker`, `Next`, `Previous`, `Random` or `None`; default: left opens the picker, the others do nothing). |
 | `Clipboard` | Clipboard | Clipboard history (wl-clipboard); click opens the searchable history menu. |
 | `Notes` | Notes Hub | Scratchpad + notes + todos with counts; click opens the Notes menu. |
 | `AlarmClock` | Alarm Clock | Alarm-bell pill that opens the Alarm Clock menu (alarms + stopwatch). Shows a running stopwatch inline and pulses while a tone rings. |
