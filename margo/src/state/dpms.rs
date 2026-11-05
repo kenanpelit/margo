@@ -112,7 +112,9 @@ impl MargoState {
     ///
     /// The panel is blanked through the DPMS path
     /// (`output_pending.dpms`, `DrmCompositor::clear()`), the output leaves
-    /// the space, and the pointer is moved onto an enabled output.
+    /// the space, its `wl_output` global is withdrawn (its
+    /// wlr-output-management head stays), and the pointer is moved onto an
+    /// enabled output.
     ///
     /// `true` when the monitor is off afterwards; `false` when refused
     /// (unknown index, already off, or no other monitor to move to).
@@ -182,6 +184,9 @@ impl MargoState {
             self.dpms_off.remove(&src_name);
             // Not rendered any more: fail its queued captures.
             self.protocols.screencopy.remove_output(&output);
+            // Switched off: no longer advertised (a mirror target, lit
+            // with the mirror, stays).
+            self.withdraw_output(&output);
         }
         self.space.unmap_output(&output);
         self.wake_repaint_backend();
@@ -251,6 +256,7 @@ impl MargoState {
         }
         self.monitors[mon_idx].enabled = true;
         let output = self.monitors[mon_idx].output.clone();
+        self.advertise_output(&output);
         let area = self.monitors[mon_idx].monitor_area;
         self.space.map_output(&output, (area.x, area.y));
         // Light the panel again, unless DPMS has it off (a mirror target

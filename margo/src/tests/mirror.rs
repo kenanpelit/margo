@@ -201,3 +201,42 @@ fn naming_one_output_while_mirroring_finds_the_pair() {
     assert_eq!(st.start_mirror(Some("DP-3"), None), Ok(()));
     assert!(st.mirror.is_source("DP-3") && st.mirror.is_target("eDP-1"));
 }
+
+fn wl_outputs(fx: &mut Fixture, id: super::client::ClientId) -> usize {
+    fx.roundtrip(id);
+    fx.client(id)
+        .global_names()
+        .iter()
+        .filter(|n| *n == "wl_output")
+        .count()
+}
+
+/// A mirror target is out of the layout but lit with the mirror: it keeps
+/// its wl_output (screencopy, casts and output-bound clients use it).
+/// Switching it off by hand ends the mirror and withdraws it like any
+/// disabled output.
+#[test]
+fn a_mirror_target_keeps_its_wl_output_until_it_is_switched_off() {
+    let mut fx = laptop_and_monitor();
+    let id = fx.add_client();
+    assert_eq!(wl_outputs(&mut fx, id), 2);
+    dispatch_action(
+        &mut fx.server.state,
+        "mirror_output",
+        &strings("eDP-1", "DP-3"),
+    );
+    assert!(fx.server.state.mirror.is_target("DP-3"));
+    assert_eq!(wl_outputs(&mut fx, id), 2, "the target stays advertised");
+    dispatch_action(&mut fx.server.state, "stop_mirror", &Arg::default());
+    assert_eq!(wl_outputs(&mut fx, id), 2);
+
+    dispatch_action(
+        &mut fx.server.state,
+        "mirror_output",
+        &strings("eDP-1", "DP-3"),
+    );
+    let dp3 = idx(&fx, "DP-3");
+    assert!(fx.server.state.disable_monitor(dp3));
+    assert!(fx.server.state.mirror.active().is_none());
+    assert_eq!(wl_outputs(&mut fx, id), 1, "switched off for real");
+}

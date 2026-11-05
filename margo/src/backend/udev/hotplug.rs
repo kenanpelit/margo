@@ -294,7 +294,7 @@ pub(super) fn setup_connector(
             serial_number: "Unknown".into(),
         },
     );
-    let _global = output.create_global::<MargoState>(&state.display_handle);
+    state.advertise_output(&output);
     output.change_current_state(
         Some(wl_mode),
         Some(transform),

@@ -212,3 +212,68 @@ fn taking_out_the_focused_output_moves_focus_and_keeps_other_selections() {
     );
     assert_eq!(fx.server.state.monitors[1].selected, None);
 }
+
+// ── The wl_output global ────────────────────────────────────────────────────
+
+/// How many `wl_output` globals client `id` sees advertised.
+fn wl_outputs(fx: &mut Fixture, id: ClientId) -> usize {
+    fx.roundtrip(id);
+    fx.client(id)
+        .global_names()
+        .iter()
+        .filter(|n| *n == "wl_output")
+        .count()
+}
+
+/// A switched-off output is not advertised (wlroots / sway behaviour):
+/// bars, portals and layer clients stopped targeting a dark output.
+/// Its wlr-output-management head stays, so Settings and wlr-randr can
+/// switch it back on, and switching it on advertises it again.
+#[test]
+fn a_disabled_output_withdraws_its_wl_output_but_keeps_its_head() {
+    let mut fx = three_outputs();
+    let bound = fx.add_client();
+    assert_eq!(wl_outputs(&mut fx, bound), 3);
+
+    assert!(fx.server.state.disable_monitor(1));
+    assert_eq!(
+        wl_outputs(&mut fx, bound),
+        2,
+        "bound clients get global_remove"
+    );
+    let late = fx.add_client();
+    assert_eq!(wl_outputs(&mut fx, late), 2, "new clients don't see it");
+    fx.client(late).bind_output_manager();
+    fx.roundtrip(late);
+    let heads: Vec<String> = fx
+        .client(late)
+        .state
+        .output_management
+        .heads
+        .iter()
+        .map(|(_, n)| n.clone())
+        .collect();
+    assert!(
+        heads.iter().any(|n| n == "DP-2"),
+        "head still listed: {heads:?}"
+    );
+
+    fx.server.state.enable_monitor(1);
+    assert_eq!(wl_outputs(&mut fx, bound), 3);
+    assert_eq!(wl_outputs(&mut fx, late), 3);
+    // Switching it on twice advertises it once.
+    fx.server.state.enable_monitor(1);
+    assert_eq!(wl_outputs(&mut fx, bound), 3);
+}
+
+/// An unplugged output's wl_output went with it too: the global, which
+/// holds the `Output`, was never destroyed, so clients kept seeing it.
+#[test]
+fn an_unplugged_output_withdraws_its_wl_output() {
+    let mut fx = three_outputs();
+    let bound = fx.add_client();
+    assert_eq!(wl_outputs(&mut fx, bound), 3);
+    let dp3 = fx.server.state.monitors[2].output.clone();
+    fx.server.state.remove_output(&dp3);
+    assert_eq!(wl_outputs(&mut fx, bound), 2);
+}

@@ -108,7 +108,7 @@ impl Fixture {
             size: (w, h).into(),
             refresh: 60_000,
         };
-        let _global = output.create_global::<crate::state::MargoState>(&state.display_handle);
+        state.advertise_output(&output);
         // Place the new output to the right of every existing one,
         // same as the udev path's fallback positioning.
         let position_x: i32 = state

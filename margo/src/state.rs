@@ -21,6 +21,7 @@ mod focus_target;
 mod frame_clock_sched;
 mod groups;
 mod mirror;
+mod output_global;
 mod reload;
 mod repaint;
 pub(crate) use groups::GroupLock;
@@ -1008,6 +1009,7 @@ impl MargoState {
         self.protocols.gamma_control_manager.output_removed(output);
         self.protocols.output_power_manager.output_removed(output);
         self.protocols.screencopy.remove_output(output);
+        self.withdraw_output(output);
 
         if let Some(pos) = self.monitors.iter().position(|m| m.output == *output) {
             tracing::info!(monitor = %self.monitors[pos].name, "removing monitor");
