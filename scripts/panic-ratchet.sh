@@ -48,6 +48,9 @@ baseline_file="scripts/panic-baseline.txt"
 gated_test_files=$(find . -name '*.rs' \
     -not -path './target/*' \
     -not -path './.git/*' \
+    -not -path './vendor/*' \
+    -not -path './fuzz/*' \
+    -not -path './mplugin-sdk/*' \
     -print0 | xargs -0 awk '
       /#\[cfg\(test\)\]/ { pending = 1; next }
       pending && /^[[:space:]]*(pub[[:space:]]+)?mod[[:space:]]+[A-Za-z0-9_]+[[:space:]]*;/ {
@@ -66,6 +69,9 @@ gated_test_files=$(find . -name '*.rs' \
 rs_files=$(find . -name '*.rs' \
     -not -path './target/*' \
     -not -path './.git/*' \
+    -not -path './vendor/*' \
+    -not -path './fuzz/*' \
+    -not -path './mplugin-sdk/*' \
     -not -path '*/tests/*' \
     -not -path '*/benches/*' \
     -not -name 'build.rs' \
@@ -96,11 +102,16 @@ count=$(printf '%s\n' "$rs_files" | tr '\n' '\0' | xargs -0 awk '
         next
       }
       /#\[cfg\(test\)\]|#\[test\]|#\[tokio::test\]/ { arming = 1; next }
-      /\.unwrap\(\)|\.expect\(|panic!\(|unreachable!\(|todo!\(|unimplemented!\(/ { n++ }
+      /\.unwrap\(\)|\.expect\(|panic!\(|unreachable!\(|todo!\(|unimplemented!\(/ { n += gsub(/\.unwrap\(\)|\.expect\(|panic!\(|unreachable!\(|todo!\(|unimplemented!\(/, "&") }
       END { print n + 0 }
     ')
 
-baseline=$(tr -d '[:space:]' < "$baseline_file")
+baseline=$(< "$baseline_file")
+# Canonical decimal, bounded so shell integer comparisons cannot overflow.
+if [[ ! "$baseline" =~ ^(0|[1-9][0-9]{0,8})$ ]]; then
+    echo "FAIL: $baseline_file must contain one decimal integer (0..999999999)."
+    exit 1
+fi
 
 echo "panic-prone calls (non-test): $count  (baseline: $baseline)"
 

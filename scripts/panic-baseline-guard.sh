@@ -30,14 +30,19 @@ if [ -z "$base" ] || ! git rev-parse -q --verify "$base^{commit}" >/dev/null 2>&
 fi
 
 value_at() { # commit -> baseline number at that commit (empty if absent)
-    git show "$1:$file" 2>/dev/null | tr -d '[:space:]' || true
+    git show "$1:$file" 2>/dev/null || true
 }
 
 bad=0
-for c in $(git rev-list --reverse --no-merges "$base..HEAD" -- "$file"); do
+for c in $(git rev-list --reverse --first-parent "$base..HEAD" -- "$file"); do
     new=$(value_at "$c")
     old=$(value_at "$c^")
-    [ -n "$new" ] && [ -n "$old" ] || continue
+    if [[ ! "$new" =~ ^(0|[1-9][0-9]{0,8})$ ]] ||
+       [[ ! "$old" =~ ^(0|[1-9][0-9]{0,8})$ ]]; then
+        echo "FAIL: invalid or missing panic baseline in $c or its first parent."
+        bad=1
+        continue
+    fi
     if [ "$new" -gt "$old" ]; then
         reason=$(git log -1 --format="%(trailers:key=$trailer,valueonly)" "$c" | tr -d '[:space:]')
         subject=$(git log -1 --format='%h %s' "$c")
