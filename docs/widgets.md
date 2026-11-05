@@ -43,7 +43,7 @@ parameter and use YAML tag syntax:
 | Token | Widget | What it does |
 | --- | --- | --- |
 | `CpuDashboard` | CPU Dashboard | One chip showing live CPU load + package temperature with calm/warn/danger colour states. Click opens the dashboard (per-core bars, RAM, load averages) plus Intel iGPU busy % / frequency per GT (xe / i915 sysfs) and the processes using the GPU (DRM fdinfo), and on ThinkPads the fan level / RPM with manual levels (Auto · 0–7 · Max) when `thinkpad_acpi fan_control=1` is set (otherwise a hint how to enable it), with a **Processes** tab: a `/proc` process table sortable by CPU / RAM / swap / disk IO, searchable by name, command or PID, optionally grouped under the app window each process belongs to, with a confirmed terminate / force-kill (other users' processes via pkexec). A **Ports** tab lists listening TCP/UDP sockets (`ss -tulpn`) grouped by exposure (all interfaces / specific address / this machine only), with search, copy-PID and a confirmed kill. A **Drives** tab shows each NVMe drive's temperature (sysfs, no root) and, on request, full SMART health — verdict, wear, spare, error counters, data written, power-on hours — from `smartctl` behind one pkexec prompt (needs `smartmontools`). Right-click toggles RAM% in the chip. |
-| `AudioDashboard` | Audio Dashboard | Default output **and** input volume in one cluster (`🔊 42% · 🎙 5%`). Right-click cycles which side shows; click opens the mixer menu (sliders, mute, per-app streams, device + port pickers, and a Noise suppression switch — an RNNoise virtual mic via a private PipeWire filter-chain, needs `noise-suppression-for-voice`). |
+| `AudioDashboard` | Audio Dashboard | Default output **and** input volume in one cluster (`🔊 42% · 🎙 5%`). Right-click cycles which side shows; click opens the mixer menu (sliders, mute, per-app streams, device + port pickers, and a Noise suppression switch — an RNNoise virtual mic via a private PipeWire filter-chain, needs `noise-suppression-for-voice`; the switch is remembered, survives a shell restart and comes back after a reboot). |
 | `DiscordVoice` | Discord Voice | Your current Discord voice call via Discord's local RPC socket: call glyph tinted while in a channel, channel name + how many are speaking. Click opens the call panel (one-time Authorize, Mute / Deafen / Leave, participants with speaking dot and per-user volume 0–200 %). Needs the Discord desktop app; also `mshellctl menu discord-voice`. |
 | `AudioVisualizer` | Audio Visualizer | Live audio spectrum — a strip of bars driven by the `cava` CLI. Pulses with whatever is playing; flat strip on silence. Needs `cava` installed. |
 | `Catwalk` | Catwalk | A CPU-reactive animated cat (noctalia / RunCat sprites). Idles below a CPU threshold, walks faster as load climbs. Click opens the CPU dashboard. |
@@ -217,7 +217,8 @@ Valent Connect → Screen mirroring**, *Turn the phone screen off*
 (`valent.scrcpy_screen_off`) keeps the phone's own screen dark and *Extra
 scrcpy arguments* (`valent.scrcpy_args`) adds scrcpy flags (e.g.
 `--max-size=1280 --stay-awake`). Mirror windows run in their own scope, so
-they stay open across a shell restart. Needs `scrcpy` and `android-tools`.
+they stay open across a shell restart, and the restarted shell still lists
+them with **Stop**. Needs `scrcpy` and `android-tools`.
 
 See [Configuration](configuration.md) for the full profile layout, and
 [Scripting](scripting.md) for driving the shell and compositor from scripts.

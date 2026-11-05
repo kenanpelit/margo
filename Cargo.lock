@@ -5483,6 +5483,7 @@ dependencies = [
 name = "mshell-process"
 version = "4.9.2"
 dependencies = [
+ "tempfile",
  "tracing",
 ]
 
@@ -5666,6 +5667,7 @@ dependencies = [
  "relm4",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tokio-util",
  "tracing",

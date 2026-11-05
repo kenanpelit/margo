@@ -11,16 +11,27 @@
 //! while off, and the owner's PipeWire config/daemon is never touched
 //! or restarted.
 //!
-//! The process id lives in `$XDG_RUNTIME_DIR/margo/rnnoise.pid` (with
-//! the raw mic name beside it), so a shell restart still finds and stops
-//! a filter it started earlier; the pid is only signalled after its
-//! `/proc/<pid>/cmdline` is confirmed to be our `pipewire -c <conf>`.
+//! The filter runs in its own `app-mshell-rnnoise-….scope`, so it outlives
+//! a shell restart. Its pid and kernel start time live in
+//! `$XDG_RUNTIME_DIR/margo/rnnoise.pid` (with the raw mic name beside it);
+//! a restarted shell adopts that process instead of starting a second
+//! one, and only signals it after its uid, start time and `/proc/<pid>/
+//! cmdline` (our `pipewire -c <conf>`) match. Without a pid file it looks
+//! for exactly our scope + argv ([`mshell_process::identity`]).
+//!
+//! The on/off choice is persisted (`$XDG_STATE_HOME/mshell/
+//! noise-suppression`), and [`restore_at_startup`] brings it back: a
+//! surviving filter is adopted as it is (the default source is left
+//! alone), a missing one (after a reboot) is started the same way the
+//! toggle starts it. Nothing happens unless the user last turned it on.
 //!
 //! Detection is the cheap part of every refresh: the plugin path, `pactl`
 //! and `pipewire` binaries, and whether our source exists / is default.
 
+use mshell_process::identity::{self, Identity};
 use serde::Deserialize;
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::process::Command;
@@ -214,10 +225,108 @@ pub fn streams_to_move(outputs: &[SourceOutput], from: u32) -> Vec<u32> {
 
 /// `/proc/<pid>/cmdline` (NUL-separated) is our `pipewire -c <conf>`.
 pub fn cmdline_is_ours(cmdline: &[u8], conf: &Path) -> bool {
-    let args: Vec<&[u8]> = cmdline.split(|b| *b == 0).collect();
-    let conf = conf.to_string_lossy();
-    args.first().is_some_and(|a| a.ends_with(b"pipewire"))
-        && args.iter().any(|a| *a == conf.as_bytes())
+    let argv: Vec<OsString> = cmdline
+        .split(|b| *b == 0)
+        .map(|a| OsStr::from_bytes(a).to_owned())
+        .collect();
+    argv_is_ours(&argv, conf)
+}
+
+/// `argv` is our `pipewire -c <conf>`.
+pub fn argv_is_ours(argv: &[OsString], conf: &Path) -> bool {
+    argv.first()
+        .is_some_and(|a| a.as_bytes().ends_with(b"pipewire"))
+        && argv.iter().any(|a| a.as_os_str() == conf.as_os_str())
+}
+
+/// Label of the transient scope the filter runs in.
+const SCOPE_LABEL: &str = "rnnoise";
+
+/// Pid file contents: `<pid> <start ticks>`; files written before the
+/// start time was recorded hold just `<pid>`.
+pub fn parse_pid_file(s: &str) -> Option<(u32, Option<u64>)> {
+    let mut parts = s.split_whitespace();
+    let pid = parts.next()?.parse().ok()?;
+    let start = match parts.next() {
+        Some(t) => Some(t.parse().ok()?),
+        None => None,
+    };
+    Some((pid, start))
+}
+
+/// The running filter process: the pid file's process if it is still our
+/// `pipewire -c <conf>` (uid, argv and, when recorded, start time), else
+/// one found in our exact scope with that argv. Never anyone else's.
+pub fn filter_in(
+    proc_root: &Path,
+    uid: u32,
+    pid_file: Option<&str>,
+    conf: &Path,
+) -> Option<Identity> {
+    let recorded = pid_file.and_then(parse_pid_file).and_then(|(pid, start)| {
+        let p = identity::read_in(proc_root, pid)?;
+        let same = start.is_none_or(|t| t == p.start_ticks);
+        (pid > 1 && p.uid == uid && same && argv_is_ours(&p.argv, conf)).then(|| p.identity())
+    });
+    recorded.or_else(|| {
+        identity::find_in(proc_root, uid, SCOPE_LABEL, |argv| argv_is_ours(argv, conf))
+            .first()
+            .map(|p| p.identity())
+    })
+}
+
+/// The persisted on/off choice (`on` / `off`); `None` when never set.
+pub fn parse_wanted(s: &str) -> Option<bool> {
+    match s.trim() {
+        "on" => Some(true),
+        "off" => Some(false),
+        _ => None,
+    }
+}
+
+/// What [`restore_at_startup`] does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Restore {
+    /// The user didn't leave it on: touch nothing.
+    Nothing,
+    /// A filter from before the restart is running and is the default:
+    /// keep using it, start nothing, change nothing.
+    Adopt,
+    /// A filter is running but the user made another source the default
+    /// meanwhile (the toggle reads Off): leave both alone and remember off,
+    /// so a later reboot doesn't switch the default back behind their back.
+    Forget,
+    /// No filter (e.g. after a reboot): start it as the toggle does.
+    Start,
+}
+
+/// Decide the startup restore. `source_present` = our virtual source
+/// exists, `filter_alive` = our filter process runs, `default_is_ours` =
+/// our source is the default source.
+pub fn restore_plan(
+    wanted: Option<bool>,
+    source_present: bool,
+    filter_alive: bool,
+    default_is_ours: bool,
+) -> Restore {
+    if wanted != Some(true) {
+        Restore::Nothing
+    } else if !source_present && !filter_alive {
+        Restore::Start
+    } else if !source_present || default_is_ours {
+        // A live filter whose source is still registering is ours to keep;
+        // there is no default to judge yet.
+        Restore::Adopt
+    } else {
+        Restore::Forget
+    }
+}
+
+/// Start a filter process only when neither its source nor a live filter
+/// process exists (a restarted shell adopts the old one; a second filter
+/// would fight it over the node names).
+pub fn needs_spawn(source_present: bool, filter_alive: bool) -> bool {
+    !source_present && !filter_alive
 }
 
 /// What the toggle / tile / menu row shows.
@@ -273,6 +382,37 @@ fn pid_path() -> PathBuf {
 
 fn mic_path() -> PathBuf {
     state_dir().join("rnnoise.mic")
+}
+
+fn wanted_path() -> PathBuf {
+    margo_fs::xdg::state_home().join("mshell/noise-suppression")
+}
+
+fn load_wanted() -> Option<bool> {
+    std::fs::read_to_string(wanted_path())
+        .ok()
+        .as_deref()
+        .and_then(parse_wanted)
+}
+
+fn save_wanted(on: bool) {
+    let path = wanted_path();
+    let text: &[u8] = if on { b"on\n" } else { b"off\n" };
+    if let Err(error) = margo_fs::atomic_write::atomic_write(&path, text) {
+        tracing::warn!(%error, path = %path.display(), "noise suppression: could not save state");
+    }
+}
+
+/// The running filter process, if any (see [`filter_in`]).
+fn find_filter() -> Option<Identity> {
+    let uid = identity::own_uid()?;
+    let pid_file = std::fs::read_to_string(pid_path()).ok();
+    filter_in(
+        Path::new(identity::PROC),
+        uid,
+        pid_file.as_deref(),
+        &conf_path(),
+    )
 }
 
 async fn pactl(args: &[&str]) -> Result<String, String> {
@@ -354,7 +494,7 @@ pub async fn enable() -> Result<(), String> {
         return Err(st.hint().unwrap_or_default());
     }
     let mic = st.mic.clone().ok_or("No microphone found")?;
-    if !st.running {
+    if needs_spawn(st.running, find_filter().is_some()) {
         std::fs::create_dir_all(state_dir()).map_err(|e| e.to_string())?;
         std::fs::write(conf_path(), filter_chain_conf(&mic, &plugin, 50))
             .map_err(|e| e.to_string())?;
@@ -371,7 +511,13 @@ pub async fn enable() -> Result<(), String> {
             .stderr(std::process::Stdio::null());
         let pid = mshell_process::SpawnReaped::spawn_reaped(&mut cmd)
             .map_err(|e| format!("pipewire: {e}"))?;
-        let _ = std::fs::write(pid_path(), pid.to_string());
+        // The start time pins the pid (exec keeps it), so a reused pid is
+        // never mistaken for the filter.
+        let record = match identity::read_in(Path::new(identity::PROC), pid) {
+            Some(p) => format!("{pid} {}", p.start_ticks),
+            None => pid.to_string(),
+        };
+        let _ = std::fs::write(pid_path(), record);
         let _ = std::fs::write(mic_path(), &mic);
     }
     // The filter registers its nodes asynchronously; wait up to ~3 s.
@@ -391,11 +537,13 @@ pub async fn enable() -> Result<(), String> {
     if let Some(raw) = index_of(&srcs, &mic) {
         move_streams(raw, ours).await;
     }
+    save_wanted(true);
     Ok(())
 }
 
 /// Turn noise suppression off and stop the filter process.
 pub async fn disable() -> Result<(), String> {
+    save_wanted(false);
     let srcs = sources().await;
     let names: Vec<String> = srcs.iter().map(|(_, n)| n.clone()).collect();
     let remembered = remembered_mic();
@@ -415,27 +563,43 @@ pub async fn disable() -> Result<(), String> {
     Ok(())
 }
 
-/// SIGTERM the filter process if the pid file still points at it.
+/// SIGTERM the filter process, if one of ours is running (verified by
+/// [`find_filter`]; never another process that reused its pid).
 fn stop_process() {
-    let Some(pid) = std::fs::read_to_string(pid_path())
-        .ok()
-        .and_then(|s| s.trim().parse::<i32>().ok())
-    else {
-        return;
-    };
-    let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default();
-    if pid > 1 && cmdline_is_ours(&cmdline, &conf_path()) {
-        // `kill` (procps/util-linux) rather than an unsafe libc call; the
-        // pid was just verified to be our filter process.
-        let _ = mshell_process::SpawnReaped::spawn_reaped(
-            std::process::Command::new("kill")
-                .arg("-TERM")
-                .arg(pid.to_string())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null()),
-        );
+    if let Some(id) = find_filter() {
+        identity::terminate(id);
     }
     let _ = std::fs::remove_file(pid_path());
+}
+
+/// Bring back the noise suppression the user left on, once per shell
+/// start (see [`Restore`]). Waits up to ~30 s for pipewire-pulse at login.
+pub async fn restore_at_startup() {
+    static STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if STARTED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    let wanted = load_wanted();
+    if wanted != Some(true) {
+        return;
+    }
+    for _ in 0..30 {
+        if pactl(&["info"]).await.is_ok() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    let st = probe().await;
+    match restore_plan(wanted, st.running, find_filter().is_some(), st.enabled) {
+        Restore::Nothing | Restore::Adopt => {}
+        Restore::Forget => save_wanted(false),
+        Restore::Start => {
+            tracing::info!("noise suppression: restoring it after the shell start");
+            if let Err(error) = enable().await {
+                toast_failure(&error);
+            }
+        }
+    }
 }
 
 /// Surface a failed toggle as a toast (tile + audio menu share this).
@@ -565,6 +729,109 @@ mod tests {
             conf
         ));
         assert!(!cmdline_is_ours(b"", conf));
+    }
+
+    /// Review item 10: after a shell restart the filter (in its own scope)
+    /// is still running; the toggle must adopt it, not start a second one.
+    #[test]
+    fn a_live_filter_or_source_is_adopted_not_spawned_again() {
+        assert!(needs_spawn(false, false));
+        assert!(!needs_spawn(true, false));
+        assert!(!needs_spawn(false, true), "source still registering");
+        assert!(!needs_spawn(true, true));
+    }
+
+    #[test]
+    fn startup_restore_follows_the_saved_choice_and_never_moves_the_default() {
+        use Restore::*;
+        // Never turned on (or turned off): nothing at all, even if a
+        // filter happens to run.
+        for wanted in [None, Some(false)] {
+            for (src, alive, def) in [
+                (false, false, false),
+                (true, true, true),
+                (true, true, false),
+            ] {
+                assert_eq!(restore_plan(wanted, src, alive, def), Nothing);
+            }
+        }
+        // Left on, nothing running (reboot): start it like the toggle.
+        assert_eq!(restore_plan(Some(true), false, false, false), Start);
+        // Left on and still running after a shell restart: adopt as is.
+        assert_eq!(restore_plan(Some(true), true, true, true), Adopt);
+        assert_eq!(restore_plan(Some(true), false, true, false), Adopt);
+        assert_eq!(restore_plan(Some(true), true, false, true), Adopt);
+        // Running, but the user made another source the default: keep
+        // their choice and remember "off".
+        assert_eq!(restore_plan(Some(true), true, true, false), Forget);
+    }
+
+    #[test]
+    fn saved_choice_and_pid_file_parse() {
+        assert_eq!(parse_wanted("on\n"), Some(true));
+        assert_eq!(parse_wanted("off"), Some(false));
+        assert_eq!(parse_wanted(""), None);
+        assert_eq!(parse_wanted("yes"), None);
+        assert_eq!(parse_pid_file("4242 987654\n"), Some((4242, Some(987_654))));
+        assert_eq!(parse_pid_file("4242"), Some((4242, None)));
+        assert_eq!(parse_pid_file("x"), None);
+        assert_eq!(parse_pid_file("4242 x"), None);
+        assert_eq!(parse_pid_file(""), None);
+    }
+
+    /// A fake procfs entry (stat / status / cmdline / cgroup).
+    fn fake_proc(root: &Path, pid: u32, start: u64, uid: u32, argv: &[&str], unit: &str) {
+        let dir = root.join(pid.to_string());
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("stat"),
+            format!("{pid} (pipewire) S 1 1 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 {start} 1 1"),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("status"),
+            format!("Uid:\t{uid}\t{uid}\t{uid}\t{uid}\n"),
+        )
+        .unwrap();
+        std::fs::write(dir.join("cmdline"), argv.join("\0") + "\0").unwrap();
+        std::fs::write(dir.join("cgroup"), format!("0::/app.slice/{unit}\n")).unwrap();
+    }
+
+    #[test]
+    fn filter_is_found_by_pid_file_or_exact_scope_and_never_foreign() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path();
+        let conf = Path::new("/run/user/1000/margo/rnnoise.conf");
+        let ours = ["pipewire", "-c", "/run/user/1000/margo/rnnoise.conf"];
+        fake_proc(root, 50, 500, 1000, &ours, "app-mshell-rnnoise-9-0.scope");
+        let id = Identity {
+            pid: 50,
+            start_ticks: 500,
+        };
+        // Pid file with and without the start time.
+        assert_eq!(filter_in(root, 1000, Some("50 500"), conf), Some(id));
+        assert_eq!(filter_in(root, 1000, Some("50"), conf), Some(id));
+        // No / stale pid file: found by its scope + argv.
+        assert_eq!(filter_in(root, 1000, None, conf), Some(id));
+        assert_eq!(filter_in(root, 1000, Some("77 1"), conf), Some(id));
+        // Never someone else's.
+        assert_eq!(filter_in(root, 1001, None, conf), None);
+        std::fs::remove_dir_all(root.join("50")).unwrap();
+        // The main daemon, a pipewire with our conf but no scope (the
+        // user's own), and a pid reused by another process: all foreign.
+        fake_proc(
+            root,
+            51,
+            510,
+            1000,
+            &["/usr/bin/pipewire"],
+            "pipewire.service",
+        );
+        fake_proc(root, 52, 520, 1000, &ours, "tmux-spawn-1.scope");
+        fake_proc(root, 50, 900, 1000, &ours, "tmux-spawn-2.scope");
+        assert_eq!(filter_in(root, 1000, Some("51"), conf), None);
+        assert_eq!(filter_in(root, 1000, Some("50 500"), conf), None);
+        assert_eq!(filter_in(root, 1000, None, conf), None);
     }
 
     #[test]

@@ -12,6 +12,11 @@
 //!
 //! `tokio::process` children don't need this: tokio's runtime reaps dropped
 //! children itself.
+//!
+//! [`identity`] finds the [`outliving_shell`] processes an earlier mshell
+//! started, after a restart, by uid + exact scope name + argv + start time.
+
+pub mod identity;
 
 use std::ffi::{OsStr, OsString};
 use std::io;

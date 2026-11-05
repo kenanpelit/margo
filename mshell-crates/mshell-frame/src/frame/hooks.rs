@@ -33,6 +33,10 @@ pub(super) fn push_background_hooks(effects: &mut EffectScope) {
         });
     });
 
+    // Noise suppression the user left on comes back after a shell restart
+    // or reboot (adopting a filter that survived; once per process).
+    relm4::spawn(mshell_utils::denoise::restore_at_startup());
+
     // Crash notifications (systemd-coredump watcher): started and stopped
     // with the toggle, so it costs nothing while off.
     effects.push(move |_| {

@@ -7,10 +7,19 @@
 //! Parsers and argument building are pure and tested; the process side
 //! degrades to "not installed" when `adb` / `scrcpy` are missing
 //! (Arch: `android-tools`, `scrcpy`).
+//!
+//! Each window runs in its own `app-mshell-scrcpy-….scope`, so it outlives
+//! a shell restart; the restarted shell finds it again ([`mirroring`]) by
+//! uid, that exact scope name, the `scrcpy --serial=…` argv and the
+//! process start time, so the menu still shows it and can stop it.
 
 use std::collections::HashMap;
+use std::ffi::OsString;
+use std::path::Path;
 use std::process::Stdio;
 use std::sync::{LazyLock, Mutex};
+
+use mshell_process::identity::{self, Identity};
 
 /// One `adb devices -l` row.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -186,45 +195,121 @@ pub(crate) async fn disconnect(serial: &str) -> Result<String, String> {
     adb_outcome(&adb(&["disconnect", serial]).await?)
 }
 
-/// Running scrcpy windows by device serial.
-static MIRRORS: LazyLock<Mutex<HashMap<String, std::process::Child>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+/// One scrcpy window the menu can stop.
+enum Mirror {
+    /// Started by this shell.
+    Child(std::process::Child),
+    /// Started by an earlier shell and still running in its own scope
+    /// (see [`survivors`]).
+    Adopted(Identity),
+}
 
-/// Serials with a live scrcpy window (reaps the ones that exited).
+/// Running scrcpy windows by device serial.
+#[derive(Default)]
+struct Mirrors {
+    map: HashMap<String, Mirror>,
+    /// Survivors of an earlier shell were looked for already.
+    rediscovered: bool,
+}
+
+impl Mirrors {
+    /// Serials with a live window, dropping (and reaping) exited ones. The
+    /// first call adopts the windows an earlier shell left running.
+    fn live(&mut self, proc_root: &Path, uid: Option<u32>) -> Vec<String> {
+        if !self.rediscovered {
+            self.rediscovered = true;
+            if let Some(uid) = uid {
+                for (serial, id) in survivors(proc_root, uid) {
+                    self.map.entry(serial).or_insert(Mirror::Adopted(id));
+                }
+            }
+        }
+        self.map.retain(|_, mirror| match mirror {
+            Mirror::Child(child) => matches!(child.try_wait(), Ok(None)),
+            Mirror::Adopted(id) => uid.is_some_and(|uid| identity::alive_in(proc_root, *id, uid)),
+        });
+        let mut serials: Vec<String> = self.map.keys().cloned().collect();
+        serials.sort();
+        serials
+    }
+}
+
+/// The device serial of a scrcpy argv as [`scrcpy_args`] builds it
+/// (`scrcpy --serial=<serial> …`); `None` for anything else.
+pub(crate) fn mirror_serial(argv: &[OsString]) -> Option<String> {
+    let program = Path::new(argv.first()?).file_name()?;
+    if program != "scrcpy" {
+        return None;
+    }
+    argv.iter()
+        .find_map(|a| a.to_str()?.strip_prefix("--serial="))
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
+/// scrcpy windows an earlier shell started that are still running: our
+/// uid, our exact `app-mshell-scrcpy-<pid>-<n>.scope` (see
+/// [`mshell_process::outliving_shell`]) and a `scrcpy --serial=…` argv. A
+/// scrcpy the user ran by hand has no such scope and is left alone.
+fn survivors(proc_root: &Path, uid: u32) -> Vec<(String, Identity)> {
+    identity::find_in(proc_root, uid, SCOPE_LABEL, |argv| {
+        mirror_serial(argv).is_some()
+    })
+    .into_iter()
+    .filter_map(|p| Some((mirror_serial(&p.argv)?, p.identity())))
+    .collect()
+}
+
+/// Label of the transient scope each scrcpy window runs in.
+const SCOPE_LABEL: &str = "scrcpy";
+
+static MIRRORS: LazyLock<Mutex<Mirrors>> = LazyLock::new(|| Mutex::new(Mirrors::default()));
+
+/// Serials with a live scrcpy window, including ones an earlier shell
+/// started (reaps the ones that exited).
 pub(crate) fn mirroring() -> Vec<String> {
-    let Ok(mut map) = MIRRORS.lock() else {
+    let Ok(mut mirrors) = MIRRORS.lock() else {
         return Vec::new();
     };
-    map.retain(|_, child| matches!(child.try_wait(), Ok(None)));
-    map.keys().cloned().collect()
+    mirrors.live(Path::new(identity::PROC), identity::own_uid())
 }
 
 /// Open a scrcpy window for `serial`.
 pub(crate) fn start_mirror(serial: &str, screen_off: bool, extra: &str) -> Result<(), String> {
     // In its own scope, so the mirror window survives an mshell restart
     // (systemd-run execs scrcpy in place: the Child is still scrcpy).
-    let child =
-        mshell_process::outliving_shell("scrcpy", scrcpy_args(serial, screen_off, extra), "scrcpy")
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|e| format!("scrcpy: {e}"))?;
-    if let Ok(mut map) = MIRRORS.lock() {
-        map.insert(serial.to_string(), child);
+    let child = mshell_process::outliving_shell(
+        "scrcpy",
+        scrcpy_args(serial, screen_off, extra),
+        SCOPE_LABEL,
+    )
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::null())
+    .spawn()
+    .map_err(|e| format!("scrcpy: {e}"))?;
+    if let Ok(mut mirrors) = MIRRORS.lock() {
+        mirrors.map.insert(serial.to_string(), Mirror::Child(child));
     }
     Ok(())
 }
 
 /// Close the scrcpy window for `serial`, if any.
 pub(crate) fn stop_mirror(serial: &str) {
-    let child = MIRRORS.lock().ok().and_then(|mut m| m.remove(serial));
-    if let Some(mut child) = child {
-        let _ = child.kill();
-        // Reap off the UI thread.
-        std::thread::spawn(move || {
-            let _ = child.wait();
-        });
+    let mirror = MIRRORS.lock().ok().and_then(|mut m| m.map.remove(serial));
+    match mirror {
+        Some(Mirror::Child(mut child)) => {
+            let _ = child.kill();
+            // Reap off the UI thread.
+            std::thread::spawn(move || {
+                let _ = child.wait();
+            });
+        }
+        // Not our child: SIGTERM, only if the pid is still that window.
+        Some(Mirror::Adopted(id)) => {
+            identity::terminate(id);
+        }
+        None => {}
     }
 }
 
@@ -313,5 +398,114 @@ mod tests {
             scrcpy_args("x;rm -rf ~", false, "")[0],
             "--serial=x;rm -rf ~"
         );
+    }
+
+    fn os(v: &[&str]) -> Vec<OsString> {
+        v.iter().map(OsString::from).collect()
+    }
+
+    #[test]
+    fn mirror_serial_only_from_a_scrcpy_argv() {
+        assert_eq!(
+            mirror_serial(&os(&[
+                "scrcpy",
+                "--serial=1.2.3.4:5555",
+                "--turn-screen-off"
+            ])),
+            Some("1.2.3.4:5555".into())
+        );
+        assert_eq!(
+            mirror_serial(&os(&[
+                "/usr/bin/scrcpy",
+                "--max-size=1280",
+                "--serial=R5CT"
+            ])),
+            Some("R5CT".into())
+        );
+        assert_eq!(mirror_serial(&os(&["scrcpy"])), None);
+        assert_eq!(mirror_serial(&os(&["scrcpy", "--serial="])), None);
+        assert_eq!(mirror_serial(&os(&["adb", "--serial=R5CT"])), None);
+        assert_eq!(mirror_serial(&os(&["notscrcpy", "--serial=R5CT"])), None);
+        assert_eq!(mirror_serial(&[]), None);
+    }
+
+    /// Review item 10: after a shell restart the scrcpy window an earlier
+    /// shell opened is still running in its scope; the menu must list it
+    /// (and so be able to stop it), but never adopt a foreign scrcpy.
+    #[test]
+    fn restarted_shell_adopts_its_surviving_windows_only() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let add = |pid: u32, start: u64, uid: u32, argv: &[&str], unit: &str| {
+            let dir = root.path().join(pid.to_string());
+            std::fs::create_dir_all(&dir).expect("mkdir");
+            std::fs::write(
+                dir.join("stat"),
+                format!("{pid} (scrcpy) S 1 1 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 {start} 1 1"),
+            )
+            .expect("stat");
+            std::fs::write(
+                dir.join("status"),
+                format!("Uid:\t{uid}\t{uid}\t{uid}\t{uid}\n"),
+            )
+            .expect("status");
+            std::fs::write(dir.join("cmdline"), argv.join("\0") + "\0").expect("cmdline");
+            std::fs::write(
+                dir.join("cgroup"),
+                format!("0::/user.slice/app.slice/{unit}\n"),
+            )
+            .expect("cgroup");
+        };
+        add(
+            10,
+            100,
+            1000,
+            &["scrcpy", "--serial=R5CT"],
+            "app-mshell-scrcpy-7-0.scope",
+        );
+        add(
+            11,
+            110,
+            1000,
+            &["scrcpy", "--serial=HAND"],
+            "tmux-spawn-1.scope",
+        );
+        add(
+            12,
+            120,
+            1001,
+            &["scrcpy", "--serial=OTHER"],
+            "app-mshell-scrcpy-8-0.scope",
+        );
+        add(
+            13,
+            130,
+            1000,
+            &["adb", "-s", "R5CT", "reverse"],
+            "app-mshell-scrcpy-7-0.scope",
+        );
+        let mut mirrors = Mirrors::default();
+        assert_eq!(
+            mirrors.live(root.path(), Some(1000)),
+            vec!["R5CT".to_string()]
+        );
+        assert!(matches!(
+            mirrors.map.get("R5CT"),
+            Some(Mirror::Adopted(Identity {
+                pid: 10,
+                start_ticks: 100
+            }))
+        ));
+        // The window closed: it drops out of the list.
+        std::fs::remove_dir_all(root.path().join("10")).expect("rm");
+        assert!(mirrors.live(root.path(), Some(1000)).is_empty());
+        // A new process reusing pid 10 is not that window either.
+        add(
+            10,
+            900,
+            1000,
+            &["scrcpy", "--serial=R5CT"],
+            "app-mshell-scrcpy-7-0.scope",
+        );
+        assert!(mirrors.live(root.path(), Some(1000)).is_empty());
     }
 }
