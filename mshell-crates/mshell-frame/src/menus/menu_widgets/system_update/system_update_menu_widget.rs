@@ -7,7 +7,9 @@
 use crate::system_update::audit::{Advisory, AuditState, Severity};
 use crate::system_update::history::{self, HistorySource, Transaction};
 use crate::system_update::news::{self, NewsItem};
-use crate::system_update::pacnew::{self, ConfigFile, DiffLine, Kind, Op, Prefer, Review};
+use crate::system_update::pacnew::{
+    self, ConfigFile, DiffLine, InstallFrom, Kind, Op, Prefer, Review,
+};
 use crate::system_update::run::{self, RunStatus};
 use crate::system_update::{self, ProbeConfig, Source, UpdateReport};
 use mshell_config::config_manager::config_manager;
@@ -775,14 +777,13 @@ impl Component for SystemUpdateMenuWidgetModel {
                             .as_ref()
                             .map(|segs| pacnew::resolve(segs, prefer))
                             .ok_or_else(|| "no 3-way merge available".to_string())
-                            .and_then(|text| pacnew::stage_merged(&text))
-                            .map(|src| Op::Install {
-                                src,
+                            .map(|text| Op::Install {
+                                from: InstallFrom::Merged(text),
                                 live: file.live.clone(),
                                 review: file.path.clone(),
                             }),
                         ConfigAction::TakeFile => Ok(Op::Install {
-                            src: file.path.clone(),
+                            from: InstallFrom::Review,
                             live: file.live.clone(),
                             review: file.path.clone(),
                         }),

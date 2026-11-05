@@ -223,17 +223,27 @@ pub(crate) fn pick_base(candidates: &[Vec<u8>], theirs: &[u8]) -> Option<usize> 
 /// positional args to a fixed `sh -c` script, never spliced into it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Op {
-    /// Replace the live file with `src` (the .pacnew / .pacsave itself
-    /// or a merged temp file), keeping the live file's mode/owner,
-    /// backing it up as `<live>.mshell-bak`, then remove the review
-    /// file. With `src == review` this is "take new" / "restore".
+    /// Replace the live file with new content, keeping the live
+    /// file's mode/owner, backing it up as `<live>.mshell-bak`, then
+    /// remove the review file.
     Install {
-        src: PathBuf,
+        from: InstallFrom,
         live: PathBuf,
         review: PathBuf,
     },
     /// Delete the review file (keep the live config).
     Remove { review: PathBuf },
+}
+
+/// Where [`Op::Install`]'s new content comes from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum InstallFrom {
+    /// The review file itself: "take new" / "restore".
+    Review,
+    /// A merge resolved in the panel. Piped to the root script on
+    /// stdin (script arg `-`), never staged in a user-writable file a
+    /// same-uid process could swap while the password prompt is up.
+    Merged(String),
 }
 
 const INSTALL_SH: &str = r#"set -e
@@ -249,6 +259,12 @@ dir=$(dirname -- "$live")
 if [ "$(cd -P -- "$dir" && pwd)" != "$dir" ]; then
   echo "refusing a path through a symlinked directory" >&2; exit 3
 fi
+# `-`: the merged text arrives on stdin; copy it into a root-owned
+# 0600 temp file first so nothing the user can write is installed.
+if [ "$src" = - ]; then
+  tmp=$(mktemp); trap 'rm -f -- "$tmp"' EXIT
+  cat >"$tmp"; src="$tmp"
+fi
 if [ -e "$live" ]; then
   cp -a -- "$live" "$live.mshell-bak"
   mode=$(stat -c %a -- "$live"); own=$(stat -c %u:%g -- "$live")
@@ -261,16 +277,30 @@ rm -f -- "$review""#;
 pub(crate) fn op_argv(op: &Op) -> Vec<String> {
     let s = |p: &Path| p.to_string_lossy().into_owned();
     match op {
-        Op::Install { src, live, review } => vec![
+        Op::Install { from, live, review } => vec![
             "sh".into(),
             "-c".into(),
             INSTALL_SH.into(),
             "sh".into(),
-            s(src),
+            match from {
+                InstallFrom::Review => s(review),
+                InstallFrom::Merged(_) => "-".into(),
+            },
             s(live),
             s(review),
         ],
         Op::Remove { review } => vec!["rm".into(), "-f".into(), "--".into(), s(review)],
+    }
+}
+
+/// What the op feeds the root script on stdin (the merged text).
+pub(crate) fn op_stdin(op: &Op) -> Option<&[u8]> {
+    match op {
+        Op::Install {
+            from: InstallFrom::Merged(text),
+            ..
+        } => Some(text.as_bytes()),
+        _ => None,
     }
 }
 
@@ -318,11 +348,23 @@ pub(crate) async fn apply(op: Op) -> Result<(), String> {
     if !op_is_safe(&op) {
         return Err("refusing a path outside /etc or through a symlink".into());
     }
-    let status = tokio::process::Command::new("pkexec")
+    let input = op_stdin(&op);
+    let mut child = tokio::process::Command::new("pkexec")
         .args(op_argv(&op))
-        .status()
-        .await
+        .stdin(if input.is_some() {
+            std::process::Stdio::piped()
+        } else {
+            std::process::Stdio::null()
+        })
+        .spawn()
         .map_err(|e| format!("pkexec: {e}"))?;
+    if let (Some(bytes), Some(mut stdin)) = (input, child.stdin.take()) {
+        use tokio::io::AsyncWriteExt;
+        // A dismissed prompt closes the pipe early; the exit status
+        // below says why, so a write error here is not reported.
+        let _ = stdin.write_all(bytes).await;
+    }
+    let status = child.wait().await.map_err(|e| format!("pkexec: {e}"))?;
     if !status.success() {
         return Err(match status.code() {
             Some(126) | Some(127) => "authentication dismissed".into(),
@@ -439,17 +481,6 @@ pub(crate) fn review_blocking(file: &ConfigFile) -> Review {
     r
 }
 
-/// Write a merged result to a user-owned temp file for `Op::Install`.
-pub(crate) fn stage_merged(text: &str) -> Result<PathBuf, String> {
-    let dir = margo_fs::xdg::cache_home()
-        .join("mshell")
-        .join("system_update");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let p = dir.join("merged.conf");
-    std::fs::write(&p, text).map_err(|e| e.to_string())?;
-    Ok(p)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -560,7 +591,7 @@ mod tests {
     #[test]
     fn ops_stay_inside_etc() {
         let ok = Op::Install {
-            src: "/home/u/.cache/merged".into(),
+            from: InstallFrom::Review,
             live: "/etc/locale.gen".into(),
             review: "/etc/locale.gen.pacnew".into(),
         };
@@ -570,11 +601,12 @@ mod tests {
         assert_eq!(
             &argv[4..],
             [
-                "/home/u/.cache/merged",
+                "/etc/locale.gen.pacnew",
                 "/etc/locale.gen",
                 "/etc/locale.gen.pacnew"
             ]
         );
+        assert_eq!(op_stdin(&ok), None);
 
         assert!(!op_is_safe(&Op::Remove {
             review: "/etc/../root/x.pacnew".into()
@@ -583,14 +615,14 @@ mod tests {
             review: "/etc/passwd".into()
         }));
         assert!(!op_is_safe(&Op::Install {
-            src: "/tmp/x".into(),
+            from: InstallFrom::Review,
             live: "/etc/shadow".into(),
             review: "/etc/locale.gen.pacnew".into(),
         }));
         // /etc/localtime is a symlink on (nearly) every systemd box.
         if std::fs::symlink_metadata("/etc/localtime").is_ok_and(|m| m.file_type().is_symlink()) {
             assert!(!op_is_safe(&Op::Install {
-                src: "/etc/localtime.pacnew".into(),
+                from: InstallFrom::Review,
                 live: "/etc/localtime".into(),
                 review: "/etc/localtime.pacnew".into(),
             }));
@@ -601,6 +633,44 @@ mod tests {
             }),
             ["rm", "-f", "--", "/etc/a.pacnew"]
         );
+    }
+
+    #[test]
+    fn a_merge_reaches_root_on_stdin_not_through_a_user_file() {
+        // The merged text used to be staged in ~/.cache (user-writable)
+        // and root installed whatever that file held after the password
+        // prompt. It is piped to the script now.
+        let op = Op::Install {
+            from: InstallFrom::Merged("merged\n".into()),
+            live: "/etc/locale.gen".into(),
+            review: "/etc/locale.gen.pacnew".into(),
+        };
+        assert!(op_is_safe(&op));
+        let argv = op_argv(&op);
+        assert_eq!(
+            &argv[4..],
+            ["-", "/etc/locale.gen", "/etc/locale.gen.pacnew"]
+        );
+        assert_eq!(op_stdin(&op), Some(&b"merged\n"[..]));
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        let live = root.join("f.conf");
+        let review = root.join("f.conf.pacnew");
+        std::fs::write(&live, "mine\n").unwrap();
+        std::fs::write(&review, "theirs\n").unwrap();
+        let mut child = std::process::Command::new("sh")
+            .args(["-c", INSTALL_SH, "sh", "-"])
+            .arg(&live)
+            .arg(&review)
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        use std::io::Write;
+        child.stdin.take().unwrap().write_all(b"merged\n").unwrap();
+        assert!(child.wait().unwrap().success());
+        assert_eq!(std::fs::read_to_string(&live).unwrap(), "merged\n");
+        assert!(!review.exists());
     }
 
     #[test]
