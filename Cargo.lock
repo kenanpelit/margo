@@ -5696,11 +5696,16 @@ version = "4.9.2"
 dependencies = [
  "gtk4",
  "gtk4-layer-shell",
+ "margo-fs",
  "mshell-cache",
  "mshell-common",
  "mshell-config",
+ "mshell-margo-client",
  "reactive_graph",
  "relm4",
+ "serde_json",
+ "tempfile",
+ "tracing",
 ]
 
 [[package]]

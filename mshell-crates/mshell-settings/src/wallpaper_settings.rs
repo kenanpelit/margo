@@ -27,6 +27,7 @@ pub(crate) struct WallpaperSettingsModel {
     /// "bing" or "nasa".
     daily_source: String,
     daily_locale: String,
+    compositor_draws: bool,
     _effects: EffectScope,
 }
 
@@ -43,11 +44,13 @@ pub(crate) enum WallpaperSettingsInput {
     DailySourceChanged(u32),
     DailyLocaleChanged(String),
     FetchNowClicked,
+    CompositorDrawsChanged(bool),
 
     WallpaperDirectoryEffect(String),
     ContentFitEffect(ContentFit),
     ThemeFilterEffect(bool),
     FilterStrengthEffect(f64),
+    CompositorDrawsEffect(bool),
     RotationEnabledEffect(bool),
     RotationIntervalEffect(u32),
     RotationModeEffect(WallpaperRotationMode),
@@ -292,6 +295,46 @@ impl Component for WallpaperSettingsModel {
                 gtk::Box {
                     add_css_class: "boxed-list",
                     set_orientation: gtk::Orientation::Vertical,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/wallpaper/compositor_draws",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Let margo draw the wallpaper",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Frees the GPU memory the wallpaper windows hold (about 100 MB with two screens). Looks the same; mshell draws it itself when margo can't.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(compositor_draws_handler)]
+                            set_active: model.compositor_draws,
+                            connect_state_set[sender] => move |_, enabled| {
+                                sender.input(WallpaperSettingsInput::CompositorDrawsChanged(enabled));
+                                glib::Propagation::Proceed
+                            } @compositor_draws_handler,
+                        }
+                    },
 
                     gtk::Box {
                         add_css_class: "action-row",
@@ -606,6 +649,16 @@ impl Component for WallpaperSettingsModel {
             let value = config_manager()
                 .config()
                 .wallpaper()
+                .compositor_draws()
+                .get();
+            sender_clone.input(WallpaperSettingsInput::CompositorDrawsEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let value = config_manager()
+                .config()
+                .wallpaper()
                 .rotation_enabled()
                 .get();
             sender_clone.input(WallpaperSettingsInput::RotationEnabledEffect(value));
@@ -704,6 +757,11 @@ impl Component for WallpaperSettingsModel {
                 .config()
                 .wallpaper()
                 .daily_wallpaper_locale()
+                .get_untracked(),
+            compositor_draws: config_manager()
+                .config()
+                .wallpaper()
+                .compositor_draws()
                 .get_untracked(),
             _effects: effects,
         };
@@ -815,6 +873,10 @@ impl Component for WallpaperSettingsModel {
                 });
             }
             WallpaperSettingsInput::DailyEnabledEffect(v) => self.daily_enabled = v,
+            WallpaperSettingsInput::CompositorDrawsChanged(enabled) => {
+                config_manager().update_config(|c| c.wallpaper.compositor_draws = enabled);
+            }
+            WallpaperSettingsInput::CompositorDrawsEffect(v) => self.compositor_draws = v,
             WallpaperSettingsInput::DailySourceEffect(s) => self.daily_source = s,
             WallpaperSettingsInput::DailyLocaleEffect(l) => self.daily_locale = l,
         }

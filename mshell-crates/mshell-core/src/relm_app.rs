@@ -1058,6 +1058,9 @@ impl Component for Shell {
                 }
             }
             ShellInput::QueueFrameRedraw => {
+                // The stylesheet changed: margo paints the wallpaper
+                // window's background colour when it draws the wallpaper.
+                mshell_wallpaper::handoff::style_changed();
                 self.window_groups.iter().for_each(|(_, wg)| {
                     if let Some(frame) = &wg.frame {
                         frame.emit(FrameInput::QueueFrameRedraw);

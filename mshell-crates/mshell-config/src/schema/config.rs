@@ -896,6 +896,11 @@ pub struct Wallpaper {
     pub daily_wallpaper_source: String,
     /// Bing market locale for the daily wallpaper (e.g. `en-US`); unused for NASA.
     pub daily_wallpaper_locale: String,
+    /// Hand the wallpaper to margo to draw instead of painting it in a
+    /// window per monitor, which holds about 100 MiB of GPU memory for a
+    /// static image. Looks the same; mshell keeps its windows when margo is
+    /// older or can't draw it (nested session, other compositor).
+    pub compositor_draws: bool,
 }
 
 impl Default for Wallpaper {
@@ -911,6 +916,7 @@ impl Default for Wallpaper {
             daily_wallpaper_enabled: false,
             daily_wallpaper_source: "bing".to_string(),
             daily_wallpaper_locale: "".to_string(),
+            compositor_draws: true,
         }
     }
 }

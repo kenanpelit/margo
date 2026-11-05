@@ -13,8 +13,15 @@ gtk4-layer-shell.workspace = true
 mshell-cache.workspace = true
 mshell-common.workspace = true
 mshell-config.workspace = true
+mshell-margo-client.workspace = true
+margo-fs.workspace = true
 reactive_graph.workspace = true
 relm4.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
 
 [lints]
 workspace = true

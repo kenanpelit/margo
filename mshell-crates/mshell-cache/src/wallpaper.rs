@@ -69,6 +69,9 @@ pub struct WallpaperImage {
     pub texture: gdk::Texture,
     pub width: u32,
     pub height: u32,
+    /// The texture's own pixels (straight-alpha RGBA, `width * 4` per row),
+    /// shared, not a copy: what `mshell-wallpaper` hands margo to draw.
+    pub rgba: glib::Bytes,
 }
 
 /// Decode target used when no monitor geometry is known (no display yet).
@@ -703,6 +706,7 @@ fn run_job(job: Job) {
         texture,
         width,
         height,
+        rgba: bytes.clone(),
     });
     drop(inner);
 

@@ -576,6 +576,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     mshell_config::config_manager::config_manager().flush();
     // And the rotated wallpaper the login screen hasn't got yet.
     mshell_cache::wallpaper::flush_display_cache();
+    // margo stops drawing mshell's wallpaper, as the windows went with us.
+    mshell_wallpaper::handoff::release();
     info!("Goodbye!");
 
     Ok(())
