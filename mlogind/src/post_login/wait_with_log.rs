@@ -119,6 +119,30 @@ impl SessionChild {
     }
 }
 
+/// Copies everything readable from `receiver` into `file_handle` without
+/// blocking. Returns `true` once the write end is closed (EOF).
+///
+/// EOF is a zero-length read and is checked on every read: an event that
+/// arrives before the writer closes carries no read-closed flag, yet the pipe
+/// can reach EOF by the time it is read. Looping on that zero-length read
+/// spun the log thread at 100% CPU and, because it never polled again, it
+/// never saw the waker either, so `wait()` hung forever on the join.
+fn forward_receiver_to_file(
+    receiver: &mut impl Read,
+    file_handle: &mut impl io::Write,
+) -> io::Result<bool> {
+    let mut buf = [0u8; 2048];
+    loop {
+        match receiver.read(&mut buf) {
+            Ok(0) => return Ok(true),
+            Ok(n) => file_handle.write_all(&buf[..n])?,
+            Err(err) if err.kind() == io::ErrorKind::WouldBlock => return Ok(false),
+            Err(err) if err.kind() == io::ErrorKind::Interrupted => {}
+            Err(err) => return Err(err),
+        }
+    }
+}
+
 impl LimitedOutputChild {
     pub fn spawn(mut command: Command, log_path: &Path) -> io::Result<Self> {
         const STDOUT_PIPE_RECV: Token = Token(0);
@@ -164,54 +188,38 @@ impl LimitedOutputChild {
         let mut file_handle = LimitSizeWriter::new(file, LOG_WRITER_SIZE_LIMIT);
 
         let join_handle = std::thread::spawn(move || {
+            let (mut stdout_done, mut stderr_done) = (false, false);
             loop {
                 poll.poll(&mut events, None)?;
-
-                fn forward_receiver_to_file(
-                    receiver: &mut Receiver,
-                    file_handle: &mut LimitSizeWriter<impl io::Write>,
-                    is_read_closed: bool,
-                ) -> io::Result<()> {
-                    let mut buf = [0u8; 2048];
-
-                    loop {
-                        if is_read_closed {
-                            let mut v = Vec::new();
-                            receiver.read_to_end(&mut v)?;
-                            file_handle.write_all(&v)?;
-
-                            break;
-                        }
-
-                        match receiver.read(&mut buf) {
-                            Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
-                                break;
-                            }
-                            Err(err) => return Err(err),
-                            Ok(n) => {
-                                file_handle.write_all(&buf[..n])?;
-                            }
-                        }
-                    }
-
-                    Ok(())
-                }
 
                 for event in events.iter() {
                     match event.token() {
                         x if x == WAKER_TOKEN => {
+                            // The session exited: whatever it wrote last
+                            // (usually the crash reason) is still in the
+                            // pipes. Drain both before stopping.
+                            if !stdout_done {
+                                forward_receiver_to_file(&mut stdout_receiver, &mut file_handle)?;
+                            }
+                            if !stderr_done {
+                                forward_receiver_to_file(&mut stderr_receiver, &mut file_handle)?;
+                            }
+                            file_handle.flush()?;
                             return Ok(());
                         }
-                        x if x == STDOUT_PIPE_RECV => forward_receiver_to_file(
-                            &mut stdout_receiver,
-                            &mut file_handle,
-                            event.is_read_closed(),
-                        )?,
-                        x if x == STDERR_PIPE_RECV => forward_receiver_to_file(
-                            &mut stderr_receiver,
-                            &mut file_handle,
-                            event.is_read_closed(),
-                        )?,
+                        x if x == STDOUT_PIPE_RECV && !stdout_done => {
+                            if forward_receiver_to_file(&mut stdout_receiver, &mut file_handle)? {
+                                stdout_done = true;
+                                poll.registry().deregister(&mut stdout_receiver)?;
+                            }
+                        }
+                        x if x == STDERR_PIPE_RECV && !stderr_done => {
+                            if forward_receiver_to_file(&mut stderr_receiver, &mut file_handle)? {
+                                stderr_done = true;
+                                poll.registry().deregister(&mut stderr_receiver)?;
+                            }
+                        }
+                        x if x == STDOUT_PIPE_RECV || x == STDERR_PIPE_RECV => {}
                         _ => {
                             return Err(io::Error::other("Invalid event"));
                         }
@@ -308,6 +316,36 @@ mod tests {
             );
         }
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// A pipe that already reached EOF must end the forward, even when the
+    /// event that woke the thread had no read-closed flag.
+    #[test]
+    fn forwarding_stops_at_eof_without_a_read_closed_flag() {
+        use std::io::Write as _;
+        let (mut tx, mut rx) = mio::unix::pipe::new().unwrap();
+        tx.write_all(b"last words\n").unwrap();
+        drop(tx);
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut out = Vec::new();
+            let eof = forward_receiver_to_file(&mut rx, &mut out).unwrap();
+            let _ = done_tx.send((eof, out));
+        });
+        let (eof, out) = done_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("the forward spun on a zero-length read at EOF");
+        assert!(eof);
+        assert_eq!(out, b"last words\n");
+    }
+
+    /// An open pipe with nothing to read returns at once, not at EOF.
+    #[test]
+    fn forwarding_returns_when_the_pipe_is_empty() {
+        let (_tx, mut rx) = mio::unix::pipe::new().unwrap();
+        let mut out = Vec::new();
+        assert!(!forward_receiver_to_file(&mut rx, &mut out).unwrap());
+        assert!(out.is_empty());
     }
 
     /// The writer stops at the size limit and still reports the whole write.
