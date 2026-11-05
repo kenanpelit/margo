@@ -12,8 +12,10 @@
 //! elsewhere show up too); nothing polls. Outcomes are reported as
 //! toasts. udisks asks polkit, so the shell's polkit agent may prompt.
 
+use crate::menus::menu_widgets::panel_header::PanelHeader;
 use crate::menus::reveal_poll::{RevealGate, watch_stream};
 use crate::removable_drives::{self, Crypt, Drive, DrivesState, Volume};
+use mshell_config::schema::menu_widgets::MenuWidget;
 use mshell_utils::units::bytes as format_size;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, EditableExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -63,31 +65,8 @@ impl Component for UsbMenuWidgetModel {
             set_spacing: 12,
 
             // ── §12 panel header ──
-            gtk::Box {
-                add_css_class: "panel-header",
-                set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 12,
-                gtk::Image {
-                    add_css_class: "panel-header-icon",
-                    set_valign: gtk::Align::Center,
-                    set_icon_name: Some("drive-removable-media-symbolic"),
-                },
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_hexpand: true,
-                    gtk::Label {
-                        add_css_class: "panel-title",
-                        set_halign: gtk::Align::Start,
-                        set_label: "USB Drives",
-                    },
-                    #[local_ref]
-                    status_label_widget -> gtk::Label {
-                        add_css_class: "label-small",
-                        set_halign: gtk::Align::Start,
-                        set_xalign: 0.0,
-                    },
-                },
-            },
+            #[local_ref]
+            header_root -> gtk::Box {},
 
             #[name = "fill_list"]
             gtk::ScrolledWindow {
@@ -112,7 +91,13 @@ impl Component for UsbMenuWidgetModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let status_label_widget = gtk::Label::new(None);
+        let header = PanelHeader::new(
+            "drive-removable-media-symbolic",
+            MenuWidget::Usb.display_name(),
+        )
+        .with_subtitle();
+        let header_root = header.root().clone();
+        let status_label_widget = header.subtitle().cloned().unwrap_or_default();
         let content = gtk::Box::new(gtk::Orientation::Vertical, 8);
 
         // Subscribed only while the menu is open: a closed menu keeps no

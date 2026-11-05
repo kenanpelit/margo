@@ -22,6 +22,8 @@ use crate::agents::{
 };
 use crate::common_widgets::segmented::{Segmented, SegmentedStyle};
 use crate::menus::menu_widgets::agents::sessions_page::{SessionAction, SessionsPage};
+use crate::menus::menu_widgets::panel_header::PanelHeader;
+use mshell_config::schema::menu_widgets::MenuWidget;
 use mshell_utils::shared_poll::PollSubscription;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -81,37 +83,8 @@ impl Component for AgentsMenuWidgetModel {
             set_spacing: 10,
 
             // ── §12 panel header ──
-            gtk::Box {
-                add_css_class: "panel-header",
-                set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 12,
-                gtk::Image {
-                    add_css_class: "panel-header-icon",
-                    set_valign: gtk::Align::Center,
-                    set_icon_name: Some("ai-agents-symbolic"),
-                },
-                gtk::Label {
-                    add_css_class: "panel-title",
-                    set_halign: gtk::Align::Start,
-                    set_hexpand: true,
-                    set_xalign: 0.0,
-                    set_label: "AI Agents",
-                },
-                #[local_ref]
-                plan_label -> gtk::Label {
-                    add_css_class: "panel-header-meta",
-                    set_valign: gtk::Align::Center,
-                },
-                #[name = "refresh_btn"]
-                gtk::Button {
-                    add_css_class: "panel-action-btn",
-                    set_icon_name: "view-refresh-symbolic",
-                    set_valign: gtk::Align::Center,
-                    connect_clicked[sender] => move |_| {
-                        sender.input(AgentsMenuWidgetInput::Refresh);
-                    },
-                },
-            },
+            #[local_ref]
+            header_root -> gtk::Box {},
 
             #[local_ref]
             tabs_root -> gtk::Box {},
@@ -212,7 +185,14 @@ impl Component for AgentsMenuWidgetModel {
             },
         );
         let tabs_root = tabs.root().clone();
-        let plan_label = gtk::Label::new(None);
+        let s = sender.clone();
+        let header = PanelHeader::new("ai-agents-symbolic", MenuWidget::Agents.display_name())
+            .with_meta()
+            .action("view-refresh-symbolic", "Refresh", move || {
+                s.input(AgentsMenuWidgetInput::Refresh);
+            });
+        let header_root = header.root().clone();
+        let plan_label = header.meta().cloned().unwrap_or_default();
         let s = sender.clone();
         let sessions_page = SessionsPage::new(&sessions_box, move |a| {
             s.input(AgentsMenuWidgetInput::Session(a));
@@ -232,7 +212,6 @@ impl Component for AgentsMenuWidgetModel {
         let widgets = view_output!();
         crate::menus::list_fit::mark_menu_list(&widgets.usage_scroll, 560);
         crate::menus::list_fit::mark_menu_list(&widgets.sessions_scroll, 560);
-        mshell_common::a11y::name(&widgets.refresh_btn, "Refresh");
         rebuild_usage(&model.usage_box, None);
         model.update_sessions();
         model.update_tabs();

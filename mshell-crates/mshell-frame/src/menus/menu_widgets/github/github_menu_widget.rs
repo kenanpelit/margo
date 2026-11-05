@@ -17,6 +17,8 @@ use crate::common_widgets::segmented::{Segmented, SegmentedStyle};
 use crate::github::{self, CiState, GhError, GithubSnapshot, Notification, PullRequest, Review};
 use crate::menus::menu_widgets::agents::agents_menu_widget::open_url;
 use crate::menus::menu_widgets::agents::keyed_rows::{KeyedList, KeyedRow};
+use crate::menus::menu_widgets::panel_header::PanelHeader;
+use mshell_config::schema::menu_widgets::MenuWidget;
 use mshell_utils::shared_poll::PollSubscription;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, Cast, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -84,46 +86,8 @@ impl Component for GithubMenuWidgetModel {
             set_orientation: gtk::Orientation::Vertical,
             set_spacing: 10,
 
-            gtk::Box {
-                add_css_class: "panel-header",
-                set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 12,
-                gtk::Image {
-                    add_css_class: "panel-header-icon",
-                    set_valign: gtk::Align::Center,
-                    set_icon_name: Some("github-symbolic"),
-                },
-                gtk::Label {
-                    add_css_class: "panel-title",
-                    set_halign: gtk::Align::Start,
-                    set_hexpand: true,
-                    set_xalign: 0.0,
-                    set_label: "GitHub",
-                },
-                #[local_ref]
-                meta -> gtk::Label {
-                    add_css_class: "panel-header-meta",
-                    set_valign: gtk::Align::Center,
-                },
-                #[name = "mark_all_btn"]
-                gtk::Button {
-                    add_css_class: "panel-action-btn",
-                    set_icon_name: "object-select-symbolic",
-                    set_valign: gtk::Align::Center,
-                    connect_clicked[sender] => move |_| {
-                        sender.input(GithubMenuWidgetInput::MarkAllRead);
-                    },
-                },
-                #[name = "refresh_btn"]
-                gtk::Button {
-                    add_css_class: "panel-action-btn",
-                    set_icon_name: "view-refresh-symbolic",
-                    set_valign: gtk::Align::Center,
-                    connect_clicked[sender] => move |_| {
-                        sender.input(GithubMenuWidgetInput::Refresh);
-                    },
-                },
-            },
+            #[local_ref]
+            header_root -> gtk::Box {},
 
             #[local_ref]
             tabs_root -> gtk::Box {},
@@ -187,7 +151,17 @@ impl Component for GithubMenuWidgetModel {
             s.input(GithubMenuWidgetInput::SelectTab(i as u8));
         });
         let tabs_root = tabs.root().clone();
-        let meta = gtk::Label::new(None);
+        let (s_mark, s_refresh) = (sender.clone(), sender.clone());
+        let header = PanelHeader::new("github-symbolic", MenuWidget::Github.display_name())
+            .with_meta()
+            .action("object-select-symbolic", "Mark all as read", move || {
+                s_mark.input(GithubMenuWidgetInput::MarkAllRead);
+            })
+            .action("view-refresh-symbolic", "Refresh", move || {
+                s_refresh.input(GithubMenuWidgetInput::Refresh);
+            });
+        let header_root = header.root().clone();
+        let meta = header.meta().cloned().unwrap_or_default();
         let hint = hint("");
         let error = gtk::Label::new(None);
         error.set_css_classes(&["label-small-error"]);
@@ -220,8 +194,6 @@ impl Component for GithubMenuWidgetModel {
         };
         let widgets = view_output!();
         crate::menus::list_fit::mark_menu_list(&widgets.fill_list, 520);
-        mshell_common::a11y::name(&widgets.mark_all_btn, "Mark all as read");
-        mshell_common::a11y::name(&widgets.refresh_btn, "Refresh");
         model.render(&sender);
         ComponentParts { model, widgets }
     }

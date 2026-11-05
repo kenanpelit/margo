@@ -10,8 +10,10 @@
 use crate::crashes::{
     self, Crash, Fetch, JournalEntry, format_time, is_muted, journal_priority, signal_name,
 };
+use crate::menus::menu_widgets::panel_header::PanelHeader;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, CrashesConfigStoreFields};
+use mshell_config::schema::menu_widgets::MenuWidget;
 use reactive_graph::prelude::GetUntracked;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -64,35 +66,8 @@ impl Component for CrashesMenuWidgetModel {
             set_spacing: 8,
 
             // ── §12 panel header ──
-            gtk::Box {
-                add_css_class: "panel-header",
-                set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 12,
-                gtk::Image {
-                    add_css_class: "panel-header-icon",
-                    set_valign: gtk::Align::Center,
-                    set_icon_name: Some("dialog-warning-symbolic"),
-                },
-                gtk::Label {
-                    add_css_class: "panel-title",
-                    set_halign: gtk::Align::Start,
-                    set_hexpand: true,
-                    set_valign: gtk::Align::Center,
-                    set_label: "Crashes",
-                },
-                #[name = "refresh_button"]
-                gtk::Button {
-                    add_css_class: "panel-action-btn",
-                    set_valign: gtk::Align::Center,
-                    set_tooltip_text: Some("Refresh"),
-                    connect_clicked[sender] => move |_| {
-                        sender.input(CrashesMenuWidgetInput::Refresh);
-                    },
-                    gtk::Image {
-                        set_icon_name: Some("view-refresh-symbolic"),
-                    },
-                },
-            },
+            #[local_ref]
+            header_root -> gtk::Box {},
 
             // ── §12 segmented control (Crashes · Errors) ──
             gtk::Box {
@@ -148,6 +123,15 @@ impl Component for CrashesMenuWidgetModel {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let s = sender.clone();
+        let header = PanelHeader::new(
+            "dialog-warning-symbolic",
+            MenuWidget::Crashes.display_name(),
+        )
+        .action("view-refresh-symbolic", "Refresh", move || {
+            s.input(CrashesMenuWidgetInput::Refresh)
+        });
+        let header_root = header.root().clone();
         let model = CrashesMenuWidgetModel {
             tab: CrashesTab::Crashes,
             crashes: None,
@@ -157,7 +141,6 @@ impl Component for CrashesMenuWidgetModel {
         };
         let widgets = view_output!();
         crate::menus::list_fit::mark_menu_list(&widgets.fill_list, 480);
-        mshell_common::a11y::name(&widgets.refresh_button, "Refresh");
         model.render(&sender);
         ComponentParts { model, widgets }
     }

@@ -60,4 +60,10 @@
   &:active {
     background-color: unquote("color-mix(in srgb, var(--primary) 22%, transparent)");
   }
+
+  // `all: unset` above also strips GTK's focus outline: restore a
+  // keyboard focus ring (§16, mandatory) — the §12 inset 2px --primary.
+  &:focus-visible {
+    box-shadow: inset 0 0 0 2px var(--primary);
+  }
 }

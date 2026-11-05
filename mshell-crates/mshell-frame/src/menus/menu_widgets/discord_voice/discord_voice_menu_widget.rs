@@ -8,7 +8,9 @@
 //! rebuilds the list under a slider being dragged.
 
 use crate::discord::{self, DiscordCommand};
+use crate::menus::menu_widgets::panel_header::PanelHeader;
 use crate::menus::reveal_poll::{RevealGate, watch_stream};
+use mshell_config::schema::menu_widgets::MenuWidget;
 use mshell_utils::discord::{DiscordState, DiscordStatus, Participant};
 use relm4::gtk::prelude::{
     AccessibleExtManual, BoxExt, ButtonExt, ObjectExt, OrientableExt, RangeExt, ScaleExt, WidgetExt,
@@ -59,23 +61,8 @@ impl Component for DiscordVoiceMenuWidgetModel {
             set_orientation: gtk::Orientation::Vertical,
             set_spacing: 10,
 
-            gtk::Box {
-                add_css_class: "panel-header",
-                set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 12,
-                gtk::Image {
-                    add_css_class: "panel-header-icon",
-                    set_icon_name: Some("call-start-symbolic"),
-                    set_valign: gtk::Align::Center,
-                },
-                gtk::Label {
-                    add_css_class: "panel-title",
-                    set_label: "Discord voice",
-                    set_halign: gtk::Align::Start,
-                    set_hexpand: true,
-                    set_valign: gtk::Align::Center,
-                },
-            },
+            #[local_ref]
+            header_root -> gtk::Box {},
 
             // Status / empty / auth line (DESIGN §17 tones: dim, neutral).
             #[name = "status_label"]
@@ -171,6 +158,11 @@ impl Component for DiscordVoiceMenuWidgetModel {
                 () = watch => {}
             }
         });
+        let header = PanelHeader::new(
+            "call-start-symbolic",
+            MenuWidget::DiscordVoice.display_name(),
+        );
+        let header_root = header.root().clone();
         let model = DiscordVoiceMenuWidgetModel {
             state: DiscordState::default(),
             rows: HashMap::new(),

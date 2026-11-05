@@ -1,20 +1,21 @@
 //! Reusable §12 panel header (DESIGN.md §12 "Header region").
 //!
-//! Layout: a leading symbolic glyph, a SemiBold display title that
-//! takes the slack, a live date as dim metadata, and a circular
-//! settings gear pinned right:
+//! [`PanelHeader`] builds the one header row every panel uses: a leading
+//! symbolic glyph, a SemiBold title that takes the slack (optionally with
+//! a dim status line under it), optional dim trailing metadata, and
+//! circular icon actions pinned right, each with an accessible name:
 //!
 //! ```text
 //! [▤]  Dashboard            Fri · May 22   (⚙)
+//! [⚠]  Crashes                             (⟳)
 //! ```
 //!
-//! The dashboard uses this in place of the old `Clock` hero — the big
-//! time was redundant with the bar clock, so the header carries the
-//! title + a quiet date instead. The date ticks once a minute (it only
-//! flips at midnight; no need for the clock's 1 Hz).
+//! [`PanelHeaderModel`] is the `MenuWidget::PanelHeader` config widget
+//! built on it: the dashboard's header (in place of the old `Clock`
+//! hero) with a live date as metadata and the Settings gear. The date
+//! ticks once a minute (it only flips at midnight; no need for 1 Hz).
 
 use mshell_settings::open_settings;
-use relm4::gtk::prelude::OrientableExt;
 use relm4::{
     ComponentParts, ComponentSender, SimpleComponent,
     gtk::{
@@ -64,6 +65,118 @@ fn greeting_text() -> String {
     }
 }
 
+/// The §12 header row. Build it, keep the handles you update (title,
+/// metadata, status line), and put [`Self::root`] at the
+/// top of the panel (`#[local_ref] header -> gtk::Box {}` in a `view!`).
+pub(crate) struct PanelHeader {
+    root: gtk::Box,
+    title: gtk::Label,
+    meta: Option<gtk::Label>,
+    subtitle: Option<gtk::Label>,
+}
+
+impl PanelHeader {
+    /// Leading `icon` + `title`, nothing else yet. Pass the menu's
+    /// `MenuWidget::display_name()` as the title so the header and
+    /// Settings → Menus never name the panel differently.
+    pub(crate) fn new(icon: &str, title: &str) -> Self {
+        Self::fill(gtk::Box::new(Orientation::Horizontal, 0), icon, title)
+    }
+
+    /// Build the header into an existing (empty) box — a component whose
+    /// root *is* the header.
+    pub(crate) fn fill(root: gtk::Box, icon: &str, title: &str) -> Self {
+        root.add_css_class("panel-header");
+        root.set_orientation(Orientation::Horizontal);
+        root.set_hexpand(true);
+        root.set_spacing(12);
+        root.set_valign(gtk::Align::Center);
+
+        let image = gtk::Image::from_icon_name(icon);
+        image.add_css_class("panel-header-icon");
+        image.set_valign(gtk::Align::Center);
+        root.append(&image);
+
+        let title_label = gtk::Label::new(Some(title));
+        title_label.add_css_class("panel-title");
+        title_label.set_halign(gtk::Align::Start);
+        title_label.set_valign(gtk::Align::Center);
+        title_label.set_hexpand(true);
+        title_label.set_xalign(0.0);
+        root.append(&title_label);
+
+        Self {
+            root,
+            title: title_label,
+            meta: None,
+            subtitle: None,
+        }
+    }
+
+    /// A dim status line under the title (the title and it share the
+    /// slack; e.g. USB's "2 drives · 1 mounted").
+    pub(crate) fn with_subtitle(mut self) -> Self {
+        let column = gtk::Box::new(Orientation::Vertical, 0);
+        column.set_hexpand(true);
+        column.set_valign(gtk::Align::Center);
+        self.title.set_hexpand(false);
+        self.root.remove(&self.title);
+        column.append(&self.title);
+        let subtitle = gtk::Label::new(None);
+        subtitle.add_css_class("label-small");
+        subtitle.set_halign(gtk::Align::Start);
+        subtitle.set_xalign(0.0);
+        column.append(&subtitle);
+        // Right after the leading icon.
+        self.root
+            .insert_child_after(&column, self.root.first_child().as_ref());
+        self.subtitle = Some(subtitle);
+        self
+    }
+
+    /// Dim trailing metadata (`--outline` tier), before the actions —
+    /// a date, a plan name, "3 unread".
+    pub(crate) fn with_meta(mut self) -> Self {
+        let meta = gtk::Label::new(None);
+        meta.add_css_class("panel-header-meta");
+        meta.set_halign(gtk::Align::End);
+        meta.set_valign(gtk::Align::Center);
+        self.root.append(&meta);
+        self.meta = Some(meta);
+        self
+    }
+
+    /// Append a circular icon action. `name` is its accessible name and
+    /// tooltip (§13.8 — an icon-only button needs one).
+    pub(crate) fn action(self, icon: &str, name: &str, on_click: impl Fn() + 'static) -> Self {
+        let button = gtk::Button::from_icon_name(icon);
+        mshell_common::a11y::name(&button, name);
+        button.add_css_class("panel-action-btn");
+        button.set_valign(gtk::Align::Center);
+        button.connect_clicked(move |_| on_click());
+        self.root.append(&button);
+        self
+    }
+
+    pub(crate) fn root(&self) -> &gtk::Box {
+        &self.root
+    }
+
+    pub(crate) fn title(&self) -> &gtk::Label {
+        &self.title
+    }
+
+    /// The metadata label ([`Self::with_meta`]).
+    pub(crate) fn meta(&self) -> Option<&gtk::Label> {
+        self.meta.as_ref()
+    }
+
+    /// The status line ([`Self::with_subtitle`]).
+    pub(crate) fn subtitle(&self) -> Option<&gtk::Label> {
+        self.subtitle.as_ref()
+    }
+}
+
 pub(crate) struct PanelHeaderModel {
     /// When true the title carries a live greeting instead of a static
     /// label; the minute tick refreshes it alongside the date.
@@ -86,62 +199,15 @@ pub(crate) struct PanelHeaderInit {
     pub greeting: bool,
 }
 
-#[relm4::component(pub)]
 impl SimpleComponent for PanelHeaderModel {
     type Input = PanelHeaderInput;
     type Output = PanelHeaderOutput;
     type Init = PanelHeaderInit;
+    type Root = gtk::Box;
+    type Widgets = PanelHeader;
 
-    view! {
-        #[root]
-        gtk::Box {
-            add_css_class: "panel-header",
-            set_orientation: Orientation::Horizontal,
-            set_hexpand: true,
-            set_spacing: 12,
-            set_valign: gtk::Align::Center,
-
-            gtk::Image {
-                add_css_class: "panel-header-icon",
-                set_valign: gtk::Align::Center,
-                set_icon_name: Some("view-grid-symbolic"),
-            },
-
-            // Title takes the slack, pushing the date + gear right.
-            // `#[watch]` so the greeting variant refreshes on the tick.
-            gtk::Label {
-                add_css_class: "panel-title",
-                #[watch]
-                set_label: model.title.as_str(),
-                set_halign: gtk::Align::Start,
-                set_valign: gtk::Align::Center,
-                set_hexpand: true,
-            },
-
-            // Live date as dim metadata (DESIGN.md §12 — recedes
-            // behind the title, sits at the --outline tier via SCSS).
-            gtk::Label {
-                add_css_class: "panel-header-meta",
-                #[watch]
-                set_label: model.date_label.as_str(),
-                set_halign: gtk::Align::End,
-                set_valign: gtk::Align::Center,
-            },
-
-            // Circular settings gear. Opening Settings runs the frame's
-            // toggle_menu, which already hides this panel — so no
-            // CloseMenu emit is needed (same trap the clipboard gear
-            // hit: a CloseMenu after would slam Settings shut).
-            gtk::Button {
-                add_css_class: "panel-action-btn",
-                set_valign: gtk::Align::Center,
-                set_icon_name: "settings-symbolic",
-                set_tooltip_text: Some("Settings"),
-                connect_clicked => move |_| {
-                    open_settings();
-                },
-            },
-        }
+    fn init_root() -> Self::Root {
+        gtk::Box::default()
     }
 
     fn init(
@@ -167,7 +233,15 @@ impl SimpleComponent for PanelHeaderModel {
             timer_id: Some(id),
         };
 
-        let widgets = view_output!();
+        // Opening Settings runs the frame's toggle_menu, which already
+        // hides this panel — so no CloseMenu emit is needed (same trap the
+        // clipboard gear hit: a CloseMenu after would slam Settings shut).
+        let widgets = PanelHeader::fill(root, "view-grid-symbolic", &model.title)
+            .with_meta()
+            .action("settings-symbolic", "Settings", open_settings);
+        if let Some(meta) = widgets.meta() {
+            meta.set_label(&model.date_label);
+        }
 
         ComponentParts { model, widgets }
     }
@@ -180,6 +254,13 @@ impl SimpleComponent for PanelHeaderModel {
                     self.title = greeting_text();
                 }
             }
+        }
+    }
+
+    fn update_view(&self, widgets: &mut Self::Widgets, _sender: ComponentSender<Self>) {
+        widgets.title().set_label(&self.title);
+        if let Some(meta) = widgets.meta() {
+            meta.set_label(&self.date_label);
         }
     }
 }

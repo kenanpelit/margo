@@ -796,12 +796,19 @@ A panel opens with a real header, not just a section label:
   §0.9 target), resting
   transparent, hover = the canonical 14% primary state-layer (§4/§5).
   Never a naked floating icon, never raised button chrome.
-- **Reuse the widget, don't rebuild it.** This header ships as the
-  reusable `MenuWidget::PanelHeader { title }` config widget
-  (`menu_widgets/panel_header.rs`, `.panel-header` /
-  `.panel-action-btn`): leading glyph + title + a live date as dim
-  `--outline` metadata + the ⚙ gear. Drop it at the top of any panel's
-  widget list (the dashboard does — in place of its old Clock hero).
+- **Reuse the widget, don't rebuild it.** `menu_widgets/panel_header.rs`
+  has the one builder, `PanelHeader::new(icon, title)` with
+  `.with_subtitle()` (dim status line under the title),
+  `.with_meta()` (dim `--outline` trailing metadata) and
+  `.action(icon, name, on_click)` (circular `.panel-action-btn`, always
+  with an accessible name); put `header.root()` at the top of the panel.
+  Title = the menu's `MenuWidget::display_name()`, so the header and
+  Settings → Menus agree. The `MenuWidget::PanelHeader { title }` config
+  widget is built on it: leading glyph + title + a live date as metadata
+  + the ⚙ gear. Drop it at the top of any panel's widget list (the
+  dashboard does — in place of its old Clock hero). The action buttons
+  are `all: unset`, so `.panel-action-btn` restores the focus ring
+  (inset 2px `--primary` on `:focus-visible`).
   The gear calls `open_settings()` with **no** CloseMenu emit — the
   frame's `toggle_menu` already hides the panel, so a CloseMenu after
   would slam Settings shut.
@@ -1248,7 +1255,7 @@ existing part. Reuse keeps the system coherent (§0) and is faster.
 | Component | Lives in | Use when | Don't use when |
 |---|---|---|---|
 | **RevealerRow** | `common_widgets/revealer_row/` | status row that expands to details/devices (§5) | a plain non-expanding row (use a device row) |
-| **PanelHeader** | `menus/menu_widgets/.../panel_header` (§12) | spacious panel title + circular actions | a compact menu (no hero header) |
+| **PanelHeader** | `menus/menu_widgets/panel_header.rs` (`PanelHeader::new(..).with_meta().action(..)`, §12) | spacious panel title + circular actions | a compact menu (no hero header); never a hand-written `.panel-header` box |
 | **Segmented control** | `common_widgets/segmented.rs` + `03-primitives/_segmented.scss` (`.ok-segmented` / `.ok-segment`) | `Capsule`: 2–4 mutually exclusive views in a panel (clipboard, agents, GitHub, crashes); `ButtonRow`: a compact value picker (CPU sort / protocol / fan level) | many options (use a list/dropdown); never a per-menu `*-tabs` SCSS copy |
 | **Panel search** | §12 pill search | browse-and-filter panel | a compact menu (use `--radius-xl` search) |
 | **Reorder DnD** | `mshell-settings/src/reorder_dnd.rs` | any user-reorderable list (§5) | non-reorderable list |
