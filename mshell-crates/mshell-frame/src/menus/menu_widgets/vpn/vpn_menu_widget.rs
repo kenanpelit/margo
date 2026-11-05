@@ -6,9 +6,12 @@
 //! `auto-connect`, `quantum`, `obf`). No daemon/IPC — `mvpn` + the Mullvad
 //! daemon are the source of truth, exactly like the bar pill + Settings page.
 //!
-//! Polling is lazy: the refresh loop only starts on the first reveal (and
-//! arms no timer while hidden), so a menu the user never opens spawns no
-//! `mvpn` processes — see [`VpnMenuWidgetInput::ParentRevealChanged`].
+//! The connection status follows the shell's shared VPN feed
+//! ([`VPN_POLL`]: `mvpn status --json --follow`) while the menu is open.
+//! Favourites and toggles only change through this menu's own actions,
+//! so they load on open and after each action, plus a slow safety-net
+//! refresh. Nothing runs before the first open or while hidden — see
+//! [`VpnMenuWidgetInput::ParentRevealChanged`].
 
 use super::super::dns::dns_menu_widget::{
     DnsMenuWidgetInit, DnsMenuWidgetInput, DnsMenuWidgetModel,
@@ -20,17 +23,26 @@ use relm4::gtk::prelude::{BoxExt, ButtonExt, EditableExt, OrientableExt, WidgetE
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::time::Duration;
 
-const REFRESH_INTERVAL: Duration = Duration::from_secs(15);
+/// Safety-net full reload while open (favourites / toggles changed from
+/// outside, e.g. the CLI). The status itself comes from the live feed.
+const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 
 /// Anti-censorship (obfuscation) modes offered in the dropdown (index ↔ string).
 const OBF_MODES: &[&str] = &["auto", "off", "udp2tcp", "shadowsocks", "quic"];
 
-use mshell_utils::mvpn::{VpnFav as Fav, VpnStatus, parse_fav_list, toggle_value};
+use mshell_utils::mvpn::{
+    VPN_POLL, VpnFav as Fav, VpnProbe, VpnStatus, parse_fav_list, toggle_value,
+};
+use mshell_utils::shared_poll::PollSubscription;
 
 pub(crate) struct VpnMenuWidgetModel {
     connected: bool,
     /// Currently-connected relay id (empty when down).
     connected_relay: String,
+    /// The status line the hero shows (`VpnStatus::summary`).
+    status_text: String,
+    /// The shared live VPN status; active while the menu is open.
+    vpn_poll: PollSubscription<VpnProbe>,
     lockdown: bool,
     autoconnect: bool,
     quantum: bool,
@@ -146,6 +158,12 @@ pub(crate) enum VpnMenuWidgetCommandOutput {
     /// Mullvad country catalog (code, name, relay-count) — loaded lazily when
     /// the Countries section is first expanded.
     CountriesLoaded(Vec<(String, String, u32)>),
+    /// A connection change from the shared VPN feed (no `mvpn` spawn).
+    Status {
+        status: String,
+        connected: bool,
+        relay: String,
+    },
 }
 
 #[relm4::component(pub(crate))]
@@ -561,6 +579,8 @@ impl Component for VpnMenuWidgetModel {
         let model = VpnMenuWidgetModel {
             connected: false,
             connected_relay: String::new(),
+            status_text: String::new(),
+            vpn_poll: VPN_POLL.subscribe(),
             lockdown: false,
             autoconnect: false,
             quantum: false,
@@ -595,6 +615,29 @@ impl Component for VpnMenuWidgetModel {
         };
 
         let widgets = view_output!();
+
+        // Live connection status from the shared VPN feed (only probes
+        // while the menu is open, see `ParentRevealChanged`).
+        let mut vpn_rx = model.vpn_poll.receiver();
+        sender.command(|out, shutdown| async move {
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            loop {
+                let probe = vpn_rx.borrow_and_update().clone();
+                if let Some(probe) = probe {
+                    let (status, connected, relay) = status_parts(probe.status);
+                    let _ = out.send(VpnMenuWidgetCommandOutput::Status {
+                        status,
+                        connected,
+                        relay,
+                    });
+                }
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    r = vpn_rx.changed() => if r.is_err() { break },
+                }
+            }
+        });
         // Drop the embedded DNS widget into the expander now that both exist.
         widgets.dns_expander.set_child(Some(model.dns.widget()));
         // Countries section = a search entry above the (filtered) list box.
@@ -707,6 +750,7 @@ impl Component for VpnMenuWidgetModel {
             VpnMenuWidgetInput::RefreshNow => reload(&sender),
             VpnMenuWidgetInput::ParentRevealChanged(visible) => {
                 self.visible.set(visible);
+                self.vpn_poll.set_active(visible);
                 if visible {
                     if !self.poll_started {
                         self.poll_started = true;
@@ -768,56 +812,37 @@ impl Component for VpnMenuWidgetModel {
                     );
                     return;
                 }
+                VpnMenuWidgetCommandOutput::Status {
+                    status,
+                    connected,
+                    relay,
+                } => {
+                    if (connected, relay.as_str(), status.as_str())
+                        != (
+                            self.connected,
+                            self.connected_relay.as_str(),
+                            &self.status_text,
+                        )
+                    {
+                        self.apply_status(status, connected, relay);
+                        rebuild_favs(
+                            &self.fav_box,
+                            &self.favs,
+                            &self.connected_relay,
+                            &self.fav_filter,
+                            &sender,
+                        );
+                    }
+                    return;
+                }
             };
-        self.connected = connected;
-        self.connected_relay = relay;
+        self.apply_status(status, connected, relay);
         self.lockdown = lockdown;
         self.autoconnect = autoconnect;
         self.quantum = quantum;
         self.obf = obf;
         self.favs = favs;
         self.mode = mode;
-
-        // ── Hero status card ────────────────────────────────────────
-        self.state_label.set_label(if connected {
-            "CONNECTED"
-        } else {
-            "DISCONNECTED"
-        });
-        if connected {
-            self.hero.add_css_class("connected");
-        } else {
-            self.hero.remove_css_class("connected");
-        }
-        // Location line — reuse the human location the status string already
-        // carries ("Connected · <relay> · <location>"); fall back to a plain
-        // state word when the daemon didn't report a location.
-        let loc_text = if connected {
-            let loc = status_location(&status);
-            if loc.is_empty() {
-                "Connected".to_string()
-            } else {
-                loc
-            }
-        } else {
-            "Not connected".to_string()
-        };
-        self.loc_label.set_label(&loc_text);
-        // Relay · protocol — hidden when down. Mullvad WireGuard relays carry
-        // "-wg-" in their id, so we can label the protocol when it's clear.
-        if connected && !self.connected_relay.is_empty() {
-            let proto = if self.connected_relay.contains("-wg-") {
-                format!("{}  ·  WireGuard", self.connected_relay)
-            } else {
-                self.connected_relay.clone()
-            };
-            self.relay_label.set_label(&proto);
-            self.relay_label.set_visible(true);
-        } else {
-            self.relay_label.set_visible(false);
-        }
-        self.toggle_btn
-            .set_label(if connected { "Disconnect" } else { "Connect" });
 
         // Highlight the active mode button. Mullvad/Mixed → Mullvad; Blocky →
         // Blocky; everything else → Default.
@@ -875,6 +900,54 @@ impl Component for VpnMenuWidgetModel {
 }
 
 impl VpnMenuWidgetModel {
+    /// Show a connection state on the hero card (status line, relay,
+    /// connect button).
+    fn apply_status(&mut self, status: String, connected: bool, relay: String) {
+        self.connected = connected;
+        self.connected_relay = relay;
+        self.status_text = status;
+        // ── Hero status card ────────────────────────────────────────
+        self.state_label.set_label(if connected {
+            "CONNECTED"
+        } else {
+            "DISCONNECTED"
+        });
+        if connected {
+            self.hero.add_css_class("connected");
+        } else {
+            self.hero.remove_css_class("connected");
+        }
+        // Location line — reuse the human location the status string already
+        // carries ("Connected · <relay> · <location>"); fall back to a plain
+        // state word when the daemon didn't report a location.
+        let loc_text = if connected {
+            let loc = status_location(&self.status_text);
+            if loc.is_empty() {
+                "Connected".to_string()
+            } else {
+                loc
+            }
+        } else {
+            "Not connected".to_string()
+        };
+        self.loc_label.set_label(&loc_text);
+        // Relay · protocol — hidden when down. Mullvad WireGuard relays carry
+        // "-wg-" in their id, so we can label the protocol when it's clear.
+        if connected && !self.connected_relay.is_empty() {
+            let proto = if self.connected_relay.contains("-wg-") {
+                format!("{}  ·  WireGuard", self.connected_relay)
+            } else {
+                self.connected_relay.clone()
+            };
+            self.relay_label.set_label(&proto);
+            self.relay_label.set_visible(true);
+        } else {
+            self.relay_label.set_visible(false);
+        }
+        self.toggle_btn
+            .set_label(if connected { "Disconnect" } else { "Connect" });
+    }
+
     /// Drive the embedded DNS section's lazy probe: it runs only while the
     /// menu is visible *and* the DNS section is expanded.
     fn forward_dns_reveal(&self) {
@@ -1082,12 +1155,22 @@ fn start_polling(sender: &ComponentSender<VpnMenuWidgetModel>, visible: RevealGa
     });
 }
 
+/// `(status line, connected, relay)` for the hero card; the relay is
+/// empty while down.
+fn status_parts(vpn: VpnStatus) -> (String, bool, String) {
+    let status = vpn.summary();
+    let relay = if vpn.connected {
+        vpn.relay
+    } else {
+        String::new()
+    };
+    (status, vpn.connected, relay)
+}
+
 /// Query `mvpn` for status + toggles + favourites.
 async fn load() -> VpnMenuWidgetCommandOutput {
-    let vpn = VpnStatus::parse(&capture(&["status", "--json"]).await);
-    let connected = vpn.connected;
-    let status = vpn.summary();
-    let relay = if connected { vpn.relay } else { String::new() };
+    let (status, connected, relay) =
+        status_parts(VpnStatus::parse(&capture(&["status", "--json"]).await));
     let favs = parse_fav_list(&capture(&["fav", "list"]).await);
     let toggles = capture(&["toggles"]).await;
     let kv = |key: &str| toggle_value(&toggles, key);
@@ -1117,4 +1200,30 @@ async fn capture(args: &[&str]) -> String {
         .await
         .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{VpnStatus, status_parts};
+
+    /// The live feed and the full reload fill the hero card the same way.
+    #[test]
+    fn feed_status_fills_the_hero_like_a_reload() {
+        let up = VpnStatus::parse(
+            r#"{"connected":true,"relay":"se-got-wg-001","location":"Gothenburg"}"#,
+        );
+        assert_eq!(
+            status_parts(up),
+            (
+                "Connected · se-got-wg-001 · Gothenburg".to_string(),
+                true,
+                "se-got-wg-001".to_string()
+            )
+        );
+        let down = VpnStatus::parse(r#"{"connected":false,"relay":"se-got-wg-001"}"#);
+        assert_eq!(
+            status_parts(down),
+            ("Disconnected".to_string(), false, String::new())
+        );
+    }
 }
