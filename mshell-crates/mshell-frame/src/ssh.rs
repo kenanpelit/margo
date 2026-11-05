@@ -53,14 +53,27 @@ fn config_path() -> PathBuf {
     base.join(".ssh").join("config")
 }
 
-/// Parse `~/.ssh/config` into hosts, skipping wildcard (`*`) aliases.
-/// Mirrors the plugin: only `Host` / `Hostname` / `User` / `Port`
-/// matter for display; comments and blanks are ignored.
+/// Parse `~/.ssh/config` into hosts, skipping wildcard / negated
+/// patterns and `Match` blocks. Only `Host` / `Hostname` / `User` /
+/// `Port` matter for display; comments and blanks are ignored.
+/// `Include` is not followed (the launcher's SSH provider does that).
 pub(crate) fn load_hosts() -> Vec<SshHost> {
     let Ok(text) = std::fs::read_to_string(config_path()) else {
         return Vec::new();
     };
+    parse_hosts(&text)
+}
+
+fn parse_hosts(text: &str) -> Vec<SshHost> {
+    // An empty-named entry is a block we don't list (wildcard `Host`,
+    // `Match`): it keeps the keys that follow off the previous host.
     let mut hosts: Vec<SshHost> = Vec::new();
+    let blank = || SshHost {
+        name: String::new(),
+        hostname: String::new(),
+        user: String::new(),
+        port: String::new(),
+    };
     for line in text.lines() {
         let t = line.trim();
         if t.is_empty() || t.starts_with('#') {
@@ -68,36 +81,34 @@ pub(crate) fn load_hosts() -> Vec<SshHost> {
         }
         let lower = t.to_ascii_lowercase();
         if let Some(rest) = strip_key(t, &lower, "host") {
-            // A single `Host` line can list several aliases; the first
-            // non-wildcard one names the block.
-            let name = rest.split_whitespace().next().unwrap_or("").to_string();
-            if name.is_empty() || name.contains('*') {
-                // Wildcard / pattern block — don't start a host, and
-                // make sure following keys don't attach to the previous.
-                hosts.push(SshHost {
-                    name: String::new(),
-                    hostname: String::new(),
-                    user: String::new(),
-                    port: String::new(),
-                });
-                continue;
-            }
+            // A single `Host` line can list several patterns; the first
+            // literal alias (no wildcard, not negated) names the block.
+            let name = rest
+                .split_whitespace()
+                .find(|a| !a.starts_with('!') && !a.contains(['*', '?']))
+                .unwrap_or("");
             hosts.push(SshHost {
-                name,
-                hostname: String::new(),
-                user: String::new(),
-                port: String::new(),
+                name: name.to_string(),
+                ..blank()
             });
+        } else if strip_key(t, &lower, "match").is_some() {
+            hosts.push(blank());
         } else if let Some(cur) = hosts.last_mut() {
             if cur.name.is_empty() {
-                continue; // inside a wildcard block — ignore
+                continue; // inside a skipped block
             }
-            if let Some(v) = strip_key(t, &lower, "hostname") {
-                cur.hostname = v.to_string();
+            // ssh_config(5): the first obtained value is used.
+            let field = if let Some(v) = strip_key(t, &lower, "hostname") {
+                Some((&mut cur.hostname, v))
             } else if let Some(v) = strip_key(t, &lower, "user") {
-                cur.user = v.to_string();
-            } else if let Some(v) = strip_key(t, &lower, "port") {
-                cur.port = v.to_string();
+                Some((&mut cur.user, v))
+            } else {
+                strip_key(t, &lower, "port").map(|v| (&mut cur.port, v))
+            };
+            if let Some((slot, v)) = field
+                && slot.is_empty()
+            {
+                *slot = v.to_string();
             }
         }
     }
@@ -123,7 +134,7 @@ fn strip_key<'a>(line: &'a str, lower: &str, key: &str) -> Option<&'a str> {
 }
 
 /// Poll the live `ssh` client processes and return the set of target
-/// hosts (the last non-flag argument after `ssh`). Filters out the
+/// hosts (the destination operand of each `ssh` command). Filters out the
 /// daemon / agent / proxy noise the plugin filters.
 pub(crate) async fn active_targets() -> Vec<String> {
     let Ok(out) = tokio::process::Command::new("pgrep")
@@ -133,7 +144,11 @@ pub(crate) async fn active_targets() -> Vec<String> {
     else {
         return Vec::new();
     };
-    let text = String::from_utf8_lossy(&out.stdout);
+    parse_targets(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// Targets in `pgrep -af` output (`<pid> <cmdline>` per line).
+fn parse_targets(text: &str) -> Vec<String> {
     let mut seen: Vec<String> = Vec::new();
     for line in text.lines() {
         let line = line.trim();
@@ -157,20 +172,16 @@ pub(crate) async fn active_targets() -> Vec<String> {
         {
             continue;
         }
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        // Index of the `ssh` binary token.
-        let Some(ssh_idx) = parts
-            .iter()
-            .position(|p| *p == "ssh" || p.ends_with("/ssh"))
-        else {
+        // `<pid> <argv...>`: only an `ssh` program counts, not a shell
+        // or editor whose command line merely contains the word.
+        let mut args = line.split_whitespace().skip(1);
+        let Some(argv0) = args.next() else {
             continue;
         };
-        // Target = last non-flag arg after `ssh`.
-        let target = parts[ssh_idx + 1..]
-            .iter()
-            .rev()
-            .find(|p| !p.starts_with('-'))
-            .map(|s| s.to_string());
+        if argv0 != "ssh" && !argv0.ends_with("/ssh") {
+            continue;
+        }
+        let target = destination(args).map(str::to_string);
         if let Some(target) = target
             && !seen.contains(&target)
         {
@@ -178,6 +189,31 @@ pub(crate) async fn active_targets() -> Vec<String> {
         }
     }
     seen
+}
+
+/// ssh(1) options that take an argument (`-p 2222`, `-p2222`).
+const OPTS_WITH_ARG: &str = "BbcDEeFIiJLlmOoPpQRSWw";
+
+/// The destination of `ssh [options] destination [command]`: the first
+/// operand, skipping option arguments, so a remote command's words are
+/// never taken for the host.
+fn destination<'a>(mut args: impl Iterator<Item = &'a str>) -> Option<&'a str> {
+    while let Some(a) = args.next() {
+        if a == "--" {
+            return args.next();
+        }
+        let Some(flags) = a.strip_prefix('-') else {
+            return Some(a);
+        };
+        // Flags cluster (`-At`); the first one that takes an argument
+        // uses the rest of the word, or the next word when none is left.
+        if let Some(i) = flags.find(|c| OPTS_WITH_ARG.contains(c))
+            && i + 1 == flags.len()
+        {
+            args.next();
+        }
+    }
+    None
 }
 
 /// Does any active target resolve to this configured host?
@@ -211,3 +247,7 @@ pub(crate) fn connect(host: &str) {
         }
     });
 }
+
+#[path = "ssh_tests.rs"]
+#[cfg(test)]
+mod ssh_tests;
