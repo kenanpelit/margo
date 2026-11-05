@@ -32,11 +32,26 @@ pub(crate) fn pkexec_outcome(code: Option<i32>, stderr: &str) -> Result<(), Stri
     }
 }
 
-/// `pkexec kill -s <sig> -- <pid>` for a process owned by another user
-/// (RULES: root goes through polkit, never sudo).
-pub(crate) async fn pkexec_kill(pid: i32, sig: &'static str) -> Result<(), String> {
+/// The root side of [`pkexec_kill`] (`sh -c SCRIPT sh <pid> <start>
+/// <sig>`): signal `pid` only if it still started at `start` (stat field
+/// 22), so a pid reused while the polkit dialog was open is never hit.
+/// `comm` (field 2) may hold spaces and `)`, so the fields are split after
+/// the last `) `; field 22 is the 20th from there.
+const KILL_SCRIPT: &str = r#"pid=$1 start=$2 sig=$3
+stat=$(cat "/proc/$pid/stat" 2>/dev/null) || { echo "Process $pid has already exited" >&2; exit 3; }
+rest=${stat##*) }
+set -f
+set -- $rest
+[ "${20}" = "$start" ] || { echo "Process $pid has already exited" >&2; exit 3; }
+exec kill -s "$sig" -- "$pid""#;
+
+/// `kill -s <sig> -- <pid>` as root through pkexec for a process owned by
+/// another user (RULES: root goes through polkit, never sudo), checked
+/// against its start time first.
+pub(crate) async fn pkexec_kill(pid: i32, start: u64, sig: &'static str) -> Result<(), String> {
     let out = tokio::process::Command::new("pkexec")
-        .args(["kill", "-s", sig, "--", &pid.to_string()])
+        .args(["/bin/sh", "-c", KILL_SCRIPT, "sh"])
+        .args([pid.to_string(), start.to_string(), sig.to_string()])
         .output()
         .await
         .map_err(|e| format!("pkexec unavailable: {e}"))?;
@@ -45,7 +60,43 @@ pub(crate) async fn pkexec_kill(pid: i32, sig: &'static str) -> Result<(), Strin
 
 #[cfg(test)]
 mod tests {
-    use super::pkexec_outcome;
+    use super::{KILL_SCRIPT, pkexec_outcome};
+    use std::path::Path;
+
+    /// Run the root script as ourselves (no pkexec) against a child.
+    fn run_script(pid: u32, start: u64) -> std::process::Output {
+        std::process::Command::new("/bin/sh")
+            .args(["-c", KILL_SCRIPT, "sh"])
+            .args([pid.to_string(), start.to_string(), "TERM".to_string()])
+            .output()
+            .expect("sh")
+    }
+
+    #[test]
+    fn root_kill_script_checks_the_start_time() {
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("spawn sleep");
+        let pid = child.id();
+        let start = super::procs::proc_start(Path::new("/proc"), pid as i32).expect("start");
+
+        let reused = run_script(pid, start + 1);
+        assert_eq!(reused.status.code(), Some(3), "a reused pid is refused");
+        assert_eq!(
+            pkexec_outcome(
+                reused.status.code(),
+                &String::from_utf8_lossy(&reused.stderr)
+            ),
+            Err(format!("Process {pid} has already exited"))
+        );
+        assert!(child.try_wait().expect("wait").is_none(), "not signalled");
+
+        let ok = run_script(pid, start);
+        assert_eq!(ok.status.code(), Some(0));
+        assert!(!child.wait().expect("wait").success(), "terminated");
+        assert_eq!(run_script(pid, start).status.code(), Some(3), "gone now");
+    }
 
     #[test]
     fn pkexec_exit_codes() {

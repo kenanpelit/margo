@@ -32,6 +32,8 @@ const MAX_GROUP_MEMBERS: usize = 6;
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PendingKill {
     pid: i32,
+    /// Start time from the snapshot the user picked the row in.
+    start: u64,
     name: String,
 }
 
@@ -47,8 +49,8 @@ pub(crate) struct ProcessesTabModel {
     pending: Option<PendingKill>,
     /// Result line under the confirm bar ("Sent SIGTERM to …", errors).
     status: String,
-    /// EPERM on the last attempt: offer the pkexec path.
-    needs_admin: Option<(i32, &'static str)>,
+    /// EPERM on the last attempt: offer the pkexec path (pid, start, signal).
+    needs_admin: Option<(i32, u64, &'static str)>,
     list: gtk::ListBox,
     /// The rows on screen, kept across polls (only changed rows rebuild).
     shown: KeyedRows<RowKey, LiveRow>,
@@ -63,7 +65,8 @@ pub(crate) enum ProcessesTabInput {
     Sort(ProcSort),
     Search(String),
     Group(bool),
-    AskKill(i32, String),
+    /// End this process: pid, start time, name.
+    AskKill(i32, u64, String),
     CancelKill,
     /// Send `SIGTERM` (`false`) or `SIGKILL` (`true`) to the pending pid.
     ConfirmKill(bool),
@@ -298,8 +301,8 @@ impl Component for ProcessesTabModel {
                 self.group = on;
                 self.render(&sender);
             }
-            ProcessesTabInput::AskKill(pid, name) => {
-                self.pending = Some(PendingKill { pid, name });
+            ProcessesTabInput::AskKill(pid, start, name) => {
+                self.pending = Some(PendingKill { pid, start, name });
                 self.status.clear();
                 self.needs_admin = None;
             }
@@ -312,12 +315,12 @@ impl Component for ProcessesTabModel {
                     (libc::SIGTERM, "TERM")
                 };
                 self.needs_admin = None;
-                self.status = match send_signal(p.pid, sig) {
+                self.status = match send_signal(p.pid, p.start, sig) {
                     Err(why) => why.to_string(),
                     Ok(KillResult::Sent) => format!("Sent SIG{sig_name} to {} ({})", p.name, p.pid),
                     Ok(KillResult::Gone) => format!("{} ({}) has already exited", p.name, p.pid),
                     Ok(KillResult::NotPermitted) => {
-                        self.needs_admin = Some((p.pid, sig_name));
+                        self.needs_admin = Some((p.pid, p.start, sig_name));
                         format!("{} ({}) belongs to another user", p.name, p.pid)
                     }
                     Ok(KillResult::Failed(e)) => format!("kill failed (errno {e})"),
@@ -325,12 +328,12 @@ impl Component for ProcessesTabModel {
                 sender.input(ProcessesTabInput::Poll);
             }
             ProcessesTabInput::AdminKill => {
-                let Some((pid, sig)) = self.needs_admin.take() else {
+                let Some((pid, start, sig)) = self.needs_admin.take() else {
                     return;
                 };
                 self.status = format!("Waiting for authorization to signal {pid}…");
                 sender.oneshot_command(async move {
-                    ProcessesTabCmd::AdminDone(super::pkexec_kill(pid, sig).await)
+                    ProcessesTabCmd::AdminDone(super::pkexec_kill(pid, start, sig).await)
                 });
             }
         }
@@ -392,7 +395,8 @@ impl ProcessesTabModel {
 enum RowKey {
     Placeholder,
     Group(Option<String>),
-    Proc(i32),
+    /// pid + start time: a reused pid is a new row (and a new kill target).
+    Proc(i32, u64),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -406,6 +410,7 @@ enum RowView {
     },
     Proc {
         pid: i32,
+        start: u64,
         name: String,
         subtitle: String,
         cpu: String,
@@ -442,7 +447,7 @@ fn row_views(
         return rows
             .iter()
             .take(MAX_ROWS)
-            .map(|r| (RowKey::Proc(r.pid), proc_view(r, false)))
+            .map(|r| (RowKey::Proc(r.pid, r.start), proc_view(r, false)))
             .collect();
     };
     let mut out = Vec::new();
@@ -470,7 +475,7 @@ fn row_views(
         ));
         for i in g.members.iter().take(MAX_GROUP_MEMBERS) {
             if let Some(r) = rows.get(*i) {
-                out.push((RowKey::Proc(r.pid), proc_view(r, true)));
+                out.push((RowKey::Proc(r.pid, r.start), proc_view(r, true)));
             }
         }
     }
@@ -489,6 +494,7 @@ fn proc_view(r: &ProcRow, member: bool) -> RowView {
     }
     RowView::Proc {
         pid: r.pid,
+        start: r.start,
         name: r.name.clone(),
         subtitle: sub,
         cpu: format!("{:.1}%", r.cpu),
@@ -513,12 +519,15 @@ enum LiveKind {
         rss: gtk::Label,
         /// Process rows: the ✕ button and who it ends. The click reads the
         /// row's current target, so it always matches what the row shows.
-        kill: Option<(gtk::Button, Rc<RefCell<(i32, String)>>)>,
+        kill: Option<(gtk::Button, Rc<RefCell<KillTarget>>)>,
     },
 }
 
+/// Who a row's ✕ ends: pid, start time, name.
+type KillTarget = (i32, u64, String);
+
 fn live_row(view: &RowView, sender: &ComponentSender<ProcessesTabModel>) -> LiveRow {
-    let item = |kill: Option<(gtk::Button, Rc<RefCell<(i32, String)>>)>| {
+    let item = |kill: Option<(gtk::Button, Rc<RefCell<KillTarget>>)>| {
         let text = ui::live_title_block();
         let cpu = ui::value_label("", 6, "");
         let rss = ui::value_label("", 7, "");
@@ -563,14 +572,16 @@ fn live_row(view: &RowView, sender: &ComponentSender<ProcessesTabModel>) -> Live
             }
             r
         }
-        RowView::Proc { pid, name, .. } => {
-            let target = Rc::new(RefCell::new((*pid, name.clone())));
+        RowView::Proc {
+            pid, start, name, ..
+        } => {
+            let target = Rc::new(RefCell::new((*pid, *start, name.clone())));
             let button = ui::icon_button("close-symbolic", &kill_name(*pid, name));
             let s = sender.clone();
             let t = target.clone();
             button.connect_clicked(move |_| {
-                let (pid, name) = t.borrow().clone();
-                s.input(ProcessesTabInput::AskKill(pid, name));
+                let (pid, start, name) = t.borrow().clone();
+                s.input(ProcessesTabInput::AskKill(pid, start, name));
             });
             item(Some((button, target)))
         }
@@ -608,6 +619,7 @@ fn update_row(r: &LiveRow, view: &RowView) {
             },
             RowView::Proc {
                 pid,
+                start,
                 name,
                 subtitle,
                 cpu: c,
@@ -625,9 +637,9 @@ fn update_row(r: &LiveRow, view: &RowView) {
                 body.set_tooltip_text(tip);
             }
             if let Some((button, target)) = kill
-                && target.borrow().1 != *name
+                && target.borrow().2 != *name
             {
-                *target.borrow_mut() = (*pid, name.clone());
+                *target.borrow_mut() = (*pid, *start, name.clone());
                 let label = kill_name(*pid, name);
                 button.update_property(&[gtk::accessible::Property::Label(&label)]);
                 button.set_tooltip_text(Some(&label));
@@ -653,6 +665,7 @@ mod tests {
             rss_kb: 1024,
             swap_kb: 0,
             io_bps: None,
+            start: u64::try_from(pid).unwrap_or(0) * 10,
         }
     }
 
@@ -664,7 +677,7 @@ mod tests {
     fn flat_rows_are_keyed_by_pid_in_sort_order() {
         let rows = vec![proc(10, 1, "a", 1.0), proc(20, 1, "b", 5.0)];
         let v = row_views(&rows, "", ProcSort::Cpu, None);
-        assert_eq!(keys(&v), [RowKey::Proc(20), RowKey::Proc(10)]);
+        assert_eq!(keys(&v), [RowKey::Proc(20, 200), RowKey::Proc(10, 100)]);
         // Same pids, other values: same keys (the rows are reused).
         let again = vec![proc(10, 1, "a", 9.0), proc(20, 1, "b", 0.5)];
         let v2 = row_views(&again, "", ProcSort::Cpu, None);

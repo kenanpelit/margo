@@ -205,6 +205,9 @@ pub(crate) struct ProcRow {
     pub swap_kb: u64,
     /// Bytes/s read + written; `None` when `/proc/<pid>/io` is unreadable.
     pub io_bps: Option<(u64, u64)>,
+    /// `/proc/<pid>/stat` start time: with the pid, names this process
+    /// and no later one that reuses the pid (see [`send_signal`]).
+    pub start: u64,
 }
 
 impl ProcRow {
@@ -259,6 +262,7 @@ impl ProcTracker {
                     rss_kb: p.rss_kb,
                     swap_kb: p.swap_kb,
                     io_bps,
+                    start: p.stat.start,
                 }
             })
             .collect();
@@ -420,13 +424,60 @@ pub(crate) fn classify_kill(ret: i32, errno: i32) -> KillResult {
     }
 }
 
-/// `kill(pid, sig)` after `kill_guard`.
-pub(crate) fn send_signal(pid: i32, sig: i32) -> Result<KillResult, &'static str> {
+/// Start time (`/proc/<pid>/stat` field 22) of `pid` under `proc_root`;
+/// `None` once it has exited.
+pub(crate) fn proc_start(proc_root: &Path, pid: i32) -> Option<u64> {
+    let stat = std::fs::read_to_string(proc_root.join(pid.to_string()).join("stat")).ok()?;
+    parse_stat(&stat).map(|s| s.start)
+}
+
+/// Signal the process the user picked: `pid` started at `start` (the
+/// table's snapshot). Seconds pass between the snapshot and the confirm,
+/// and the pid may have been reused by then, so the signal goes through a
+/// pidfd that is checked to still be that process; a reused pid reads as
+/// [`KillResult::Gone`]. Kernels without pidfds (< 5.3) check the start
+/// time, then `kill(2)`.
+pub(crate) fn send_signal(pid: i32, start: u64, sig: i32) -> Result<KillResult, &'static str> {
     kill_guard(pid, std::process::id())?;
+    let proc_root = Path::new("/proc");
+    let errno = || std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
     // SAFETY: plain syscall with integer arguments; no memory is shared.
-    let ret = unsafe { libc::kill(pid, sig) };
-    let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
-    Ok(classify_kill(ret, errno))
+    let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
+    if fd < 0 {
+        let e = errno();
+        if e != libc::ENOSYS {
+            return Ok(classify_kill(-1, e));
+        }
+        if proc_start(proc_root, pid) != Some(start) {
+            return Ok(KillResult::Gone);
+        }
+        // SAFETY: as above.
+        let ret = unsafe { libc::kill(pid, sig) };
+        return Ok(classify_kill(ret, if ret == 0 { 0 } else { errno() }));
+    }
+    let Ok(fd) = i32::try_from(fd) else {
+        return Ok(KillResult::Failed(libc::EBADF));
+    };
+    // SAFETY: `fd` was just returned by pidfd_open and is owned here only.
+    let fd = unsafe { <std::os::fd::OwnedFd as std::os::fd::FromRawFd>::from_raw_fd(fd) };
+    // The pidfd pins one process: if it is still the one that started at
+    // `start`, the signal can't reach a newcomer that reuses the pid.
+    if proc_start(proc_root, pid) != Some(start) {
+        return Ok(KillResult::Gone);
+    }
+    let raw = std::os::fd::AsRawFd::as_raw_fd(&fd);
+    // SAFETY: valid pidfd, null siginfo (as kill(2)), no flags.
+    let ret = unsafe {
+        libc::syscall(
+            libc::SYS_pidfd_send_signal,
+            raw,
+            sig,
+            std::ptr::null::<libc::siginfo_t>(),
+            0,
+        )
+    };
+    let ret = if ret == 0 { 0 } else { -1 };
+    Ok(classify_kill(ret, if ret == 0 { 0 } else { errno() }))
 }
 
 /// Human byte size from kB: `512 kB`, `12.3 MB`, `1.4 GB`.
@@ -587,7 +638,30 @@ mod tests {
             rss_kb: rss,
             swap_kb: rss / 2,
             io_bps: None,
+            start: 0,
         }
+    }
+
+    /// A signal names a process by pid *and* start time: a pid that now
+    /// belongs to another process (reused) is never signalled.
+    #[test]
+    fn signal_checks_the_start_time() {
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("spawn sleep");
+        let pid = i32::try_from(child.id()).expect("pid");
+        let start = proc_start(Path::new("/proc"), pid).expect("start time");
+        assert_eq!(
+            send_signal(pid, start + 1, libc::SIGTERM),
+            Ok(KillResult::Gone),
+            "another process's start time: refused"
+        );
+        assert!(child.try_wait().expect("wait").is_none(), "still running");
+        assert_eq!(send_signal(pid, start, libc::SIGTERM), Ok(KillResult::Sent));
+        let status = child.wait().expect("wait");
+        assert!(!status.success(), "terminated by the signal");
+        assert_eq!(proc_start(Path::new("/proc"), pid), None);
     }
 
     #[test]

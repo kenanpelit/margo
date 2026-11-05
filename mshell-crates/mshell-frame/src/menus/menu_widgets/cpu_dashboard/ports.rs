@@ -29,6 +29,9 @@ impl Exposure {
 pub(crate) struct PortOwner {
     pub name: String,
     pub pid: i32,
+    /// The process's start time, read right after the scan (`None`: it
+    /// had already exited). Pairs with the pid for a safe kill.
+    pub start: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -97,7 +100,11 @@ fn parse_users(s: &str) -> Vec<PortOwner> {
             })
             .unwrap_or(0);
         if pid > 0 && !out.iter().any(|o| o.pid == pid) {
-            out.push(PortOwner { name, pid });
+            out.push(PortOwner {
+                name,
+                pid,
+                start: None,
+            });
         }
     }
     out
@@ -205,7 +212,8 @@ mod tests {
             hermes.owners,
             [PortOwner {
                 name: "hermes".into(),
-                pid: 14374
+                pid: 14374,
+                start: None,
             }]
         );
         assert_eq!(hermes.exposure(), Exposure::Loopback);

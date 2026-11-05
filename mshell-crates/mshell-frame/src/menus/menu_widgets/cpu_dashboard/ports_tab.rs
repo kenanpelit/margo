@@ -4,7 +4,7 @@
 //! 5 s only while the menu is revealed and this tab is visible.
 
 use super::ports::{Exposure, PortRow, ProtoFilter, parse_ss, port_matches, sort_ports};
-use super::procs::{KillResult, send_signal};
+use super::procs::{KillResult, proc_start, send_signal};
 use super::ui;
 use crate::menus::reveal_poll::RevealPoll;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, EditableExt, OrientableExt, WidgetExt};
@@ -16,6 +16,8 @@ const POLL_INTERVAL: Duration = Duration::from_secs(5);
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PendingKill {
     pid: i32,
+    /// Start time read right after the scan (`None`: already gone).
+    start: Option<u64>,
     name: String,
     port: u16,
 }
@@ -29,7 +31,8 @@ pub(crate) struct PortsTabModel {
     query: String,
     pending: Option<PendingKill>,
     status: String,
-    needs_admin: Option<(i32, &'static str)>,
+    /// EPERM on the last attempt: offer pkexec (pid, start, signal).
+    needs_admin: Option<(i32, u64, &'static str)>,
     groups: gtk::Box,
     proto_buttons: Vec<(ProtoFilter, gtk::Button)>,
 }
@@ -41,7 +44,8 @@ pub(crate) enum PortsTabInput {
     Proto(ProtoFilter),
     Search(String),
     CopyPid(i32),
-    AskKill(i32, String, u16),
+    /// End the owner: pid, start time, name, port.
+    AskKill(i32, Option<u64>, String, u16),
     CancelKill,
     ConfirmKill(bool),
     AdminKill,
@@ -65,7 +69,13 @@ async fn scan() -> Result<Vec<PortRow>, String> {
             String::from_utf8_lossy(&out.stderr).trim()
         ));
     }
-    Ok(parse_ss(&String::from_utf8_lossy(&out.stdout)))
+    let mut rows = parse_ss(&String::from_utf8_lossy(&out.stdout));
+    // Name each owner by pid + start time, so a kill confirmed later
+    // can't hit a process that reused the pid meanwhile.
+    for owner in rows.iter_mut().flat_map(|r| r.owners.iter_mut()) {
+        owner.start = proc_start(std::path::Path::new("/proc"), owner.pid);
+    }
+    Ok(rows)
 }
 
 #[relm4::component(pub(crate))]
@@ -251,8 +261,13 @@ impl Component for PortsTabModel {
                 self.status = format!("Copied PID {pid}");
                 self.needs_admin = None;
             }
-            PortsTabInput::AskKill(pid, name, port) => {
-                self.pending = Some(PendingKill { pid, name, port });
+            PortsTabInput::AskKill(pid, start, name, port) => {
+                self.pending = Some(PendingKill {
+                    pid,
+                    start,
+                    name,
+                    port,
+                });
                 self.status.clear();
                 self.needs_admin = None;
             }
@@ -265,12 +280,16 @@ impl Component for PortsTabModel {
                     (libc::SIGTERM, "TERM")
                 };
                 self.needs_admin = None;
-                self.status = match send_signal(p.pid, sig) {
+                let sent = match p.start {
+                    Some(start) => send_signal(p.pid, start, sig),
+                    None => Ok(KillResult::Gone),
+                };
+                self.status = match sent {
                     Err(why) => why.to_string(),
                     Ok(KillResult::Sent) => format!("Sent SIG{sig_name} to {} ({})", p.name, p.pid),
                     Ok(KillResult::Gone) => format!("{} ({}) has already exited", p.name, p.pid),
                     Ok(KillResult::NotPermitted) => {
-                        self.needs_admin = Some((p.pid, sig_name));
+                        self.needs_admin = p.start.map(|start| (p.pid, start, sig_name));
                         format!("{} ({}) belongs to another user", p.name, p.pid)
                     }
                     Ok(KillResult::Failed(e)) => format!("kill failed (errno {e})"),
@@ -278,12 +297,12 @@ impl Component for PortsTabModel {
                 sender.input(PortsTabInput::Poll);
             }
             PortsTabInput::AdminKill => {
-                let Some((pid, sig)) = self.needs_admin.take() else {
+                let Some((pid, start, sig)) = self.needs_admin.take() else {
                     return;
                 };
                 self.status = format!("Waiting for authorization to signal {pid}…");
                 sender.oneshot_command(async move {
-                    PortsTabCmd::AdminDone(super::pkexec_kill(pid, sig).await)
+                    PortsTabCmd::AdminDone(super::pkexec_kill(pid, start, sig).await)
                 });
             }
         }
@@ -403,8 +422,10 @@ fn port_row(r: &PortRow, sender: &ComponentSender<PortsTabModel>) -> gtk::ListBo
                 &format!("End {} ({})", owner.name, owner.pid),
             );
             let s = sender.clone();
-            let (name, port) = (owner.name.clone(), r.port);
-            kill.connect_clicked(move |_| s.input(PortsTabInput::AskKill(pid, name.clone(), port)));
+            let (name, port, start) = (owner.name.clone(), r.port, owner.start);
+            kill.connect_clicked(move |_| {
+                s.input(PortsTabInput::AskKill(pid, start, name.clone(), port));
+            });
             trailing.push(copy.into());
             trailing.push(kill.into());
             (
