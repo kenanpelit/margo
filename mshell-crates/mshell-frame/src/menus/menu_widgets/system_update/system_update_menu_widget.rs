@@ -703,7 +703,7 @@ impl Component for SystemUpdateMenuWidgetModel {
                     self.run_error = None;
                     match history::rollback_step(&file) {
                         Some(step) => {
-                            if let Err(e) = run::start(vec![step], 1) {
+                            if let Err(e) = run::start(vec![run::Step::new("rollback", step)], 1) {
                                 self.run_error = Some(e);
                             }
                         }

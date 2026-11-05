@@ -31,21 +31,85 @@ pub(crate) struct UpgradePlan {
     pub(crate) flatpak: bool,
 }
 
-/// Join steps so each runs even when an earlier one failed (one AUR
-/// package that won't build must not hold back Flatpak), still exiting
-/// with the last failing step's status.
-pub(crate) fn chain_steps(steps: &[String]) -> String {
-    match steps {
-        [] => "true".to_string(),
-        [one] => one.clone(),
-        many => {
-            let mut out = vec!["rc=0".to_string()];
-            for s in many {
-                out.push(format!("{{ {s} ; }} || rc=$?"));
-            }
-            out.push("(exit \"$rc\")".to_string());
-            out.join("; ")
+/// One step of a background run. `name` tags its `::STEP` result
+/// line and decides how the result reads ([`step_label`],
+/// [`step_escalates`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Step {
+    pub(crate) name: &'static str,
+    pub(crate) cmd: String,
+}
+
+impl Step {
+    pub(crate) fn new(name: &'static str, cmd: impl Into<String>) -> Self {
+        Self {
+            name,
+            cmd: cmd.into(),
         }
+    }
+}
+
+/// Join steps so each runs even when an earlier one failed (Flatpak
+/// isn't held back by a failed pacman step), logging each step's own
+/// status as `::STEP <name> <code>` (the result is told per step) and
+/// still exiting with the last failing step's status.
+pub(crate) fn chain_steps(steps: &[Step]) -> String {
+    if steps.is_empty() {
+        return "true".to_string();
+    }
+    let mut out = vec!["rc=0".to_string()];
+    for s in steps {
+        out.push(format!(
+            "{{ {} ; }}; s=$?; echo \"::STEP {} $s\"; [ \"$s\" -eq 0 ] || rc=$s",
+            s.cmd, s.name
+        ));
+    }
+    out.push("(exit \"$rc\")".to_string());
+    out.join("; ")
+}
+
+/// Steps whose command goes through pkexec: 126 / 127 there are the
+/// polkit dialog dismissed / not authorized, not the command's own.
+pub(crate) fn step_escalates(name: &str) -> bool {
+    matches!(name, "pacman" | "rollback")
+}
+
+/// What the user calls a step in the result.
+pub(crate) fn step_label(name: &str) -> &str {
+    match name {
+        "pacman" => "Official repos",
+        "flatpak" => "Flatpak",
+        "rollback" => "Rollback",
+        other => other,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StepOutcome {
+    Done,
+    Cancelled,
+    NotAuthorized,
+    NotFound,
+    Failed(i32),
+}
+
+fn step_outcome(name: &str, code: i32) -> StepOutcome {
+    match code {
+        0 => StepOutcome::Done,
+        126 if step_escalates(name) => StepOutcome::Cancelled,
+        127 if step_escalates(name) => StepOutcome::NotAuthorized,
+        127 => StepOutcome::NotFound,
+        c => StepOutcome::Failed(c),
+    }
+}
+
+fn outcome_text(o: StepOutcome) -> String {
+    match o {
+        StepOutcome::Done => "updated".into(),
+        StepOutcome::Cancelled => "cancelled (authentication dismissed)".into(),
+        StepOutcome::NotAuthorized => "not authorized".into(),
+        StepOutcome::NotFound => "command not found".into(),
+        StepOutcome::Failed(c) => format!("failed (exit {c})"),
     }
 }
 
@@ -58,14 +122,14 @@ pub(crate) fn chain_steps(steps: &[String]) -> String {
 /// packages hidden in the panel are only hidden from the count
 /// (holding a package back is a partial upgrade, which Arch doesn't
 /// support).
-pub(crate) fn background_steps(plan: &UpgradePlan) -> Vec<String> {
+pub(crate) fn background_steps(plan: &UpgradePlan) -> Vec<Step> {
     let quiet = " --noconfirm --noprogressbar --color never";
     let mut steps = Vec::new();
     if plan.system {
-        steps.push(format!("pkexec pacman -Syu{quiet}"));
+        steps.push(Step::new("pacman", format!("pkexec pacman -Syu{quiet}")));
     }
     if plan.flatpak {
-        steps.push("flatpak update -y --noninteractive".to_string());
+        steps.push(Step::new("flatpak", "flatpak update -y --noninteractive"));
     }
     steps
 }
@@ -79,7 +143,7 @@ pub(crate) fn aur_review_step(helper: &str) -> String {
 
 /// The full detached script: START marker, the chained steps, EXIT
 /// marker with the chain's status.
-pub(crate) fn background_script(steps: &[String], started_at: u64) -> String {
+pub(crate) fn background_script(steps: &[Step], started_at: u64) -> String {
     format!(
         "echo '::START {started_at}'; {}; echo \"::EXIT $?\"",
         chain_steps(steps)
@@ -97,6 +161,8 @@ pub(crate) struct LogState {
     pub(crate) done: usize,
     /// The last non-empty lines, ANSI-stripped.
     pub(crate) tail: Vec<String>,
+    /// `(step name, exit code)` from each `::STEP` line, in order.
+    pub(crate) steps: Vec<(String, i32)>,
 }
 
 /// Drop ANSI escapes and keep only what a terminal would finally show
@@ -166,6 +232,7 @@ pub(crate) struct LogTail {
     started: Option<u64>,
     exit: Option<i32>,
     done: usize,
+    steps: Vec<(String, i32)>,
     lines: std::collections::VecDeque<String>,
 }
 
@@ -177,6 +244,7 @@ impl LogTail {
             started: None,
             exit: None,
             done: 0,
+            steps: Vec::new(),
             lines: std::collections::VecDeque::new(),
         }
     }
@@ -201,6 +269,14 @@ impl LogTail {
         }
         if let Some(code) = line.strip_prefix("::EXIT ") {
             self.exit = code.trim().parse().ok().or(Some(-1));
+            return;
+        }
+        if let Some((name, code)) = line
+            .strip_prefix("::STEP ")
+            .and_then(|r| r.trim().split_once(' '))
+        {
+            self.steps
+                .push((name.to_string(), code.trim().parse().unwrap_or(-1)));
             return;
         }
         if is_progress_line(&line) {
@@ -229,6 +305,7 @@ impl LogTail {
             exit: self.exit,
             done: self.done,
             tail,
+            steps: self.steps.clone(),
         }
     }
 
@@ -296,10 +373,14 @@ pub(crate) fn result_message(exit: i32, done: usize) -> (String, String) {
     }
 }
 
-/// Title + body for a finished run (`exit: None` = interrupted).
+/// Title + body for a finished run (`exit: None` = interrupted), told
+/// per step: a dismissed prompt for pacman next to a good Flatpak step
+/// is "partly done", not "cancelled".
 pub(crate) fn finished_message(log: &LogState) -> (String, String) {
     match log.exit {
-        Some(code) => result_message(code, log.done),
+        // A log written before ::STEP lines existed.
+        Some(code) if log.steps.is_empty() => result_message(code, log.done),
+        Some(_) => steps_message(&log.steps, log.done),
         None => (
             "System update interrupted".to_string(),
             "The upgrade stopped before it finished (killed, or the machine went down). \
@@ -307,6 +388,47 @@ pub(crate) fn finished_message(log: &LogState) -> (String, String) {
                 .to_string(),
         ),
     }
+}
+
+fn steps_message(steps: &[(String, i32)], done: usize) -> (String, String) {
+    let outcomes: Vec<(&str, StepOutcome)> = steps
+        .iter()
+        .map(|(n, c)| (n.as_str(), step_outcome(n, *c)))
+        .collect();
+    let ok = outcomes
+        .iter()
+        .filter(|(_, o)| *o == StepOutcome::Done)
+        .count();
+    if ok == outcomes.len() {
+        return result_message(0, done);
+    }
+    let per_step = || {
+        outcomes
+            .iter()
+            .map(|(n, o)| format!("{}: {}", step_label(n), outcome_text(*o)))
+            .collect::<Vec<_>>()
+            .join(". ")
+    };
+    if ok > 0 {
+        return (
+            "System update partly done".to_string(),
+            format!("{}.", per_step()),
+        );
+    }
+    let refused =
+        |o: &StepOutcome| matches!(o, StepOutcome::Cancelled | StepOutcome::NotAuthorized);
+    if outcomes.iter().all(|(_, o)| refused(o)) {
+        let body = if outcomes.iter().any(|(_, o)| *o == StepOutcome::Cancelled) {
+            "Authentication was dismissed."
+        } else {
+            "You are not authorized to run the upgrade (polkit)."
+        };
+        return ("System update cancelled".to_string(), body.to_string());
+    }
+    (
+        "System update failed".to_string(),
+        format!("{}. Open the System Updates panel for the log.", per_step()),
+    )
 }
 
 // ── Run state (one watcher per process) ──────────────────────────
@@ -474,7 +596,7 @@ fn user_manager_available() -> bool {
 }
 
 /// Start a detached background run. Refuses while one is running.
-pub(crate) fn start(steps: Vec<String>, expected: usize) -> Result<(), String> {
+pub(crate) fn start(steps: Vec<Step>, expected: usize) -> Result<(), String> {
     if matches!(status(), RunStatus::Running { .. }) {
         return Err("an upgrade is already running".into());
     }
@@ -683,7 +805,7 @@ mod tests {
 
     #[test]
     fn a_recycled_pid_is_not_our_run() {
-        let script = background_script(&["true".into()], 42);
+        let script = background_script(&[Step::new("pacman", "true")], 42);
         let mut ours = b"sh\0-c\0".to_vec();
         ours.extend_from_slice(script.as_bytes());
         ours.push(0);
@@ -709,7 +831,7 @@ mod tests {
 
     #[test]
     fn a_live_run_is_recognised_by_its_own_cmdline() {
-        let script = background_script(&["sleep 5".into()], 77);
+        let script = background_script(&[Step::new("pacman", "sleep 5")], 77);
         let mut child = std::process::Command::new("sh")
             .args(["-c", &script])
             .stdout(std::process::Stdio::null())
@@ -750,6 +872,9 @@ mod tests {
 
     #[test]
     fn background_never_builds_aur_packages() {
+        let cmds = |plan: &UpgradePlan| -> Vec<String> {
+            background_steps(plan).into_iter().map(|s| s.cmd).collect()
+        };
         // An unattended AUR build (paru --skipreview / yay --answerdiff
         // None) installs a PKGBUILD nobody looked at as root. Background
         // mode upgrades the repos (+ Flatpak) only, whatever helper is
@@ -759,13 +884,20 @@ mod tests {
             flatpak: true,
         };
         assert_eq!(
-            background_steps(&plan),
+            cmds(&plan),
             [
                 "pkexec pacman -Syu --noconfirm --noprogressbar --color never",
                 "flatpak update -y --noninteractive"
             ]
         );
-        for s in background_steps(&plan) {
+        assert_eq!(
+            background_steps(&plan)
+                .iter()
+                .map(|s| s.name)
+                .collect::<Vec<_>>(),
+            ["pacman", "flatpak"]
+        );
+        for s in cmds(&plan) {
             for bad in [
                 "paru",
                 "yay",
@@ -778,7 +910,7 @@ mod tests {
         }
         plan.flatpak = false;
         assert_eq!(
-            background_steps(&plan),
+            cmds(&plan),
             ["pkexec pacman -Syu --noconfirm --noprogressbar --color never"]
         );
         plan.system = false;
@@ -792,28 +924,82 @@ mod tests {
         assert!(!aur_review_step("paru").contains("--noconfirm"));
     }
 
-    #[test]
-    fn chain_runs_every_step_and_keeps_the_failure() {
-        assert_eq!(chain_steps(&["a".into()]), "a");
-        assert_eq!(
-            chain_steps(&["a".into(), "b".into()]),
-            "rc=0; { a ; } || rc=$?; { b ; } || rc=$?; (exit \"$rc\")"
-        );
-        assert_eq!(chain_steps(&[]), "true");
+    fn run_script(steps: &[Step]) -> LogState {
+        let out = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(background_script(steps, 7))
+            .output()
+            .unwrap();
+        parse_log(&String::from_utf8_lossy(&out.stdout), 10)
     }
 
     #[test]
     fn chained_script_really_exits_with_the_failing_status() {
-        let script = background_script(&["false".into(), "echo ok".into()], 7);
-        let out = std::process::Command::new("sh")
-            .arg("-c")
-            .arg(&script)
-            .output()
-            .unwrap();
-        let log = parse_log(&String::from_utf8_lossy(&out.stdout), 10);
+        let log = run_script(&[
+            Step::new("pacman", "false"),
+            Step::new("flatpak", "echo ok"),
+        ]);
         assert_eq!(log.started, Some(7));
         assert_eq!(log.exit, Some(1));
         assert_eq!(log.tail, ["ok"]);
+        assert_eq!(
+            log.steps,
+            [("pacman".to_string(), 1), ("flatpak".to_string(), 0)]
+        );
+        assert_eq!(run_script(&[]).exit, Some(0));
+        assert_eq!(
+            run_script(&[Step::new("rollback", "(exit 3)")]).steps,
+            [("rollback".to_string(), 3)]
+        );
+    }
+
+    #[test]
+    fn a_dismissed_prompt_with_a_good_flatpak_step_is_partly_done() {
+        // pkexec exits 126 when the dialog is dismissed. The chain used
+        // to carry only that code: "cancelled" although Flatpak updated.
+        let log = run_script(&[
+            Step::new("pacman", "(exit 126)"),
+            Step::new("flatpak", "echo Updating app/org.x/x86_64/stable"),
+        ]);
+        let (title, body) = finished_message(&log);
+        assert_eq!(title, "System update partly done");
+        assert!(body.contains("Official repos: cancelled"), "{body}");
+        assert!(body.contains("Flatpak: updated"), "{body}");
+    }
+
+    #[test]
+    fn results_read_per_step() {
+        let log = |steps: &[(&str, i32)], exit: i32| LogState {
+            exit: Some(exit),
+            done: 2,
+            steps: steps.iter().map(|(n, c)| (n.to_string(), *c)).collect(),
+            ..Default::default()
+        };
+        assert_eq!(
+            finished_message(&log(&[("pacman", 0), ("flatpak", 0)], 0)).0,
+            "System updated"
+        );
+        let (t, b) = finished_message(&log(&[("pacman", 126)], 126));
+        assert_eq!(t, "System update cancelled");
+        assert!(b.contains("dismissed"), "{b}");
+        assert!(
+            finished_message(&log(&[("pacman", 127)], 127))
+                .1
+                .contains("not authorized")
+        );
+        // 127 from a step without pkexec is sh's "command not found".
+        let (t, b) = finished_message(&log(&[("flatpak", 127)], 127));
+        assert_eq!(t, "System update failed");
+        assert!(b.contains("not found"), "{b}");
+        let (t, b) = finished_message(&log(&[("pacman", 1), ("flatpak", 0)], 1));
+        assert_eq!(t, "System update partly done");
+        assert!(b.contains("Official repos: failed (exit 1)"), "{b}");
+        // A log from before ::STEP lines falls back to the exit code.
+        assert_eq!(finished_message(&log(&[], 0)).0, "System updated");
+        assert_eq!(
+            finished_message(&log(&[], 126)).0,
+            "System update cancelled"
+        );
     }
 
     #[test]
