@@ -113,6 +113,7 @@ check:
     ./scripts/test-install-parity.sh
     ./scripts/test-install-arch.sh
     ./scripts/test-install-rust.sh
+    ./scripts/test-install-pkgbuild.sh
     ./scripts/optdepends-drift.sh
     ./scripts/test-optdepends-drift.sh
     ./scripts/test-retire-old-sync-variables.sh

@@ -364,19 +364,21 @@ build() {
 check() {
   cd "$srcdir/margo"
 
-  # Only the library + CLI crates have unit tests we can run from
-  # a packager environment; the compositor + mshell want a live
-  # Wayland session. Test failures are non-blocking — surface
-  # them as warnings but let pacman still ship the build.
-  cargo test --frozen --release \
+  # The library + CLI crates whose unit tests run without a live
+  # Wayland session (the compositor + mshell want one). The same tests
+  # CI runs, in the same (test) profile. `--release` would not reuse
+  # build()'s artifacts: this one invocation mixes two build() groups plus
+  # dev-dependencies, so its feature sets differ and most dependencies
+  # would be rebuilt with LTO on top. A failure stops the package like any
+  # other check(); `makepkg --nocheck` skips it.
+  cargo test --frozen \
     --package margo-config \
     --package margo-layouts \
     --package mctl \
     --package mlayout \
     --package mdots \
     --package mcal \
-    --package mtune ||
-    echo "::: margo: test suite reported failures (non-blocking)"
+    --package mtune
 }
 
 package() {
