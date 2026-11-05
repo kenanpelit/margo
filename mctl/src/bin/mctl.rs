@@ -1710,16 +1710,17 @@ fn cmd_mirror(action: &MirrorCmd) -> Result<()> {
     };
     // One name is the source (`start DP-3`: mirror DP-3 somewhere).
     let args: Vec<&str> = [source, target].into_iter().flatten().collect();
-    send_dispatch(dispatch, &args)?;
+    // A refusal comes back in this request's own reply. `mirror.error`
+    // is last-writer-wins across clients: reading it could report
+    // another client's refusal.
+    let reply = mctl::ipc_client::request_once(&dispatch_request(dispatch, &args))?;
+    if let Some(e) = mctl::ipc_client::dispatch_reply_error(&reply) {
+        anyhow::bail!("mirror: {e}");
+    }
     let m = mctl::ipc_client::request_once("get mirror")
         .map_err(|e| anyhow::anyhow!("cannot query margo IPC: {e}"))?;
-    match mirror_error(&m) {
-        Some(e) => anyhow::bail!("mirror: {e}"),
-        None => {
-            println!("{}", mirror_status_line(&m));
-            Ok(())
-        }
-    }
+    println!("{}", mirror_status_line(&m));
+    Ok(())
 }
 
 /// One-line summary of the `mirror` IPC object.
@@ -1734,11 +1735,6 @@ fn mirror_status_line(m: &serde_json::Value) -> String {
         }
         _ => "not mirroring".into(),
     }
-}
-
-/// Why margo refused the last mirror request, if it did.
-fn mirror_error(m: &serde_json::Value) -> Option<String> {
-    m["error"].as_str().map(str::to_string)
 }
 
 fn cmd_twilight_status(as_json: bool) -> Result<()> {
@@ -3473,18 +3469,13 @@ mod helper_tests {
     }
 
     #[test]
-    fn mirror_status_and_errors_read_the_ipc_object() {
-        use super::{mirror_error, mirror_status_line};
+    fn mirror_status_reads_the_ipc_object() {
+        use super::mirror_status_line;
         use serde_json::json;
         let on = json!({ "active": { "source": "eDP-1", "target": "DP-3" }, "error": null });
         assert_eq!(mirror_status_line(&on), "mirroring eDP-1 → DP-3");
-        assert_eq!(mirror_error(&on), None);
         let refused = json!({ "active": null, "error": "no output named DP-9" });
         assert_eq!(mirror_status_line(&refused), "not mirroring");
-        assert_eq!(
-            mirror_error(&refused).as_deref(),
-            Some("no output named DP-9")
-        );
         assert!(
             mirror_status_line(&json!({ "error": "unknown topic: mirror" }))
                 .contains("older margo")

@@ -473,8 +473,12 @@ impl MargoState {
                     crate::dispatch::DispatchOutcome::Handled => {
                         serde_json::json!({ "ok": true })
                     }
-                    crate::dispatch::DispatchOutcome::Unknown => {
-                        serde_json::json!({ "error": format!("unknown action: {}", req.head) })
+                    crate::dispatch::DispatchOutcome::Unknown => serde_json::json!({
+                        "ok": false,
+                        "error": format!("unknown action: {}", req.head),
+                    }),
+                    crate::dispatch::DispatchOutcome::Failed(error) => {
+                        serde_json::json!({ "ok": false, "error": error })
                     }
                 };
                 self.ipc_send(token, &reply);

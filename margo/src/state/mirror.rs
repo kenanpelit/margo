@@ -88,8 +88,9 @@ impl MargoState {
         self.apply_mirror_change(change);
     }
 
-    /// Record a request's outcome for the `mirror.error` IPC field (the
-    /// dispatch reply itself carries no handler errors).
+    /// Record a request's outcome for the `mirror.error` IPC field, which
+    /// the shell shows. The requester itself gets the refusal in its
+    /// dispatch reply: `mirror.error` is last-writer-wins across clients.
     pub fn note_mirror_result(&mut self, result: Result<(), MirrorError>) {
         let error = result.err().map(|e| {
             tracing::warn!(error = %e, "mirror request refused");

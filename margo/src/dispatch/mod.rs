@@ -65,16 +65,43 @@ const ALL_LAYOUTS: &[LayoutId] = &[
 ];
 
 /// What `dispatch_action` did with a request. The IPC layer must not
-/// paper `Unknown` over as `{"ok":true}` — it's a caller typo
-/// (`mctl dispatch focuslsat`), and the CLI should exit non-zero so
-/// scripts notice. A recognised action whose handler hit its own
-/// internal error (missing target window, bad value) still reports
-/// `Handled` for now — it logged that error itself; splitting those
-/// out is a separate pass.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// paper `Unknown` or `Failed` over as `{"ok":true}`: a caller typo
+/// (`mctl dispatch focuslsat`), a reload margo refused, or a mirror /
+/// output request naming no output must make the CLI exit non-zero so
+/// scripts (and Settings pages) notice. Handlers that report failure
+/// return `Failed` with the reason; the rest still log their own errors
+/// and report `Handled`.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DispatchOutcome {
     Handled,
     Unknown,
+    /// Recognised, but refused or failed; the text says why.
+    Failed(String),
+}
+
+/// The output named by `arg.v`, or the `Failed` reply for a missing or
+/// unknown name.
+fn named_output(state: &MargoState, arg: &Arg) -> Result<usize, DispatchOutcome> {
+    let Some(name) = arg.v.as_deref().filter(|n| !n.is_empty()) else {
+        return Err(DispatchOutcome::Failed("an output name is needed".into()));
+    };
+    state
+        .monitors
+        .iter()
+        .position(|m| m.name == name)
+        .ok_or_else(|| DispatchOutcome::Failed(format!("no output named {name}")))
+}
+
+/// Switch output `idx` off; the `Failed` reply when margo refuses (it is
+/// the last output on).
+fn switch_output_off(state: &mut MargoState, idx: usize) -> Result<(), DispatchOutcome> {
+    if !state.disable_monitor(idx) && state.monitors[idx].enabled {
+        return Err(DispatchOutcome::Failed(format!(
+            "cannot switch {} off: no other output is on",
+            state.monitors[idx].name
+        )));
+    }
+    Ok(())
 }
 
 pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> DispatchOutcome {
@@ -325,6 +352,9 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
                     "Margo: config reload failed",
                     &format!("{e}"),
                 ]);
+                return DispatchOutcome::Failed(format!(
+                    "config reload failed (the previous config stays): {e:#}"
+                ));
             }
         },
         "spawn" => {
@@ -775,10 +805,11 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
             };
             match mon_idx {
                 Some(idx) => state.reset_mfact(idx),
-                None => tracing::warn!(
-                    output = arg.v.as_deref().unwrap_or_default(),
-                    "resetmfact: no such output"
-                ),
+                None => {
+                    let name = arg.v.as_deref().unwrap_or_default();
+                    tracing::warn!(output = name, "resetmfact: no such output");
+                    return DispatchOutcome::Failed(format!("no output named {name}"));
+                }
             }
         }
         "togglegaps" => state.toggle_gaps(),
@@ -812,49 +843,59 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
         // driven multi-monitor workflows ("toggle the laptop panel
         // when I dock"). Arg is the connector name (DP-3, eDP-1).
         // Last enabled monitor is protected — disabling it is
-        // refused with a warn log.
+        // refused, and the dispatch reply says so.
         //   bind = super+ctrl,F1,disable_output,eDP-1
         //   bind = super+ctrl,F2,enable_output,eDP-1
         //   bind = super+ctrl,F3,toggle_output,eDP-1
         "disable_output" | "disable-output" => {
-            if let Some(name) = arg.v.as_deref() {
-                if let Some(idx) = state.monitors.iter().position(|m| m.name == name) {
-                    state.disable_monitor(idx);
-                }
+            let idx = match named_output(state, arg) {
+                Ok(idx) => idx,
+                Err(failed) => return failed,
+            };
+            if let Err(failed) = switch_output_off(state, idx) {
+                return failed;
             }
         }
-        "enable_output" | "enable-output" => {
-            if let Some(name) = arg.v.as_deref() {
-                if let Some(idx) = state.monitors.iter().position(|m| m.name == name) {
-                    state.enable_monitor(idx);
-                }
-            }
-        }
+        "enable_output" | "enable-output" => match named_output(state, arg) {
+            Ok(idx) => state.enable_monitor(idx),
+            Err(failed) => return failed,
+        },
         "toggle_output" | "toggle-output" => {
-            if let Some(name) = arg.v.as_deref() {
-                if let Some(idx) = state.monitors.iter().position(|m| m.name == name) {
-                    if state.monitors[idx].enabled {
-                        state.disable_monitor(idx);
-                    } else {
-                        state.enable_monitor(idx);
-                    }
+            let idx = match named_output(state, arg) {
+                Ok(idx) => idx,
+                Err(failed) => return failed,
+            };
+            if state.monitors[idx].enabled {
+                if let Err(failed) = switch_output_off(state, idx) {
+                    return failed;
                 }
+            } else {
+                state.enable_monitor(idx);
             }
         }
         // Output mirroring (presentation mode): show arg 1's picture on
         // arg 2, scaled to fit and letterboxed. Bare: laptop panel onto
         // the first external output. The target leaves the layout until
-        // `stop_mirror` / either output unplugs. A refusal is logged and
-        // published as `mirror.error` in the state snapshot.
+        // `stop_mirror` / either output unplugs. A refusal is the dispatch
+        // reply's error, and is published as `mirror.error` in the state
+        // snapshot for the shell to show.
         //   mctl dispatch mirror_output eDP-1 DP-3
         //   bind = super,p,toggle_mirror
         "mirror_output" | "mirror-output" | "mirror" => {
             let r = state.start_mirror(arg.v.as_deref(), arg.v2.as_deref());
+            let failed = r.as_ref().err().map(ToString::to_string);
             state.note_mirror_result(r);
+            if let Some(e) = failed {
+                return DispatchOutcome::Failed(e);
+            }
         }
         "toggle_mirror" | "toggle-mirror" => {
             let r = state.toggle_mirror(arg.v.as_deref(), arg.v2.as_deref());
+            let failed = r.as_ref().err().map(ToString::to_string);
             state.note_mirror_result(r);
+            if let Some(e) = failed {
+                return DispatchOutcome::Failed(e);
+            }
         }
         "stop_mirror" | "stop-mirror" | "unmirror" => {
             state.stop_mirror();
@@ -871,7 +912,13 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
                 "off" => Some(false),
                 _ => None,
             };
-            state.request_dpms(on, arg.v2.as_deref());
+            let target = arg.v2.as_deref().filter(|n| !n.is_empty());
+            if let Some(name) = target
+                && !state.monitors.iter().any(|m| m.name == name)
+            {
+                return DispatchOutcome::Failed(format!("no output named {name}"));
+            }
+            state.request_dpms(on, target);
         }
         // Routes to the grid or scroller overview per `overview_style`
         // (Settings → Overview). `toggle_grid_overview` /

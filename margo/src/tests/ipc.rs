@@ -201,3 +201,65 @@ fn a_request_flood_is_handled_in_bounded_batches() {
     }
     assert_eq!(got, n, "every request is answered eventually");
 }
+
+/// One `dispatch …` round trip; the reply frame.
+fn dispatch_reply(fx: &mut Fixture, line: &str) -> serde_json::Value {
+    let (mut client, _token) = connect(fx);
+    client
+        .write_all(format!("dispatch {line}\n").as_bytes())
+        .expect("write");
+    let reply = frames(&read_available(fx, &mut client).expect("open"));
+    assert_eq!(reply.len(), 1, "{line}: {reply:?}");
+    reply[0].clone()
+}
+
+fn assert_refused(reply: &serde_json::Value, needle: &str) {
+    assert_eq!(reply["ok"], false, "{reply}");
+    assert!(
+        reply["error"].as_str().is_some_and(|e| e.contains(needle)),
+        "expected an error mentioning {needle:?}: {reply}"
+    );
+}
+
+/// A refused request answers `{"ok":false,"error":…}` (what docs/ipc.md
+/// promises, and what mctl and the shell check), not `{"ok":true}`.
+#[test]
+fn a_refused_dispatch_replies_with_the_error() {
+    let mut fx = Fixture::new();
+    fx.add_output("eDP-1", (1920, 1200));
+    fx.add_output("DP-3", (2560, 1440));
+
+    let r = dispatch_reply(&mut fx, "mirror_output eDP-1 DP-9");
+    assert_refused(&r, "no output named DP-9");
+    let r = dispatch_reply(&mut fx, "disable_output DP-9");
+    assert_refused(&r, "DP-9");
+    let r = dispatch_reply(&mut fx, "focuslsat");
+    assert_refused(&r, "unknown action");
+
+    let r = dispatch_reply(&mut fx, "mirror_output eDP-1 DP-3");
+    assert_eq!(r["ok"], true, "{r}");
+    // The mirror target is the last output left in the layout's way:
+    // switching eDP-1 off ends the mirror, and DP-3 can't follow.
+    let r = dispatch_reply(&mut fx, "disable_output eDP-1");
+    assert_eq!(r["ok"], true, "{r}");
+    let r = dispatch_reply(&mut fx, "disable_output DP-3");
+    assert_refused(&r, "DP-3");
+}
+
+#[test]
+fn a_failed_reload_replies_with_the_error() {
+    // `mctl reload` exited 0 while margo kept the old config.
+    let dir = std::env::temp_dir().join(format!("margo-ipc-reload-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let config = dir.join("config.conf");
+    std::fs::write(&config, "xkb_rules_layout = no-such-layout-zz\n").unwrap();
+
+    let mut fx = Fixture::new();
+    fx.add_keyboard();
+    fx.server.state.config_path = Some(config);
+    fx.server.state.generations_dir = dir.join("generations");
+    let r = dispatch_reply(&mut fx, "reload");
+    assert_refused(&r, "reload");
+    std::fs::remove_dir_all(dir).unwrap();
+}

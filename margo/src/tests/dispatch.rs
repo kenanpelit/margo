@@ -2,8 +2,9 @@
 //! `bind =` lines, `mctl dispatch`, and Rhai hooks.
 //!
 //! Covers the outcome contract: a recognised action reports `Handled`,
-//! an unrecognised one reports `Unknown` so the IPC layer can answer
-//! `{"error": …}` instead of a lying `{"ok": true}`.
+//! an unrecognised one `Unknown` and a refused one `Failed`, so the IPC
+//! layer can answer `{"ok": false, "error": …}` instead of a lying
+//! `{"ok": true}`.
 
 use margo_config::{Arg, Config};
 

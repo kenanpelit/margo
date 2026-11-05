@@ -36,7 +36,7 @@ file — both removed.
 | `layouts` | — | `{"layouts":[…]}` |
 | `keyboard-layout` | — | `{"keyboard_layout":"…"}` |
 | `twilight` | — | twilight state object |
-| `mirror` | — | `active` (`{source,target}` or null) and `error` (why the last mirror request was refused, or null) — output mirroring. Each `outputs[]` entry also carries `mirroring` (true on the target, which then reads disabled in wlr-output-management). |
+| `mirror` | — | `active` (`{source,target}` or null) and `error` (why the last mirror request was refused, or null — for display; it is last-writer-wins across clients, and the requester gets the refusal in its own `dispatch` reply) — output mirroring. Each `outputs[]` entry also carries `mirroring` (true on the target, which then reads disabled in wlr-output-management). |
 | `config-errors` | — | `{"config_errors":[…]}` |
 | `layers` | — | `{"layers":[{"monitor","layer","name"},…]}` — every layer-shell surface (`layer` = background/bottom/top/overlay, `name` = its namespace). `get` only. |
 
@@ -60,6 +60,13 @@ Positional args map onto margo's `Arg`: args 1–3 parse as numbers
 (`i` / `i2` / `f`), arg 4 → `v` (primary string), arg 5 → `v2`. A single
 non-numeric first arg also fills `v` (the `spawn` / `theme` / `run_script`
 shape). Run `mctl actions --verbose` for the full catalogue.
+
+The reply is `{"ok":true}` once the action ran. `{"ok":false,"error":…}`
+means it did not: an unknown action, a `reload` margo refused (the running
+config stays), a mirror request it turned down, or an output action
+(`disable_output`, `enable_output`, `toggle_output`, `dpms … <name>`,
+`resetmfact <name>`) naming no output — or switching off the last output
+that is on. `mctl dispatch` exits non-zero on it.
 
 ## Examples
 

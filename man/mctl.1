@@ -107,7 +107,7 @@ and keeps the running config).
 .B \-\-force
 applies it anyway: margo loads what it can, keeps the error banner up,
 and does not save it as the last-good generation. A file margo can't read
-is refused either way.
+is refused either way. Exits non-zero when margo did not apply it.
 .TP
 .B theme \fIPRESET\fR
 Live-swap the visual theme preset.
