@@ -150,9 +150,10 @@ pub(super) async fn read_ufw_tile_state() -> (String, bool) {
 
 // ── Podman helpers ──────────────────────────────────────────────────────────
 
-struct PodmanMachine {
-    name: String,
-    running: bool,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct PodmanMachine {
+    pub(super) name: String,
+    pub(super) running: bool,
 }
 
 /// Parse `podman machine list --format json`. `None` when podman is
@@ -186,25 +187,63 @@ async fn podman_machines() -> Option<Vec<PodmanMachine>> {
 /// the active machine name); falls back to a running-container summary on
 /// hosts with no machines (native rootless podman).
 pub(super) async fn read_podman_tile_state() -> (String, bool) {
-    if let Some(machines) = podman_machines().await {
-        let running: Vec<String> = machines
-            .iter()
-            .filter(|m| m.running)
-            .map(|m| m.name.clone())
-            .collect();
-        if !running.is_empty() {
-            return (running.join(", "), true);
-        }
-        if !machines.is_empty() {
-            return ("Stopped".to_string(), false);
-        }
+    let machines = podman_machines_cached().await;
+    if let Some(state) = machines_tile_state(machines.as_deref()) {
+        return state;
     }
-    // No machines configured → show container activity instead.
-    let s = fetch_podman_summary().await;
+    podman_tile_state(None, &fetch_podman_summary().await)
+}
+
+/// How long `podman machine list` is trusted: machines rarely change, and
+/// the tile follows container changes through the shared poll anyway.
+const MACHINES_TTL: Duration = Duration::from_secs(60);
+
+static MACHINES: std::sync::Mutex<Option<(std::time::Instant, Option<Vec<PodmanMachine>>)>> =
+    std::sync::Mutex::new(None);
+
+/// [`podman_machines`], cached for [`MACHINES_TTL`].
+pub(super) async fn podman_machines_cached() -> Option<Vec<PodmanMachine>> {
+    if let Ok(cache) = MACHINES.lock()
+        && let Some((at, machines)) = cache.as_ref()
+        && at.elapsed() < MACHINES_TTL
+    {
+        return machines.clone();
+    }
+    let machines = podman_machines().await;
+    if let Ok(mut cache) = MACHINES.lock() {
+        *cache = Some((std::time::Instant::now(), machines.clone()));
+    }
+    machines
+}
+
+/// The tile state from machines alone: running ones by name, or
+/// "Stopped"; `None` when there are none (show containers instead).
+fn machines_tile_state(machines: Option<&[PodmanMachine]>) -> Option<(String, bool)> {
+    let machines = machines.filter(|m| !m.is_empty())?;
+    let running: Vec<&str> = machines
+        .iter()
+        .filter(|m| m.running)
+        .map(|m| m.name.as_str())
+        .collect();
+    Some(if running.is_empty() {
+        ("Stopped".to_string(), false)
+    } else {
+        (running.join(", "), true)
+    })
+}
+
+/// Podman tile `(subtitle, active)`: machines first; without any, the
+/// container activity of the shared [`PodmanSummary`].
+pub(super) fn podman_tile_state(
+    machines: Option<&[PodmanMachine]>,
+    s: &PodmanSummary,
+) -> (String, bool) {
+    if let Some(state) = machines_tile_state(machines) {
+        return state;
+    }
     if s.error.is_some() {
-        return ("Unavailable".to_string(), false);
-    }
-    if s.running_containers > 0 {
+        ("Unavailable".to_string(), false)
+    } else if s.running_containers > 0 {
         (format!("{} running", s.running_containers), true)
     } else {
         ("Idle".to_string(), false)
@@ -213,6 +252,10 @@ pub(super) async fn read_podman_tile_state() -> (String, bool) {
 
 /// Stop every running podman machine (`podman machine stop <name>`).
 pub(super) async fn stop_podman_machines() {
+    // The tile re-reads the machines right after.
+    if let Ok(mut cache) = MACHINES.lock() {
+        *cache = None;
+    }
     if let Some(machines) = podman_machines().await {
         for m in machines.iter().filter(|m| m.running) {
             let _ = tokio::process::Command::new("podman")

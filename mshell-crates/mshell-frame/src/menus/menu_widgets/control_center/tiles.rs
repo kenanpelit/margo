@@ -28,7 +28,7 @@
 //! All stateful tiles subscribe to their respective service watchers and
 //! start those watchers lazily on the first `Reveal(true)`.
 
-use crate::bars::bar_widgets::podman::fetch_podman_summary;
+use crate::bars::bar_widgets::podman::{PODMAN_POLL, PodmanSummary, fetch_podman_summary};
 use crate::bars::bar_widgets::ufw::{Status as UfwStatus, fetch_ufw_status_only};
 use crate::menus::menu_widgets::control_center::tile::{TileWidget, build_expand_tile, build_tile};
 use crate::menus::reveal_poll::RevealGate;
@@ -53,6 +53,7 @@ use mshell_utils::idle::spawn_idle_inhibitor_watcher;
 use mshell_utils::notifications::spawn_dnd_watcher;
 use mshell_utils::picker::spawn_color_picker;
 use mshell_utils::power_profile::get_power_profile_label;
+use mshell_utils::shared_poll::PollSubscription;
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk;
 use relm4::gtk::prelude::{
@@ -131,6 +132,11 @@ pub(crate) struct ControlCenterTilesModel {
     // closed control center neither wakes nor spawns `mctl` / `systemctl`
     // / `podman`.
     revealed: RevealGate,
+    // The Podman and Valent tiles read the shared pill polls (one probe
+    // loop for the whole shell, `podman events`-driven for Podman) instead
+    // of probing on their own; active while the panel is revealed.
+    podman_poll: PollSubscription<PodmanSummary>,
+    valent_poll: PollSubscription<crate::valent::ValentReport>,
     // Edit mode — when true, all tiles visible + per-tile visibility toggles shown
     edit_mode: bool,
     // Current tile order — mirrors config; used to detect changes that need
@@ -905,6 +911,8 @@ impl Component for ControlCenterTilesModel {
             denoise: DenoiseStatus::default(),
             denoise_busy: false,
             revealed: RevealGate::new(false),
+            podman_poll: PODMAN_POLL.subscribe(),
+            valent_poll: crate::valent::VALENT_POLL.subscribe(),
             watchers_started: false,
             edit_mode: false,
             tile_order: initial_tile_order.clone(),
@@ -991,6 +999,8 @@ impl Component for ControlCenterTilesModel {
         match message {
             ControlCenterTilesInput::Reveal(true) => {
                 self.revealed.set(true);
+                self.podman_poll.set_active(true);
+                self.valent_poll.set_active(true);
                 if !self.watchers_started {
                     self.watchers_started = true;
 
@@ -1042,9 +1052,8 @@ impl Component for ControlCenterTilesModel {
                         }
                     });
 
-                    // Firewall (UFW) + Podman poller — both shell out, so it
-                    // runs on the slow cadence and only while the panel is
-                    // visible (the `revealed` gate).
+                    // Firewall (UFW) poller — runs on the slow cadence and
+                    // only while the panel is visible (the `revealed` gate).
                     let revealed = self.revealed.clone();
                     sender.command(move |out, shutdown| async move {
                         let shutdown_fut = shutdown.wait();
@@ -1065,21 +1074,36 @@ impl Component for ControlCenterTilesModel {
                             let _ = out.send(ControlCenterTilesCommandOutput::UfwRefreshed(
                                 ufw_sub, ufw_active,
                             ));
-                            let (pod_sub, pod_active) = read_podman_tile_state().await;
-                            let _ = out.send(ControlCenterTilesCommandOutput::PodmanRefreshed(
-                                pod_sub, pod_active,
-                            ));
-                            let _ = out.send(ControlCenterTilesCommandOutput::HotspotRefreshed(
-                                hotspot::probe(&hotspot::configured_interface()).await,
-                            ));
-                            let _ = out.send(ControlCenterTilesCommandOutput::DenoiseRefreshed(
-                                denoise::probe().await,
-                            ));
                         }
                     });
 
-                    // Disk refresh (once on reveal, then every 30s while
-                    // the panel is visible)
+                    // Podman tile: follows the shared poll (re-evaluated on
+                    // every change it reports), machines cached for a minute.
+                    let mut podman_rx = self.podman_poll.receiver();
+                    sender.command(move |out, shutdown| async move {
+                        let shutdown_fut = shutdown.wait();
+                        tokio::pin!(shutdown_fut);
+                        loop {
+                            let summary = podman_rx.borrow_and_update().clone();
+                            if let Some(summary) = summary {
+                                let machines = podman_machines_cached().await;
+                                let (sub, active) =
+                                    podman_tile_state(machines.as_deref(), &summary);
+                                let _ = out.send(ControlCenterTilesCommandOutput::PodmanRefreshed(
+                                    sub, active,
+                                ));
+                            }
+                            tokio::select! {
+                                () = &mut shutdown_fut => break,
+                                r = podman_rx.changed() => if r.is_err() { break },
+                            }
+                        }
+                    });
+
+                    // Disk refresh, plus the hotspot (nmcli) and noise
+                    // suppression (pactl) probes: once on reveal, then every
+                    // 30 s while the panel is visible. Both tiles also
+                    // re-probe right after their own toggle.
                     let revealed = self.revealed.clone();
                     sender.command(move |out, shutdown| async move {
                         let shutdown_fut = shutdown.wait();
@@ -1098,6 +1122,12 @@ impl Component for ControlCenterTilesModel {
                             }
                             let usage = read_disk_usage();
                             let _ = out.send(ControlCenterTilesCommandOutput::DiskRefreshed(usage));
+                            let _ = out.send(ControlCenterTilesCommandOutput::HotspotRefreshed(
+                                hotspot::probe(&hotspot::configured_interface()).await,
+                            ));
+                            let _ = out.send(ControlCenterTilesCommandOutput::DenoiseRefreshed(
+                                denoise::probe().await,
+                            ));
                         }
                     });
 
@@ -1119,31 +1149,25 @@ impl Component for ControlCenterTilesModel {
                         }
                     });
 
-                    // Valent state poller (every 15s while the panel is
-                    // visible — heavier async probe)
-                    let revealed = self.revealed.clone();
+                    // Valent tile: follows the shared Valent poll.
+                    let mut valent_rx = self.valent_poll.receiver();
                     sender.command(move |out, shutdown| async move {
-                        use crate::valent;
                         let shutdown_fut = shutdown.wait();
                         tokio::pin!(shutdown_fut);
-                        let mut first = true;
                         loop {
-                            let delay = if first {
-                                STARTUP_DELAY
-                            } else {
-                                Duration::from_secs(15)
-                            };
-                            first = false;
+                            let report = valent_rx.borrow_and_update().clone();
+                            if let Some(report) = report {
+                                let (subtitle, connected) = valent_state_from_report(&report);
+                                let _ = out.send(
+                                    ControlCenterTilesCommandOutput::ValentStateRefreshed(
+                                        subtitle, connected,
+                                    ),
+                                );
+                            }
                             tokio::select! {
                                 () = &mut shutdown_fut => break,
-                                () = tile_tick(&revealed, delay) => {}
+                                r = valent_rx.changed() => if r.is_err() { break },
                             }
-                            let report = valent::probe().await;
-                            let (subtitle, connected) = valent_state_from_report(&report);
-                            let _ =
-                                out.send(ControlCenterTilesCommandOutput::ValentStateRefreshed(
-                                    subtitle, connected,
-                                ));
                         }
                     });
                 }
@@ -1172,6 +1196,8 @@ impl Component for ControlCenterTilesModel {
 
             ControlCenterTilesInput::Reveal(false) => {
                 self.revealed.set(false);
+                self.podman_poll.set_active(false);
+                self.valent_poll.set_active(false);
             }
 
             ControlCenterTilesInput::RefreshSubtitles => {
@@ -1875,8 +1901,51 @@ use tile_probes::*;
 #[cfg(test)]
 mod tests {
     use super::tile_probes::{
-        mirror_tile_state, twilight_mode_label, twilight_subtitle, valent_state_from_report,
+        PodmanMachine, mirror_tile_state, podman_tile_state, twilight_mode_label,
+        twilight_subtitle, valent_state_from_report,
     };
+    use crate::bars::bar_widgets::podman::PodmanSummary;
+
+    /// The Podman tile reads the shared poll's summary: machines win,
+    /// containers otherwise.
+    #[test]
+    fn podman_tile_from_shared_summary() {
+        let busy = PodmanSummary {
+            running_containers: 2,
+            ..Default::default()
+        };
+        assert_eq!(podman_tile_state(None, &busy), ("2 running".into(), true));
+        assert_eq!(
+            podman_tile_state(Some(&[]), &PodmanSummary::default()),
+            ("Idle".into(), false)
+        );
+        let broken = PodmanSummary {
+            error: Some("no podman".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            podman_tile_state(None, &broken),
+            ("Unavailable".into(), false)
+        );
+        let machines = [
+            PodmanMachine {
+                name: "dev".into(),
+                running: true,
+            },
+            PodmanMachine {
+                name: "old".into(),
+                running: false,
+            },
+        ];
+        assert_eq!(
+            podman_tile_state(Some(&machines), &busy),
+            ("dev".into(), true)
+        );
+        assert_eq!(
+            podman_tile_state(Some(&machines[1..]), &busy),
+            ("Stopped".into(), false)
+        );
+    }
     use super::{TileId, ordered_tile_ids};
     use crate::twilight::TwilightStatus;
     use crate::valent::{Device, ValentReport};

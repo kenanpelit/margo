@@ -18,7 +18,7 @@ use std::time::Duration;
 
 const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 
-static PODMAN_POLL: LazyLock<SharedPoll<PodmanSummary>> = LazyLock::new(|| {
+pub(crate) static PODMAN_POLL: LazyLock<SharedPoll<PodmanSummary>> = LazyLock::new(|| {
     SharedPoll::new(|| REFRESH_INTERVAL, || Box::pin(fetch_podman_summary())).with_feed(
         EventFeed::new(
             || {
