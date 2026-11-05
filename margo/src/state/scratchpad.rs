@@ -291,7 +291,7 @@ impl MargoState {
 
     /// Public action: toggle the visibility of a named scratchpad.
     ///
-    /// `name`  — appid pattern (substring match, case-insensitive).
+    /// `name`  — appid pattern (regex, the windowrule `appid` matcher).
     /// `title` — optional title pattern. Both must match if supplied.
     /// `spawn` — shell command to launch if no running client matches;
     ///           the next call after the spawn picks up the new client
@@ -583,42 +583,45 @@ impl MargoState {
     /// Public action: toggle the *anonymous* scratchpad set — every
     /// client previously promoted to a scratchpad via the legacy
     /// `toggle_scratchpad` command (no name, no title, just "stash
-    /// the current focused window"). Mirrors mango's implementation
-    /// faithfully enough that the pattern carries over.
+    /// the current focused window"; today they come back from a session
+    /// snapshot). Mirrors mango's implementation: the first anonymous
+    /// scratchpad in scope flips, and with `single_scratchpad` every shown
+    /// named one in scope is hidden.
     pub fn toggle_scratchpad(&mut self) {
-        if let Some(mon_idx) = self.focused_client_idx().map(|i| self.clients[i].monitor) {
-            // First pass: if any anonymous scratchpad is currently
-            // shown, hide them all. (single_scratchpad makes this
-            // mostly the same as toggle_named, just keyed off the
-            // anonymous flag.)
-            let mut hit = false;
-            let to_toggle: Vec<usize> = (0..self.clients.len())
+        // The focused window's monitor; with nothing focused (the shown
+        // scratchpad was the last window and was just hidden) the focused
+        // monitor, so the next press can still bring it back.
+        let mon_idx = self
+            .focused_client_idx()
+            .map(|i| self.clients[i].monitor)
+            .unwrap_or_else(|| self.focused_monitor());
+        if mon_idx >= self.monitors.len() {
+            return;
+        }
+        let cross = self.config.scratchpad_cross_monitor;
+        let in_scope = |c: &crate::state::MargoClient| cross || c.monitor == mon_idx;
+        // Hide the named ones first so their focus hand-off can't take
+        // focus from the anonymous one shown below.
+        if self.config.single_scratchpad {
+            let named: Vec<usize> = (0..self.clients.len())
                 .filter(|&i| {
                     let c = &self.clients[i];
-                    !c.is_named_scratchpad
-                        && (self.config.scratchpad_cross_monitor || c.monitor == mon_idx)
+                    in_scope(c)
+                        && c.is_named_scratchpad
+                        && c.is_in_scratchpad
+                        && c.is_scratchpad_show
                 })
                 .collect();
-
-            for i in to_toggle {
-                let c = &self.clients[i];
-                if self.config.single_scratchpad && c.is_named_scratchpad && !c.is_minimized {
-                    self.clients[i].is_minimized = true;
-                    let window = self.clients[i].window.clone();
-                    self.space.unmap_elem(&window);
-                    continue;
-                }
-                if c.is_named_scratchpad {
-                    continue;
-                }
-                if hit {
-                    continue;
-                }
-                if c.is_in_scratchpad {
-                    self.switch_scratchpad_state(i);
-                    hit = true;
-                }
+            for i in named {
+                self.hide_scratchpad_client(i);
             }
+        }
+        let target = self
+            .clients
+            .iter()
+            .position(|c| in_scope(c) && !c.is_named_scratchpad && c.is_in_scratchpad);
+        if let Some(i) = target {
+            self.switch_scratchpad_state(i);
         }
     }
 }

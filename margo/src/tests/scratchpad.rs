@@ -279,3 +279,51 @@ fn summon_skips_hidden_scratchpads() {
         .summon(Some("^kitty$"), Some("^dropdown$"), MatchOp::And, None);
     assert!(hidden(&fx, 1), "summon leaves the hidden scratchpad alone");
 }
+
+/// Anonymous scratchpads (restored from a session snapshot) toggle with
+/// `toggle_scratchpad`; with `single_scratchpad` a shown NAMED one is
+/// hidden at the same time (mango's toggle_scratchpad).
+#[test]
+fn anonymous_toggle_honours_single_scratchpad() {
+    let mut fx = windows(&[("kitty", "k"), ("notes", "n"), ("clipse", "c")], true);
+    // `notes`: an anonymous, hidden scratchpad.
+    {
+        let c = &mut fx.server.state.clients[1];
+        c.is_in_scratchpad = true;
+        c.is_scratchpad_show = false;
+        c.is_minimized = true;
+    }
+    let w = fx.server.state.clients[1].window.clone();
+    fx.server.state.space.unmap_elem(&w);
+    fx.server
+        .state
+        .toggle_named_scratchpad(Some("^clipse$"), None, None);
+    assert!(shown(&fx, 2));
+
+    fx.server.state.toggle_scratchpad();
+    assert!(shown(&fx, 1));
+    assert!(
+        hidden(&fx, 2),
+        "the named one is hidden by single_scratchpad"
+    );
+
+    fx.server.state.toggle_scratchpad();
+    assert!(hidden(&fx, 1));
+}
+
+/// Hiding the only window leaves nothing focused; the toggle must still
+/// bring the anonymous scratchpad back.
+#[test]
+fn anonymous_toggle_works_with_nothing_focused() {
+    let mut fx = windows(&[("notes", "n")], false);
+    {
+        let c = &mut fx.server.state.clients[0];
+        c.is_in_scratchpad = true;
+        c.is_scratchpad_show = true;
+    }
+    fx.server.state.toggle_scratchpad();
+    assert!(hidden(&fx, 0));
+    assert_eq!(fx.server.state.focused_client_idx(), None);
+    fx.server.state.toggle_scratchpad();
+    assert!(shown(&fx, 0), "shown again from an empty tag");
+}
