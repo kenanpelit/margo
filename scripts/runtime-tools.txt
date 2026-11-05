@@ -71,6 +71,8 @@ powerprofilesctl            power-profiles-daemon      power profiles, mpower
 sh                          -                          base
 bash                        -                          base
 true                        -                          base (tests)
+sleep                       -                          base (tests: a throwaway child process)
+dbus-daemon                 -                          dbus, a hard dependency (tests: an isolated session bus)
 date                        -                          base
 df                          -                          base
 uname                       -                          base
