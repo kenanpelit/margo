@@ -1,5 +1,6 @@
 pub(crate) mod bar;
 pub(crate) mod bar_widgets;
+pub(crate) mod custom_defs;
 pub(crate) mod pill_classes;
 
 /// DESIGN.md §4 pill anatomy for the pills new code copies from: the pill

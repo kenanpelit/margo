@@ -59,6 +59,7 @@ use crate::bars::bar_widgets::usb::{UsbInit, UsbModel};
 use crate::bars::bar_widgets::vpn_indicator::{VpnIndicatorInit, VpnIndicatorModel};
 use crate::bars::bar_widgets::wallpaper::{WallpaperInit, WallpaperModel, WallpaperOutput};
 use crate::bars::bar_widgets::weather::{WeatherInit, WeatherModel, WeatherOutput};
+use crate::bars::custom_defs;
 use mshell_common::dynamic_box::generic_widget_controller::GenericWidgetController;
 use mshell_common::dynamic_box::simple_widget_controller::SimpleWidgetController;
 use mshell_common::scoped_effects::EffectScope;
@@ -66,7 +67,7 @@ use mshell_config::config_manager::config_manager;
 use mshell_config::schema::bar_widgets::BarWidget;
 use mshell_config::schema::config::CustomMenuRow;
 use mshell_config::schema::config::{
-    BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, HiddenBarConfig,
+    BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, CustomWidgetConfig, HiddenBarConfig,
     HiddenBarConfigStoreFields, HorizontalBarStoreFields,
 };
 use mshell_utils::clear_box::clear_box;
@@ -119,6 +120,9 @@ pub(crate) struct BarModel {
     /// skip its destructive slot rebuild when the drawer definitions are
     /// unchanged (its triggering effect re-fires on any config save).
     hidden_sig: Option<(Vec<BarWidget>, Vec<HiddenBarConfig>)>,
+    /// Last-seen `bars.widgets.custom_widgets`: `SetCustomDefs` rebuilds
+    /// only the pills whose definition changed (see [`custom_defs`]).
+    custom_defs: Option<Vec<CustomWidgetConfig>>,
     min_height: i32,
     min_width: i32,
     css_class: String,
@@ -183,6 +187,10 @@ pub(crate) enum BarInput {
     /// skip the destructive rebuild when they're actually unchanged (the
     /// effect re-fires on any config save).
     RebuildHidden(Vec<BarWidget>, Vec<HiddenBarConfig>),
+    /// `bars.widgets.custom_widgets` notified — rebuild the custom pills
+    /// (and drawers holding one) whose definition changed; a slot's own
+    /// list guard never sees a definition edit.
+    SetCustomDefs(Vec<CustomWidgetConfig>),
     /// Apply (or clear) the frameless floating-panel inset and re-measure.
     /// Sent by the frame when "Enable frame drawing" or `bars.frame.frameless_gap`
     /// changes: with the frame OFF each bar paints its own inset floating panel
@@ -508,6 +516,19 @@ impl Component for BarModel {
             sender_clone.input(BarInput::SetIslands(islands));
         });
 
+        // Custom pill definitions — global; an edit rebuilds the pills
+        // built from a changed definition (BarInput::SetCustomDefs).
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let defs = config_manager()
+                .config()
+                .bars()
+                .widgets()
+                .custom_widgets()
+                .get();
+            sender_clone.input(BarInput::SetCustomDefs(defs));
+        });
+
         // Slide-animation duration — global, applied live (the Revealer's
         // `transition_duration` is `#[watch]`ed on `slide_duration_ms`).
         let sender_clone = sender.clone();
@@ -579,6 +600,7 @@ impl Component for BarModel {
             end_widgets: Vec::new(),
             start_widget_kinds: Vec::new(),
             hidden_sig: None,
+            custom_defs: None,
             center_widget_kinds: Vec::new(),
             end_widget_kinds: Vec::new(),
             min_width: 0,
@@ -769,6 +791,30 @@ impl Component for BarModel {
                     }
                 }
             }
+            BarInput::SetCustomDefs(defs) => {
+                // The first notify mirrors what the pills were built from.
+                let Some(old) = self.custom_defs.replace(defs) else {
+                    return;
+                };
+                let new = self.custom_defs.as_deref().unwrap_or_default();
+                let changed = custom_defs::changed_names(&old, new);
+                if changed.is_empty() {
+                    return;
+                }
+                let drawers: Vec<BarWidget> = self
+                    .hidden_sig
+                    .iter()
+                    .flat_map(|(own, named)| {
+                        own.iter()
+                            .chain(named.iter().flat_map(|h| h.widgets.iter()))
+                            .cloned()
+                    })
+                    .collect();
+                let hit = |k: &BarWidget| custom_defs::affected(k, &changed, &drawers);
+                self.rebuild_pills(Slot::Start, &widgets.start_container, &hit, &sender);
+                self.rebuild_pills(Slot::Center, &widgets.center_container, &hit, &sender);
+                self.rebuild_pills(Slot::End, &widgets.end_container, &hit, &sender);
+            }
             BarInput::SetFrameInset { disabled, gap } => {
                 // Apply the floating-panel inset as GTK margins on `bar_center`
                 // (the `.bar` widget). A GTK margin counts in `measure()`, so
@@ -859,6 +905,34 @@ impl BarModel {
             controllers.push(controller);
         }
         *cached = new;
+    }
+
+    /// Rebuild, in place, the pills of one slot that `hit` selects; the
+    /// other pills (and their pollers) are left alone.
+    fn rebuild_pills(
+        &mut self,
+        slot: Slot,
+        container: &gtk::Box,
+        hit: &dyn Fn(&BarWidget) -> bool,
+        sender: &ComponentSender<Self>,
+    ) {
+        let orientation = self.orientation;
+        let bar_type = self.bar_type;
+        let (kinds, controllers) = match slot {
+            Slot::Start => (&self.start_widget_kinds, &mut self.start_widgets),
+            Slot::Center => (&self.center_widget_kinds, &mut self.center_widgets),
+            Slot::End => (&self.end_widget_kinds, &mut self.end_widgets),
+        };
+        for (kind, slot_controller) in kinds.iter().zip(controllers.iter_mut()) {
+            if !hit(kind) {
+                continue;
+            }
+            let fresh = BarModel::build_widget(orientation, bar_type, kind, sender);
+            let old_root = slot_controller.root_widget();
+            container.insert_child_after(&fresh.root_widget(), Some(&old_root));
+            container.remove(&old_root);
+            *slot_controller = fresh;
+        }
     }
 
     fn build_widget(
