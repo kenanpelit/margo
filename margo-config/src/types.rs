@@ -1060,7 +1060,7 @@ pub struct Config {
     pub middle_button_emulation: bool,
     /// Mouse (external pointer) acceleration profile. Renamed from
     /// the legacy unified `accel_profile`; the old key still parses
-    /// and feeds this field for backward compat. See `parser.rs`.
+    /// and feeds this field for backward compat. See `parser/options.rs`.
     pub mouse_accel_profile: AccelProfile,
     /// Mouse acceleration speed, -1.0 .. 1.0. Renamed from
     /// `accel_speed`; legacy key still works.

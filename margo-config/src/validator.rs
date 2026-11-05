@@ -1711,11 +1711,11 @@ mod tests {
     /// with no W003.
     #[test]
     fn typed_parser_arms_are_in_type_tables() {
-        let src = include_str!("parser.rs");
+        let src = include_str!("parser/options.rs");
         let lines: Vec<&str> = src.lines().collect();
         let start = lines
             .iter()
-            .position(|l| l.trim_start().starts_with("fn parse_option"))
+            .position(|l| l.trim_start().starts_with("pub(super) fn parse_option"))
             .expect("parse_option fn");
         let end = (start..lines.len())
             .find(|&i| {

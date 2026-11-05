@@ -24,7 +24,7 @@ mshell-crates/mshell-config/src/schema/config.rs 1100
 mshell-crates/mshell-frame/src/frame.rs 1250
 
 # Existing oversized first-party files: frozen at adoption, not growth budgets.
-margo-config/src/parser.rs 3211
+margo-config/src/parser.rs 759
 margo/src/backend/udev/mod.rs 2116
 margo/src/backend/udev/render_elements.rs 3167
 margo/src/input_handler.rs 2281
