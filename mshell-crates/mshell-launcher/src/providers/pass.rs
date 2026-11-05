@@ -6,8 +6,8 @@
 //!
 //! | Key | Action |
 //! |---|---|
-//! | Enter | **Copy** the password — `pass -c`, which auto-clears the clipboard after `PASSWORD_STORE_CLIP_TIME` (45 s default). |
-//! | Ctrl+Enter | **Type** the password — `pass show … \| wtype`, so the secret never touches the clipboard (no history trail). |
+//! | Enter | **Copy** the password — `wl-copy --sensitive` (kept out of clipboard history), cleared after 45 s if still on the clipboard. |
+//! | Ctrl+Enter | **Type** the password via `wtype`, so the secret never touches the clipboard. |
 //!
 //! ## Entry fields (`pass <entry>:`)
 //!
@@ -16,7 +16,8 @@
 //! for every value in it, filtered by whatever follows the colon
 //! (`pass web/github: user`):
 //!
-//! * **Password** — the first line.
+//! * **Password** — the first line, exactly as stored (what `pass -c`
+//!   would copy).
 //! * **OTP code** — when the entry has an `otpauth://` line and
 //!   `pass-otp` is installed (`pass otp -c` / `pass otp | wtype`); without
 //!   pass-otp a hint row says so.
@@ -28,24 +29,23 @@
 //! exist; only the field *names* are kept in memory. Each activation
 //! decrypts again on a worker thread and hands the single value to
 //! `wl-copy --sensitive` (cleared after 45 s if still on the clipboard,
-//! like `pass -c`) or `wtype`.
+//! like `pass -c`) or `wtype`; the plain entry row does the same for the
+//! password.
 //!
 //! Store location follows pass itself: `$PASSWORD_STORE_DIR`, else
 //! `~/.password-store`. Entries are listed by their store-relative path
 //! without the `.gpg` suffix (e.g. `web/github`, `email/work`).
 //!
-//! Security note: `pass -c` does land the secret in the wl-clipboard,
-//! which margo's own clipboard history (mshell-clipboard) watches — use
-//! Ctrl+Enter (type) when you'd rather keep it out of history, or add
-//! `pass` to the clipboard's sensitive-skip list.
+//! The password is copied the same way (never with `pass -c`, whose bare
+//! `wl-copy` has no password-manager hint): mshell's clipboard history
+//! skips `--sensitive` copies while `clipboard.skip_sensitive` is on (the
+//! default). Ctrl+Enter types instead and never touches the clipboard.
 
-use crate::providers::tools::shell_quote;
 use crate::{
     item::LauncherItem,
     notify::toast,
     provider::{Provider, RefreshNotifier},
 };
-use mshell_process::SpawnReaped;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::Write as _;
@@ -285,43 +285,6 @@ fn scan(root: &Path, dir: &Path, out: &mut Vec<String>, depth: usize) {
     }
 }
 
-/// Spawn `pass -c <entry>` (decrypt + copy + auto-clear). Detached; gpg
-/// pinentry, if needed, is handled by the agent.
-///
-/// `PASSWORD_STORE_DIR` is forced to the store the provider scanned —
-/// mshell runs as a systemd user service and usually does NOT inherit
-/// the shell's `$PASSWORD_STORE_DIR`, so a bare `pass -c` would look in
-/// `~/.password-store`, not find the entry, and silently copy nothing.
-fn copy_password(store_dir: &Path, entry: &str) {
-    if let Err(err) = Command::new("pass")
-        .env("PASSWORD_STORE_DIR", store_dir)
-        .arg("-c")
-        .arg(entry)
-        .spawn_reaped()
-    {
-        tracing::warn!(?err, entry, "pass: copy spawn failed");
-    }
-}
-
-/// Type the password into the focused surface via wtype, never touching
-/// the clipboard. The short sleep lets the launcher close and keyboard
-/// focus return to the target window first. `PASSWORD_STORE_DIR` is
-/// forced for the same reason as `copy_password`.
-fn type_password(store_dir: &Path, entry: &str) {
-    let cmd = format!(
-        "sleep 0.25; pass show {} 2>/dev/null | head -n1 | tr -d '\\n' | wtype -",
-        shell_quote(entry)
-    );
-    if let Err(err) = Command::new("sh")
-        .env("PASSWORD_STORE_DIR", store_dir)
-        .arg("-c")
-        .arg(cmd)
-        .spawn_reaped()
-    {
-        tracing::warn!(?err, entry, "pass: type spawn failed");
-    }
-}
-
 // ── Entry fields ─────────────────────────────────────────────────────────
 
 /// Seconds a copied field stays on the clipboard (pass's own default).
@@ -332,7 +295,7 @@ const USERNAME_KEYS: &[&str] = &["login", "user", "username"];
 /// (entry names may contain `:` and `/`, never a unit separator).
 const ID_SEP: char = '\u{1f}';
 
-/// A decrypted entry: first non-empty line is the password, later
+/// A decrypted entry: the first line is the password, later
 /// `key: value` lines are fields (file order), any `otpauth://` line marks
 /// it OTP-capable. The pass / pass-otp conventions.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -344,13 +307,11 @@ pub struct ParsedEntry {
 
 pub fn parse_entry(body: &str) -> ParsedEntry {
     let mut out = ParsedEntry::default();
-    let mut first = true;
-    for line in body.lines().map(str::trim).filter(|l| !l.is_empty()) {
-        if first {
-            out.password = line.to_string();
-            first = false;
-            continue;
-        }
+    let mut lines = body.lines();
+    // The literal first line (what `pass -c` copies): no trimming, and an
+    // empty first line is an empty password, not the next line.
+    out.password = lines.next().unwrap_or_default().to_string();
+    for line in lines.map(str::trim).filter(|l| !l.is_empty()) {
         if line.contains("otpauth://") {
             out.has_otp = true;
             continue;
@@ -584,22 +545,16 @@ fn type_secret(value: &str) -> Result<(), String> {
     pipe_to(&["wtype", "-"], value)
 }
 
-/// Copy (`typing == false`) or type one field. Password copy keeps
-/// `pass -c`; everything else decrypts on a worker thread.
+/// Copy (`typing == false`) or type one field, the password included:
+/// decrypt on a worker thread, then `copy_secret` (`wl-copy --sensitive`,
+/// which mshell's clipboard history skips) or `type_secret`. Never
+/// `pass -c`: it copies with a bare `wl-copy`, so the password stayed in
+/// clipboard history after pass restored the old clipboard.
+///
+/// `PASSWORD_STORE_DIR` is forced to the store the provider scanned
+/// (`pass_show`): mshell runs as a systemd user service and usually does
+/// NOT inherit the shell's `$PASSWORD_STORE_DIR`.
 fn run_field_action(store: PathBuf, entry: String, field: Field, typing: bool) {
-    match (&field, typing) {
-        (Field::Password, false) => {
-            copy_password(&store, &entry);
-            toast("Pass", format!("Copied {entry} (clears in {CLIP_SECS}s)"));
-            return;
-        }
-        (Field::Password, true) => {
-            type_password(&store, &entry);
-            toast("Pass", format!("Typing {entry}"));
-            return;
-        }
-        _ => {}
-    }
     std::thread::spawn(move || {
         let value = match &field {
             Field::Otp => pass_otp(&store, &entry),
@@ -711,7 +666,6 @@ impl Provider for PassProvider {
             .enumerate()
             .map(|(idx, e)| {
                 let entry = e.clone();
-                let entry_for_toast = e.clone();
                 let store = store_dir.clone();
                 LauncherItem {
                     id: format!("pass:entry:{e}"),
@@ -723,8 +677,7 @@ impl Provider for PassProvider {
                     provider_name: "Pass".into(),
                     usage_key: Some(format!("pass:{e}")),
                     on_activate: Rc::new(move || {
-                        copy_password(&store, &entry);
-                        toast("Pass", format!("Copied {entry_for_toast} (clears in 45s)"));
+                        run_field_action(store.clone(), entry.clone(), Field::Password, false)
                     }),
                 }
             })
@@ -743,11 +696,9 @@ impl Provider for PassProvider {
         if entry.is_empty() {
             return None;
         }
-        let entry_for_toast = entry.clone();
         let store = self.store_dir.borrow().clone();
         Some(Rc::new(move || {
-            type_password(&store, &entry);
-            toast("Pass", format!("Typing {entry_for_toast}"));
+            run_field_action(store.clone(), entry.clone(), Field::Password, true)
         }))
     }
 
@@ -981,5 +932,40 @@ mod tests {
         let p = PassProvider::with_dir(PathBuf::from("/nonexistent"));
         let mut palette = p.commands();
         assert!(p.alt_action(&palette.remove(0)).is_none());
+    }
+
+    #[test]
+    fn every_secret_goes_through_the_sensitive_copy_or_wtype() {
+        // `pass -c` copies with a bare `wl-copy` (no password-manager hint),
+        // so mshell's clipboard history kept the password after pass
+        // restored the old clipboard. Every field, the password included,
+        // must be decrypted here and handed to `copy_secret`
+        // (`wl-copy --sensitive`) or `type_secret`, never to a `-c` mode or a
+        // shell pipeline.
+        let src = include_str!("pass.rs");
+        let prod = src.split("#[cfg(test)]").next().unwrap();
+        assert!(
+            !prod.contains(".arg(\"-c\")"),
+            "pass.rs still runs a `-c` copy/shell"
+        );
+        assert!(
+            !prod.contains("Command::new(\"sh\")"),
+            "pass.rs still pipes a secret through sh"
+        );
+        assert!(prod.contains("\"wl-copy\", \"--sensitive\""));
+    }
+
+    #[test]
+    fn the_password_is_the_first_line_exactly_as_stored() {
+        // The plain row now copies through parse_entry, so it must match
+        // what `pass -c` copied: the literal first line.
+        let p = parse_entry("  pw with spaces \t\nlogin: me\n");
+        assert_eq!(p.password, "  pw with spaces \t");
+        assert_eq!(p.fields, vec![("login".to_string(), "me".to_string())]);
+        assert_eq!(parse_entry("pw\r\nurl: x\r\n").password, "pw");
+        // An empty first line is an empty password, not the next line.
+        let blank = parse_entry("\nlogin: me\n");
+        assert_eq!(blank.password, "");
+        assert_eq!(field_value(&blank, "e", &Field::Password), None);
     }
 }
