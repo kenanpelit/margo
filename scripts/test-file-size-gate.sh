@@ -16,7 +16,7 @@ new_repo() {
     rm -rf "$tmp/r" && mkdir -p "$tmp/r/scripts" && cd "$tmp/r"
     git init -q -b main
     git config user.email t@t && git config user.name t
-    cp "$here/file-size-gate.sh" scripts/
+    cp "$here/file-size-gate.sh" "$here/file-size-gate.py" scripts/
     seq 10 > big.rs
     echo "big.rs 12" > scripts/file-size-limits.txt
     git add . && git commit -qm "base"
