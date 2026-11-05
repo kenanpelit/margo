@@ -18,13 +18,11 @@ use std::time::Duration;
 use tokio::sync::watch;
 use tracing::warn;
 
-/// What the upgrade step should run (resolved from PATH + config).
+/// What the background upgrade runs (resolved from PATH + config).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct UpgradePlan {
-    /// `paru` / `yay` when present and repo/AUR are enabled; `None` →
-    /// plain pacman.
-    pub(crate) aur_helper: Option<String>,
-    /// Run the pacman/AUR step at all (repo or AUR source enabled).
+    /// Run `pacman -Syu` (repo or AUR source enabled, pacman present).
+    /// AUR packages are never built here: see [`aur_review_step`].
     pub(crate) system: bool,
     /// Also `flatpak update`.
     pub(crate) flatpak: bool,
@@ -49,27 +47,31 @@ pub(crate) fn chain_steps(steps: &[String]) -> String {
 }
 
 /// The non-interactive background command: pkexec raises the polkit
-/// dialog, `--noconfirm` takes every default answer, an AUR helper
-/// builds as the user and escalates its install steps via pkexec.
-/// `IgnorePkg` in pacman.conf is honoured by pacman itself; packages
-/// hidden in the panel are only hidden from the count (holding a
-/// package back is a partial upgrade, which Arch doesn't support).
+/// dialog and `--noconfirm` takes every default answer. Official repos
+/// and Flatpak only: an AUR helper would build and install, as root,
+/// a PKGBUILD nobody reviewed (`--skipreview` / `--answerdiff None`),
+/// so pending AUR updates are left to [`aur_review_step`] in a
+/// terminal. `IgnorePkg` in pacman.conf is honoured by pacman itself;
+/// packages hidden in the panel are only hidden from the count
+/// (holding a package back is a partial upgrade, which Arch doesn't
+/// support).
 pub(crate) fn background_steps(plan: &UpgradePlan) -> Vec<String> {
     let quiet = " --noconfirm --noprogressbar --color never";
     let mut steps = Vec::new();
     if plan.system {
-        steps.push(match plan.aur_helper.as_deref() {
-            Some("paru") => format!("paru -Syu --sudo pkexec --skipreview{quiet}"),
-            Some(helper) => format!(
-                "{helper} -Syu --sudo pkexec --answerdiff None --answerclean None --answeredit None{quiet}"
-            ),
-            None => format!("pkexec pacman -Syu{quiet}"),
-        });
+        steps.push(format!("pkexec pacman -Syu{quiet}"));
     }
     if plan.flatpak {
         steps.push("flatpak update -y --noninteractive".to_string());
     }
     steps
+}
+
+/// The interactive AUR-only upgrade for the panel's "Review in
+/// terminal": the helper shows every PKGBUILD diff and asks before it
+/// builds.
+pub(crate) fn aur_review_step(helper: &str) -> String {
+    format!("{helper} -Sua")
 }
 
 /// The full detached script: START marker, the chained steps, EXIT
@@ -364,22 +366,33 @@ mod tests {
     use super::*;
 
     #[test]
-    fn steps_per_backend() {
+    fn background_never_builds_aur_packages() {
+        // An unattended AUR build (paru --skipreview / yay --answerdiff
+        // None) installs a PKGBUILD nobody looked at as root. Background
+        // mode upgrades the repos (+ Flatpak) only, whatever helper is
+        // installed; AUR updates go to the terminal review.
         let mut plan = UpgradePlan {
-            aur_helper: Some("paru".into()),
             system: true,
             flatpak: true,
         };
         assert_eq!(
             background_steps(&plan),
             [
-                "paru -Syu --sudo pkexec --skipreview --noconfirm --noprogressbar --color never",
+                "pkexec pacman -Syu --noconfirm --noprogressbar --color never",
                 "flatpak update -y --noninteractive"
             ]
         );
-        plan.aur_helper = Some("yay".into());
-        assert!(background_steps(&plan)[0].starts_with("yay -Syu --sudo pkexec --answerdiff None"));
-        plan.aur_helper = None;
+        for s in background_steps(&plan) {
+            for bad in [
+                "paru",
+                "yay",
+                "--skipreview",
+                "--answerdiff",
+                "--answeredit",
+            ] {
+                assert!(!s.contains(bad), "{s}");
+            }
+        }
         plan.flatpak = false;
         assert_eq!(
             background_steps(&plan),
@@ -387,6 +400,13 @@ mod tests {
         );
         plan.system = false;
         assert!(background_steps(&plan).is_empty());
+    }
+
+    #[test]
+    fn aur_review_runs_the_helper_interactively() {
+        assert_eq!(aur_review_step("paru"), "paru -Sua");
+        assert_eq!(aur_review_step("yay"), "yay -Sua");
+        assert!(!aur_review_step("paru").contains("--noconfirm"));
     }
 
     #[test]

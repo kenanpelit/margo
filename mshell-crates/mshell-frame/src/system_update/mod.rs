@@ -477,22 +477,57 @@ pub(crate) fn publish_report(report: UpdateReport) {
 
 // ── Upgrade dispatch ────────────────────────────────────────────
 
-/// Which upgrade steps apply on this machine for the enabled sources.
+/// Which background upgrade steps apply on this machine for the
+/// enabled sources.
 pub(crate) async fn upgrade_plan(cfg: ProbeConfig) -> run::UpgradePlan {
-    let system = (cfg.repo || cfg.aur) && which("pacman").await;
-    let aur_helper = if !cfg.aur {
-        None
-    } else if which("paru").await {
-        Some("paru".to_string())
+    run::UpgradePlan {
+        system: (cfg.repo || cfg.aur) && which("pacman").await,
+        flatpak: cfg.flatpak && which("flatpak").await,
+    }
+}
+
+/// The installed AUR helper (`paru`, else `yay`).
+pub(crate) async fn aur_helper() -> Option<&'static str> {
+    if which("paru").await {
+        Some("paru")
     } else if which("yay").await {
-        Some("yay".to_string())
+        Some("yay")
     } else {
         None
+    }
+}
+
+/// The panel's "Review in terminal" for pending AUR updates: the
+/// helper's interactive AUR-only upgrade (PKGBUILD diffs shown), in a
+/// terminal, whatever `update_mode` says.
+pub(crate) async fn launch_aur_review() -> Result<(), String> {
+    let Some(helper) = aur_helper().await else {
+        return Err("no AUR helper (paru / yay) found".into());
     };
-    run::UpgradePlan {
-        aur_helper,
-        system,
-        flatpak: cfg.flatpak && which("flatpak").await,
+    spawn_in_terminal(&[run::aur_review_step(helper)]).await
+}
+
+/// Background mode leaves pending AUR updates to the terminal review:
+/// the panel then shows "Review in terminal" on the AUR group.
+pub(crate) fn aur_left_for_review(
+    report: &UpdateReport,
+    mode: mshell_config::schema::config::SystemUpdateMode,
+) -> bool {
+    mode == mshell_config::schema::config::SystemUpdateMode::Background
+        && report.count(Source::Aur) > 0
+}
+
+/// How many pending updates the configured Update button will apply
+/// (sizes the background progress bar): background mode leaves the
+/// AUR to the terminal review.
+pub(crate) fn upgrade_expected(
+    report: &UpdateReport,
+    mode: mshell_config::schema::config::SystemUpdateMode,
+) -> usize {
+    use mshell_config::schema::config::SystemUpdateMode;
+    match mode {
+        SystemUpdateMode::Terminal => report.total(),
+        SystemUpdateMode::Background => report.total() - report.count(Source::Aur),
     }
 }
 
@@ -571,11 +606,6 @@ pub(crate) async fn launch_upgrade(cfg: ProbeConfig, expected: usize) -> Result<
 /// / dnf / apt, then `flatpak update` when flatpak is enabled — or
 /// `topgrade` with the topgrade backend.
 pub(crate) async fn launch_terminal_upgrade(cfg: ProbeConfig) -> Result<(), String> {
-    let Some(term) = detect_terminal().await else {
-        warn!("system_update: no terminal emulator on PATH; upgrade ignored");
-        return Err("no terminal emulator found".into());
-    };
-
     let mut steps: Vec<String> = Vec::new();
     if cfg.repo || cfg.aur {
         if which("paru").await {
@@ -598,7 +628,16 @@ pub(crate) async fn launch_terminal_upgrade(cfg: ProbeConfig) -> Result<(), Stri
         warn!("system_update: nothing to upgrade (no backend / all sources off)");
         return Err("nothing to upgrade (no backend / all sources off)".into());
     }
+    spawn_in_terminal(&steps).await
+}
 
+/// Open the user's terminal running `steps` one after another, then
+/// wait for Enter.
+async fn spawn_in_terminal(steps: &[String]) -> Result<(), String> {
+    let Some(term) = detect_terminal().await else {
+        warn!("system_update: no terminal emulator on PATH; upgrade ignored");
+        return Err("no terminal emulator found".into());
+    };
     let script = format!(
         "{}; echo; echo \"[mshell] done — press Enter to close.\"; read",
         steps.join("; ")
@@ -822,6 +861,28 @@ mod tests {
             effective_mode(SystemUpdateMode::Background, SystemUpdateBackend::Native),
             SystemUpdateMode::Background
         );
+    }
+
+    #[test]
+    fn background_mode_leaves_the_aur_for_review() {
+        use mshell_config::schema::config::SystemUpdateMode;
+        let report = UpdateReport {
+            entries: vec![
+                entry(Source::Repo, "a", None, None),
+                entry(Source::Aur, "b", None, None),
+                entry(Source::Flatpak, "c", None, None),
+            ],
+            ..Default::default()
+        };
+        assert_eq!(upgrade_expected(&report, SystemUpdateMode::Terminal), 3);
+        assert_eq!(upgrade_expected(&report, SystemUpdateMode::Background), 2);
+        assert!(aur_left_for_review(&report, SystemUpdateMode::Background));
+        assert!(!aur_left_for_review(&report, SystemUpdateMode::Terminal));
+        let no_aur = UpdateReport {
+            entries: vec![entry(Source::Repo, "a", None, None)],
+            ..Default::default()
+        };
+        assert!(!aur_left_for_review(&no_aur, SystemUpdateMode::Background));
     }
 
     #[test]

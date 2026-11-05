@@ -458,7 +458,9 @@ pub struct SystemUpdateBarWidget {
     pub check_news: bool,
     /// How the panel's Update button runs the upgrade: in a terminal
     /// (interactive, the default) or in the background through polkit
-    /// with a live log + result notification.
+    /// with a live log + result notification. Background upgrades the
+    /// official repos + Flatpak only; pending AUR updates are reviewed
+    /// in a terminal (never built unattended).
     pub update_mode: SystemUpdateMode,
     /// Package names hidden from the pending count in the panel. They
     /// still upgrade (holding a package back is pacman.conf's

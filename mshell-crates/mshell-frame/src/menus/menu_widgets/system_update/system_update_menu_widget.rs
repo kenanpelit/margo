@@ -106,6 +106,9 @@ pub(crate) enum SystemUpdateMenuWidgetInput {
     ConfigAction(ConfigAction),
     /// Hide a package from the count / show it again.
     ToggleHidden(String),
+    /// Background mode: run the AUR helper interactively in a
+    /// terminal (PKGBUILD diffs shown) for the pending AUR updates.
+    ReviewAur,
 }
 
 #[derive(Debug)]
@@ -553,7 +556,7 @@ impl Component for SystemUpdateMenuWidgetModel {
                     gtk::Image { set_icon_name: Some("software-update-available-symbolic") },
                     gtk::Label {
                         #[watch]
-                        set_label: update_label(model.news_confirm),
+                        set_label: update_label(model.news_confirm, aur_left_out(model.report.as_ref())),
                     },
                 },
             },
@@ -811,8 +814,12 @@ impl Component for SystemUpdateMenuWidgetModel {
             SystemUpdateMenuWidgetInput::Update => {
                 self.news_confirm = false;
                 self.run_error = None;
-                let expected = self.report.as_ref().map_or(0, |r| r.total());
-                let background = system_update::configured_mode() == SystemUpdateMode::Background;
+                let mode = system_update::configured_mode();
+                let expected = self
+                    .report
+                    .as_ref()
+                    .map_or(0, |r| system_update::upgrade_expected(r, mode));
+                let background = mode == SystemUpdateMode::Background;
                 sender.oneshot_command(async move {
                     match system_update::launch_upgrade(ProbeConfig::from_config(), expected).await
                     {
@@ -825,6 +832,16 @@ impl Component for SystemUpdateMenuWidgetModel {
                 if !background {
                     let _ = sender.output(SystemUpdateMenuWidgetOutput::CloseMenu);
                 }
+            }
+            SystemUpdateMenuWidgetInput::ReviewAur => {
+                self.run_error = None;
+                sender.oneshot_command(async {
+                    match system_update::launch_aur_review().await {
+                        Ok(()) => SystemUpdateMenuWidgetCommandOutput::Run(run::status()),
+                        Err(e) => SystemUpdateMenuWidgetCommandOutput::LaunchFailed(e),
+                    }
+                });
+                let _ = sender.output(SystemUpdateMenuWidgetOutput::CloseMenu);
             }
             SystemUpdateMenuWidgetInput::ToggleSource(source, active) => {
                 let current = match source {
@@ -994,12 +1011,17 @@ fn news_title(n: usize, confirm: bool) -> String {
     }
 }
 
-fn update_label(confirm: bool) -> &'static str {
-    if confirm {
-        "Upgrade anyway"
-    } else {
-        "Update everything"
+fn update_label(confirm: bool, aur_left_out: bool) -> &'static str {
+    match (confirm, aur_left_out) {
+        (true, _) => "Upgrade anyway",
+        (false, true) => "Update everything but AUR",
+        (false, false) => "Update everything",
     }
+}
+
+/// Background mode with AUR updates pending: Update skips them.
+fn aur_left_out(report: Option<&UpdateReport>) -> bool {
+    report.is_some_and(|r| system_update::aur_left_for_review(r, system_update::configured_mode()))
 }
 
 /// One row per unread post: the title, opening the post on click.
@@ -1105,6 +1127,9 @@ fn rebuild_list(
             .build();
         header.add_css_class("system-update-section-label");
         list.append(&header);
+        if source == Source::Aur && aur_left_out(Some(report)) {
+            list.append(&aur_review_row(sender));
+        }
 
         for e in entries {
             let row = gtk::Box::builder()
@@ -1141,6 +1166,32 @@ fn rebuild_list(
             list.append(&row);
         }
     }
+}
+
+/// Background mode never builds AUR packages unattended: a note and a
+/// button that runs the helper interactively (diffs shown) instead.
+fn aur_review_row(sender: &ComponentSender<SystemUpdateMenuWidgetModel>) -> gtk::Box {
+    let row = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(8)
+        .build();
+    let note = info_label(
+        "Background upgrades skip the AUR: review the PKGBUILD changes \
+         before anything is built.",
+    );
+    note.add_css_class("dim-label");
+    note.set_hexpand(true);
+    row.append(&note);
+    let btn = gtk::Button::with_label("Review in terminal");
+    btn.add_css_class("ok-button-surface");
+    btn.set_valign(gtk::Align::Center);
+    btn.set_tooltip_text(Some(
+        "Run the AUR helper in a terminal, with the PKGBUILD diffs",
+    ));
+    let s = sender.clone();
+    btn.connect_clicked(move |_| s.input(SystemUpdateMenuWidgetInput::ReviewAur));
+    row.append(&btn);
+    row
 }
 
 /// The History page: one titled boxed-list per transaction, rows

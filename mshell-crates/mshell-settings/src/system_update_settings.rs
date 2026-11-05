@@ -304,7 +304,7 @@ impl Component for SystemUpdateSettingsModel {
                             gtk::Label {
                                 add_css_class: "label-small",
                                 add_css_class: "dim-label",
-                                set_label: "Background: polkit asks for the password, the panel shows the live log, a notification reports the result.",
+                                set_label: "Background: polkit asks for the password, the panel shows the live log, a notification reports the result. It upgrades the official repos and Flatpak only: AUR packages are never built unattended, the panel's Review in terminal runs paru / yay with the PKGBUILD diffs.",
                                 set_halign: gtk::Align::Start,
                                 set_xalign: 0.0,
                                 set_wrap: true,
