@@ -238,6 +238,16 @@ jobs:
       - name: Build the guest fixtures (wasm32-wasip2)
         run: ./scripts/build-wasm-fixtures.sh
 
+      - name: mplugin-sdk (wasm32-wasip2) + one host/guest contract
+        # The authoring SDK is a standalone crate (not a workspace member)
+        # that plugin authors build for wasm32-wasip2. Its wit/world.wit is a
+        # symlink to the host's, so the two sides read one contract; `cmp`
+        # fails if the link is ever replaced by a copy that drifts.
+        run: |
+          cmp mplugin-sdk/wit/world.wit mshell-crates/mshell-plugin-host/wit/world.wit
+          cargo clippy --locked --target wasm32-wasip2 --manifest-path mplugin-sdk/Cargo.toml -- -D warnings
+          cargo fmt --manifest-path mplugin-sdk/Cargo.toml -- --check
+
       - name: cargo test (plugin host, real guests)
         run: cargo test --locked -p mshell-plugin-host --features wasm
 

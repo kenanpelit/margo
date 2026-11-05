@@ -107,6 +107,9 @@ check:
     cargo clippy --workspace --all-targets --locked -- -D warnings
     cargo clippy --locked --all-targets -p mshell -p mshell-frame -p mshell-plugin-ui -p mshell-plugin-host --features mshell/wasm-plugins,mshell-plugin-ui/wasm -- -D warnings
     ./scripts/build-wasm-fixtures.sh
+    cmp mplugin-sdk/wit/world.wit mshell-crates/mshell-plugin-host/wit/world.wit
+    cargo clippy --locked --target wasm32-wasip2 --manifest-path mplugin-sdk/Cargo.toml -- -D warnings
+    cargo fmt --manifest-path mplugin-sdk/Cargo.toml -- --check
     MARGO_REQUIRE_WASM_FIXTURES=1 cargo test --locked -p mshell-plugin-host --features wasm
     MARGO_REQUIRE_WASM_FIXTURES=1 cargo test --locked -p mshell-frame -p mshell-plugin-ui --features mshell-frame/wasm-plugins,mshell-plugin-ui/wasm
     ./scripts/design-lint.sh
