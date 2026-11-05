@@ -14,11 +14,11 @@ use std::time::{Duration, SystemTime};
 /// One saved copy of `config.conf`'s content.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Generation {
-    /// The filename stem, e.g. `"20260901T142233Z"` — sortable
-    /// lexicographically in save order, unique per save (second
-    /// resolution; two saves within the same second overwrite each
-    /// other, which is an acceptable edge case for a manual/reload-rate
-    /// trigger).
+    /// The filename stem, e.g. `"20260901T142233.123Z"` (UTC, millisecond
+    /// resolution), unique per save: a save that would reuse a taken name
+    /// or sort before the newest one gets a `-N` suffix instead
+    /// (`"20260901T142233.123Z-1"`). Older files use the
+    /// second form `"20260901T142233Z"` and still list in order.
     pub id: String,
     /// System time when this generation was saved.
     pub timestamp: SystemTime,
@@ -46,7 +46,7 @@ pub fn generations_dir() -> PathBuf {
 }
 
 fn generation_id_now() -> String {
-    chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string()
+    chrono::Utc::now().format("%Y%m%dT%H%M%S%.3fZ").to_string()
 }
 
 /// Save `content` as a new generation under `dir`, unless it's
@@ -94,9 +94,15 @@ fn save_inner(
         );
         return None;
     }
-    let id = generation_id_now();
+    let id = unique_generation_id(
+        dir,
+        generation_id_now(),
+        newest.as_ref().map(|g| g.id.as_str()),
+    );
     let path = dir.join(format!("{id}.conf"));
-    if let Err(e) = std::fs::write(&path, content) {
+    // Atomic: this file is boot recovery's last-known-good source, so a
+    // crash mid-write must never leave a truncated generation behind.
+    if let Err(e) = margo_fs::atomic_write::atomic_write(&path, content.as_bytes()) {
         tracing::warn!(
             "config generations: could not save generation to {}: {e}",
             path.display()
@@ -152,9 +158,59 @@ pub fn list_in(dir: &Path) -> std::io::Result<Vec<Generation>> {
             })
         })
         .collect();
-    // The id format is sortable, so lexicographic order == save order.
-    gens.sort_by(|a, b| b.id.cmp(&a.id));
+    // Newest first, by the id's time then its collision suffix.
+    gens.sort_by_key(|g| std::cmp::Reverse(id_sort_key(&g.id)));
     Ok(gens)
+}
+
+/// Split an id into its time part and its collision suffix
+/// (`"20260901T142233.123Z-2"` → `("20260901T142233.123Z", 2)`); an id
+/// without a numeric `-N` tail has suffix 0.
+fn split_suffix(id: &str) -> (&str, u64) {
+    if let Some((base, n)) = id.rsplit_once('-')
+        && !n.is_empty()
+        && n.bytes().all(|b| b.is_ascii_digit())
+        && let Ok(n) = n.parse()
+    {
+        return (base, n);
+    }
+    (id, 0)
+}
+
+/// Save-order key of a generation id. Accepts the current millisecond
+/// form (`20260901T142233.123Z`), the older second form
+/// (`20260901T142233Z`, read as `.000`) and a `-N` collision suffix,
+/// compared as a number so `-10` sorts after `-2`.
+fn id_sort_key(id: &str) -> (String, u64) {
+    let (base, n) = split_suffix(id);
+    let stamp = base.strip_suffix('Z').unwrap_or(base);
+    let (secs, millis) = stamp.split_once('.').unwrap_or((stamp, "000"));
+    (format!("{secs}.{millis:0<3}"), n)
+}
+
+/// A fresh, unused id under `dir` that sorts after `newest`: the current
+/// UTC time in milliseconds, with a `-N` suffix when that name is taken
+/// or when the clock reads earlier than the newest saved id (same
+/// millisecond, or the clock stepped back).
+fn unique_generation_id(dir: &Path, now_id: String, newest: Option<&str>) -> String {
+    let (base, mut n) = match newest {
+        Some(newest) if id_sort_key(&now_id) <= id_sort_key(newest) => {
+            let (base, n) = split_suffix(newest);
+            (base.to_string(), n + 1)
+        }
+        _ => (now_id, 0),
+    };
+    loop {
+        let id = if n == 0 {
+            base.clone()
+        } else {
+            format!("{base}-{n}")
+        };
+        if !dir.join(format!("{id}.conf")).exists() {
+            return id;
+        }
+        n += 1;
+    }
 }
 
 /// [`list_in`] against [`generations_dir`].
@@ -235,7 +291,6 @@ mod tests {
     fn changed_content_creates_a_new_generation() {
         let dir = tempfile::tempdir().unwrap();
         save_to(dir.path(), "borderpx = 7\n", 20);
-        std::thread::sleep(std::time::Duration::from_millis(1100)); // cross a whole second
         let second = save_to(dir.path(), "borderpx = 9\n", 20);
         assert!(second.is_some());
         assert_eq!(list_in(dir.path()).unwrap().len(), 2);
@@ -246,7 +301,6 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         for i in 0..5 {
             save_to(dir.path(), &format!("borderpx = {i}\n"), 3);
-            std::thread::sleep(std::time::Duration::from_millis(1100));
         }
         let gens = list_in(dir.path()).unwrap();
         assert_eq!(gens.len(), 3, "prune must keep exactly `keep` generations");
@@ -255,6 +309,66 @@ mod tests {
             std::fs::read_to_string(&gens[0].path).unwrap(),
             "borderpx = 4\n"
         );
+    }
+
+    /// Two different saves inside one second (a `mctl config set` script,
+    /// Settings + an editor) must both survive: the second used to take
+    /// the same second-resolution id and overwrite the first on disk.
+    #[test]
+    fn two_different_saves_in_the_same_second_keep_both() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = save_to(dir.path(), "borderpx = 1\n", 20).expect("first save");
+        let b = save_to(dir.path(), "borderpx = 2\n", 20).expect("second save");
+        assert_ne!(a.id, b.id);
+        let gens = list_in(dir.path()).unwrap();
+        assert_eq!(gens.len(), 2, "{gens:?}");
+        assert_eq!(gens[0].id, b.id, "the second save is the newest");
+        assert_eq!(read_to(&gens[0]), "borderpx = 2\n");
+        assert_eq!(read_to(&gens[1]), "borderpx = 1\n");
+    }
+
+    /// Many saves faster than the id's resolution still get unique ids
+    /// that list in save order.
+    #[test]
+    fn a_burst_of_saves_lists_in_save_order() {
+        let dir = tempfile::tempdir().unwrap();
+        for i in 0..12 {
+            save_to(dir.path(), &format!("borderpx = {i}\n"), 50).expect("save");
+        }
+        let contents: Vec<String> = list_in(dir.path()).unwrap().iter().map(read_to).collect();
+        let want: Vec<String> = (0..12).rev().map(|i| format!("borderpx = {i}\n")).collect();
+        assert_eq!(contents, want);
+    }
+
+    /// Old second-resolution names, millisecond names and collision
+    /// suffixes order by time, then by suffix number (not as text:
+    /// `-10` is newer than `-2`).
+    #[test]
+    fn ids_order_by_time_then_suffix() {
+        let mut ids = vec![
+            "20260901T142233Z",
+            "20260901T142233.500Z-10",
+            "20260901T142233.500Z-2",
+            "20260901T142233.500Z",
+            "20260901T142232.999Z",
+            "20260901T142234Z",
+        ];
+        ids.sort_by_key(|id| std::cmp::Reverse(id_sort_key(id)));
+        assert_eq!(
+            ids,
+            vec![
+                "20260901T142234Z",
+                "20260901T142233.500Z-10",
+                "20260901T142233.500Z-2",
+                "20260901T142233.500Z",
+                "20260901T142233Z",
+                "20260901T142232.999Z",
+            ]
+        );
+    }
+
+    fn read_to(g: &Generation) -> String {
+        std::fs::read_to_string(&g.path).unwrap()
     }
 
     #[test]
@@ -268,7 +382,6 @@ mod tests {
     fn latest_in_returns_newest_content() {
         let dir = tempfile::tempdir().unwrap();
         save_to(dir.path(), "borderpx = 1\n", 20);
-        std::thread::sleep(std::time::Duration::from_millis(1100));
         save_to(dir.path(), "borderpx = 2\n", 20);
         let (r#gen, content) = latest_in(dir.path()).expect("a generation exists");
         assert_eq!(content, "borderpx = 2\n");
