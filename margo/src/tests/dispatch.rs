@@ -38,6 +38,14 @@ fn unknown_action_reports_unknown() {
 #[test]
 fn recognised_actions_report_handled() {
     let mut fx = state_with_one_window();
+    // `reload` reads the config from disk: point it at an empty (valid)
+    // file so the outcome doesn't depend on the machine's own
+    // ~/.config/margo (CI has none, and a missing file is refused).
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = dir.path().join("config.conf");
+    std::fs::write(&config, "").expect("write config");
+    fx.server.state.config_path = Some(config);
+    fx.server.state.generations_dir = dir.path().join("generations");
     for action in ["killclient", "togglefloating", "focuslast", "reload"] {
         assert_eq!(
             dispatch_action(&mut fx.server.state, action, &Arg::default()),
@@ -45,6 +53,21 @@ fn recognised_actions_report_handled() {
             "`{action}` should be a recognised action"
         );
     }
+}
+
+/// A config file deleted while margo runs is not "use the defaults": the
+/// reload is refused and the running config stays (boot writes a default
+/// file, so this only happens mid-session), and the dispatch says so.
+#[test]
+fn reload_with_the_config_file_gone_is_refused() {
+    let mut fx = state_with_one_window();
+    let dir = tempfile::tempdir().expect("tempdir");
+    fx.server.state.config_path = Some(dir.path().join("config.conf"));
+    fx.server.state.generations_dir = dir.path().join("generations");
+    assert!(matches!(
+        dispatch_action(&mut fx.server.state, "reload", &Arg::default()),
+        DispatchOutcome::Failed(_)
+    ));
 }
 
 #[test]
