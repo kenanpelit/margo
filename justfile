@@ -33,10 +33,14 @@ margo:
     @echo "installed margo → re-login or reboot to run the new compositor (mctl reload won't swap the binary)"
 
 # Built with the WASM plugin panels on, like the package (PKGBUILD).
-# Build + install the shell and restart it live (no logout needed).
+# Build + install the shell and restart it live (no logout needed). The
+# root helper its polkit prompts run (mshell-privileged + its policy) goes
+# with it, so a new pkexec verb never meets an older installed helper.
 shell:
-    cargo build --release -p mshell --features wasm-plugins
+    cargo build --release -p mshell -p mshell-privileged --features mshell/wasm-plugins
     sudo install -m755 target/release/mshell {{bindir}}/mshell
+    sudo install -Dm755 target/release/mshell-privileged /usr/lib/mshell/mshell-privileged
+    sudo install -Dm644 mshell-crates/mshell-privileged/data/org.margo.mshell.privileged.policy /usr/share/polkit-1/actions/org.margo.mshell.privileged.policy
     systemctl --user restart mshell
     @echo "mshell rebuilt + restarted"
 

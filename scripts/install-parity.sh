@@ -5,7 +5,8 @@
 #      install.sh's builds must also be `--locked`),
 #   2. the binaries installed to /usr/bin (and the no-manifest uninstall list),
 #   3. every installed destination path (units, wants links, assets, docs),
-#   4. that the justfile (`just all`) installs every packaged binary.
+#   4. that the justfile (`just all`) installs every packaged binary, the
+#      helpers outside /usr/bin and their polkit actions.
 # Usage: ./scripts/install-parity.sh [repo-root]   (exit 1 on drift)
 set -euo pipefail
 root="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -104,6 +105,17 @@ if [ -f "$root/justfile" ]; then
         grep -oE 'for b in [^;]*;' "$root/justfile" | sed 's/^for b in //; s/;$//' | tr ' ' '\n') |
         sed '/^$/d' | sort -u)"
     report "justfile installs" "$(comm -23 <(echo "$pk_bins") <(echo "$just_bins"))" ""
+    # Programs packaged outside /usr/bin (D-Bus / pkexec helpers) and the
+    # polkit actions they run under: a dev install without them leaves
+    # mshell saying "reinstall margo" (mshell_privileged::MISSING), or a
+    # stale helper without the shell's newest verbs.
+    pk_extra="$(body "$pkgbuild" package |
+        grep -oE '"target/release/[A-Za-z0-9_-]+" +"\$pkgdir/[^"]+"|"\$pkgdir/usr/share/polkit-1/actions/[^"]+"' |
+        grep -v '/usr/bin/' | grep -oE '\$pkgdir/[^"]+' | sed 's#^\$pkgdir##' | sort -u)"
+    missing="$(while read -r dest; do
+        [ -n "$dest" ] && ! grep -qF -- "$dest" "$root/justfile" && echo "$dest"
+    done <<<"$pk_extra" || true)"
+    report "justfile installs (outside /usr/bin)" "$missing" ""
 fi
 
 if [ "$fail" = 0 ]; then
