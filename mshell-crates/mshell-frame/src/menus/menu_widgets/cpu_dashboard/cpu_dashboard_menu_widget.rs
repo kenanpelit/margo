@@ -35,7 +35,7 @@ use crate::bars::bar_widgets::sysstat::{
     find_cpu_temp_sensor_pub, read_all_fans_pub, read_all_temp_sensors_pub, read_cpu_stat_pub,
     read_temp_millideg_pub,
 };
-use crate::menus::reveal_poll::RevealPoll;
+use crate::menus::reveal_poll::{RevealGate, RevealPoll};
 use futures::StreamExt;
 use mshell_services::sys_info_service;
 use relm4::gtk::prelude::{
@@ -178,6 +178,10 @@ pub(crate) struct CpuDashboardMenuWidgetModel {
     poll: RevealPoll,
     /// Whether the host menu is revealed (gates the tab children's polls).
     revealed: bool,
+    /// Revealed flag for the disk `.watch()` subscription.
+    disk_gate: RevealGate,
+    /// The Storage rows as shown (skips identical rebuilds).
+    disk_shown: Vec<DiskRow>,
     /// Visible tab name (`overview`, `processes`, …).
     tab: String,
     processes: Controller<ProcessesTabModel>,
@@ -215,8 +219,8 @@ pub(crate) struct CpuDashboardMenuWidgetInit {}
 #[relm4::component(pub(crate))]
 impl Component for CpuDashboardMenuWidgetModel {
     /// A storage snapshot pushed in from the `sys_info_service().disks`
-    /// watch stream: `(mount, used_kb, total_kb, percent)` per filesystem.
-    type CommandOutput = Vec<(String, u64, u64, u32)>;
+    /// watch stream, as the Storage rows show it.
+    type CommandOutput = Vec<DiskRow>;
     type Input = CpuDashboardMenuWidgetInput;
     type Output = CpuDashboardMenuWidgetOutput;
     type Init = CpuDashboardMenuWidgetInit;
@@ -675,6 +679,8 @@ impl Component for CpuDashboardMenuWidgetModel {
             history: Rc::new(RefCell::new(Vec::with_capacity(HISTORY_LEN))),
             poll,
             revealed: true,
+            disk_gate: RevealGate::new(true),
+            disk_shown: Vec::new(),
             tab: "overview".to_string(),
             processes: ProcessesTabModel::builder().launch(()).detach(),
             ports: PortsTabModel::builder().launch(()).detach(),
@@ -755,39 +761,34 @@ impl Component for CpuDashboardMenuWidgetModel {
         // Subscribe to the shared service's disk metrics. wayle's pollers
         // only run while a property has a `.watch()` subscriber — a `.get()`
         // never wakes them — so the menu MUST watch (not poll) for the
-        // Storage section to populate. The poller emits immediately on the
-        // first subscribe, then on its own (slow) cadence.
+        // Storage section to populate. The subscription exists only while
+        // the dashboard is revealed, so a closed dashboard keeps no statvfs
+        // sweep alive. The poller emits immediately on subscribe, then on
+        // its own (slow) cadence.
+        let gate = model.disk_gate.clone();
         sender.command(|out, shutdown| async move {
-            let shutdown_fut = shutdown.wait();
-            tokio::pin!(shutdown_fut);
-            let mut stream = sys_info_service().disks.watch();
-            loop {
-                tokio::select! {
-                    () = &mut shutdown_fut => break,
-                    next = stream.next() => match next {
-                        Some(disks) => {
-                            // Real filesystems only (≥1 GiB drops efi/tmpfs/loop
-                            // noise), sorted + de-duplicated + capped.
-                            let mut rows: Vec<(String, u64, u64, u32)> = disks
-                                .into_iter()
-                                .filter(|d| d.total_bytes >= 1024 * 1024 * 1024)
-                                .map(|d| {
-                                    (
-                                        d.mount_point.to_string_lossy().into_owned(),
-                                        d.used_bytes / 1024,
-                                        d.total_bytes / 1024,
-                                        d.usage_percent.round() as u32,
-                                    )
-                                })
-                                .collect();
-                            rows.sort_by(|a, b| a.0.cmp(&b.0));
-                            rows.dedup_by(|a, b| a.0 == b.0);
-                            rows.truncate(6);
-                            let _ = out.send(rows);
-                        }
-                        None => break,
-                    },
-                }
+            let watch = gate.stream_while_revealed(
+                // Boxed: `watch()`'s opaque type would keep borrowing the
+                // service handle; its `'static` bound lets the box drop that.
+                || sys_info_service().disks.watch().boxed(),
+                |disks| {
+                    let raw = disks
+                        .into_iter()
+                        .map(|d| {
+                            (
+                                d.mount_point.to_string_lossy().into_owned(),
+                                d.used_bytes,
+                                d.total_bytes,
+                                d.usage_percent.round() as u32,
+                            )
+                        })
+                        .collect();
+                    let _ = out.send(disk_rows(raw));
+                },
+            );
+            tokio::select! {
+                () = shutdown.wait() => {}
+                () = watch => {}
             }
         });
 
@@ -805,6 +806,7 @@ impl Component for CpuDashboardMenuWidgetModel {
         match message {
             CpuDashboardMenuWidgetInput::ParentRevealChanged(visible) => {
                 self.poll.set_revealed(visible);
+                self.disk_gate.set(visible);
                 self.revealed = visible;
                 self.sync_tabs();
                 // Refresh immediately on open so reappearing shows live
@@ -939,8 +941,10 @@ impl Component for CpuDashboardMenuWidgetModel {
         _root: &Self::Root,
     ) {
         // A fresh disk snapshot arrived from the watch stream — repaint the
-        // Storage rows.
-        rebuild_disk_rows(&widgets.disk_box, &message);
+        // Storage rows when what they show changed.
+        if super::ui::replace_if_changed(&mut self.disk_shown, message) {
+            rebuild_disk_rows(&widgets.disk_box, &self.disk_shown);
+        }
     }
 }
 
@@ -1032,7 +1036,7 @@ fn disk_severity(pct: u32) -> &'static str {
 /// One storage row: mount caption + usage bar + "used / total" + percent —
 /// the same shape as the Memory rows. Built with builders so it needs no
 /// extra `*Ext` trait imports.
-fn build_disk_row(mount: &str, used_kb: u64, total_kb: u64, pct: u32) -> gtk::Box {
+fn build_disk_row(mount: &str, usage: &str, pct: u32) -> gtk::Box {
     let row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(10)
@@ -1057,7 +1061,7 @@ fn build_disk_row(mount: &str, used_kb: u64, total_kb: u64, pct: u32) -> gtk::Bo
     );
     row.append(
         &gtk::Label::builder()
-            .label(format!("{} / {}", fmt_gb(used_kb), fmt_gb(total_kb)))
+            .label(usage)
             .css_classes(["cpu-dashboard-stat-detail"])
             .build(),
     );
@@ -1072,14 +1076,41 @@ fn build_disk_row(mount: &str, used_kb: u64, total_kb: u64, pct: u32) -> gtk::Bo
     row
 }
 
-/// Rebuild the storage rows in `container` from a `(mount, used_kb,
-/// total_kb, percent)` snapshot delivered by the disk watch stream.
-fn rebuild_disk_rows(container: &gtk::Box, rows: &[(String, u64, u64, u32)]) {
+/// One Storage row as displayed: mount, `used / total` text, percent.
+/// Rounded to what is shown, so a few kB written between polls doesn't
+/// rebuild the rows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DiskRow {
+    mount: String,
+    usage: String,
+    pct: u32,
+}
+
+/// `(mount, used bytes, total bytes, percent)` per filesystem → the
+/// rows to show: real filesystems only (≥1 GiB drops efi/tmpfs/loop
+/// noise), sorted + de-duplicated + capped.
+fn disk_rows(mut disks: Vec<(String, u64, u64, u32)>) -> Vec<DiskRow> {
+    disks.retain(|d| d.2 >= 1024 * 1024 * 1024);
+    disks.sort_by(|a, b| a.0.cmp(&b.0));
+    disks.dedup_by(|a, b| a.0 == b.0);
+    disks.truncate(6);
+    disks
+        .into_iter()
+        .map(|(mount, used, total, pct)| DiskRow {
+            mount,
+            usage: format!("{} / {}", fmt_gb(used / 1024), fmt_gb(total / 1024)),
+            pct,
+        })
+        .collect()
+}
+
+/// Rebuild the storage rows in `container`.
+fn rebuild_disk_rows(container: &gtk::Box, rows: &[DiskRow]) {
     while let Some(child) = container.first_child() {
         container.remove(&child);
     }
-    for (mount, used_kb, total_kb, pct) in rows {
-        container.append(&build_disk_row(mount, *used_kb, *total_kb, *pct));
+    for r in rows {
+        container.append(&build_disk_row(&r.mount, &r.usage, r.pct));
     }
 }
 
@@ -1263,4 +1294,26 @@ fn read_loadavg() -> Option<(f32, f32, f32)> {
     let b: f32 = it.next()?.parse().ok()?;
     let c: f32 = it.next()?.parse().ok()?;
     Some((a, b, c))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const GIB: u64 = 1024 * 1024 * 1024;
+
+    #[test]
+    fn disk_rows_round_to_what_is_shown() {
+        let a = disk_rows(vec![
+            ("/".into(), 100 * GIB, 400 * GIB, 25),
+            ("/boot".into(), 1024, 512 * 1024 * 1024, 1),
+        ]);
+        assert_eq!(a.len(), 1, "sub-GiB filesystems are dropped");
+        assert_eq!(a[0].usage, "100.0 GB / 400.0 GB");
+        // A few kB written since: same rows, so no rebuild.
+        let b = disk_rows(vec![("/".into(), 100 * GIB + 8192, 400 * GIB, 25)]);
+        assert_eq!(a, b);
+        let c = disk_rows(vec![("/".into(), 101 * GIB, 400 * GIB, 25)]);
+        assert_ne!(a, c);
+    }
 }

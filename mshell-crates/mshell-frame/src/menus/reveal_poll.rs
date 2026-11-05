@@ -5,11 +5,17 @@
 //! waking the main loop every few seconds for the whole session; this owns
 //! the `glib` source itself and removes it on hide (DESIGN.md: a hidden
 //! menu does no work).
+//!
+//! [`RevealGate`] is the same rule for async subscriptions on the services
+//! runtime: [`RevealGate::stream_while_revealed`] holds a stream only
+//! while the menu is revealed.
 
 use relm4::gtk::glib;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::watch;
 
 pub(crate) struct RevealPoll {
     interval: Duration,
@@ -72,6 +78,162 @@ impl std::fmt::Debug for RevealPoll {
             .field("interval", &self.interval)
             .field("running", &self.is_running())
             .finish()
+    }
+}
+
+/// A menu's revealed flag that its async poll loops wait on. Set it from
+/// the menu's reveal handler; clones share the flag.
+#[derive(Clone)]
+pub(crate) struct RevealGate(Arc<watch::Sender<bool>>);
+
+impl RevealGate {
+    pub(crate) fn new(revealed: bool) -> Self {
+        Self(Arc::new(watch::channel(revealed).0))
+    }
+
+    /// Show / hide. Idempotent.
+    pub(crate) fn set(&self, revealed: bool) {
+        self.0.send_if_modified(|cur| {
+            let changed = *cur != revealed;
+            *cur = revealed;
+            changed
+        });
+    }
+
+    pub(crate) fn is_revealed(&self) -> bool {
+        *self.0.borrow()
+    }
+
+    /// Resolves once the menu is revealed (at once when it already is).
+    pub(crate) async fn until_revealed(&self) {
+        // The sender lives in `self`, so the wait can't fail.
+        let _ = self.0.subscribe().wait_for(|on| *on).await;
+    }
+
+    /// Resolves once the menu is hidden (at once when it already is).
+    pub(crate) async fn until_hidden(&self) {
+        let _ = self.0.subscribe().wait_for(|on| !*on).await;
+    }
+
+    /// Feed `each` from a stream that exists only while the menu is
+    /// revealed: `open` subscribes on reveal, the stream is dropped on
+    /// hide. For sources (wayle `.watch()`) that poll only while someone
+    /// subscribes. Returns when a stream ends.
+    pub(crate) async fn stream_while_revealed<S>(
+        &self,
+        mut open: impl FnMut() -> S,
+        mut each: impl FnMut(S::Item),
+    ) where
+        S: futures::Stream,
+    {
+        use futures::StreamExt;
+        loop {
+            self.until_revealed().await;
+            let mut stream = Box::pin(open());
+            loop {
+                tokio::select! {
+                    () = self.until_hidden() => break,
+                    next = stream.next() => match next {
+                        Some(item) => each(item),
+                        None => return,
+                    },
+                }
+            }
+        }
+    }
+}
+
+impl std::fmt::Debug for RevealGate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("RevealGate")
+            .field(&self.is_revealed())
+            .finish()
+    }
+}
+
+#[cfg(test)]
+mod gate_tests {
+    use super::*;
+
+    /// Let spawned tasks run up to their next await.
+    async fn settle() {
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+    }
+
+    /// A stream that counts how many of it are alive.
+    struct Counted(
+        Arc<std::sync::atomic::AtomicUsize>,
+        tokio::sync::mpsc::UnboundedReceiver<u32>,
+    );
+    impl futures::Stream for Counted {
+        type Item = u32;
+        fn poll_next(
+            mut self: std::pin::Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Option<u32>> {
+            self.1.poll_recv(cx)
+        }
+    }
+    impl Drop for Counted {
+        fn drop(&mut self) {
+            self.0.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_stream_exists_only_while_revealed() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let gate = RevealGate::new(false);
+        let alive = Arc::new(AtomicUsize::new(0));
+        let opened = Arc::new(AtomicUsize::new(0));
+        let got = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<u32>();
+        let rx = Arc::new(std::sync::Mutex::new(Some(rx)));
+        let (g, a, o, gt, r) = (
+            gate.clone(),
+            alive.clone(),
+            opened.clone(),
+            got.clone(),
+            rx.clone(),
+        );
+        let task = tokio::spawn(async move {
+            g.stream_while_revealed(
+                || {
+                    o.fetch_add(1, Ordering::SeqCst);
+                    a.fetch_add(1, Ordering::SeqCst);
+                    // Reuse the one channel across subscriptions.
+                    let rx = r.lock().ok().and_then(|mut s| s.take());
+                    let rx = rx.unwrap_or_else(|| tokio::sync::mpsc::unbounded_channel().1);
+                    Counted(a.clone(), rx)
+                },
+                |v| gt.lock().map(|mut g| g.push(v)).unwrap_or(()),
+            )
+            .await;
+        });
+        settle().await;
+        assert_eq!(opened.load(Ordering::SeqCst), 0, "hidden: never subscribed");
+
+        gate.set(true);
+        settle().await;
+        assert_eq!(alive.load(Ordering::SeqCst), 1);
+        tx.send(7).ok();
+        settle().await;
+        assert_eq!(*got.lock().map(|g| g.clone()).unwrap_or_default(), vec![7]);
+
+        gate.set(false);
+        settle().await;
+        assert_eq!(
+            alive.load(Ordering::SeqCst),
+            0,
+            "hide drops the subscription"
+        );
+
+        gate.set(true);
+        settle().await;
+        assert_eq!(opened.load(Ordering::SeqCst), 2, "reveal subscribes again");
+        task.abort();
     }
 }
 
