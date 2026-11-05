@@ -8,18 +8,9 @@
 use crate::config::Config;
 use crate::{fzf, tmux};
 use anyhow::{Result, bail};
+use margo_fs::path::on_path as command_exists;
 use std::io::Write;
 use std::process::{Command, Stdio};
-
-fn command_exists(bin: &str) -> bool {
-    Command::new("which")
-        .arg(bin)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-}
 
 enum Backend {
     Cliphist,

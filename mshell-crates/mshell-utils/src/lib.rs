@@ -31,5 +31,4 @@ pub mod shared_poll;
 pub mod shutdown;
 pub mod speedtest;
 pub mod strings;
-pub mod tools;
 pub mod weather;

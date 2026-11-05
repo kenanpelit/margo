@@ -4714,6 +4714,7 @@ dependencies = [
  "clap_complete",
  "libc",
  "margo-config",
+ "margo-fs",
  "margo-logging",
  "regex",
  "serde_json",
@@ -4736,6 +4737,7 @@ dependencies = [
  "hostname",
  "indicatif",
  "log",
+ "margo-fs",
  "margo-logging",
  "mlua",
  "ratatui",
@@ -4875,6 +4877,7 @@ version = "4.9.2"
 dependencies = [
  "anyhow",
  "clap",
+ "margo-fs",
  "serde_json",
 ]
 
@@ -4908,6 +4911,7 @@ dependencies = [
  "env_logger",
  "libc",
  "log",
+ "margo-fs",
  "mio",
  "mlogind-proto",
  "nix 0.31.2",
@@ -5035,6 +5039,7 @@ dependencies = [
  "clap",
  "image",
  "libc",
+ "margo-fs",
  "margo-logging",
  "serde_json",
 ]
@@ -5492,6 +5497,7 @@ dependencies = [
 name = "mshell-process"
 version = "4.9.2"
 dependencies = [
+ "margo-fs",
  "tempfile",
  "tracing",
 ]
@@ -5505,6 +5511,7 @@ dependencies = [
  "gtk4",
  "gtk4-layer-shell",
  "image",
+ "margo-fs",
  "margo-logging",
  "memmap2",
  "mshell-process",
@@ -5750,6 +5757,7 @@ dependencies = [
  "anyhow",
  "clap",
  "libc",
+ "margo-fs",
  "serde",
  "toml",
 ]

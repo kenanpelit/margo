@@ -349,7 +349,7 @@ impl Component for ScreenshotMenuWidgetModel {
             delay_row,
             save_option: OutputTarget::FileAndClipboard,
             save_row: save_option_row,
-            tools: region_tools::ToolStates::probe(region_tools::on_path),
+            tools: region_tools::ToolStates::probe(margo_fs::path::on_path),
         };
 
         let widgets = view_output!();
@@ -484,7 +484,7 @@ impl Component for ScreenshotMenuWidgetModel {
             }
             ScreenshotMenuWidgetInput::ParentRevealChanged(visible) => {
                 if visible {
-                    self.tools = region_tools::ToolStates::probe(region_tools::on_path);
+                    self.tools = region_tools::ToolStates::probe(margo_fs::path::on_path);
                 }
             }
             ScreenshotMenuWidgetInput::AreaClicked => {

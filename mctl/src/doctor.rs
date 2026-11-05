@@ -266,7 +266,7 @@ fn check_render_nodes(r: &mut Report) {
 /// matugen powers Material-You theme-from-wallpaper. Optional, but the
 /// `Wallpaper` colour scheme silently no-ops without it.
 fn check_matugen(r: &mut Report) {
-    if which("matugen") {
+    if margo_fs::path::on_path("matugen") {
         r.line(Level::Ok, "matugen", "on PATH");
     } else {
         r.line(
@@ -281,7 +281,7 @@ fn check_matugen(r: &mut Report) {
 /// zbus here (mctl is the compositor tool), so this shells out; a missing
 /// busctl is reported as a skip rather than a failure.
 fn check_dbus_service(r: &mut Report, name: &str, label: &str) {
-    if !which("busctl") {
+    if !margo_fs::path::on_path("busctl") {
         r.line(Level::Warn, label, "skipped (busctl not found)");
         return;
     }
@@ -301,12 +301,4 @@ fn check_dbus_service(r: &mut Report, name: &str, label: &str) {
             &format!("{name} not on the session bus"),
         );
     }
-}
-
-/// Is `bin` resolvable on `$PATH`?
-fn which(bin: &str) -> bool {
-    let Some(path) = std::env::var_os("PATH") else {
-        return false;
-    };
-    std::env::split_paths(&path).any(|dir| dir.join(bin).is_file())
 }

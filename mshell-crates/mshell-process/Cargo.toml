@@ -8,6 +8,7 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
+margo-fs.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]

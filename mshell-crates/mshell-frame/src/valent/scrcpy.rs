@@ -152,19 +152,6 @@ pub(crate) fn scrcpy_args(serial: &str, screen_off: bool, extra: &str) -> Vec<St
     args
 }
 
-/// Whether `bin` is an executable on `PATH`.
-pub(crate) fn on_path(bin: &str) -> bool {
-    std::env::var_os("PATH").is_some_and(|paths| {
-        std::env::split_paths(&paths).any(|dir| {
-            let p = dir.join(bin);
-            std::fs::metadata(&p).is_ok_and(|m| {
-                use std::os::unix::fs::PermissionsExt;
-                m.is_file() && m.permissions().mode() & 0o111 != 0
-            })
-        })
-    })
-}
-
 async fn adb(args: &[&str]) -> Result<String, String> {
     let out = tokio::process::Command::new("adb")
         .args(args)

@@ -281,7 +281,7 @@ fn require_capture_tools(source: CaptureSource) -> Result<()> {
         // we skip slurp entirely. Outside margo (or with the env
         // unset) the legacy slurp-spawning path applies.
         let pre_geom = std::env::var("MARGO_REGION_GEOM").unwrap_or_default();
-        if pre_geom.trim().is_empty() && !which("mshellctl") {
+        if pre_geom.trim().is_empty() && !margo_fs::path::on_path("mshellctl") {
             require("slurp")?;
         }
     }
@@ -393,7 +393,7 @@ fn capture_for_tool(cli: &Cli, source: CaptureSource) -> Result<ToolCapture> {
 }
 
 fn run_ocr(cli: &Cli, lang: Option<&str>, psm: Option<&str>, screen: bool) -> Result<()> {
-    if !which("tesseract") {
+    if !margo_fs::path::on_path("tesseract") {
         bail!("OCR needs `tesseract` (pacman -S tesseract tesseract-data-eng)");
     }
     require("wl-copy")?;
@@ -449,7 +449,7 @@ fn run_ocr(cli: &Cli, lang: Option<&str>, psm: Option<&str>, screen: bool) -> Re
 }
 
 fn run_qr(cli: &Cli) -> Result<()> {
-    if !which("zbarimg") {
+    if !margo_fs::path::on_path("zbarimg") {
         bail!("QR / barcode scan needs `zbarimg` (pacman -S zbar)");
     }
     require("wl-copy")?;
@@ -647,7 +647,7 @@ fn capture_region(dest: &Path) -> Result<()> {
 /// `Some("")` is treated as a real cancel (the user did launch
 /// the selector and dismissed it).
 fn try_mshell_select_region() -> Option<String> {
-    if !which("mshellctl") {
+    if !margo_fs::path::on_path("mshellctl") {
         return None;
     }
     let out = Command::new("mshellctl")
@@ -830,7 +830,10 @@ fn edit(input: &Path) -> Result<Option<PathBuf>> {
 }
 
 fn pick_editor() -> Option<String> {
-    pick_editor_from(std::env::var("SCREENSHOT_EDITOR").ok().as_deref(), which)
+    pick_editor_from(
+        std::env::var("SCREENSHOT_EDITOR").ok().as_deref(),
+        margo_fs::path::on_path,
+    )
 }
 
 /// Editor choice given the `SCREENSHOT_EDITOR` value and a PATH probe.
@@ -1002,7 +1005,7 @@ fn open_save_dir() -> Result<()> {
 // ── Helpers ─────────────────────────────────────────────────
 
 fn require(cmd: &str) -> Result<()> {
-    if which(cmd) {
+    if margo_fs::path::on_path(cmd) {
         Ok(())
     } else {
         bail!(
@@ -1011,17 +1014,6 @@ fn require(cmd: &str) -> Result<()> {
             cmd
         )
     }
-}
-
-fn which(cmd: &str) -> bool {
-    let Some(path) = std::env::var_os("PATH") else {
-        return false;
-    };
-    std::env::split_paths(&path).any(|d| {
-        std::fs::metadata(d.join(cmd))
-            .map(|m| m.is_file())
-            .unwrap_or(false)
-    })
 }
 
 fn env_truthy(name: &str) -> bool {

@@ -247,7 +247,7 @@ pub(crate) fn status_word(s: Option<Status>) -> &'static str {
 pub(crate) async fn fetch_ufw_summary() -> UfwSummary {
     // Detect-only first: a missing `ufw` binary surfaces as
     // "not installed" rather than the more confusing root error.
-    if which("ufw").await.is_err() {
+    if !margo_fs::path::on_path("ufw") {
         return UfwSummary {
             error: Some("not installed".to_string()),
             ..UfwSummary::default()
@@ -292,7 +292,7 @@ pub(crate) async fn fetch_ufw_summary() -> UfwSummary {
 /// by the menu (`fetch_ufw_summary` / `fetch_ufw_summary_pkexec`) only
 /// when the user actually opens it.
 pub(crate) async fn fetch_ufw_status_only() -> UfwSummary {
-    if which("ufw").await.is_err() {
+    if !margo_fs::path::on_path("ufw") {
         return UfwSummary {
             error: Some("not installed".to_string()),
             ..UfwSummary::default()
@@ -328,7 +328,7 @@ pub(crate) async fn fetch_ufw_status_only() -> UfwSummary {
 /// entered their password. Polkit caches the answer for ~5 min
 /// so subsequent calls within the menu session are silent.
 pub(crate) async fn fetch_ufw_summary_pkexec() -> UfwSummary {
-    if which("ufw").await.is_err() {
+    if !margo_fs::path::on_path("ufw") {
         return UfwSummary {
             error: Some("not installed".to_string()),
             ..UfwSummary::default()
@@ -352,26 +352,6 @@ pub(crate) async fn fetch_ufw_summary_pkexec() -> UfwSummary {
             error: Some(format!("pkexec spawn: {e}")),
             ..UfwSummary::default()
         },
-    }
-}
-
-async fn which(bin: &str) -> std::io::Result<()> {
-    // Null both streams: `.status()` inherits stdio, so `which`'s
-    // `/usr/bin/ufw` stdout would otherwise leak into the shell's
-    // journal on every poll. We only care about the exit code.
-    let status = tokio::process::Command::new("which")
-        .arg(bin)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .await?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            bin.to_string(),
-        ))
     }
 }
 

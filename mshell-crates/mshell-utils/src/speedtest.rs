@@ -374,7 +374,7 @@ pub fn format_mbps(mbps: f64) -> String {
 /// installed the menu shows an install hint: Arch `speedtest-cli`, or
 /// the AUR `ookla-speedtest-bin`).
 pub async fn detect_backend() -> Option<Backend> {
-    if crate::tools::on_path("speedtest")
+    if margo_fs::path::on_path("speedtest")
         && let Ok(out) = Command::new("speedtest")
             .arg("--version")
             .stdin(Stdio::null())
@@ -385,7 +385,7 @@ pub async fn detect_backend() -> Option<Backend> {
     {
         return Some(Backend::Ookla);
     }
-    crate::tools::on_path("speedtest-cli").then_some(Backend::Legacy)
+    margo_fs::path::on_path("speedtest-cli").then_some(Backend::Legacy)
 }
 
 /// Hard cap on one test (a stalled server must not leave the menu
@@ -426,7 +426,7 @@ async fn run_ookla(tx: &UnboundedSender<SpeedEvent>) -> Result<SpeedResult, Stri
         "--format=jsonl",
         "--progress=yes",
     ];
-    let mut cmd = if crate::tools::on_path("stdbuf") {
+    let mut cmd = if margo_fs::path::on_path("stdbuf") {
         let mut c = Command::new("stdbuf");
         c.arg("-oL").arg("speedtest").args(args);
         c

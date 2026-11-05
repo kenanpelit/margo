@@ -2,7 +2,6 @@ use anyhow::{Context, Result};
 use colored::*;
 use serde_json::json;
 use std::collections::HashMap;
-use std::process::Command;
 use walkdir::WalkDir;
 
 use crate::config::{ConfigPaths, load_config};
@@ -534,11 +533,7 @@ fn run_internal(paths: &ConfigPaths, check_packages: bool, json: bool, quiet: bo
             }
         } else {
             // Validate that systemctl is available
-            let systemctl_available = Command::new("which")
-                .arg("systemctl")
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false);
+            let systemctl_available = margo_fs::path::on_path("systemctl");
 
             if !systemctl_available {
                 errors += 1;
@@ -611,11 +606,7 @@ fn run_internal(paths: &ConfigPaths, check_packages: bool, json: bool, quiet: bo
             }
         } else {
             // Validate that xdg-mime is available
-            let xdg_mime_available = Command::new("which")
-                .arg("xdg-mime")
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false);
+            let xdg_mime_available = margo_fs::path::on_path("xdg-mime");
 
             if !xdg_mime_available {
                 warnings += 1;

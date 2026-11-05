@@ -126,11 +126,6 @@ fn outliving_argv(
     ("systemd-run".into(), argv)
 }
 
-fn on_path(bin: &str) -> bool {
-    std::env::var_os("PATH")
-        .is_some_and(|path| std::env::split_paths(&path).any(|dir| dir.join(bin).is_file()))
-}
-
 /// A [`Command`] for `program args` that survives an mshell restart (see
 /// the section comment above). `label` names the transient scope
 /// (`app-mshell-<label>-<pid>-<n>.scope`). Set stdio / env / cwd on the
@@ -143,7 +138,7 @@ where
     let args: Vec<OsString> = args.into_iter().map(|a| a.as_ref().to_owned()).collect();
     let wrap = should_wrap(
         std::env::var_os("INVOCATION_ID").as_deref(),
-        on_path("systemd-run"),
+        margo_fs::path::on_path("systemd-run"),
     );
     let unit = unit_name(
         label,

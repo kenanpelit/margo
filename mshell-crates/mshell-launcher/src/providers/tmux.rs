@@ -47,7 +47,7 @@ impl TmuxProvider {
             .or_else(|| {
                 ["kitty", "alacritty", "foot", "wezterm"]
                     .iter()
-                    .find(|t| which_exists(t))
+                    .find(|t| margo_fs::path::on_path(t))
                     .map(|t| t.to_string())
             })
             .unwrap_or_else(|| "kitty".into());
@@ -99,14 +99,6 @@ impl Default for TmuxProvider {
     fn default() -> Self {
         Self::new()
     }
-}
-
-fn which_exists(bin: &str) -> bool {
-    Command::new("which")
-        .arg(bin)
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
 }
 
 impl Provider for TmuxProvider {

@@ -19,7 +19,7 @@
 use super::jsonl::JsonlTail;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum SessionStatus {
@@ -473,18 +473,10 @@ pub(crate) fn resume_argv(term: &str, claude: &str, cwd: &str, session_id: &str)
     argv
 }
 
-fn which(cmd: &str) -> Option<PathBuf> {
-    std::env::var_os("PATH").and_then(|paths| {
-        std::env::split_paths(&paths)
-            .map(|d| d.join(cmd))
-            .find(|p| p.is_file())
-    })
-}
-
 /// `claude` on PATH, else the installer's `~/.local/bin/claude` (mshell
 /// runs under systemd and may not see the login shell's PATH).
 fn claude_binary() -> Option<String> {
-    which("claude")
+    margo_fs::path::find_in_path("claude")
         .or_else(|| {
             let p = margo_fs::xdg::home()?.join(".local/bin/claude");
             p.is_file().then_some(p)
@@ -499,7 +491,7 @@ pub(crate) fn resume(session_id: &str, cwd: &str) -> Result<(), String> {
     let claude = claude_binary().ok_or("claude is not installed")?;
     let term = TERMINALS
         .iter()
-        .find(|t| which(t).is_some())
+        .find(|t| margo_fs::path::on_path(t))
         .ok_or("no terminal emulator found")?;
     // In its own scope: the resumed session must not die with an mshell
     // restart (a plain child is killed with mshell.service).

@@ -4,6 +4,7 @@
 //! and any future CLI invocations. Keeps the editor probe + spawn
 //! logic in one place so swappy↔satty arg quirks aren't duplicated.
 
+use margo_fs::path::on_path;
 use mshell_process::SpawnReaped;
 use std::path::Path;
 use std::process::Command;
@@ -28,18 +29,18 @@ pub fn pick_editor() -> Option<String> {
 pub fn pick_editor_with_override(override_editor: Option<&str>) -> Option<String> {
     if let Some(forced) = override_editor
         && !forced.is_empty()
-        && which(forced)
+        && on_path(forced)
     {
         return Some(forced.to_string());
     }
     if let Ok(forced) = std::env::var("SCREENSHOT_EDITOR")
         && !forced.is_empty()
-        && which(&forced)
+        && on_path(&forced)
     {
         return Some(forced);
     }
     for cand in ["satty", "swappy", "gimp", "krita"] {
-        if which(cand) {
+        if on_path(cand) {
             return Some(cand.to_string());
         }
     }
@@ -113,19 +114,4 @@ pub fn launch_editor_blocking(input: &Path, output: &Path, editor: &str) -> Resu
             "unknown editor {other:?}"
         ))),
     }
-}
-
-fn which(cmd: &str) -> bool {
-    let path = match std::env::var_os("PATH") {
-        Some(p) => p,
-        None => return false,
-    };
-    for dir in std::env::split_paths(&path) {
-        let candidate = dir.join(cmd);
-        if candidate.is_file() {
-            // good enough — caller will error if exec fails
-            return true;
-        }
-    }
-    false
 }

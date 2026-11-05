@@ -23,6 +23,7 @@ pub(crate) mod pacnew;
 pub(crate) mod run;
 pub(crate) mod size;
 
+use margo_fs::path::on_path;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
     BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, SystemUpdateBarWidgetStoreFields,
@@ -258,7 +259,7 @@ pub(crate) async fn probe(cfg: ProbeConfig) -> UpdateReport {
         match probe_repo().await {
             Ok(mut entries) => {
                 let repo: Vec<&UpdateEntry> = entries.iter().collect();
-                if which("pacman").await {
+                if on_path("pacman") {
                     report.download_bytes = size::probe(&repo).await;
                 }
                 report.entries.append(&mut entries);
@@ -309,7 +310,7 @@ pub(crate) async fn probe_with_audit(cfg: ProbeConfig) -> UpdateReport {
 // ── Repo (Arch checkupdates, else dnf / apt) ────────────────────
 
 async fn probe_repo() -> Result<Vec<UpdateEntry>, String> {
-    if which("checkupdates").await {
+    if on_path("checkupdates") {
         // pacman-contrib: refreshes a fake DB under /tmp (no sudo).
         // Output: `name oldver -> newver`. Exit 2 = up to date.
         let out = run("checkupdates", &[]).await?;
@@ -319,7 +320,7 @@ async fn probe_repo() -> Result<Vec<UpdateEntry>, String> {
             c => Err(probe_err("checkupdates", c, &out.stderr)),
         };
     }
-    if which("dnf").await {
+    if on_path("dnf") {
         // exit 100 = updates available, 0 = none.
         let out = run("dnf", &["check-update", "--refresh", "-q"]).await?;
         return match out.code {
@@ -328,7 +329,7 @@ async fn probe_repo() -> Result<Vec<UpdateEntry>, String> {
             c => Err(probe_err("dnf", c, &out.stderr)),
         };
     }
-    if which("apt").await {
+    if on_path("apt") {
         let out = run("apt", &["list", "--upgradable"]).await?;
         if out.code != 0 {
             return Err(probe_err("apt", out.code, &out.stderr));
@@ -342,9 +343,9 @@ async fn probe_repo() -> Result<Vec<UpdateEntry>, String> {
 // ── AUR (paru / yay) ────────────────────────────────────────────
 
 async fn probe_aur() -> Result<Vec<UpdateEntry>, String> {
-    let helper = if which("paru").await {
+    let helper = if on_path("paru") {
         "paru"
-    } else if which("yay").await {
+    } else if on_path("yay") {
         "yay"
     } else {
         return Ok(Vec::new()); // no helper → silently skip AUR
@@ -362,7 +363,7 @@ async fn probe_aur() -> Result<Vec<UpdateEntry>, String> {
 // ── Flatpak ─────────────────────────────────────────────────────
 
 async fn probe_flatpak() -> Result<Vec<UpdateEntry>, String> {
-    if !which("flatpak").await {
+    if !on_path("flatpak") {
         return Ok(Vec::new());
     }
     // Join the updatable remote list (appid, name, NEW version) with
@@ -498,34 +499,6 @@ fn probe_err(cmd: &str, code: i32, stderr: &str) -> String {
     msg
 }
 
-/// `binary` is an executable file in one of `$PATH`'s directories.
-pub(crate) fn on_path(binary: &str) -> bool {
-    std::env::var_os("PATH").is_some_and(|path| find_in_path(binary, &path))
-}
-
-pub(crate) fn find_in_path(binary: &str, path: &std::ffi::OsStr) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    std::env::split_paths(path).any(|dir| {
-        std::fs::metadata(dir.join(binary))
-            .is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-    })
-}
-
-pub(crate) async fn which(binary: &str) -> bool {
-    // PATH is stable for this process. Cache negative results too: no
-    // fork/exec of `which` on every panel open or scheduled probe.
-    static PATH_CACHE: std::sync::OnceLock<
-        std::sync::Mutex<std::collections::HashMap<String, bool>>,
-    > = std::sync::OnceLock::new();
-    let cache = PATH_CACHE.get_or_init(Default::default);
-    let Ok(mut cache) = cache.lock() else {
-        return on_path(binary);
-    };
-    *cache
-        .entry(binary.to_string())
-        .or_insert_with(|| on_path(binary))
-}
-
 // ── Fresh reports (published after a background run) ────────────
 
 fn fresh_channel() -> &'static (
@@ -561,16 +534,16 @@ pub(crate) fn publish_report(report: UpdateReport) {
 /// enabled sources.
 pub(crate) async fn upgrade_plan(cfg: ProbeConfig) -> run::UpgradePlan {
     run::UpgradePlan {
-        system: (cfg.repo || cfg.aur) && which("pacman").await,
-        flatpak: cfg.flatpak && which("flatpak").await,
+        system: (cfg.repo || cfg.aur) && on_path("pacman"),
+        flatpak: cfg.flatpak && on_path("flatpak"),
     }
 }
 
 /// The installed AUR helper (`paru`, else `yay`).
 pub(crate) async fn aur_helper() -> Option<&'static str> {
-    if which("paru").await {
+    if on_path("paru") {
         Some("paru")
-    } else if which("yay").await {
+    } else if on_path("yay") {
         Some("yay")
     } else {
         None
@@ -670,7 +643,7 @@ pub(crate) async fn launch_upgrade(cfg: ProbeConfig, expected: usize) -> Result<
     match configured_mode() {
         SystemUpdateMode::Terminal => launch_terminal_upgrade(cfg).await,
         SystemUpdateMode::Background => {
-            if !which("pkexec").await {
+            if !on_path("pkexec") {
                 return Err("pkexec (polkit) is not installed".into());
             }
             if !mshell_privileged::installed() {
@@ -691,22 +664,22 @@ pub(crate) async fn launch_upgrade(cfg: ProbeConfig, expected: usize) -> Result<
 pub(crate) async fn launch_terminal_upgrade(cfg: ProbeConfig) -> Result<(), String> {
     let mut steps: Vec<String> = Vec::new();
     if cfg.repo || cfg.aur {
-        if which("paru").await {
+        if on_path("paru") {
             steps.push("paru -Syu".into());
-        } else if which("yay").await {
+        } else if on_path("yay") {
             steps.push("yay -Syu".into());
-        } else if which("pacman").await {
+        } else if on_path("pacman") {
             steps.push("sudo pacman -Syu".into());
-        } else if which("dnf").await {
+        } else if on_path("dnf") {
             steps.push("sudo dnf upgrade".into());
-        } else if which("apt").await {
+        } else if on_path("apt") {
             steps.push("sudo apt upgrade".into());
         }
     }
-    if cfg.flatpak && which("flatpak").await {
+    if cfg.flatpak && on_path("flatpak") {
         steps.push("flatpak update".into());
     }
-    let steps = backend_steps(configured_backend(), which("topgrade").await, steps)?;
+    let steps = backend_steps(configured_backend(), on_path("topgrade"), steps)?;
     if steps.is_empty() {
         warn!("system_update: nothing to upgrade (no backend / all sources off)");
         return Err("nothing to upgrade (no backend / all sources off)".into());
@@ -753,7 +726,7 @@ async fn detect_terminal() -> Option<&'static str> {
         "gnome-terminal",
         "xterm",
     ] {
-        if which(term).await {
+        if on_path(term) {
             return Some(term);
         }
     }
@@ -1006,23 +979,6 @@ mod tests {
             ..Default::default()
         };
         assert!(!aur_left_for_review(&no_aur, SystemUpdateMode::Background));
-    }
-
-    #[test]
-    fn path_lookup_finds_only_executable_files() {
-        use std::os::unix::fs::PermissionsExt;
-        let a = tempfile::tempdir().unwrap();
-        let b = tempfile::tempdir().unwrap();
-        let exe = b.path().join("paru");
-        std::fs::write(&exe, "#!/bin/sh\n").unwrap();
-        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
-        std::fs::write(a.path().join("yay"), "not executable").unwrap();
-        std::fs::create_dir(a.path().join("flatpak")).unwrap();
-        let path = std::env::join_paths([a.path(), b.path()]).unwrap();
-        assert!(find_in_path("paru", &path));
-        assert!(!find_in_path("yay", &path));
-        assert!(!find_in_path("flatpak", &path));
-        assert!(!find_in_path("checkupdates", &path));
     }
 
     #[test]

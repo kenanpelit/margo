@@ -43,7 +43,7 @@ pub fn apply(layout: &Layout) -> Result<()> {
         // change might be all the caller wanted.
         return Ok(());
     }
-    if !is_command_available("wlr-randr") {
+    if !margo_fs::path::on_path("wlr-randr") {
         eprintln!(
             "(`wlr-randr` not on PATH — layout file is in place but the \
              live output configuration won't change until session restart.)"
@@ -133,17 +133,6 @@ fn transform_to_str(t: i32) -> &'static str {
         7 => "flipped-270",
         _ => "normal",
     }
-}
-
-fn is_command_available(cmd: &str) -> bool {
-    let Some(path) = std::env::var_os("PATH") else {
-        return false;
-    };
-    std::env::split_paths(&path).any(|d| {
-        std::fs::metadata(d.join(cmd))
-            .map(|m| m.is_file())
-            .unwrap_or(false)
-    })
 }
 
 #[cfg(test)]

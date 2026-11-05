@@ -178,7 +178,7 @@ impl Component for PhoneMirrorModel {
     fn init(_: (), root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
         let list = gtk::Box::new(gtk::Orientation::Vertical, 6);
         let model = PhoneMirrorModel {
-            tools: scrcpy::on_path("adb") && scrcpy::on_path("scrcpy"),
+            tools: margo_fs::path::on_path("adb") && margo_fs::path::on_path("scrcpy"),
             devices: None,
             status: None,
             list: list.clone(),

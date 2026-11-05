@@ -432,14 +432,14 @@ async fn find_active() -> Option<ActiveHotspot> {
 
 /// Connected clients of the AP on `iface` (empty when `iw` is missing).
 pub async fn fetch_clients(iface: &str) -> Vec<HotspotClient> {
-    if !crate::tools::on_path("iw") {
+    if !margo_fs::path::on_path("iw") {
         return Vec::new();
     }
     let stations = run("iw", &["dev", iface, "station", "dump"], NMCLI_TIMEOUT)
         .await
         .map(|o| parse_iw_stations(&o))
         .unwrap_or_default();
-    let neigh = if crate::tools::on_path("ip") {
+    let neigh = if margo_fs::path::on_path("ip") {
         run("ip", &["neigh", "show", "dev", iface], NMCLI_TIMEOUT)
             .await
             .map(|o| parse_ip_neigh(&o))
@@ -452,7 +452,7 @@ pub async fn fetch_clients(iface: &str) -> Vec<HotspotClient> {
 
 /// One full refresh: availability, interface, active AP and its clients.
 pub async fn probe(configured_iface: &str) -> HotspotStatus {
-    if !crate::tools::on_path("nmcli") {
+    if !margo_fs::path::on_path("nmcli") {
         return HotspotStatus::default();
     }
     let devices = run(

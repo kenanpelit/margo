@@ -696,11 +696,7 @@ fn askpass_helper() -> Option<std::ffi::OsString> {
     if let Some(ap) = std::env::var_os("SUDO_ASKPASS") {
         return Some(ap);
     }
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .map(|d| d.join("askpass"))
-        .find(|p| p.is_file())
-        .map(|p| p.into_os_string())
+    margo_fs::path::find_in_path("askpass").map(|p| p.into_os_string())
 }
 
 fn string_list(items: &[String]) -> gtk::StringList {

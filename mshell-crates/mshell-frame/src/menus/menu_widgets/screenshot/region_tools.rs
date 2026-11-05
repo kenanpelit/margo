@@ -116,11 +116,6 @@ pub(crate) fn tool_for_key(key: char, tools: &ToolStates) -> Option<RegionTool> 
     tools.enabled(tool).then_some(tool)
 }
 
-pub(crate) fn on_path(bin: &str) -> bool {
-    std::env::var_os("PATH")
-        .is_some_and(|path| std::env::split_paths(&path).any(|dir| dir.join(bin).is_file()))
-}
-
 /// Launch the tool detached (reaped). The menu has already closed, so the
 /// in-shell area selector `mscreenshot` opens is the next thing on screen.
 pub(crate) fn launch(tool: RegionTool) {

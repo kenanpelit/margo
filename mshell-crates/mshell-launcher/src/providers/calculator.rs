@@ -30,12 +30,12 @@
 
 use crate::history::CommandHistory;
 use crate::providers::calc_expr;
-use crate::providers::tools::command_exists;
 use crate::{
     item::LauncherItem,
     notify::toast,
     provider::{Provider, RefreshNotifier},
 };
+use margo_fs::path::on_path as command_exists;
 use regex::Regex;
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};

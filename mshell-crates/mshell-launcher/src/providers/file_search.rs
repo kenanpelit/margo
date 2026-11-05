@@ -21,13 +21,14 @@
 //! and opened paths get the usual frecency boost.
 
 use crate::providers::bg_cache::BgCache;
-use crate::providers::tools::{command_exists, tildify};
+use crate::providers::tools::tildify;
 use crate::{
     item::LauncherItem,
     notify::toast,
     provider::{Provider, RefreshNotifier},
     scoring::make_matcher,
 };
+use margo_fs::path::on_path as command_exists;
 use mshell_process::SpawnReaped;
 use nucleo_matcher::{
     Utf32Str,

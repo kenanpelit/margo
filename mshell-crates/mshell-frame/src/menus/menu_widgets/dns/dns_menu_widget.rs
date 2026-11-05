@@ -779,18 +779,10 @@ async fn sudo_launcher() -> Option<(&'static [&'static str], Option<std::ffi::Os
     if let Some(ap) = std::env::var_os("SUDO_ASKPASS") {
         return Some((&["-A"], Some(ap)));
     }
-    if let Some(p) = find_on_path("askpass") {
+    if let Some(p) = margo_fs::path::find_in_path("askpass") {
         return Some((&["-A"], Some(p.into_os_string())));
     }
     None
-}
-
-/// First `$PATH` entry containing an executable named `bin`.
-fn find_on_path(bin: &str) -> Option<std::path::PathBuf> {
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .map(|d| d.join(bin))
-        .find(|p| p.is_file())
 }
 
 /// Notify + bail when no non-interactive privilege path exists, so a privileged

@@ -13,10 +13,7 @@
 //! follow-up.
 
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-};
+use std::{collections::HashMap, path::PathBuf};
 
 /// Backing JSON layout. Wrapping the map in a struct gives us room
 /// to add fields later (last-seen timestamps, schema version) with
@@ -114,7 +111,8 @@ impl FrecencyStore {
         }
         match serde_json::to_string_pretty(&self.inner) {
             Ok(text) => {
-                if let Err(err) = atomic_write(&self.path, text.as_bytes()) {
+                if let Err(err) = margo_fs::atomic_write::atomic_write(&self.path, text.as_bytes())
+                {
                     tracing::warn!(?err, path = ?self.path, "frecency store write failed");
                 } else {
                     self.dirty = false;
@@ -166,16 +164,6 @@ pub fn clear_disk() -> std::io::Result<()> {
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(err) => Err(err),
     }
-}
-
-/// Write `bytes` to `path` via a tmp-file + rename so a crash mid-
-/// write never leaves a half-baked JSON file that fails to parse on
-/// the next launch.
-fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, bytes)?;
-    std::fs::rename(&tmp, path)?;
-    Ok(())
 }
 
 #[cfg(test)]

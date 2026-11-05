@@ -8,6 +8,7 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
+margo-fs.workspace = true
 anyhow.workspace = true
 dirs.workspace = true
 gtk4.workspace = true

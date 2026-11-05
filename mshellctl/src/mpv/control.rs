@@ -38,20 +38,9 @@ fn margin_y() -> i32 {
     env_i32("MARGO_MPV_MARGIN_Y", 96)
 }
 
-fn have(tool: &str) -> bool {
-    Command::new("sh")
-        .arg("-c")
-        .arg(format!("command -v {tool}"))
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-}
-
 /// Best-effort desktop notification.
 fn notify(body: &str) {
-    if have("notify-send") {
+    if margo_fs::path::on_path("notify-send") {
         let _ = Command::new("notify-send")
             .args(["-t", "1200", "mshellctl", body])
             .status();
@@ -68,7 +57,7 @@ fn mpv_running() -> bool {
 }
 
 fn read_clipboard() -> String {
-    if !have("wl-paste") {
+    if !margo_fs::path::on_path("wl-paste") {
         return String::new();
     }
     Command::new("wl-paste")
@@ -122,7 +111,7 @@ fn ensure_ytdl_shim() -> Option<String> {
 
 /// Launch mpv (pseudo-gui + IPC socket), optionally loading `source`.
 fn spawn_mpv(source: Option<&str>) -> Result<()> {
-    if !have("mpv") {
+    if !margo_fs::path::on_path("mpv") {
         bail!("mpv bulunamadı");
     }
     let sock = mpv_ipc::socket_path();
@@ -142,7 +131,7 @@ fn spawn_mpv(source: Option<&str>) -> Result<()> {
         }
     }
 
-    let (program, lead): (&str, Vec<String>) = if have("mullvad-exclude") {
+    let (program, lead): (&str, Vec<String>) = if margo_fs::path::on_path("mullvad-exclude") {
         ("mullvad-exclude", vec!["mpv".into()])
     } else {
         ("mpv", vec![])
@@ -192,7 +181,7 @@ pub fn play(arg: Option<&str>) -> Result<()> {
 }
 
 pub fn download(arg: Option<&str>) -> Result<()> {
-    if !have("yt-dlp") {
+    if !margo_fs::path::on_path("yt-dlp") {
         bail!("yt-dlp bulunamadı");
     }
     let src = resolve_source(arg);
@@ -224,7 +213,7 @@ pub fn download(arg: Option<&str>) -> Result<()> {
 /// Rich play/pause notification: ▶/⏸ icon + the media title, coalesced
 /// into a single updating popup (like the volume OSD).
 fn notify_media(playing: bool, title: &str) {
-    if !have("notify-send") {
+    if !margo_fs::path::on_path("notify-send") {
         return;
     }
     let (icon, summary) = if playing {

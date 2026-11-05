@@ -3,7 +3,7 @@ name = "margo-fs"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "std-only file helpers shared by margo and mshell: symlink-preserving atomic write, guarded side-file load/save"
+description = "std-only file helpers shared by margo and mshell: symlink-preserving atomic write, guarded side-file load/save, $PATH tool lookup"
 
 [dependencies]
 

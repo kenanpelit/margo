@@ -325,7 +325,7 @@ fn cmd_init(config_dir: &Path, name: &str, yes: bool, force: bool, no_reload: bo
     }
 
     let body = render_layout_file(name, &outputs, None, &[]);
-    atomic::write_atomic(&target, &body)?;
+    write_file(&target, &body)?;
     println!("\nWrote {}.", target.display());
 
     // ── config.conf wiring ────────────────────────────────────
@@ -498,7 +498,7 @@ fn cmd_suggest(
     let target = layouts_dir(config_dir).join(format!("layout_{}.conf", chosen.slug));
     let shortcut = presets::shortcut_for(chosen.slug, &[]);
     let body = presets::render(chosen, shortcut);
-    atomic::write_atomic(&target, &body)?;
+    write_file(&target, &body)?;
 
     // 8. Activate. Use the freshly-parsed file (not the
     //    in-memory preview layout) so the symlink target is
@@ -622,7 +622,7 @@ fn cmd_new(
 
     let outputs = capture::capture_via_wlr_randr()?;
     let body = render_layout_file(name, &outputs, title, shortcuts);
-    atomic::write_atomic(&target, &body)?;
+    write_file(&target, &body)?;
 
     println!("Wrote {}:", target.display());
     for o in &outputs {
@@ -758,7 +758,14 @@ fn wire_config_file(path: &Path) -> Result<()> {
 
     // Atomic so a crash or ^C mid-write can't truncate the user's primary
     // config.conf.
-    atomic::write_atomic(path, &existing)
+    write_file(path, &existing)
+}
+
+/// Crash-safe write of `body` to `path` (see `margo_fs::atomic_write`: an
+/// interrupted write can never truncate a layout file or `config.conf`).
+fn write_file(path: &Path, body: &str) -> Result<()> {
+    margo_fs::atomic_write::atomic_write(path, body.as_bytes())
+        .with_context(|| format!("write {}", path.display()))
 }
 
 /// The `layouts/` subdir under the margo config dir. All named
@@ -1111,13 +1118,13 @@ struct PickerCmd {
 /// native, fast) → wofi (also Wayland) → rofi (X11/Wayland via
 /// xdg-portal). First match wins.
 fn detect_graphical_picker() -> Option<PickerCmd> {
-    if which("fuzzel") {
+    if margo_fs::path::on_path("fuzzel") {
         return Some(PickerCmd {
             binary: "fuzzel",
             args: vec!["--dmenu".into(), "--prompt".into(), "layout: ".into()],
         });
     }
-    if which("wofi") {
+    if margo_fs::path::on_path("wofi") {
         return Some(PickerCmd {
             binary: "wofi",
             args: vec![
@@ -1128,25 +1135,13 @@ fn detect_graphical_picker() -> Option<PickerCmd> {
             ],
         });
     }
-    if which("rofi") {
+    if margo_fs::path::on_path("rofi") {
         return Some(PickerCmd {
             binary: "rofi",
             args: vec!["-dmenu".into(), "-p".into(), "layout".into(), "-i".into()],
         });
     }
     None
-}
-
-fn which(binary: &str) -> bool {
-    let Some(path) = std::env::var_os("PATH") else {
-        return false;
-    };
-    std::env::split_paths(&path).any(|dir| {
-        let candidate = dir.join(binary);
-        std::fs::metadata(&candidate)
-            .map(|m| m.is_file())
-            .unwrap_or(false)
-    })
 }
 
 /// Match a layout by slug → name → shortcut, in that order. Each

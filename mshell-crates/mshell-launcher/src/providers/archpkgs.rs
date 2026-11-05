@@ -81,14 +81,14 @@ impl ArchLinuxPkgsProvider {
     pub fn new() -> Self {
         let helper = ["yay", "paru", "pamac"]
             .iter()
-            .find(|h| which_exists(h))
+            .find(|h| margo_fs::path::on_path(h))
             .map(|h| h.to_string());
         let terminal = std::env::var("TERMINAL")
             .ok()
             .or_else(|| {
                 ["kitty", "alacritty", "foot", "wezterm"]
                     .iter()
-                    .find(|t| which_exists(t))
+                    .find(|t| margo_fs::path::on_path(t))
                     .map(|t| t.to_string())
             })
             .unwrap_or_else(|| "kitty".into());
@@ -244,14 +244,6 @@ impl Default for ArchLinuxPkgsProvider {
     fn default() -> Self {
         Self::new()
     }
-}
-
-fn which_exists(bin: &str) -> bool {
-    Command::new("which")
-        .arg(bin)
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
 }
 
 /// One package row.

@@ -144,7 +144,7 @@ impl AuditState {
 }
 
 pub(crate) async fn probe() -> AuditState {
-    if !super::which("arch-audit").await {
+    if !margo_fs::path::on_path("arch-audit") {
         return AuditState::Missing;
     }
     match tokio::process::Command::new("arch-audit")

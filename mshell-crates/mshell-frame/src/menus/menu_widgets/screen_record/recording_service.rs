@@ -60,9 +60,7 @@ pub fn effective_backend(
 }
 
 pub fn gsr_installed() -> bool {
-    std::env::var_os("PATH").is_some_and(|path| {
-        std::env::split_paths(&path).any(|dir| dir.join("gpu-screen-recorder").is_file())
-    })
+    margo_fs::path::on_path("gpu-screen-recorder")
 }
 
 #[cfg(test)]

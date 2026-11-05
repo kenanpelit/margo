@@ -106,7 +106,7 @@ impl SshProvider {
             .or_else(|| {
                 ["kitty", "alacritty", "foot", "wezterm"]
                     .iter()
-                    .find(|t| which_exists(t))
+                    .find(|t| margo_fs::path::on_path(t))
                     .map(|t| t.to_string())
             })
             .unwrap_or_else(|| "kitty".into());
@@ -296,14 +296,6 @@ fn glob_match(pattern: &str, text: &str) -> bool {
     let p: Vec<char> = pattern.chars().collect();
     let t: Vec<char> = text.chars().collect();
     go(&p, &t)
-}
-
-fn which_exists(bin: &str) -> bool {
-    Command::new("which")
-        .arg(bin)
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
 }
 
 /// Parse the YAML and project each `hosts.<name>` entry into a

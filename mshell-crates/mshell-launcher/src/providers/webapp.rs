@@ -18,9 +18,9 @@
 //! `X-Margo-WebApp=true`; listing and removal only ever touch files with
 //! that marker, so a name clash can never delete a real application.
 
-use crate::providers::tools::find_in_path;
 use crate::providers::websearch::{download_png, favicon_url_sized, url_domain};
 use crate::{item::LauncherItem, notify::toast, provider::Provider};
+use margo_fs::path::find_in_path;
 use mshell_process::SpawnReaped;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};

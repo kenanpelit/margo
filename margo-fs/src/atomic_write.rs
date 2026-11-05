@@ -29,10 +29,10 @@ use std::path::{Path, PathBuf};
 ///   write-then-rename idiom.
 ///
 /// Parent directories of the resolved target are created if
-/// missing. Errors surface from the underlying I/O calls; failures
-/// during rename leave the tmp file behind for caller-side
-/// inspection (we don't best-effort delete on failure because that
-/// can mask the original error).
+/// missing. Errors surface from the underlying I/O calls (the original
+/// error is returned unchanged); on any failure the tmp file is removed
+/// best-effort, so a full disk or a retried save never litters the
+/// directory with tmp files, and the original target is left untouched.
 pub fn atomic_write(path: &Path, contents: &[u8]) -> std::io::Result<()> {
     use std::io::Write as _;
     let target = resolve_symlink_target(path);
@@ -40,16 +40,21 @@ pub fn atomic_write(path: &Path, contents: &[u8]) -> std::io::Result<()> {
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    // fsync the data before the rename: rename is only atomic w.r.t.
-    // *metadata*. Without this, a crash/power-loss right after the rename
-    // can leave the target existing but empty/truncated — the user's whole
-    // config resets to defaults on next boot.
-    {
+    let written = (|| {
+        // fsync the data before the rename: rename is only atomic w.r.t.
+        // *metadata*. Without this, a crash/power-loss right after the
+        // rename can leave the target existing but empty/truncated — the
+        // user's whole config resets to defaults on next boot.
         let mut f = std::fs::File::create(&tmp)?;
         f.write_all(contents)?;
         f.sync_all()?;
+        drop(f);
+        std::fs::rename(&tmp, &target)
+    })();
+    if let Err(err) = written {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(err);
     }
-    std::fs::rename(&tmp, &target)?;
     fsync_parent_dir(&target);
     Ok(())
 }
@@ -188,6 +193,26 @@ mod tests {
             .filter(|e| e.file_name() != "doc.json")
             .collect();
         assert!(leftovers.is_empty(), "tmp files left: {leftovers:?}");
+    }
+
+    /// A failed write must not litter the config directory with a
+    /// `.mshell-tmp-*` file per attempt (a full disk retried every save
+    /// filled `~/.config` with them). The original stays untouched.
+    #[test]
+    fn failed_write_removes_its_tmp_and_keeps_the_original() {
+        let dir = tempfile::tempdir().unwrap();
+        // The target is a non-empty directory: the rename must fail.
+        let target = dir.path().join("busy");
+        std::fs::create_dir(&target).unwrap();
+        std::fs::write(target.join("keep"), "x").unwrap();
+        assert!(atomic_write(&target, b"data").is_err());
+        let names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name())
+            .collect();
+        assert_eq!(names, vec![std::ffi::OsString::from("busy")]);
+        assert_eq!(std::fs::read(target.join("keep")).unwrap(), b"x");
     }
 
     #[test]

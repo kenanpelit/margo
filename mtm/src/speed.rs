@@ -238,7 +238,7 @@ fn build_list() -> String {
 }
 
 fn show(cfg: &Config) -> Result<()> {
-    if !which("fzf") {
+    if !margo_fs::path::on_path("fzf") {
         bail!("fzf is not installed");
     }
     std::fs::create_dir_all(fzf_dir())?;
@@ -350,16 +350,6 @@ fn make_executable(path: &std::path::Path) {
             let _ = std::fs::set_permissions(path, perms);
         }
     }
-}
-
-fn which(bin: &str) -> bool {
-    Command::new("which")
-        .arg(bin)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
 }
 
 fn list() -> Result<()> {

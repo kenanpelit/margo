@@ -16,6 +16,7 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
+margo-fs.workspace = true
 clap = { workspace = true, features = ["cargo"] }
 clap_complete = "4.5"
 clap_mangen = "0.2"

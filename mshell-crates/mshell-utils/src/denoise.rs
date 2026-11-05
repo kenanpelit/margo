@@ -449,7 +449,7 @@ fn remembered_mic() -> Option<String> {
 
 /// Cheap state probe (two `pactl` calls).
 pub async fn probe() -> DenoiseStatus {
-    let tools = crate::tools::on_path("pactl") && crate::tools::on_path("pipewire");
+    let tools = margo_fs::path::on_path("pactl") && margo_fs::path::on_path("pipewire");
     let plugin = find_plugin();
     if !tools {
         return DenoiseStatus {

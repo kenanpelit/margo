@@ -598,16 +598,8 @@ fn greeter_socket() -> Option<OwnedFd> {
 
 /// Resolve an executable by scanning `PATH`, falling back to `/usr/bin`.
 pub(crate) fn which(cmd: &str) -> Option<PathBuf> {
-    if let Some(paths) = std::env::var_os("PATH") {
-        for dir in std::env::split_paths(&paths) {
-            let candidate = dir.join(cmd);
-            if candidate.is_file() {
-                return Some(candidate);
-            }
-        }
-    }
-    let fallback = PathBuf::from("/usr/bin").join(cmd);
-    fallback.is_file().then_some(fallback)
+    margo_fs::path::find_in_path(cmd)
+        .or_else(|| margo_fs::path::find_in_path(&format!("/usr/bin/{cmd}")))
 }
 
 /// Read the system console keyboard config (`/etc/vconsole.conf`, written by

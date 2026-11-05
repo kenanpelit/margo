@@ -597,7 +597,7 @@ pub(crate) fn upgrade_argv(script: &str, unit: &str, scope: bool) -> Vec<String>
 
 /// A systemd user manager we can ask for a scope.
 fn user_manager_available() -> bool {
-    super::on_path("systemd-run")
+    margo_fs::path::on_path("systemd-run")
         && margo_fs::xdg::runtime_dir().is_some_and(|d| d.join("systemd/private").exists())
 }
 
