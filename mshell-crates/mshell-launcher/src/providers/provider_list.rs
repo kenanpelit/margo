@@ -119,6 +119,12 @@ const ENTRIES: &[Entry] = &[
         icon: "face-smile-symbolic",
     },
     Entry {
+        prefix: "case <text>",
+        example: "case parse http response",
+        description: "Case convert — camel/snake/kebab/… (bare = selection; Ctrl+Enter types)",
+        icon: "format-text-rich-symbolic",
+    },
+    Entry {
         prefix: "g <query>",
         example: "g rust async",
         description: "Web search — Google (also y / ddg / gh / aur / arch / wiki)",

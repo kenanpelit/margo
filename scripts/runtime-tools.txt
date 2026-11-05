@@ -47,6 +47,7 @@ cava                        cava                       audio visualizer pill
 fd                          fd                         launcher file search
 plocate                     plocate                    launcher file search (indexed)
 pass                        pass                       launcher password provider
+wtype                       wtype                      launcher typing (pass, case convert)
 playerctl                   playerctl                  media keys on the lock screen, launcher media provider
 qalc                        libqalculate               calculator units / currency / percent
 smartctl                    smartmontools              drive health in the CPU dashboard

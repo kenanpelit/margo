@@ -58,10 +58,11 @@ use mshell_config::schema::config::{
     ConfigStoreFields, IconsStoreFields, LauncherStoreFields, PassStoreFields, ThemeStoreFields,
 };
 use mshell_launcher::providers::{
-    ArchLinuxPkgsProvider, BluetoothProvider, CalculatorProvider, CommandProvider, EmojiProvider,
-    FileSearchProvider, MctlProvider, PassProvider, PlayerctlProvider, ProviderListProvider,
-    ScriptsProvider, SessionProvider, SettingsProvider, SshProvider, SymbolsProvider,
-    SystemdProvider, TmuxProvider, WebappProvider, WebsearchProvider, WireplumberProvider,
+    ArchLinuxPkgsProvider, BluetoothProvider, CalculatorProvider, CaseConvertProvider,
+    CommandProvider, EmojiProvider, FileSearchProvider, MctlProvider, PassProvider,
+    PlayerctlProvider, ProviderListProvider, ScriptsProvider, SessionProvider, SettingsProvider,
+    SshProvider, SymbolsProvider, SystemdProvider, TmuxProvider, WebappProvider, WebsearchProvider,
+    WireplumberProvider,
 };
 use mshell_launcher::{DisplayItem, FrecencyStore, LauncherItem, LauncherRuntime};
 use reactive_graph::traits::*;
@@ -528,6 +529,7 @@ impl Component for AppLauncherModel {
         runtime.register(Box::new(ScriptsProvider::new()));
         runtime.register(Box::new(SymbolsProvider::new()));
         runtime.register(Box::new(EmojiProvider::new()));
+        runtime.register(Box::new(CaseConvertProvider::new()));
         runtime.register(Box::new(websearch_provider));
         runtime.register(Box::new(provider_list_provider));
         runtime.register(Box::new(PlayerctlProvider::new()));
