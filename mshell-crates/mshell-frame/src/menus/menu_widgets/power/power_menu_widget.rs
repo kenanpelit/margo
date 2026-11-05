@@ -101,6 +101,9 @@ pub(crate) struct PowerMenuWidgetModel {
     /// Battery percent the history was last fetched at — refetch when it
     /// moves (UPower appends a sample per percent change).
     history_fetched_at: Option<u8>,
+    /// The menu is open (its root is mapped). The history is fetched only
+    /// then; a change while closed is fetched on the next open.
+    shown: bool,
 }
 
 impl std::fmt::Debug for PowerMenuWidgetModel {
@@ -126,6 +129,8 @@ pub(crate) enum PowerMenuWidgetInput {
     SetChargeLimit(u8),
     /// Pick the battery-history timeframe (hours).
     SetHistoryHours(u32),
+    /// The menu opened (root mapped) or closed.
+    Shown(bool),
 }
 
 #[derive(Debug)]
@@ -476,12 +481,16 @@ impl Component for PowerMenuWidgetModel {
             history_buttons,
             history_hours,
             history_fetched_at: None,
+            shown: false,
         };
 
         let widgets = view_output!();
         sync_view(&model);
-        let mut model = model;
-        model.maybe_fetch_history(&sender, true);
+        // The history loads when the menu opens (see `Shown`).
+        let s = sender.clone();
+        root.connect_map(move |_| s.input(PowerMenuWidgetInput::Shown(true)));
+        let s = sender.clone();
+        root.connect_unmap(move |_| s.input(PowerMenuWidgetInput::Shown(false)));
 
         ComponentParts { model, widgets }
     }
@@ -539,6 +548,10 @@ impl Component for PowerMenuWidgetModel {
                 sync_view(self);
                 self.maybe_fetch_history(&sender, true);
             }
+            PowerMenuWidgetInput::Shown(shown) => {
+                self.shown = shown;
+                self.maybe_fetch_history(&sender, false);
+            }
         }
     }
 
@@ -585,16 +598,17 @@ impl Component for PowerMenuWidgetModel {
 }
 
 impl PowerMenuWidgetModel {
-    /// Refetch the UPower history when forced (open / timeframe change)
-    /// or when the battery percent moved since the last fetch — UPower
-    /// only appends a sample on a change, so this is event-driven, no
-    /// polling. Skipped entirely without a battery.
+    /// Refetch the UPower history when [`history_fetch_due`]: event-driven,
+    /// no polling, and only while the menu is open.
     fn maybe_fetch_history(&mut self, sender: &ComponentSender<Self>, force: bool) {
-        if !self.state.battery_available {
-            return;
-        }
         let pct = self.state.battery_percent;
-        if !force && pct == self.history_fetched_at {
+        if !history_fetch_due(
+            self.state.battery_available,
+            self.shown,
+            force,
+            pct,
+            self.history_fetched_at,
+        ) {
             return;
         }
         self.history_fetched_at = pct;
@@ -609,6 +623,21 @@ impl PowerMenuWidgetModel {
             }
         });
     }
+}
+
+/// Whether the battery history needs a fetch: there is a battery, the
+/// menu is open, and the timeframe changed (`force`) or the percent moved
+/// since the last fetch (UPower appends a sample per change). A change
+/// while the menu is closed leaves `fetched_at` behind, so the next open
+/// fetches.
+fn history_fetch_due(
+    battery: bool,
+    shown: bool,
+    force: bool,
+    pct: Option<u8>,
+    fetched_at: Option<u8>,
+) -> bool {
+    battery && shown && (force || pct != fetched_at)
 }
 
 /// Caption under the battery graph.
@@ -993,5 +1022,24 @@ fn fmt_duration(secs: i64) -> String {
         format!("{h}h {m}m")
     } else {
         format!("{m}m")
+    }
+}
+
+#[cfg(test)]
+mod history_tests {
+    use super::history_fetch_due;
+
+    #[test]
+    fn history_fetches_only_while_shown() {
+        // Percent moved while the menu is closed: nothing yet…
+        assert!(!history_fetch_due(true, false, false, Some(80), Some(81)));
+        // …fetched on the next open.
+        assert!(history_fetch_due(true, true, false, Some(80), Some(81)));
+        // First open fetches; an unchanged percent doesn't refetch.
+        assert!(history_fetch_due(true, true, false, Some(80), None));
+        assert!(!history_fetch_due(true, true, false, Some(80), Some(80)));
+        // A timeframe change forces it; no battery never fetches.
+        assert!(history_fetch_due(true, true, true, Some(80), Some(80)));
+        assert!(!history_fetch_due(false, true, true, None, None));
     }
 }

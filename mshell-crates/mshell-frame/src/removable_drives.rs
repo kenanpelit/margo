@@ -687,13 +687,13 @@ async fn proxy<'a>(
 
 /// Mount a filesystem object; returns the mount path.
 pub(crate) async fn mount(fs_path: &str) -> zbus::Result<String> {
-    let conn = Connection::system().await?;
+    let conn = mshell_services::systemd::system_bus().await?;
     let p = proxy(&conn, fs_path, IF_FS).await?;
     p.call("Mount", &(Opts::new(),)).await
 }
 
 pub(crate) async fn unmount(fs_path: &str) -> zbus::Result<()> {
-    let conn = Connection::system().await?;
+    let conn = mshell_services::systemd::system_bus().await?;
     let p = proxy(&conn, fs_path, IF_FS).await?;
     p.call("Unmount", &(Opts::new(),)).await
 }
@@ -706,7 +706,7 @@ pub(crate) async fn unlock_and_mount(
     enc_path: &str,
     passphrase: &str,
 ) -> zbus::Result<Option<String>> {
-    let conn = Connection::system().await?;
+    let conn = mshell_services::systemd::system_bus().await?;
     let p = proxy(&conn, enc_path, IF_ENCRYPTED).await?;
     let cleartext: OwnedObjectPath = p.call("Unlock", &(passphrase, Opts::new())).await?;
     // The cleartext block's Filesystem interface can appear a moment
@@ -733,7 +733,7 @@ pub(crate) async fn lock(v: &Volume) -> zbus::Result<()> {
     {
         unmount(fs).await?;
     }
-    let conn = Connection::system().await?;
+    let conn = mshell_services::systemd::system_bus().await?;
     let p = proxy(&conn, &v.path, IF_ENCRYPTED).await?;
     p.call("Lock", &(Opts::new(),)).await
 }
@@ -741,7 +741,7 @@ pub(crate) async fn lock(v: &Volume) -> zbus::Result<()> {
 /// Run a safe-removal [`removal_plan`]; stops at the first failure (a
 /// busy filesystem) and reports it.
 pub(crate) async fn safely_remove(d: &Drive) -> zbus::Result<()> {
-    let conn = Connection::system().await?;
+    let conn = mshell_services::systemd::system_bus().await?;
     for step in removal_plan(d) {
         match step {
             Step::Unmount(fs) => {

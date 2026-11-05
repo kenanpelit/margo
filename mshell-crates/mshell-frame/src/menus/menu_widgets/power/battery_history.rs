@@ -9,7 +9,7 @@
 //! output captured on the owner's ThinkPad; the cairo drawing lives with
 //! the power menu.
 
-use zbus::{Connection, proxy, zvariant::OwnedObjectPath};
+use zbus::{proxy, zvariant::OwnedObjectPath};
 
 /// UPower `GetHistory` sample: `(unix time, value %, state)`.
 pub(crate) type RawSample = (u32, f64, u32);
@@ -142,7 +142,9 @@ trait UPowerDevice {
 /// `Ok(empty)` when there's no battery or no recorded history.
 pub(crate) async fn fetch(hours: u32) -> zbus::Result<Vec<Point>> {
     let span = clamp_hours(hours) * 3600;
-    let conn = Connection::system().await?;
+    // The shell's one shared system-bus connection, not a new one (Hello,
+    // auth, AddMatch) per fetch.
+    let conn = mshell_services::systemd::system_bus().await?;
     let upower = UPowerProxy::new(&conn).await?;
     let paths: Vec<String> = upower
         .enumerate_devices()
