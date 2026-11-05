@@ -657,6 +657,20 @@ pub struct LyricsBarWidget {
     /// 8..=120 when applied.
     #[serde(default = "default_lyrics_max_width_chars")]
     pub max_width_chars: i32,
+    /// Global lyric timing offset in milliseconds, for a source that runs
+    /// consistently early or late. Positive shows each line earlier,
+    /// negative later. Clamped to ±10000 when applied; 0 = as published.
+    #[serde(default)]
+    pub offset_ms: i32,
+    /// Ask NetEase Cloud Music (music.163.com) when lrclib has no synced
+    /// lyrics — strong for Asian releases, often word-timed. Off by
+    /// default: lrclib stays the only network source.
+    #[serde(default)]
+    pub netease_fallback: bool,
+    /// Show a source's translation (or romanization) as a dim second line
+    /// under each lyric in the menu, when the source provides one.
+    #[serde(default)]
+    pub show_translation: bool,
 }
 
 pub(super) fn default_lyrics_max_width_chars() -> i32 {
@@ -668,6 +682,9 @@ impl Default for LyricsBarWidget {
         Self {
             show_line_in_bar: true,
             max_width_chars: default_lyrics_max_width_chars(),
+            offset_ms: 0,
+            netease_fallback: false,
+            show_translation: false,
         }
     }
 }

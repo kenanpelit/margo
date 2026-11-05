@@ -11,9 +11,14 @@
 //! display player's playback *position* to light up the active line.
 //!
 //! Fetching only happens when this pill (or the lyrics menu) is actually in
-//! use, so a user who never adds the widget never hits lrclib.
+//! use, so a user who never adds the widget never hits lrclib. A transient
+//! network failure is retried with back-off ([`lyrics::retry_delay`]) while
+//! the same track plays. Word-timed lyrics (enhanced LRC / NetEase YRC) fill
+//! the bar line word by word: a [`PlayClock`] smooths wayle's once-a-second
+//! position samples and a short repaint tick runs only while such a line is
+//! showing and the player is playing.
 
-use crate::lyrics::{self, Lyrics, LyricsSource, TrackKey};
+use crate::lyrics::{self, Lyrics, LyricsSource, PlayClock, Resolution, TrackKey, ui};
 use futures::StreamExt;
 use mshell_common::scoped_effects::EffectScope;
 use mshell_common::{WatcherToken, watch_cancellable};
@@ -24,11 +29,11 @@ use mshell_config::schema::config::{
 use mshell_services::media_service;
 use mshell_utils::media::spawn_media_players_watcher;
 use reactive_graph::traits::{Get, GetUntracked};
-use relm4::gtk::pango;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
+use relm4::gtk::{glib, pango};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 use wayle_media::core::player::Player;
 use wayle_media::types::PlaybackState;
@@ -46,8 +51,20 @@ pub(crate) struct LyricsModel {
     lyrics: Lyrics,
     source: LyricsSource,
     loading: bool,
-    position_ms: u64,
+    /// Smoothed playback position of the display player.
+    clock: PlayClock,
+    /// Global timing offset (ms), live from `bars.widgets.lyrics.offset_ms`.
+    offset_ms: i32,
     active_idx: Option<usize>,
+    /// Karaoke split (byte offset) last painted into the bar line.
+    painted_split: usize,
+    /// Back-off retries already spent on the current track.
+    retry_attempt: u32,
+    /// The fast karaoke repaint tick, when running.
+    tick: Option<glib::SourceId>,
+    /// Last seen `netease_fallback`, to tell a real change from the
+    /// effect's first run.
+    netease: bool,
     /// Whether to show the current line in the bar (else icon-only; words live
     /// in the menu). Live from `bars.widgets.lyrics.show_line_in_bar`.
     show_line: bool,
@@ -78,7 +95,16 @@ pub(crate) enum LyricsCommandOutput {
     /// Display player's position advanced.
     Position(Duration),
     /// Background lyrics fetch finished (for the given track key).
-    Fetched(TrackKey, Lyrics, LyricsSource),
+    Fetched(TrackKey, Resolution),
+    /// A back-off retry for this track came due.
+    Retry(TrackKey),
+    /// Karaoke repaint tick.
+    Tick,
+    /// `offset_ms` config changed.
+    OffsetChanged(i32),
+    /// `netease_fallback` config changed — the source chain differs, so
+    /// resolve the current track again.
+    SourcesChanged(bool),
     /// `show_line_in_bar` config changed.
     ShowLineChanged(bool),
     /// `max_width_chars` config changed.
@@ -175,6 +201,33 @@ impl Component for LyricsModel {
                 .send(LyricsCommandOutput::MaxWidthChanged(clamp_width(v)));
         });
 
+        let cs = sender.clone();
+        effects.push(move |_| {
+            let v = config_manager()
+                .config()
+                .bars()
+                .widgets()
+                .lyrics()
+                .offset_ms()
+                .get();
+            let _ = cs
+                .command_sender()
+                .send(LyricsCommandOutput::OffsetChanged(v));
+        });
+        let cs = sender.clone();
+        effects.push(move |_| {
+            let v = config_manager()
+                .config()
+                .bars()
+                .widgets()
+                .lyrics()
+                .netease_fallback()
+                .get();
+            let _ = cs
+                .command_sender()
+                .send(LyricsCommandOutput::SourcesChanged(v));
+        });
+
         let mut model = LyricsModel {
             players_token: WatcherToken::new(),
             position_token: WatcherToken::new(),
@@ -184,8 +237,19 @@ impl Component for LyricsModel {
             lyrics: Lyrics::None,
             source: LyricsSource::Lrclib,
             loading: false,
-            position_ms: 0,
+            clock: PlayClock::new(Instant::now()),
+            offset_ms: config_manager()
+                .config()
+                .bars()
+                .widgets()
+                .lyrics()
+                .offset_ms()
+                .get_untracked(),
             active_idx: None,
+            painted_split: 0,
+            retry_attempt: 0,
+            tick: None,
+            netease: ui::fetch_options().netease,
             show_line: config_manager()
                 .config()
                 .bars()
@@ -239,24 +303,54 @@ impl Component for LyricsModel {
                 self.refresh_track(&sender);
             }
             LyricsCommandOutput::Position(pos) => {
-                self.position_ms = pos.as_millis() as u64;
-                let new_idx = self.compute_active();
-                // Only repaint when the active line actually moves — position
-                // ticks land roughly once a second.
-                if new_idx == self.active_idx {
+                self.clock.sample(pos.as_millis() as u64, Instant::now());
+                // Only repaint when the active line (or its karaoke fill)
+                // actually moves — position ticks land roughly once a second.
+                if !self.advance() {
                     return;
                 }
-                self.active_idx = new_idx;
             }
-            LyricsCommandOutput::Fetched(key, lyrics, source) => {
+            LyricsCommandOutput::Tick => {
+                if !self.advance() {
+                    return;
+                }
+            }
+            LyricsCommandOutput::Fetched(key, res) => {
                 if self.key.as_ref() != Some(&key) {
                     // The track moved on while we were fetching — stale result.
                     return;
                 }
-                self.lyrics = lyrics;
-                self.source = source;
+                if res.transient
+                    && let Some(delay) = lyrics::retry_delay(self.retry_attempt)
+                {
+                    self.retry_attempt += 1;
+                    schedule_retry(&sender, key, delay);
+                }
+                self.lyrics = res.lyrics;
+                self.source = res.source;
                 self.loading = false;
                 self.active_idx = self.compute_active();
+            }
+            LyricsCommandOutput::Retry(key) => {
+                if self.key.as_ref() != Some(&key) || self.loading {
+                    return;
+                }
+                self.loading = true;
+                kick_fetch(&sender, key);
+            }
+            LyricsCommandOutput::OffsetChanged(v) => {
+                self.offset_ms = v;
+                self.active_idx = self.compute_active();
+            }
+            LyricsCommandOutput::SourcesChanged(netease) => {
+                // Forget the key so `refresh_track` resolves it again under
+                // the new chain — only on a real change (the effect also
+                // fires once at start-up).
+                if std::mem::replace(&mut self.netease, netease) != netease
+                    && self.key.take().is_some()
+                {
+                    self.refresh_track(&sender);
+                }
             }
             LyricsCommandOutput::ShowLineChanged(v) => {
                 self.show_line = v;
@@ -265,16 +359,74 @@ impl Component for LyricsModel {
                 self.max_width_chars = v;
             }
         }
-        apply_visual(widgets, self);
+        self.painted_split = apply_visual(widgets, self);
+        self.sync_tick(&sender);
     }
 }
 
 impl LyricsModel {
+    /// Lyric-clock position now: the smoothed player position plus the
+    /// user's offset.
+    fn lyric_position(&self) -> u64 {
+        lyrics::effective_position(self.clock.at(Instant::now()), self.offset_ms)
+    }
+
     /// Active synced-line index for the current position, or `None`.
     fn compute_active(&self) -> Option<usize> {
         match &self.lyrics {
-            Lyrics::Synced(lines) => lyrics::index_for_time(lines, self.position_ms),
+            Lyrics::Synced(lines) => lyrics::index_for_time(lines, self.lyric_position()),
             _ => None,
+        }
+    }
+
+    /// The active line, when it is word-timed.
+    fn active_word_line(&self) -> Option<&lyrics::LyricLine> {
+        match &self.lyrics {
+            Lyrics::Synced(lines) => self
+                .active_idx
+                .and_then(|i| lines.get(i))
+                .filter(|l| !l.words.is_empty()),
+            _ => None,
+        }
+    }
+
+    /// Re-evaluate the active line + karaoke split; `true` when either moved
+    /// (a repaint is due).
+    fn advance(&mut self) -> bool {
+        let new_idx = self.compute_active();
+        let split = self
+            .active_word_line()
+            .filter(|_| new_idx == self.active_idx)
+            .map(|l| lyrics::lrc::karaoke_split(l, self.lyric_position()))
+            .unwrap_or(0);
+        if new_idx == self.active_idx && split == self.painted_split {
+            return false;
+        }
+        self.active_idx = new_idx;
+        true
+    }
+
+    /// Run the fast karaoke tick only while it shows something: the line is
+    /// in the bar, the lyrics are word-timed and the player is playing.
+    fn sync_tick(&mut self, sender: &ComponentSender<Self>) {
+        let want = self.show_line && self.clock.playing() && lyrics::has_word_timing(&self.lyrics);
+        match (want, self.tick.is_some()) {
+            (true, false) => {
+                let cs = sender.command_sender().clone();
+                self.tick = Some(glib::timeout_add_local(ui::KARAOKE_TICK, move || {
+                    if cs.send(LyricsCommandOutput::Tick).is_ok() {
+                        glib::ControlFlow::Continue
+                    } else {
+                        glib::ControlFlow::Break
+                    }
+                }));
+            }
+            (false, true) => {
+                if let Some(id) = self.tick.take() {
+                    id.remove();
+                }
+            }
+            _ => {}
         }
     }
 
@@ -290,10 +442,15 @@ impl LyricsModel {
             self.active_idx = None;
             self.position_player_id = None;
             self.position_token.reset();
+            self.clock.set_playing(false, Instant::now());
             return;
         };
 
         self.has_player = true;
+        self.clock.set_playing(
+            player.playback_state.get() == PlaybackState::Playing,
+            Instant::now(),
+        );
 
         // Follow this player's position if we switched players.
         let id = player.id.to_string();
@@ -301,7 +458,7 @@ impl LyricsModel {
             let token = self.position_token.reset();
             subscribe_position(player.clone(), sender, token);
             self.position_player_id = Some(id);
-            self.position_ms = 0;
+            self.clock.sample(0, Instant::now());
         }
 
         let key = lyrics::key_for(
@@ -324,6 +481,7 @@ impl LyricsModel {
         self.lyrics = Lyrics::None;
         self.source = LyricsSource::Lrclib;
         self.active_idx = None;
+        self.retry_attempt = 0;
         if key.is_valid() {
             self.loading = true;
             kick_fetch(sender, key);
@@ -411,11 +569,30 @@ fn kick_fetch(sender: &ComponentSender<LyricsModel>, key: TrackKey) {
     sender.command(move |out, _shutdown| async move {
         let for_fetch = key.clone();
         let embedded = embedded_hint();
-        let (lyrics, source) =
-            tokio::task::spawn_blocking(move || lyrics::fetch(&for_fetch, embedded.as_deref()))
-                .await
-                .unwrap_or((Lyrics::None, LyricsSource::Lrclib));
-        let _ = out.send(LyricsCommandOutput::Fetched(key, lyrics, source));
+        let opts = ui::fetch_options();
+        let res = tokio::task::spawn_blocking(move || {
+            lyrics::fetch(&for_fetch, embedded.as_deref(), &opts)
+        })
+        .await
+        .unwrap_or(Resolution {
+            lyrics: Lyrics::None,
+            source: LyricsSource::Lrclib,
+            transient: true,
+        });
+        let _ = out.send(LyricsCommandOutput::Fetched(key, res));
+    });
+}
+
+/// Deliver [`LyricsCommandOutput::Retry`] for `key` after `delay`; the
+/// handler drops it if the track moved on meanwhile.
+fn schedule_retry(sender: &ComponentSender<LyricsModel>, key: TrackKey, delay: Duration) {
+    sender.command(move |out, shutdown| async move {
+        tokio::select! {
+            () = shutdown.wait() => {}
+            () = tokio::time::sleep(delay) => {
+                let _ = out.send(LyricsCommandOutput::Retry(key));
+            }
+        }
     });
 }
 
@@ -425,8 +602,10 @@ fn clamp_width(chars: i32) -> i32 {
     chars.clamp(8, 120)
 }
 
-fn apply_visual(widgets: &LyricsModelWidgets, model: &LyricsModel) {
+/// Paint the pill; returns the karaoke split it painted (0 when none).
+fn apply_visual(widgets: &LyricsModelWidgets, model: &LyricsModel) -> usize {
     let root = &widgets.root;
+    widgets.label.set_attributes(None);
     widgets.label.set_max_width_chars(model.max_width_chars);
     root.remove_css_class("has-lyrics");
     root.remove_css_class("dim");
@@ -435,37 +614,55 @@ fn apply_visual(widgets: &LyricsModelWidgets, model: &LyricsModel) {
         widgets.label.set_visible(false);
         root.add_css_class("dim");
         root.set_tooltip_text(Some("No media playing"));
-        return;
+        return 0;
     }
 
     if model.loading {
         widgets.label.set_label("…");
         widgets.label.set_visible(model.show_line);
         root.set_tooltip_text(Some("Loading lyrics…"));
-        return;
+        return 0;
     }
 
     match &model.lyrics {
         Lyrics::Synced(lines) => {
-            let text = model
+            let line = model
                 .active_idx
                 .and_then(|i| lines.get(i))
-                .map(|l| l.text.as_str())
-                .filter(|t| !t.trim().is_empty())
-                .unwrap_or("♪");
-            widgets.label.set_label(text);
+                .filter(|l| !l.text.trim().is_empty());
+            let mut split = 0;
+            match line {
+                Some(l) => {
+                    widgets.label.set_label(&l.text);
+                    if !l.words.is_empty() {
+                        let pos = model.lyric_position();
+                        split = lyrics::lrc::karaoke_split(l, pos);
+                        widgets
+                            .label
+                            .set_attributes(Some(&ui::karaoke_attrs(l, pos)));
+                    }
+                }
+                None => widgets.label.set_label("♪"),
+            }
             widgets.label.set_visible(model.show_line);
             root.add_css_class("has-lyrics");
-            root.set_tooltip_text(Some("Synced lyrics — click for the full panel"));
+            root.set_tooltip_text(Some(&format!(
+                "Synced lyrics · {} — click for the full panel",
+                model.source.label()
+            )));
+            return split;
         }
         Lyrics::Plain(_) => {
             widgets.label.set_visible(false);
             root.add_css_class("has-lyrics");
             let tip = match model.source {
-                LyricsSource::Embedded => "Embedded lyrics — click to view",
-                LyricsSource::Lrclib => "Lyrics available (unsynced) — click to view",
+                LyricsSource::Embedded => "Embedded lyrics — click to view".to_string(),
+                src => format!(
+                    "Lyrics available (unsynced) · {} — click to view",
+                    src.label()
+                ),
             };
-            root.set_tooltip_text(Some(tip));
+            root.set_tooltip_text(Some(&tip));
         }
         Lyrics::Instrumental => {
             widgets.label.set_visible(false);
@@ -478,4 +675,5 @@ fn apply_visual(widgets: &LyricsModelWidgets, model: &LyricsModel) {
             root.set_tooltip_text(Some("No lyrics found"));
         }
     }
+    0
 }

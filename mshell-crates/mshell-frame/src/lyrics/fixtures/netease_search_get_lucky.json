@@ -1,0 +1,111 @@
+{
+ "result": {
+  "songs": [
+   {
+    "id": 26349642,
+    "name": "Get Lucky",
+    "ar": [
+     {
+      "name": "Daft Punk",
+      "id": 90513
+     },
+     {
+      "name": "Pharrell Williams",
+      "id": 41151
+     },
+     {
+      "name": "Nile Rodgers",
+      "id": 69491
+     }
+    ],
+    "al": {
+     "name": "Random Access Memories",
+     "id": 2462086
+    },
+    "dt": 369684
+   },
+   {
+    "id": 27522490,
+    "name": "Get Lucky (Daft Punk Remix)",
+    "ar": [
+     {
+      "name": "Daft Punk",
+      "id": 90513
+     },
+     {
+      "name": "Pharrell Williams",
+      "id": 41151
+     }
+    ],
+    "al": {
+     "name": "Get Lucky (Daft Punk Remix)",
+     "id": 2624628
+    },
+    "dt": 629000
+   },
+   {
+    "id": 26328913,
+    "name": "Get Lucky (Vijay & Sofia Zlatko Edit)",
+    "ar": [
+     {
+      "name": "Daft Punk",
+      "id": 90513
+     },
+     {
+      "name": "Pharrell Williams",
+      "id": 41151
+     },
+     {
+      "name": "Vijay & Sofia Zlatko",
+      "id": 1155154
+     }
+    ],
+    "al": {
+     "name": "Get Lucky (Vijay & Sofia Zlatko Edit)",
+     "id": 2451686
+    },
+    "dt": 382000
+   },
+   {
+    "id": 26305780,
+    "name": "Get Lucky (Drop Out Orchestra Edit)",
+    "ar": [
+     {
+      "name": "Daft Punk",
+      "id": 90513
+     }
+    ],
+    "al": {
+     "name": "Get Lucky (Drop Out Orchestra Edit)",
+     "id": 2448380
+    },
+    "dt": 331000
+   },
+   {
+    "id": 420480815,
+    "name": "Get Lucky (Radio Edit)",
+    "ar": [
+     {
+      "name": "Nile Rodgers",
+      "id": 69491
+     },
+     {
+      "name": "Pharrell Williams",
+      "id": 41151
+     },
+     {
+      "name": "Daft Punk",
+      "id": 90513
+     }
+    ],
+    "al": {
+     "name": "Sunny Songs",
+     "id": 34769411
+    },
+    "dt": 248476
+   }
+  ],
+  "songCount": 327
+ },
+ "code": 200
+}

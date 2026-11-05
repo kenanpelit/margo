@@ -74,7 +74,7 @@ parameter and use YAML tag syntax:
 | --- | --- | --- |
 | `MediaPlayer` | Media Player | Mirrors whichever MPRIS player is *currently playing* (Spotify, mpd, browsers, mpv, …) with transport controls. |
 | `Mtune` | Tune | Dedicated pill for the built-in [`mtune`](companion-tools.md#mtune) music player: cover, title, queue position, and elapsed / total. Left-click opens the Tune menu (seek bar, transport, shuffle / repeat, speed, folder + playlist controls); the menu also shows the live queue with a filter box, and can play or remove any entry directly; right-click toggles play / pause; when mtune isn't running, a click launches it. |
-| `Lyrics` | Lyrics | Current synced lyric line of the now-playing track, scrolling in the bar. Prefers the track's own embedded lyrics (if the file has any — mtune only) over a lrclib.net lookup. Click opens the full scrolling lyrics panel (lrclib.net, disk-cached). |
+| `Lyrics` | Lyrics | Current synced lyric line of the now-playing track, scrolling in the bar; word-synced lyrics (enhanced LRC, NetEase YRC) fill word by word. Prefers the track's own embedded lyrics (if the file has any — mtune only; embedded LRC stays synced) over a lrclib.net lookup, with an opt-in NetEase fallback when lrclib has nothing synced. Click opens the full scrolling lyrics panel (disk-cached; a network failure retries with back-off). Settings → Widgets → Lyrics: bar line on/off + width, **timing offset** (ms, + = earlier), **NetEase fallback**, **show translation** (a source's translation / romanization under each line). |
 
 ## Windows, tags & layout
 

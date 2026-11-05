@@ -103,6 +103,14 @@
   background-color: var(--primary-container);
 }
 
+// Translation / romanization under a line (`show_translation`): the
+// metadata tier, smaller, never tinted — the original line carries the focus.
+.lyrics-line-secondary {
+  font-size: var(--font-xs);
+  color: var(--outline);
+  padding: 0 var(--space-2) var(--space-1);
+}
+
 // ── Bar pill ────────────────────────────────────────────────
 .lyrics-bar-label {
   font-size: var(--font-bar);
