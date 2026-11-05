@@ -105,6 +105,7 @@ mod imp {
                 }
             ));
 
+            // constructed() runs once, and every get() runs after it.
             self.animation.set(animation).unwrap();
         }
 

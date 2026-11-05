@@ -222,6 +222,7 @@ mod imp {
             let application = self.obj();
             application.present_main_window();
             if let Some(window) = application.active_window() {
+                // The application only ever creates `Window`s.
                 window.downcast_ref::<Window>().unwrap().open_files(files);
             }
             // Files passed on the command line take precedence over the
@@ -951,6 +952,7 @@ impl Application {
     }
 
     fn setup_channel(&self) {
+        // Runs once, at startup, while the receiver is still there.
         let receiver = self.imp().receiver.borrow_mut().take().unwrap();
         glib::MainContext::default().spawn_local(clone!(
             #[strong(rename_to = this)]
@@ -1014,15 +1016,21 @@ impl Application {
         self.add_action_entries([gio::ActionEntry::builder("background-play")
             .state(background_play.to_variant())
             .activate(|this: &Application, action, _| {
-                let state = action.state().unwrap();
-                let action_state: bool = state.get().unwrap();
-                let background_play = !action_state;
+                let on = action
+                    .state()
+                    .and_then(|s| s.get::<bool>())
+                    .unwrap_or(false);
+                let background_play = !on;
                 action.set_state(&background_play.to_variant());
 
-                this.imp()
+                // A key locked down by the admin is not writable.
+                if let Err(e) = this
+                    .imp()
                     .settings
                     .set_boolean("background-play", background_play)
-                    .expect("Unable to store background-play setting");
+                {
+                    log::warn!("Unable to store background-play setting: {e}");
+                }
             })
             .build()]);
 
@@ -1038,7 +1046,9 @@ impl Application {
     }
 
     fn show_about(&self) {
-        let window = self.active_window().unwrap();
+        // `app.about` can be activated over D-Bus with no window open
+        // (background play): the dialog then has no parent.
+        let window = self.active_window();
         let dialog = adw::AboutDialog::builder()
             .application_icon(APPLICATION_ID)
             .application_name("Tune")
@@ -1053,7 +1063,7 @@ impl Application {
             .translator_credits(i18n("translator-credits"))
             .build();
 
-        dialog.present(Some(&window));
+        dialog.present(window.as_ref());
     }
 
     fn show_shortcuts(&self) {

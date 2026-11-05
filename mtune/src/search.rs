@@ -36,6 +36,9 @@ mod imp {
             PROPERTIES.as_ref()
         }
 
+        // GObject checks the name and value type against the registered
+        // pspecs before calling this: the value `get`s cannot fail and the
+        // `_` arm is unreachable.
         fn set_property(&self, _id: usize, value: &Value, pspec: &ParamSpec) {
             match pspec.name() {
                 "search" => {
@@ -54,6 +57,7 @@ mod imp {
             gtk::FilterMatch::Some
         }
 
+        // Filters the queue's model: Songs only.
         fn match_(&self, song: &glib::Object) -> bool {
             let song = song.downcast_ref::<Song>().unwrap();
 

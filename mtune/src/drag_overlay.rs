@@ -45,6 +45,7 @@ mod imp {
             PROPERTIES.as_ref()
         }
 
+        // Only registered pspecs reach this: the `_` arm is unreachable.
         fn property(&self, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
             match pspec.name() {
                 "title" => self.status.title().to_value(),
@@ -54,6 +55,9 @@ mod imp {
             }
         }
 
+        // GObject checks the name and value type against the registered
+        // pspecs before calling this: the value `get`s cannot fail and the
+        // `_` arm is unreachable.
         fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
             match pspec.name() {
                 "title" => self.status.set_title(value.get().unwrap()),
@@ -127,10 +131,12 @@ impl DragOverlay {
             move |target| {
                 let reveal = target.current_drop().is_some();
                 revealer.set_reveal_child(reveal);
-                if reveal {
-                    overlay.child().unwrap().add_css_class("blurred");
-                } else {
-                    overlay.child().unwrap().remove_css_class("blurred");
+                if let Some(child) = overlay.child() {
+                    if reveal {
+                        child.add_css_class("blurred");
+                    } else {
+                        child.remove_css_class("blurred");
+                    }
                 }
             }
         ));

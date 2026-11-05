@@ -47,6 +47,7 @@ mod imp {
             PROPERTIES.as_ref()
         }
 
+        // Only registered pspecs reach this: the `_` arm is unreachable.
         fn property(&self, _id: usize, pspec: &ParamSpec) -> Value {
             match pspec.name() {
                 "has-peaks" => self.obj().peaks().is_some().to_value(),
@@ -105,7 +106,10 @@ impl WaveformGenerator {
 
                 cache.push(format!("{}.json", uuid));
 
-                let j = serde_json::to_string(&peaks).unwrap();
+                // A Vec<(f64, f64)> always serializes (NaN becomes null).
+                let Ok(j) = serde_json::to_string(&peaks) else {
+                    return;
+                };
                 let file = gio::File::for_path(&cache);
                 file.replace_contents_async(
                     j,
@@ -200,80 +204,88 @@ impl WaveformGenerator {
             }
         };
 
-        let uridecodebin = pipeline
-            .downcast_ref::<gst::Bin>()
-            .unwrap()
-            .by_name("uridecodebin")
-            .unwrap();
+        // gst::parse::launch of a `!` chain returns a Pipeline (a Bin)
+        // holding both named elements and a bus; anything else is a
+        // broken GStreamer install, reported as "no waveform".
+        let bin = pipeline.downcast_ref::<gst::Bin>();
+        let named = |name: &str| bin.and_then(|b| b.by_name(name));
+        let (Some(uridecodebin), Some(fakesink), Some(bus)) =
+            (named("uridecodebin"), named("faked"), pipeline.bus())
+        else {
+            warn!("Unable to generate the waveform: unexpected pipeline");
+            self.imp().peaks.replace(None);
+            self.notify("has-peaks");
+            return;
+        };
         uridecodebin.set_property("uri", song.uri());
-
-        let fakesink = pipeline
-            .downcast_ref::<gst::Bin>()
-            .unwrap()
-            .by_name("faked")
-            .unwrap();
         fakesink.set_property("qos", false);
         fakesink.set_property("sync", false);
 
-        let bus = pipeline
-            .bus()
-            .expect("Pipeline without bus. Shouldn't happen!");
-
         debug!("Adding bus watch");
-        let bus_watch = bus
-            .add_watch_local(clone!(
-                #[weak(rename_to = this)]
-                self,
-                #[weak]
-                pipeline,
-                #[upgrade_or]
-                glib::ControlFlow::Break,
-                move |_, msg| {
-                    use gst::MessageView;
+        let bus_watch = bus.add_watch_local(clone!(
+            #[weak(rename_to = this)]
+            self,
+            #[weak]
+            pipeline,
+            #[upgrade_or]
+            glib::ControlFlow::Break,
+            move |_, msg| {
+                use gst::MessageView;
 
-                    match msg.view() {
-                        MessageView::Eos(..) => {
-                            debug!("End of waveform stream");
-                            pipeline
-                                .set_state(gst::State::Null)
-                                .expect("Unable to set 'null' state");
-                            // We're done
-                            this.imp().pipeline.replace(None);
-                            this.save_peaks();
-                            return glib::ControlFlow::Break;
+                match msg.view() {
+                    MessageView::Eos(..) => {
+                        debug!("End of waveform stream");
+                        if let Err(e) = pipeline.set_state(gst::State::Null) {
+                            warn!("Unable to stop the waveform pipeline: {e}");
                         }
-                        MessageView::Error(err) => {
-                            warn!("Pipeline error: {:?}", err);
-                            pipeline
-                                .set_state(gst::State::Null)
-                                .expect("Unable to set 'null' state");
-                            // We're done
-                            this.imp().pipeline.replace(None);
-                            this.save_peaks();
-                            return glib::ControlFlow::Break;
+                        // We're done
+                        this.imp().pipeline.replace(None);
+                        this.save_peaks();
+                        return glib::ControlFlow::Break;
+                    }
+                    MessageView::Error(err) => {
+                        warn!("Pipeline error: {:?}", err);
+                        if let Err(e) = pipeline.set_state(gst::State::Null) {
+                            warn!("Unable to stop the waveform pipeline: {e}");
                         }
-                        MessageView::Element(element) => {
-                            if let Some(s) = element.structure()
-                                && s.has_name("level")
+                        // We're done
+                        this.imp().pipeline.replace(None);
+                        this.save_peaks();
+                        return glib::ControlFlow::Break;
+                    }
+                    MessageView::Element(element) => {
+                        if let Some(s) = element.structure()
+                            && s.has_name("level")
+                        {
+                            // Two channels (the caps filter), in dB.
+                            let peak = |i: usize| {
+                                let a = s.get::<&glib::ValueArray>("peak").ok()?;
+                                a.get(i)?.get::<f64>().ok()
+                            };
+                            if let (Some(v1), Some(v2)) = (peak(0), peak(1))
+                                && let Some(ref mut peaks) = *this.imp().peaks.borrow_mut()
                             {
-                                let peaks_array = s.get::<&glib::ValueArray>("peak").unwrap();
-                                let v1 = peaks_array[0].get::<f64>().unwrap();
-                                let v2 = peaks_array[1].get::<f64>().unwrap();
                                 // Normalize peaks between 0 and 1
                                 let peak1 = f64::powf(10.0, v1 / 20.0);
                                 let peak2 = f64::powf(10.0, v2 / 20.0);
-                                if let Some(ref mut peaks) = *this.imp().peaks.borrow_mut() {
-                                    peaks.push((peak1, peak2));
-                                }
+                                peaks.push((peak1, peak2));
                             }
                         }
-                        _ => (),
-                    };
+                    }
+                    _ => (),
+                };
 
-                    glib::ControlFlow::Continue
-                }
-            ))
-            .expect("failed to add bus watch");
+                glib::ControlFlow::Continue
+            }
+        ));
+        // Fails only when the bus already has a watch: this pipeline is new.
+        let Ok(bus_watch) = bus_watch else {
+            warn!("Unable to generate the waveform: bus watch");
+            let _ = pipeline.set_state(gst::State::Null);
+            self.imp().peaks.replace(None);
+            self.notify("has-peaks");
+            return;
+        };
 
         match pipeline.set_state(gst::State::Playing) {
             Ok(_) => {
@@ -281,9 +293,9 @@ impl WaveformGenerator {
             }
             Err(err) => {
                 warn!("Unable to generate the waveform: {}", err);
-                pipeline
-                    .set_state(gst::State::Null)
-                    .expect("Pipeline reset failed");
+                if let Err(e) = pipeline.set_state(gst::State::Null) {
+                    warn!("Unable to reset the waveform pipeline: {e}");
+                }
                 self.imp().peaks.replace(None);
                 self.notify("has-peaks");
             }

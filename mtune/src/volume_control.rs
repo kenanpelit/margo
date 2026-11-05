@@ -79,6 +79,9 @@ mod imp {
             PROPERTIES.as_ref()
         }
 
+        // GObject checks the name and value type against the registered
+        // pspecs before calling this: the value `get`s cannot fail and the
+        // `_` arm is unreachable.
         fn set_property(&self, _id: usize, value: &Value, pspec: &ParamSpec) {
             match pspec.name() {
                 "volume" => {
@@ -93,6 +96,7 @@ mod imp {
             }
         }
 
+        // Only registered pspecs reach this: the `_` arm is unreachable.
         fn property(&self, _id: usize, pspec: &ParamSpec) -> Value {
             match pspec.name() {
                 "volume" => self.volume_scale.value().to_value(),

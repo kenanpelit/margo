@@ -72,6 +72,7 @@ mod imp {
             PROPERTIES.as_ref()
         }
 
+        // Only registered pspecs reach this: the `_` arm is unreachable.
         fn property(&self, _id: usize, pspec: &ParamSpec) -> glib::Value {
             let obj = self.obj();
             match pspec.name() {

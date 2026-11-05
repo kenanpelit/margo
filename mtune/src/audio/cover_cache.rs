@@ -237,6 +237,36 @@ fn cover_uuid(
     format!("{:x}", hasher.finalize())
 }
 
+/// Lock a cover-cache mutex, recovering it when poisoned: a panic in an
+/// earlier holder (a malformed cover in a decoder) leaves a cache that is
+/// still a valid map, so later song loads keep working.
+pub fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+#[cfg(test)]
+mod lock_tests {
+    use super::lock;
+    use std::sync::Mutex;
+
+    #[test]
+    fn a_poisoned_cache_is_still_usable() {
+        // A panic while a cover was being decoded (a malformed image)
+        // must not take every later song load down with it.
+        let m = Mutex::new(1);
+        let _ = std::thread::scope(|s| {
+            s.spawn(|| {
+                let _g = m.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                panic!("decoder bug");
+            })
+            .join()
+        });
+        assert!(m.is_poisoned());
+        *lock(&m) += 1;
+        assert_eq!(*lock(&m), 2);
+    }
+}
+
 #[cfg(test)]
 mod cover_uuid_tests {
     use super::cover_uuid;

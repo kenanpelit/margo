@@ -374,7 +374,7 @@ impl Window {
             queue_view
                 .upcast_ref::<gtk::Widget>()
                 .activate_action("list.scroll-to-item", Some(&current_idx.to_variant()))
-                .expect("Failed to activate action");
+                .unwrap_or_else(|e| log::warn!("Unable to scroll the playlist: {e}"));
         }
     }
 

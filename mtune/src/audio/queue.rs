@@ -126,6 +126,7 @@ mod imp {
             PROPERTIES.as_ref()
         }
 
+        // Only registered pspecs reach this: the `_` arm is unreachable.
         fn property(&self, _id: usize, pspec: &ParamSpec) -> Value {
             match pspec.name() {
                 "current" => self.obj().current_song().to_value(),
@@ -163,6 +164,9 @@ impl Queue {
         self.imp().model.as_ref()
     }
 
+    // The store (and the shuffle model over it) holds only Songs, and the
+    // loops in this impl index below its n_items: their item lookups and
+    // downcasts cannot fail.
     pub fn song_at(&self, pos: u32) -> Option<Song> {
         if let Some(song) = self.imp().model.item(pos) {
             return Some(song.downcast::<Song>().unwrap());
@@ -255,7 +259,7 @@ impl Queue {
     }
 
     pub fn clear(&self) {
-        let mut cover_cache = CoverCache::global().lock().unwrap();
+        let mut cover_cache = crate::audio::cover_cache::lock(CoverCache::global());
         cover_cache.clear();
 
         self.imp().current_pos.replace(None);

@@ -54,10 +54,12 @@ fn main() -> glib::ExitCode {
         setlocale(LocaleCategory::LcAll, "");
     }
 
-    bindtextdomain(GETTEXT_PACKAGE, config::localedir()).expect("Unable to bind the text domain");
-    bind_textdomain_codeset(GETTEXT_PACKAGE, "UTF-8")
-        .expect("Unable to set the text domain encoding");
-    textdomain(GETTEXT_PACKAGE).expect("Unable to switch to the text domain");
+    let gettext = bindtextdomain(GETTEXT_PACKAGE, config::localedir())
+        .and_then(|_| bind_textdomain_codeset(GETTEXT_PACKAGE, "UTF-8"))
+        .and_then(|_| textdomain(GETTEXT_PACKAGE));
+    if let Err(e) = gettext {
+        log::warn!("Translations unavailable: {e}");
+    }
 
     debug!("Setting up pulseaudio environment");
     let app_id = APPLICATION_ID.trim_end_matches(".Devel");
@@ -82,9 +84,13 @@ fn main() -> glib::ExitCode {
     glib::set_application_name("Tune");
     glib::set_program_name(Some("mtune"));
 
-    gst::init().expect("Failed to initialize gstreamer");
+    if let Err(e) = gst::init() {
+        eprintln!("mtune: GStreamer could not be initialised: {e}");
+        return glib::ExitCode::FAILURE;
+    }
 
     let ctx = glib::MainContext::default();
+    // The default context, on the main thread, before anything else owns it.
     let _guard = ctx.acquire().unwrap();
 
     let app = Application::new();

@@ -112,7 +112,9 @@ impl GstBackend {
 
         let mut config = gst_player.config();
         config.set_position_update_interval(250);
-        gst_player.set_config(config).unwrap();
+        if let Err(e) = gst_player.set_config(config) {
+            warn!("Unable to set the player's position interval: {e}");
+        }
 
         let res = Self {
             sender,

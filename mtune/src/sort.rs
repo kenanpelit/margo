@@ -36,6 +36,9 @@ mod imp {
             PROPERTIES.as_ref()
         }
 
+        // GObject checks the name and value type against the registered
+        // pspecs before calling this: the value `get`s cannot fail and the
+        // `_` arm is unreachable.
         fn set_property(&self, _id: usize, value: &Value, pspec: &ParamSpec) {
             match pspec.name() {
                 "search" => {
@@ -50,6 +53,7 @@ mod imp {
     }
 
     impl SorterImpl for FuzzySorter {
+        // Sorts the queue's model: Songs only.
         fn compare(&self, item1: &glib::Object, item2: &glib::Object) -> gtk::Ordering {
             let item1 = item1.downcast_ref::<Song>().unwrap();
             let item2 = item2.downcast_ref::<Song>().unwrap();

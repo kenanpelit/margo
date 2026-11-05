@@ -585,15 +585,14 @@ impl Window {
         self.add_action_entries([gio::ActionEntry::builder("enable-recoloring")
             .state(enable_recoloring.to_variant())
             .activate(|this: &Window, action, _| {
-                let state = action.state().unwrap();
-                let action_state: bool = state.get().unwrap();
-                let enable_recoloring = !action_state;
+                let on = action.state().and_then(|s| s.get::<bool>());
+                let enable_recoloring = !on.unwrap_or(false);
                 action.set_state(&enable_recoloring.to_variant());
 
                 this.imp()
                     .settings
                     .set_boolean("enable-recoloring", enable_recoloring)
-                    .expect("Unable to store setting");
+                    .unwrap_or_else(|e| log::warn!("Unable to store setting: {e}"));
             })
             .build()])
     }
@@ -807,7 +806,7 @@ impl Window {
             self.imp()
                 .settings
                 .set_enum("replay-gain", replaygain.into())
-                .expect("Unable to store setting");
+                .unwrap_or_else(|e| log::warn!("Unable to store replay-gain: {e}"));
 
             self.notify("replaygain-mode");
         }

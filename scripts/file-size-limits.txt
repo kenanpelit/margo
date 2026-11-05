@@ -37,7 +37,7 @@ mshell-crates/mshell-frame/src/menus/menu_widgets/control_center/tiles.rs 713
 mdots/src/commands/init.rs 470
 mdots/src/config/mod.rs 432
 mdots/src/lua/mod.rs 358
-mtune/src/window.rs 841
+mtune/src/window.rs 840
 
 # Existing oversized first-party files: frozen at adoption, not growth budgets.
 margo-config/src/parser.rs 759

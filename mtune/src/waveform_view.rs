@@ -82,6 +82,9 @@ mod imp {
             PROPERTIES.as_ref()
         }
 
+        // GObject checks the name and value type against the registered
+        // pspecs before calling this: the value `get`s cannot fail and the
+        // `_` arm is unreachable.
         fn set_property(&self, _id: usize, value: &Value, pspec: &ParamSpec) {
             match pspec.name() {
                 "position" => self.position.replace(value.get::<f64>().unwrap()),
@@ -89,6 +92,7 @@ mod imp {
             };
         }
 
+        // Only registered pspecs reach this: the `_` arm is unreachable.
         fn property(&self, _id: usize, pspec: &ParamSpec) -> Value {
             match pspec.name() {
                 "position" => self.position.get().to_value(),
@@ -400,7 +404,9 @@ impl WaveformView {
                     this.grab_focus();
                 }
                 gesture.set_state(gtk::EventSequenceState::Claimed);
-                this.seek_to_coord(gesture.start_point().unwrap().0 + offset_x);
+                if let Some((x, _)) = gesture.start_point() {
+                    this.seek_to_coord(x + offset_x);
+                }
             }
         ));
         self.add_controller(drag_gesture);

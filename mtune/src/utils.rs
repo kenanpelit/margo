@@ -132,12 +132,8 @@ fn color_format(has_alpha: bool) -> ColorFormat {
 }
 
 pub fn load_palette(pixbuf: &gdk_pixbuf::Pixbuf) -> Option<Vec<gdk::RGBA>> {
-    if let Ok(palette) = get_palette(
-        pixbuf.pixel_bytes().unwrap().as_ref(),
-        color_format(pixbuf.has_alpha()),
-        5,
-        4,
-    ) {
+    let bytes = pixbuf.pixel_bytes()?;
+    if let Ok(palette) = get_palette(bytes.as_ref(), color_format(pixbuf.has_alpha()), 5, 4) {
         let colors: Vec<gdk::RGBA> = palette
             .iter()
             .map(|c| {
@@ -194,28 +190,20 @@ fn load_files_from_folder_internal(
 }
 
 pub fn cmp_two_files(base: Option<&gio::File>, a: &gio::File, b: &gio::File) -> Ordering {
-    let parent_a = a.parent().unwrap();
-    let parent_b = b.parent().unwrap();
-    let parent_basename_a = if let Some(base) = base {
-        if let Some(path) = base.relative_path(&parent_a) {
-            path
-        } else {
-            parent_a.basename().unwrap()
-        }
-    } else {
-        parent_a.basename().unwrap()
+    // The folder part: relative to `base` when below it, else the parent's
+    // own name; `/` (no parent) and a name-less URI sort as "".
+    let folder = |f: &gio::File| -> PathBuf {
+        let Some(parent) = f.parent() else {
+            return PathBuf::new();
+        };
+        base.and_then(|base| base.relative_path(&parent))
+            .or_else(|| parent.basename())
+            .unwrap_or_default()
     };
-    let parent_basename_b = if let Some(base) = base {
-        if let Some(path) = base.relative_path(&parent_b) {
-            path
-        } else {
-            parent_b.basename().unwrap()
-        }
-    } else {
-        parent_b.basename().unwrap()
-    };
-    let basename_a = a.basename().unwrap();
-    let basename_b = b.basename().unwrap();
+    let parent_basename_a = folder(a);
+    let parent_basename_b = folder(b);
+    let basename_a = a.basename().unwrap_or_default();
+    let basename_b = b.basename().unwrap_or_default();
 
     let mut order = cmp_like_nautilus(
         &parent_basename_a.to_string_lossy(),
@@ -232,8 +220,9 @@ pub fn cmp_two_files(base: Option<&gio::File>, a: &gio::File, b: &gio::File) -> 
 fn cmp_like_nautilus(filename_a: &str, filename_b: &str) -> Ordering {
     let order;
 
-    let sort_last_a = filename_a.as_bytes()[0] == b'.' || filename_a.as_bytes()[0] == b'#';
-    let sort_last_b = filename_b.as_bytes()[0] == b'.' || filename_b.as_bytes()[0] == b'#';
+    let sort_last = |name: &str| matches!(name.as_bytes().first(), Some(b'.' | b'#'));
+    let sort_last_a = sort_last(filename_a);
+    let sort_last_b = sort_last(filename_b);
 
     if !sort_last_a && sort_last_b {
         order = Ordering::Less;
@@ -242,7 +231,7 @@ fn cmp_like_nautilus(filename_a: &str, filename_b: &str) -> Ordering {
     } else {
         let key_a = glib::FilenameCollationKey::from(filename_a);
         let key_b = glib::FilenameCollationKey::from(filename_b);
-        order = key_a.partial_cmp(&key_b).unwrap();
+        order = key_a.cmp(&key_b);
     }
 
     order
@@ -270,10 +259,12 @@ pub fn store_playlist(queue: &Queue) {
     pls.set_int64("playlist", "NumberOfEntries", queue.n_songs() as i64);
 
     let model = queue.model();
-    for i in 0..model.n_items() {
-        let item = model.item(i).unwrap();
-        let song = item.downcast_ref::<Song>().unwrap();
-        let path = song.file().path().expect("Unknown file");
+    // The queue model holds only Songs; a song without a local path (an
+    // opened URI) can't be written as a .pls path and is skipped, as
+    // playlist::write_m3u does.
+    let paths =
+        (0..model.n_items()).filter_map(|i| model.item(i)?.downcast::<Song>().ok()?.file().path());
+    for (i, path) in paths.enumerate() {
         let path_str = path.to_string_lossy();
         pls.set_value("playlist", &format!("File{i}"), &path_str);
     }
@@ -329,4 +320,32 @@ pub fn has_cached_playlist() -> bool {
     pls_cache.push("current.pls");
 
     pls_cache.exists()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn files_without_a_parent_or_name_still_sort() {
+        // `/` has no parent and no file name; a dropped or opened folder
+        // can be anything.
+        let root = gio::File::for_path("/");
+        let a = gio::File::for_path("/music/a.flac");
+        let b = gio::File::for_uri("https://example.invalid/");
+        for (x, y) in [(&root, &a), (&a, &root), (&root, &root), (&b, &a)] {
+            let _ = cmp_two_files(None, x, y);
+            let _ = cmp_two_files(Some(&root), x, y);
+        }
+        assert_eq!(cmp_two_files(None, &a, &a), Ordering::Equal);
+    }
+
+    #[test]
+    fn nautilus_order_handles_empty_names() {
+        assert_eq!(cmp_like_nautilus("", ""), Ordering::Equal);
+        assert_eq!(cmp_like_nautilus("a", ".hidden"), Ordering::Less);
+        assert_eq!(cmp_like_nautilus("#x", "b"), Ordering::Greater);
+        let _ = cmp_like_nautilus("", "a");
+        assert_eq!(cmp_like_nautilus("track 2", "track 10"), Ordering::Less);
+    }
 }

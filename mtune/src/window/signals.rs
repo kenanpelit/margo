@@ -272,10 +272,8 @@ impl Window {
                 let (width, height) = window.default_size();
                 settings
                     .set_int("window-width", width)
-                    .expect("Unable to store window-width");
-                settings
-                    .set_int("window-height", height)
-                    .expect("Unable to stop window-height");
+                    .and_then(|_| settings.set_int("window-height", height))
+                    .unwrap_or_else(|e| log::warn!("Unable to store the window size: {e}"));
             }
 
             // Remember where we were so `[playback] on_start = "resume"`

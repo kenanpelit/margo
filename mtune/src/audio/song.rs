@@ -109,7 +109,10 @@ impl SongData {
         let now = Instant::now();
 
         let file = gio::File::for_uri(uri);
-        let path = file.path().expect("Unable to find file");
+        let Some(path) = file.path() else {
+            warn!("Not a local file: {uri}");
+            return SongData::default();
+        };
 
         let (mime_type, _) = gio::content_type_guess(Some(&path), None);
         if !mime_type.starts_with("audio") || mime_type.ends_with("x-mpegurl") {
@@ -138,7 +141,7 @@ impl SongData {
             }
         };
 
-        let mut cover_cache = CoverCache::global().lock().unwrap();
+        let mut cover_cache = crate::audio::cover_cache::lock(CoverCache::global());
 
         let mut artist = None;
         let mut title = None;
@@ -283,6 +286,9 @@ mod imp {
             PROPERTIES.as_ref()
         }
 
+        // GObject checks the name and value type against the registered
+        // pspecs before calling this: the value `get`s cannot fail and the
+        // `_` arm is unreachable.
         fn set_property(&self, _id: usize, value: &Value, pspec: &ParamSpec) {
             match pspec.name() {
                 "uri" => {
@@ -308,6 +314,7 @@ mod imp {
             }
         }
 
+        // Only registered pspecs reach this: the `_` arm is unreachable.
         fn property(&self, _id: usize, pspec: &ParamSpec) -> Value {
             let obj = self.obj();
             match pspec.name() {
@@ -461,7 +468,7 @@ impl Display for Song {
         write!(
             f,
             "Song {{ uuid: {}, uri: {}, artist: '{}', title: '{}' }}",
-            self.uuid().unwrap(),
+            self.uuid().unwrap_or_default(),
             self.uri(),
             self.artist(),
             self.title()
@@ -501,6 +508,23 @@ mod tests {
         let mut blank = Tag::new(TagType::VorbisComments);
         blank.insert_text(ItemKey::Lyrics, "   ".to_string());
         assert_eq!(resolve_lyrics(&blank), None);
+    }
+
+    #[test]
+    fn a_non_local_uri_is_an_invalid_song_not_a_panic() {
+        // MPRIS OpenUri / a dropped remote file hand mtune URIs that
+        // have no local path.
+        for uri in ["https://example.invalid/a.mp3", "sftp://host/music/a.flac"] {
+            let data = SongData::from_uri(uri);
+            assert!(data.uuid().is_none(), "{uri}");
+        }
+    }
+
+    #[test]
+    fn an_invalid_song_still_formats() {
+        // Display runs in log lines; an invalid song has no uuid.
+        let shown = format!("{}", Song::empty());
+        assert!(shown.starts_with("Song { uuid: , uri: "), "{shown}");
     }
 
     #[test]

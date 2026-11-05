@@ -79,8 +79,8 @@ impl From<i32> for ReplayGainMode {
         match value {
             0 => Self::Album,
             1 => Self::Track,
-            2 => Self::Off,
-            _ => panic!("invalid ReplayGainMode enum key"),
+            // 2, and anything a newer or hand-edited dconf key holds.
+            _ => Self::Off,
         }
     }
 }
@@ -178,6 +178,7 @@ impl AudioPlayer {
     }
 
     fn setup_channel(self: Rc<Self>) {
+        // Runs once, at construction, while the receiver is still there.
         let receiver = self.receiver.borrow_mut().take().unwrap();
 
         glib::MainContext::default().spawn_local(clone!(
@@ -595,7 +596,7 @@ impl AudioPlayer {
         self.state.set_current_song(None);
         self.queue.clear();
 
-        let mut cover_cache = CoverCache::global().lock().unwrap();
+        let mut cover_cache = crate::audio::cover_cache::lock(CoverCache::global());
         cover_cache.clear();
     }
 
@@ -617,5 +618,20 @@ impl AudioPlayer {
 
     pub fn replaygain_available(&self) -> bool {
         self.backend.replaygain_available()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ReplayGainMode;
+
+    #[test]
+    fn an_unknown_replaygain_key_means_off() {
+        assert_eq!(ReplayGainMode::from(0), ReplayGainMode::Album);
+        assert_eq!(ReplayGainMode::from(1), ReplayGainMode::Track);
+        assert_eq!(ReplayGainMode::from(2), ReplayGainMode::Off);
+        // An out-of-range value (a hand-edited or newer dconf key).
+        assert_eq!(ReplayGainMode::from(7), ReplayGainMode::Off);
+        assert_eq!(ReplayGainMode::from(-1), ReplayGainMode::Off);
     }
 }
