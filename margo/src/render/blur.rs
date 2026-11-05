@@ -38,6 +38,17 @@
 //! (the translucent surface just composites over the un-blurred
 //! background, exactly as it does today with `blur = off`).
 //!
+//! ## Damage
+//!
+//! The element is a smithay *framebuffer effect*: steps 1-3 run in
+//! `capture_framebuffer`, which the damage tracker calls only when
+//! something behind the element changed this frame — and it then redraws
+//! the whole backdrop under the element first, so the capture never reads
+//! stale or already-composited pixels. The blurred image is cached per
+//! element and output (the tracker's effect cache); `draw` (step 4)
+//! composites it over just the damaged rects. Age-based damage tracking
+//! stays fully on, and a static blurred screen renders nothing.
+//!
 //! Wiring lives in `udev.rs::push_client_elements` /
 //! `push_layer_elements`: when `Config::blur` (windows) or
 //! `Config::blur_layer` (layer-shells) is set, the client/layer isn't
@@ -47,10 +58,13 @@
 use crate::render::shader_cache::ShaderSlot;
 use std::cell::RefCell;
 
-use smithay::backend::renderer::Frame;
+use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::element::{Element, Id, Kind, RenderElement, UnderlyingStorage};
-use smithay::backend::renderer::gles::{GlesError, GlesFrame, GlesRenderer, ffi, link_program};
+use smithay::backend::renderer::gles::{
+    GlesError, GlesFrame, GlesRenderer, GlesTexture, ffi, link_program,
+};
 use smithay::backend::renderer::utils::{CommitCounter, DamageSet, OpaqueRegions};
+use smithay::backend::renderer::{Frame, FrameContext, Offscreen};
 use smithay::utils::user_data::UserDataMap;
 use smithay::utils::{Buffer, Logical, Physical, Rectangle, Scale, Size, Transform};
 
@@ -117,6 +131,9 @@ struct BlurGl {
     pool: Vec<PoolTex>,
     /// Fullscreen-quad vertex buffer (two triangles, NDC).
     quad_vbo: ffi::types::GLuint,
+    /// FBO the last up pass renders through into a per-element
+    /// [`Backdrop`] texture (attached per capture).
+    cache_fbo: ffi::types::GLuint,
 }
 
 struct PoolTex {
@@ -191,6 +208,7 @@ unsafe fn compile_blur_gl(gl: &ffi::Gles2) -> Result<BlurGl, GlesError> {
     let composite_prog = unsafe { link_program(gl, COMPOSITE_VERT_SRC, COMPOSITE_FRAG_SRC)? };
 
     let mut quad_vbo = 0;
+    let mut cache_fbo = 0;
     // Two triangles covering NDC [-1,1]². Interleaved: pos.xy, uv.xy.
     // UVs run 0..1 with origin bottom-left (GL texture convention).
     #[rustfmt::skip]
@@ -213,6 +231,7 @@ unsafe fn compile_blur_gl(gl: &ffi::Gles2) -> Result<BlurGl, GlesError> {
             ffi::STATIC_DRAW,
         );
         gl.BindBuffer(ffi::ARRAY_BUFFER, 0);
+        gl.GenFramebuffers(1, &mut cache_fbo);
     }
 
     Ok(BlurGl {
@@ -221,6 +240,7 @@ unsafe fn compile_blur_gl(gl: &ffi::Gles2) -> Result<BlurGl, GlesError> {
         composite_prog,
         pool: Vec::new(),
         quad_vbo,
+        cache_fbo,
     })
 }
 
@@ -300,7 +320,72 @@ impl BlurGl {
     }
 }
 
+/// The blurred backdrop of one blur element, kept between frames in the
+/// damage tracker's per-element effect cache (the `cache` smithay hands to
+/// [`RenderElement::capture_framebuffer`] and [`RenderElement::draw`]).
+///
+/// It is a pure function of what lies behind the element, so it stays
+/// valid for every swapchain buffer until the tracker reports a change
+/// under the element and calls `capture_framebuffer` again.
+struct Backdrop {
+    /// Exactly region-sized, so the composite samples it with UV scale 1.
+    tex: GlesTexture,
+    size: (i32, i32),
+    /// The last capture produced a blurred image (false when the region
+    /// is too small for one pass or the programs are missing).
+    ready: bool,
+}
+
+type BackdropCell = RefCell<Option<Backdrop>>;
+
+/// Commit counter for a blur element's look: equal inputs give equal
+/// counters, so a stable-id blur reports damage (and gets re-captured)
+/// exactly when a reload changed its parameters or its corner radius.
+pub fn blur_commit(params: &BlurParams, corner_radius: f32) -> CommitCounter {
+    let words = [
+        params.num_passes as u32,
+        params.radius as u32,
+        params.noise.to_bits(),
+        params.brightness.to_bits(),
+        params.contrast.to_bits(),
+        params.saturation.to_bits(),
+        corner_radius.to_bits(),
+    ];
+    CommitCounter::from(words.iter().fold(0usize, |acc, w| {
+        acc.wrapping_mul(31).wrapping_add(*w as usize)
+    }))
+}
+
+/// The parts of `fb_rect` that `damage` (element-relative rects in output
+/// space, as smithay passes them to `draw`) covers, in the same GL window
+/// coordinates as `fb_rect`.
+pub fn damage_in_framebuffer(
+    dst: Rectangle<i32, Physical>,
+    damage: &[Rectangle<i32, Physical>],
+    transform: Transform,
+    fb_size: Size<i32, Physical>,
+    fb_rect: Rectangle<i32, Physical>,
+) -> Vec<Rectangle<i32, Physical>> {
+    damage
+        .iter()
+        .filter_map(|d| {
+            framebuffer_rect(Rectangle::new(dst.loc + d.loc, d.size), transform, fb_size)
+                .intersection(fb_rect)
+        })
+        .collect()
+}
+
 /// A blur draw under one translucent surface.
+///
+/// A smithay *framebuffer effect*: the damage tracker calls
+/// [`RenderElement::capture_framebuffer`] whenever something behind the
+/// element changed this frame, and then redraws everything behind the
+/// whole element rect first, so the capture always reads a clean, current
+/// backdrop. The blurred result is cached per element and output; a frame
+/// that only changes what lies *above* the blur (a caret, the window's own
+/// content) composites the cached image over just the damaged rects. That
+/// keeps age-based damage tracking (and the swapchain) intact while blur is
+/// on, and a static blurred screen renders nothing.
 #[derive(Debug)]
 pub struct BlurRenderElement {
     id: Id,
@@ -328,8 +413,32 @@ impl BlurRenderElement {
             corner_radius,
             params,
             scale,
-            commit: CommitCounter::default(),
+            commit: blur_commit(&params, corner_radius),
         }
+    }
+
+    /// Where `dst` lands in the bound framebuffer, and the region size.
+    fn framebuffer_region(
+        frame: &GlesFrame<'_, '_>,
+        dst: Rectangle<i32, Physical>,
+    ) -> (
+        Transform,
+        Size<i32, Physical>,
+        Rectangle<i32, Physical>,
+        (i32, i32),
+    ) {
+        // `draw_blur` addresses the framebuffer directly: CopyTexSubImage2D
+        // for the capture and a quad placed in GL window coordinates for the
+        // composite. `dst` is in output space; map it to where smithay's
+        // projection put this element in the framebuffer (on a rotated or
+        // flipped output those differ). The blur is computed in framebuffer
+        // orientation, which is fine: the Kawase filter and the rounded-
+        // rect mask are both symmetric under the 8 output transforms.
+        let transform = frame.transformation();
+        let fb_size = transform.transform_size(frame.output_size());
+        let fb_rect = framebuffer_rect(dst, transform, fb_size);
+        let region = (fb_rect.size.w.max(1), fb_rect.size.h.max(1));
+        (transform, fb_size, fb_rect, region)
     }
 }
 
@@ -363,24 +472,12 @@ impl Element for BlurRenderElement {
         commit: Option<CommitCounter>,
     ) -> DamageSet<i32, Physical> {
         // The blur output is a pure function of the framebuffer content
-        // *within our own geometry*: `draw_blur` captures exactly the
-        // `dst` slice (`CopyTexSubImage2D` over `region_w × region_h` at
-        // `dst.loc`) and reblurs the whole region every `draw`, ignoring
-        // the passed damage rects. Nothing outside `geometry` is sampled.
-        //
-        // So we don't need to self-damage every frame to stay correct:
-        // when anything behind us changes *inside* our rect, that
-        // element's damage lands in the output's accumulated damage, and
-        // the damage tracker redraws every element overlapping it —
-        // including this translucent one in front — which recaptures the
-        // fresh background. When nothing behind us changes, the blur is
-        // identical, so reporting no damage lets the tracker skip the
-        // frame entirely (the big idle-power win: an always-on blurred
-        // bar no longer forces a full repaint at refresh rate).
-        //
-        // Geometry/size changes are caught by the tracker's own per-id
-        // geometry diff (same as `ShadowRenderElement`); blur-param
-        // changes only happen on `mctl reload`, which repaints anyway.
+        // *within our own geometry* (the capture copies exactly that
+        // slice). Changes behind us are the damage tracker's job: as a
+        // framebuffer effect it re-captures us whenever damage below
+        // overlaps our rect. Our own damage is only a changed look (blur
+        // parameters / corner radius on `mctl reload`, see `blur_commit`);
+        // geometry changes are caught by the tracker's per-id diff.
         if commit != Some(self.commit) {
             DamageSet::from_slice(&[Rectangle::new(
                 Default::default(),
@@ -404,32 +501,96 @@ impl Element for BlurRenderElement {
     fn kind(&self) -> Kind {
         Kind::Unspecified
     }
+
+    fn is_framebuffer_effect(&self) -> bool {
+        true
+    }
 }
 
 impl RenderElement<GlesRenderer> for BlurRenderElement {
+    fn capture_framebuffer(
+        &self,
+        frame: &mut GlesFrame<'_, '_>,
+        _src: Rectangle<f64, Buffer>,
+        dst: Rectangle<i32, Physical>,
+        cache: &UserDataMap,
+    ) -> Result<(), GlesError> {
+        let (_, _, fb_rect, region) = Self::framebuffer_region(frame, dst);
+        let cell = cache.get_or_insert::<BackdropCell, _>(|| RefCell::new(None));
+        let mut backdrop = cell.borrow_mut();
+        let stale = backdrop.as_ref().is_none_or(|b| b.size != region);
+        if stale {
+            let tex: GlesTexture = Offscreen::<GlesTexture>::create_buffer(
+                frame.renderer().as_mut(),
+                Fourcc::Abgr8888,
+                Size::<i32, Buffer>::from(region),
+            )?;
+            *backdrop = Some(Backdrop {
+                tex,
+                size: region,
+                ready: false,
+            });
+        }
+        let Some(backdrop) = backdrop.as_mut() else {
+            return Ok(());
+        };
+        let target = backdrop.tex.tex_id();
+        let params = self.params;
+        // SAFETY: `with_context` makes the frame's GL context current for the closure.
+        backdrop.ready = frame.with_context(|gl| unsafe {
+            CACHED.with(|slot| {
+                let mut borrow = slot.borrow_mut();
+                let Some(blur_gl) = borrow.ready_mut() else {
+                    return false;
+                };
+                let saved = SavedGl::save(gl);
+                let blurred = blur_backdrop(
+                    gl,
+                    blur_gl,
+                    saved.fbo,
+                    fb_rect,
+                    region,
+                    &params,
+                    BlurTarget::Texture(target),
+                );
+                saved.restore(gl);
+                blurred.is_some()
+            })
+        })?;
+        Ok(())
+    }
+
     fn draw(
         &self,
         frame: &mut GlesFrame<'_, '_>,
         _src: Rectangle<f64, Buffer>,
         dst: Rectangle<i32, Physical>,
-        _damage: &[Rectangle<i32, Physical>],
+        damage: &[Rectangle<i32, Physical>],
         _opaque_regions: &[Rectangle<i32, Physical>],
-        _cache: Option<&UserDataMap>,
+        cache: Option<&UserDataMap>,
     ) -> Result<(), GlesError> {
-        // `draw_blur` addresses the framebuffer directly: CopyTexSubImage2D
-        // for the capture and a quad placed in GL window coordinates for the
-        // composite. `dst` is in output space; map it to where smithay's
-        // projection put this element in the framebuffer (on a rotated or
-        // flipped output those differ). The blur is computed in framebuffer
-        // orientation, which is fine: the Kawase filter and the rounded-
-        // rect mask are both symmetric under the 8 output transforms.
-        let transform = frame.transformation();
-        let fb_size = transform.transform_size(frame.output_size());
-        let fb_rect = framebuffer_rect(dst, transform, fb_size);
-        let region_w = fb_rect.size.w.max(1);
-        let region_h = fb_rect.size.h.max(1);
+        let (transform, fb_size, fb_rect, region) = Self::framebuffer_region(frame, dst);
+        // Only the damaged rects may change: outside them the buffer
+        // already holds this exact composite (the tracker's contract), and
+        // re-blending the rounded corners there would darken them frame by
+        // frame.
+        let clip = damage_in_framebuffer(dst, damage, transform, fb_size, fb_rect);
+        if clip.is_empty() {
+            return Ok(());
+        }
         let corner_px = self.corner_radius * self.scale.x as f32;
         let params = self.params;
+        // The backdrop the tracker had us capture. Without one (drawn by a
+        // caller that renders everything from scratch, not through a
+        // damage tracker) the framebuffer behind us is fresh: capture now.
+        let cached = cache
+            .and_then(|c| c.get::<BackdropCell>())
+            .and_then(|cell| {
+                cell.borrow()
+                    .as_ref()
+                    .filter(|b| b.ready && b.size == region)
+                    .map(|b| b.tex.tex_id())
+            });
 
         // SAFETY: `with_context` makes the frame's GL context current for the closure.
         frame.with_context(|gl| unsafe {
@@ -438,7 +599,25 @@ impl RenderElement<GlesRenderer> for BlurRenderElement {
                 let Some(blur_gl) = borrow.ready_mut() else {
                     return;
                 };
-                draw_blur(gl, blur_gl, fb_rect, region_w, region_h, corner_px, &params);
+                let saved = SavedGl::save(gl);
+                let blurred = match cached {
+                    Some(tex) => Some((tex, (1.0, 1.0))),
+                    None => blur_backdrop(
+                        gl,
+                        blur_gl,
+                        saved.fbo,
+                        fb_rect,
+                        region,
+                        &params,
+                        BlurTarget::Pool,
+                    ),
+                };
+                if let Some((tex, uv)) = blurred {
+                    composite_onto_output(
+                        gl, blur_gl, &saved, tex, uv, fb_rect, region, corner_px, &params, &clip,
+                    );
+                }
+                saved.restore(gl);
             });
         })?;
         Ok(())
@@ -449,46 +628,124 @@ impl RenderElement<GlesRenderer> for BlurRenderElement {
     }
 }
 
-/// The actual dual-Kawase + composite pass. All GL state we touch is
-/// captured up front and restored at the end. `dst` is the blur region in
-/// GL window coordinates of the bound framebuffer ([`framebuffer_rect`]).
+/// The GL state the blur passes touch, saved before and restored after,
+/// so smithay's renderer keeps working.
+struct SavedGl {
+    fbo: ffi::types::GLuint,
+    viewport: [i32; 4],
+    prog: i32,
+    tex: i32,
+    array_buf: i32,
+    active_tex: i32,
+    blend: bool,
+    scissor: bool,
+    scissor_box: [i32; 4],
+}
+
+impl SavedGl {
+    /// # Safety
+    /// Current GL context.
+    unsafe fn save(gl: &ffi::Gles2) -> Self {
+        let mut fbo = 0;
+        let mut viewport = [0i32; 4];
+        let mut prog = 0;
+        let mut tex = 0;
+        let mut array_buf = 0;
+        let mut active_tex = 0;
+        let mut scissor_box = [0i32; 4];
+        // SAFETY: caller holds the GL context; every out-pointer is a live local.
+        unsafe {
+            gl.GetIntegerv(ffi::FRAMEBUFFER_BINDING, &mut fbo);
+            gl.GetIntegerv(ffi::VIEWPORT, viewport.as_mut_ptr());
+            gl.GetIntegerv(ffi::CURRENT_PROGRAM, &mut prog);
+            gl.GetIntegerv(ffi::TEXTURE_BINDING_2D, &mut tex);
+            gl.GetIntegerv(ffi::ARRAY_BUFFER_BINDING, &mut array_buf);
+            gl.GetIntegerv(ffi::ACTIVE_TEXTURE, &mut active_tex);
+            gl.GetIntegerv(ffi::SCISSOR_BOX, scissor_box.as_mut_ptr());
+            Self {
+                fbo: fbo as ffi::types::GLuint,
+                viewport,
+                prog,
+                tex,
+                array_buf,
+                active_tex,
+                blend: gl.IsEnabled(ffi::BLEND) == ffi::TRUE,
+                scissor: gl.IsEnabled(ffi::SCISSOR_TEST) == ffi::TRUE,
+                scissor_box,
+            }
+        }
+    }
+
+    /// # Safety
+    /// Current GL context (the one `save` ran in).
+    unsafe fn restore(&self, gl: &ffi::Gles2) {
+        // SAFETY: caller holds the GL context; the saved names came from it.
+        unsafe {
+            gl.UseProgram(self.prog as ffi::types::GLuint);
+            gl.ActiveTexture(ffi::TEXTURE0);
+            gl.BindTexture(ffi::TEXTURE_2D, self.tex as ffi::types::GLuint);
+            gl.ActiveTexture(self.active_tex as ffi::types::GLenum);
+            gl.BindBuffer(ffi::ARRAY_BUFFER, self.array_buf as ffi::types::GLuint);
+            if self.blend {
+                gl.Enable(ffi::BLEND);
+            } else {
+                gl.Disable(ffi::BLEND);
+            }
+            gl.Scissor(
+                self.scissor_box[0],
+                self.scissor_box[1],
+                self.scissor_box[2],
+                self.scissor_box[3],
+            );
+            if self.scissor {
+                gl.Enable(ffi::SCISSOR_TEST);
+            } else {
+                gl.Disable(ffi::SCISSOR_TEST);
+            }
+            gl.BindFramebuffer(ffi::FRAMEBUFFER, self.fbo);
+            gl.Viewport(
+                self.viewport[0],
+                self.viewport[1],
+                self.viewport[2],
+                self.viewport[3],
+            );
+        }
+    }
+}
+
+/// Where the last (full-resolution) up pass of [`blur_backdrop`] writes.
+#[derive(Clone, Copy)]
+enum BlurTarget {
+    /// The shared pool's result slot, which may be larger than the region.
+    Pool,
+    /// A region-sized texture: a per-element [`Backdrop`].
+    Texture(ffi::types::GLuint),
+}
+
+/// Capture the slice of `output_fbo` behind `dst` (GL window coordinates,
+/// [`framebuffer_rect`]) and run the dual-Kawase chain over it. Returns the
+/// blurred texture and the UV scale of its valid sub-rect, or `None` when
+/// the region is too small for a single pass.
 ///
 /// # Safety
-/// Current GL context; `blur_gl` programs/VBO are valid.
-unsafe fn draw_blur(
+/// Current GL context; `blur_gl` programs/VBO are valid. Changes GL state:
+/// wrap in [`SavedGl::save`] / [`SavedGl::restore`].
+unsafe fn blur_backdrop(
     gl: &ffi::Gles2,
     blur_gl: &mut BlurGl,
+    output_fbo: ffi::types::GLuint,
     dst: Rectangle<i32, Physical>,
-    region_w: i32,
-    region_h: i32,
-    corner_px: f32,
+    (region_w, region_h): (i32, i32),
     params: &BlurParams,
-) {
+    target: BlurTarget,
+) -> Option<(ffi::types::GLuint, (f32, f32))> {
     let passes = effective_passes(params.num_passes, region_w, region_h);
     if passes == 0 {
-        return;
+        return None;
     }
 
     // SAFETY: caller holds the GL context (render path); all GL objects used were created in that context.
     unsafe {
-        // ── Save GL state ────────────────────────────────────────────
-        let mut prev_fbo = 0;
-        let mut prev_vp = [0i32; 4];
-        let mut prev_prog = 0;
-        let mut prev_tex = 0;
-        let mut prev_array_buf = 0;
-        let mut prev_active_tex = 0;
-        gl.GetIntegerv(ffi::FRAMEBUFFER_BINDING, &mut prev_fbo);
-        gl.GetIntegerv(ffi::VIEWPORT, prev_vp.as_mut_ptr());
-        gl.GetIntegerv(ffi::CURRENT_PROGRAM, &mut prev_prog);
-        gl.GetIntegerv(ffi::TEXTURE_BINDING_2D, &mut prev_tex);
-        gl.GetIntegerv(ffi::ARRAY_BUFFER_BINDING, &mut prev_array_buf);
-        gl.GetIntegerv(ffi::ACTIVE_TEXTURE, &mut prev_active_tex);
-        let prev_blend = gl.IsEnabled(ffi::BLEND);
-        let prev_scissor = gl.IsEnabled(ffi::SCISSOR_TEST);
-
-        let output_fbo = prev_fbo as ffi::types::GLuint;
-
         // ── Capture the background slice behind `dst` ────────────────
         // Slot 0 is the captured background at full region resolution.
         let (cap_tex, _cap_fbo) = blur_gl.pool_slot(gl, 0, region_w, region_h);
@@ -500,8 +757,6 @@ unsafe fn draw_blur(
         // top row of the output buffer and no further flip is needed. The
         // captured texture's row 0 is window row `dst.loc.y`, and the
         // composite places texel rows the same way round.
-        let fb_h = prev_vp[3];
-        let src_y = dst.loc.y;
         gl.BindFramebuffer(ffi::FRAMEBUFFER, output_fbo);
         gl.CopyTexSubImage2D(
             ffi::TEXTURE_2D,
@@ -509,7 +764,7 @@ unsafe fn draw_blur(
             0,
             0,
             dst.loc.x,
-            src_y,
+            dst.loc.y,
             region_w,
             region_h,
         );
@@ -520,8 +775,8 @@ unsafe fn draw_blur(
             let err = gl.GetError();
             tracing::warn!(
                 target: "margo::render::blur",
-                "BLUR-DIAG first draw: dst.loc=({},{}) region={}x{} fb_h={} src_y={} passes={} capture_glerror=0x{:x}",
-                dst.loc.x, dst.loc.y, region_w, region_h, fb_h, src_y, passes, err,
+                "BLUR-DIAG first capture: dst.loc=({},{}) region={}x{} passes={} capture_glerror=0x{:x}",
+                dst.loc.x, dst.loc.y, region_w, region_h, passes, err,
             );
         }
 
@@ -566,18 +821,44 @@ unsafe fn draw_blur(
         }
 
         // ── Upsample ─────────────────────────────────────────────────
+        let mut result_uv = (1.0, 1.0);
         for level in (0..passes).rev() {
             let (mw, mh) = mip_size(region_w, region_h, level);
-            // Level 0 of the up chain is the final blurred result; write it
-            // to a dedicated "result" slot (index `passes + 1`) so it never
-            // clobbers an intermediate the chain still needs.
-            let dst_idx = if level == 0 {
-                (passes + 1) as usize
-            } else {
-                level as usize
+            // Level 0 of the up chain is the final blurred result. It goes
+            // to `target`: a backdrop texture of exactly the region size,
+            // or a dedicated pool "result" slot (index `passes + 1`) so it
+            // never clobbers an intermediate the chain still needs.
+            let (tex, fbo, slot_w, slot_h) = match (level, target) {
+                (0, BlurTarget::Texture(tex)) => {
+                    gl.BindFramebuffer(ffi::FRAMEBUFFER, blur_gl.cache_fbo);
+                    gl.BindTexture(ffi::TEXTURE_2D, tex);
+                    for (pname, value) in [
+                        (ffi::TEXTURE_MIN_FILTER, ffi::LINEAR),
+                        (ffi::TEXTURE_MAG_FILTER, ffi::LINEAR),
+                        (ffi::TEXTURE_WRAP_S, ffi::CLAMP_TO_EDGE),
+                        (ffi::TEXTURE_WRAP_T, ffi::CLAMP_TO_EDGE),
+                    ] {
+                        gl.TexParameteri(ffi::TEXTURE_2D, pname, value as i32);
+                    }
+                    gl.FramebufferTexture2D(
+                        ffi::FRAMEBUFFER,
+                        ffi::COLOR_ATTACHMENT0,
+                        ffi::TEXTURE_2D,
+                        tex,
+                        0,
+                    );
+                    (tex, blur_gl.cache_fbo, mw, mh)
+                }
+                _ => {
+                    let idx = if level == 0 {
+                        (passes + 1) as usize
+                    } else {
+                        level as usize
+                    };
+                    let (tex, fbo) = blur_gl.pool_slot(gl, idx, mw, mh);
+                    (tex, fbo, blur_gl.pool[idx].w, blur_gl.pool[idx].h)
+                }
             };
-            let (tex, fbo) = blur_gl.pool_slot(gl, dst_idx, mw, mh);
-            let (slot_w, slot_h) = (blur_gl.pool[dst_idx].w, blur_gl.pool[dst_idx].h);
             run_pass(
                 gl,
                 blur_gl.up_prog,
@@ -593,67 +874,66 @@ unsafe fn draw_blur(
             src_tex = tex;
             src_w = mw;
             src_h = mh;
+            result_uv = (mw as f32 / slot_w as f32, mh as f32 / slot_h as f32);
         }
+        // `src_tex` now holds the full-region blurred background in the
+        // [0,region]×[0,region] sub-rect `result_uv` describes.
+        Some((src_tex, result_uv))
+    }
+}
 
-        // `src_tex` now holds the full-region blurred background. Its valid
-        // content is the [0,region]×[0,region] sub-rect of a possibly-
-        // larger pool texture.
-        let result_idx = (passes + 1) as usize;
-        let (rslot_w, rslot_h) = (blur_gl.pool[result_idx].w, blur_gl.pool[result_idx].h);
-        let result_uv = (
-            region_w as f32 / rslot_w as f32,
-            region_h as f32 / rslot_h as f32,
-        );
-
-        // ── Composite onto the output, clipped to the rounded rect ───
-        gl.BindFramebuffer(ffi::FRAMEBUFFER, output_fbo);
-        gl.Viewport(prev_vp[0], prev_vp[1], prev_vp[2], prev_vp[3]);
+/// Composite a blurred backdrop onto the output framebuffer at `dst`,
+/// clipped to the rounded rect and to the `clip` rects (GL window
+/// coordinates).
+///
+/// # Safety
+/// Current GL context; `saved` was taken in it before the blur passes.
+#[allow(clippy::too_many_arguments)]
+unsafe fn composite_onto_output(
+    gl: &ffi::Gles2,
+    blur_gl: &BlurGl,
+    saved: &SavedGl,
+    blurred_tex: ffi::types::GLuint,
+    uv_scale: (f32, f32),
+    dst: Rectangle<i32, Physical>,
+    (region_w, region_h): (i32, i32),
+    corner_px: f32,
+    params: &BlurParams,
+    clip: &[Rectangle<i32, Physical>],
+) {
+    let vp = saved.viewport;
+    // SAFETY: caller holds the GL context; the programs/VBO belong to it.
+    unsafe {
+        gl.BindFramebuffer(ffi::FRAMEBUFFER, saved.fbo);
+        gl.Viewport(vp[0], vp[1], vp[2], vp[3]);
         gl.Enable(ffi::BLEND);
         gl.BlendFunc(ffi::ONE, ffi::ONE_MINUS_SRC_ALPHA);
         composite_pass(
             gl,
             blur_gl.composite_prog,
             blur_gl.quad_vbo,
-            src_tex,
-            result_uv,
+            blurred_tex,
+            uv_scale,
             dst,
             region_w,
             region_h,
             corner_px,
             params,
-            prev_vp,
+            vp,
+            clip,
         );
 
         // One-shot diagnostic: GL error after the composite (the capture
-        // diag above runs before it, so this is the missing half).
+        // diag runs before it, so this is the missing half).
         if !BLUR_DIAG_COMPOSITE.swap(true, std::sync::atomic::Ordering::Relaxed) {
             let err = gl.GetError();
             tracing::warn!(
                 target: "margo::render::blur",
                 "BLUR-DIAG composite: viewport=[{},{},{},{}] dst=({},{} {}x{}) composite_glerror=0x{:x}",
-                prev_vp[0], prev_vp[1], prev_vp[2], prev_vp[3],
+                vp[0], vp[1], vp[2], vp[3],
                 dst.loc.x, dst.loc.y, dst.size.w, dst.size.h, err,
             );
         }
-
-        // ── Restore GL state ─────────────────────────────────────────
-        gl.UseProgram(prev_prog as ffi::types::GLuint);
-        gl.ActiveTexture(ffi::TEXTURE0);
-        gl.BindTexture(ffi::TEXTURE_2D, prev_tex as ffi::types::GLuint);
-        gl.ActiveTexture(prev_active_tex as ffi::types::GLenum);
-        gl.BindBuffer(ffi::ARRAY_BUFFER, prev_array_buf as ffi::types::GLuint);
-        if prev_blend == ffi::TRUE {
-            gl.Enable(ffi::BLEND);
-        } else {
-            gl.Disable(ffi::BLEND);
-        }
-        if prev_scissor == ffi::TRUE {
-            gl.Enable(ffi::SCISSOR_TEST);
-        } else {
-            gl.Disable(ffi::SCISSOR_TEST);
-        }
-        gl.BindFramebuffer(ffi::FRAMEBUFFER, output_fbo);
-        gl.Viewport(prev_vp[0], prev_vp[1], prev_vp[2], prev_vp[3]);
     }
 }
 
@@ -745,7 +1025,8 @@ unsafe fn run_pass(
 }
 
 /// Final composite: blurred texture → output, rounded-rect clipped,
-/// colour-adjusted, with a touch of noise.
+/// colour-adjusted, with a touch of noise. Drawn once per `clip` rect
+/// (scissored); leaves `SCISSOR_TEST` enabled.
 ///
 /// # Safety
 /// Current GL context.
@@ -761,6 +1042,7 @@ unsafe fn composite_pass(
     corner_px: f32,
     params: &BlurParams,
     viewport: [i32; 4],
+    clip: &[Rectangle<i32, Physical>],
 ) {
     // SAFETY: current GL context: called from `with_context` / a caller under the same contract (see the fn's `# Safety`).
     unsafe {
@@ -792,7 +1074,11 @@ unsafe fn composite_pass(
             viewport[3] as f32,
         );
 
-        gl.DrawArrays(ffi::TRIANGLES, 0, 6);
+        gl.Enable(ffi::SCISSOR_TEST);
+        for r in clip {
+            gl.Scissor(r.loc.x, r.loc.y, r.size.w, r.size.h);
+            gl.DrawArrays(ffi::TRIANGLES, 0, 6);
+        }
         disable_quad_attribs(gl, locs);
     }
 }
@@ -1096,6 +1382,70 @@ mod tests {
     }
 
     #[test]
+    fn blur_commit_follows_every_look_input() {
+        let p = BlurParams {
+            num_passes: 2,
+            radius: 5,
+            noise: 0.02,
+            brightness: 0.9,
+            contrast: 0.9,
+            saturation: 1.2,
+        };
+        let c = blur_commit(&p, 8.0);
+        // Same look on the next frame: same counter, no damage.
+        assert_eq!(c, blur_commit(&p, 8.0));
+        let changed = [
+            BlurParams { num_passes: 3, ..p },
+            BlurParams { radius: 6, ..p },
+            BlurParams { noise: 0.03, ..p },
+            BlurParams {
+                brightness: 1.0,
+                ..p
+            },
+            BlurParams { contrast: 1.0, ..p },
+            BlurParams {
+                saturation: 1.0,
+                ..p
+            },
+        ];
+        for q in changed {
+            assert_ne!(c, blur_commit(&q, 8.0), "{q:?}");
+        }
+        assert_ne!(c, blur_commit(&p, 0.0));
+    }
+
+    #[test]
+    fn damage_maps_into_the_framebuffer_and_stays_inside_the_blur() {
+        let fb: Size<i32, Physical> = (1920, 1080).into();
+        let dst = Rectangle::<i32, Physical>::new((100, 50).into(), (300, 200).into());
+        // A caret 10 px in, plus a rect hanging past the element's edge.
+        let damage = [
+            Rectangle::new((10, 20).into(), (4, 16).into()),
+            Rectangle::new((290, 190).into(), (40, 40).into()),
+        ];
+        let fb_rect = framebuffer_rect(dst, Transform::Normal, fb);
+        assert_eq!(
+            damage_in_framebuffer(dst, &damage, Transform::Normal, fb, fb_rect),
+            vec![
+                Rectangle::new((110, 70).into(), (4, 16).into()),
+                Rectangle::new((390, 240).into(), (10, 10).into()),
+            ]
+        );
+        // Upside down: the caret moves with the element.
+        let fb_rect = framebuffer_rect(dst, Transform::_180, fb);
+        let got = damage_in_framebuffer(dst, &damage[..1], Transform::_180, fb, fb_rect);
+        assert_eq!(
+            got,
+            vec![Rectangle::new(
+                (1920 - 114, 1080 - 86).into(),
+                (4, 16).into()
+            )]
+        );
+        // Nothing to draw when nothing is damaged.
+        assert!(damage_in_framebuffer(dst, &[], Transform::Normal, fb, fb_rect).is_empty());
+    }
+
+    #[test]
     fn passes_zero_when_disabled() {
         assert_eq!(effective_passes(0, 1000, 1000), 0);
         assert_eq!(effective_passes(3, 0, 100), 0);
@@ -1245,6 +1595,317 @@ pub(crate) mod gpu_tests {
             )
             .expect("copy");
         renderer.map_texture(&mapping).expect("map").to_vec()
+    }
+
+    smithay::backend::renderer::element::render_elements! {
+        Scene<=GlesRenderer>;
+        Solid=smithay::backend::renderer::element::solid::SolidColorRenderElement,
+        Blur=BlurRenderElement,
+    }
+
+    /// One frame of a small desktop: a background, a square that can move
+    /// under the blurred window, the blur, the translucent window over it and
+    /// a caret on top of the window (damages a small part of the blur rect
+    /// from above).
+    #[derive(Clone, Copy)]
+    struct Shot {
+        square: (i32, i32),
+        caret: [f32; 4],
+        window: [f32; 4],
+        blur: Option<BlurParams>,
+    }
+
+    struct Ids {
+        bg: Id,
+        square: Id,
+        blur: Id,
+        window: Id,
+        caret: Id,
+    }
+
+    const FB: (i32, i32) = (96, 64);
+    const BLUR_RECT: ((i32, i32), (i32, i32)) = ((16, 12), (48, 32));
+
+    fn params(passes: i32) -> BlurParams {
+        BlurParams {
+            num_passes: passes,
+            radius: 3,
+            noise: 0.0,
+            brightness: 0.8,
+            contrast: 1.0,
+            saturation: 1.0,
+        }
+    }
+
+    fn colour_commit(c: [f32; 4]) -> CommitCounter {
+        CommitCounter::from(c.iter().fold(0usize, |a, v| {
+            a.wrapping_mul(31).wrapping_add(v.to_bits() as usize)
+        }))
+    }
+
+    fn scene(ids: &Ids, shot: Shot) -> Vec<Scene> {
+        use smithay::backend::renderer::element::solid::SolidColorRenderElement as S;
+        let solid = |id: &Id, loc: (i32, i32), size: (i32, i32), c: [f32; 4]| {
+            Scene::Solid(S::new(
+                id.clone(),
+                Rectangle::new(loc.into(), size.into()),
+                colour_commit(c),
+                Color32F::new(c[0], c[1], c[2], c[3]),
+                Kind::Unspecified,
+            ))
+        };
+        let (bl, bs) = BLUR_RECT;
+        let mut out = vec![
+            solid(&ids.caret, (30, 20), (3, 6), shot.caret),
+            solid(&ids.window, bl, bs, shot.window),
+        ];
+        if let Some(p) = shot.blur {
+            out.push(Scene::Blur(BlurRenderElement::new(
+                ids.blur.clone(),
+                Rectangle::new(bl.into(), bs.into()),
+                6.0,
+                p,
+                Scale::from(1.0),
+            )));
+        }
+        out.push(solid(
+            &ids.square,
+            shot.square,
+            (10, 10),
+            [0.9, 0.9, 0.1, 1.0],
+        ));
+        out.push(solid(&ids.bg, (0, 0), FB, [0.1, 0.2, 0.7, 1.0]));
+        out
+    }
+
+    fn pixels(renderer: &mut GlesRenderer, tex: &mut GlesTexture) -> Vec<u8> {
+        let fb = renderer.bind(tex).expect("bind");
+        let mapping = renderer
+            .copy_framebuffer(&fb, Rectangle::from_size(FB.into()), Fourcc::Abgr8888)
+            .expect("copy");
+        renderer.map_texture(&mapping).expect("map").to_vec()
+    }
+
+    /// The scene drawn from scratch (fresh tracker, age 0): what every
+    /// frame must look like.
+    fn reference(
+        renderer: &mut GlesRenderer,
+        ids: &Ids,
+        shot: Shot,
+        transform: Transform,
+    ) -> Vec<u8> {
+        let mut tex: GlesTexture = renderer
+            .create_buffer(Fourcc::Abgr8888, FB.into())
+            .expect("buffer");
+        let mut tracker = OutputDamageTracker::new(FB, 1.0, transform);
+        {
+            let mut fb = renderer.bind(&mut tex).expect("bind");
+            tracker
+                .render_output(
+                    renderer,
+                    &mut fb,
+                    0,
+                    &scene(ids, shot),
+                    Color32F::new(0.0, 0.0, 0.0, 1.0),
+                )
+                .expect("render");
+        }
+        pixels(renderer, &mut tex)
+    }
+
+    fn max_diff(a: &[u8], b: &[u8]) -> (u8, usize) {
+        let mut worst = (0u8, 0usize);
+        for (i, (x, y)) in a.iter().zip(b).enumerate() {
+            let d = x.abs_diff(*y);
+            if d > worst.0 {
+                worst = (d, i / 4);
+            }
+        }
+        worst
+    }
+
+    use smithay::backend::renderer::damage::OutputDamageTracker;
+    use smithay::backend::renderer::gles::GlesTexture;
+
+    /// Render `shots` through one damage tracker into a rotating 3-buffer
+    /// swapchain with real buffer ages (what `DrmCompositor` does) and check
+    /// every presented frame against a from-scratch render of that scene.
+    /// Returns how many frames the tracker found nothing to redraw.
+    fn run_swapchain(renderer: &mut GlesRenderer, shots: &[Shot], transform: Transform) -> usize {
+        let ids = Ids {
+            bg: Id::new(),
+            square: Id::new(),
+            blur: Id::new(),
+            window: Id::new(),
+            caret: Id::new(),
+        };
+        let mut bufs: Vec<GlesTexture> = (0..3)
+            .map(|_| {
+                renderer
+                    .create_buffer(Fourcc::Abgr8888, FB.into())
+                    .expect("buffer")
+            })
+            .collect();
+        let mut last_used: [Option<usize>; 3] = [None; 3];
+        let mut tracker = OutputDamageTracker::new(FB, 1.0, transform);
+        let mut presented: Option<usize> = None;
+        let mut frame_no = 0usize;
+        let mut empty = 0;
+        for (i, shot) in shots.iter().enumerate() {
+            let slot = frame_no % 3;
+            let age = last_used[slot].map_or(0, |u| frame_no - u);
+            let damaged = {
+                let mut fb = renderer.bind(&mut bufs[slot]).expect("bind");
+                tracker
+                    .render_output(
+                        renderer,
+                        &mut fb,
+                        age,
+                        &scene(&ids, *shot),
+                        Color32F::new(0.0, 0.0, 0.0, 1.0),
+                    )
+                    .expect("render")
+                    .damage
+                    .is_some()
+            };
+            if damaged {
+                last_used[slot] = Some(frame_no);
+                presented = Some(slot);
+                frame_no += 1;
+            } else {
+                empty += 1;
+            }
+            let Some(shown) = presented else { continue };
+            let got = pixels(renderer, &mut bufs[shown]);
+            let want = reference(renderer, &ids, *shot, transform);
+            let (d, at) = max_diff(&got, &want);
+            assert!(
+                d <= 2,
+                "{transform:?} frame {i}: pixel ({},{}) differs by {d} from a full redraw",
+                at as i32 % FB.0,
+                at as i32 / FB.0
+            );
+        }
+        empty
+    }
+
+    fn base() -> Shot {
+        Shot {
+            square: (2, 2),
+            caret: [0.0, 0.0, 0.0, 1.0],
+            window: [0.05, 0.05, 0.05, 0.4],
+            blur: Some(params(2)),
+        }
+    }
+
+    /// The blur stays exact under age-based damage tracking: a square
+    /// moving under it, a caret blinking over it, a change elsewhere, a
+    /// reload that changes the blur parameters, and blur appearing on a
+    /// screen that has been rendering without it. This is the invariant the
+    /// old per-frame `reset_buffers()` bought with a full swapchain realloc.
+    #[test]
+    fn blur_matches_a_full_redraw_under_buffer_age_damage() {
+        let Some(mut renderer) = renderer() else {
+            eprintln!("skipped: no render node / EGL");
+            return;
+        };
+        if shader(&mut renderer).is_none() {
+            eprintln!("skipped: blur shaders did not compile");
+            return;
+        }
+        let mut shots = Vec::new();
+        // Blur enabled mid-session: frames without it first.
+        for x in [2, 4] {
+            shots.push(Shot {
+                square: (x, 2),
+                blur: None,
+                ..base()
+            });
+        }
+        // Square sliding in under the blurred window and back out.
+        for x in [8, 14, 20, 26, 32, 40, 52, 60, 70] {
+            shots.push(Shot {
+                square: (x, 18),
+                ..base()
+            });
+        }
+        // Caret blinking on top: damage covers a sliver of the blur rect.
+        for k in 0..6 {
+            let on = k % 2 == 0;
+            shots.push(Shot {
+                square: (70, 18),
+                caret: if on {
+                    [0.9, 0.9, 0.9, 1.0]
+                } else {
+                    [0.0, 0.0, 0.0, 1.0]
+                },
+                ..base()
+            });
+        }
+        // Something changes away from the blur only.
+        for y in [50, 52, 54] {
+            shots.push(Shot {
+                square: (80, y),
+                ..base()
+            });
+        }
+        // `mctl reload` with a stronger blur, same element id.
+        for _ in 0..4 {
+            shots.push(Shot {
+                square: (80, 54),
+                blur: Some(params(3)),
+                ..base()
+            });
+        }
+        // On every output transform: the damage rects the composite is
+        // clipped to go through the same framebuffer mapping as the blur.
+        for t in ALL {
+            run_swapchain(&mut renderer, &shots, t);
+        }
+    }
+
+    /// A static screen with a blurred window renders nothing: the blur
+    /// never forces a frame on its own.
+    #[test]
+    fn a_static_blurred_scene_lets_the_output_idle() {
+        let Some(mut renderer) = renderer() else {
+            eprintln!("skipped: no render node / EGL");
+            return;
+        };
+        if shader(&mut renderer).is_none() {
+            eprintln!("skipped: blur shaders did not compile");
+            return;
+        }
+        // Fill all three buffers first (a never-used buffer has age 0 and
+        // is always redrawn in full), then hold still. The tracker still
+        // brings the older buffers up to date for a frame or two; after
+        // that a blurred screen must go idle exactly like an unblurred one.
+        let shots = |blur: Option<BlurParams>| {
+            let mut shots: Vec<Shot> = [2, 4, 6]
+                .into_iter()
+                .map(|x| Shot {
+                    square: (x, 2),
+                    blur,
+                    ..base()
+                })
+                .collect();
+            shots.extend(std::iter::repeat_n(
+                Shot {
+                    square: (6, 2),
+                    blur,
+                    ..base()
+                },
+                6,
+            ));
+            shots
+        };
+        let n = Transform::Normal;
+        let plain = run_swapchain(&mut renderer, &shots(None), n);
+        assert!(plain >= 3, "the test scene itself must go idle: {plain}");
+        assert_eq!(
+            run_swapchain(&mut renderer, &shots(Some(params(2))), n),
+            plain
+        );
     }
 
     /// Blur at half brightness over a red rect on blue: on every output

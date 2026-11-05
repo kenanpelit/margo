@@ -93,7 +93,7 @@ The floor everything else stands on. Behaviour-stable for the lifetime of the pr
 - **Damage tracking** — `OutputDamageTracker` per-frame; custom render elements bump `CommitCounter` only on geometry / shader-uniform change.
 - **Presentation-time accuracy** (`bcb6fb4`) — feedback signalled at VBlank, not submit.
 
-**Worth revisiting.** Per-output frame scheduling now exists behind the opt-in `per_output_frame_clock` knob (`state/frame_clock_sched.rs`): each output arms its own present timer at its own refresh, so a 60 Hz + 144 Hz mix paces independently instead of on one global tick. The remaining gap is *repaint scope*, not scheduling: `request_repaint` still marks **every** output's clock dirty (`state.rs`, `mark_all_clocks_dirty`) because it doesn't know which output a change touched. The next step is an output-scoped `request_repaint(RepaintScope)` so pointer motion, a single window commit, or a layer commit only wakes the affected output — which in turn lets the animation tick return a damage set (moved clients + output mask) instead of a bare `bool`, and lets blur redraw a damaged region instead of resetting all buffers. Spring physics still carries per-type state; a future "spring everything" pass would unify the animation-tick code.
+**Worth revisiting.** Per-output frame scheduling now exists behind the opt-in `per_output_frame_clock` knob (`state/frame_clock_sched.rs`): each output arms its own present timer at its own refresh, so a 60 Hz + 144 Hz mix paces independently instead of on one global tick. The remaining gap is *repaint scope*, not scheduling: `request_repaint` still marks **every** output's clock dirty (`state.rs`, `mark_all_clocks_dirty`) because it doesn't know which output a change touched. The next step is an output-scoped `request_repaint(RepaintScope)` so pointer motion, a single window commit, or a layer commit only wakes the affected output — which in turn lets the animation tick return a damage set (moved clients + output mask) instead of a bare `bool`. Spring physics still carries per-type state; a future "spring everything" pass would unify the animation-tick code.
 
 ---
 
@@ -1082,22 +1082,16 @@ Lake).** The keystone is *repaint scope*, and the rest chains off it:
   *every* visible client into the Space, then `enforce_z_order` +
   full `border::refresh`. Remaining win = remap only animated clients
   and scope the border refresh; modest, visual-regression-prone.
-- **Blur damage cache.** — attempted 2026-07-19 behind `blur_optimized`
-  (per-surface backdrop cache + damage-rect ingest + scissored
-  composite), **reverted same week after HW test**: bar invisible,
-  windows/notifications shimmering. Two architectural holes in
-  smithay's element model: (1) a changed pixel alters blurred output
-  up to the blur radius *outside* the damage rect, and an element
-  can't expand the damage of what's beneath it — scissoring the
-  composite to raw damage leaves permanent seams; (2) enabling via
-  mid-session `mctl reload` primes the cache from a framebuffer that
-  holds *post-composite* pixels (the tracker already knows the element
-  id, so no full damage fires) — the cache is poisoned with the bar's
-  own pixels and never heals. Fixing either needs damage-tracker-level
-  cooperation, not an element-local path. What survived: `frame.rs`
-  skips the per-frame `reset_buffers()` whenever no blur element is in
-  the output's element list (safe, unconditional); `blur_optimized`
-  stays parsed-but-inert for config compat.
+- [x] **Blur damage cache.** — done with smithay's framebuffer-effect
+  API (`Element::is_framebuffer_effect` + `capture_framebuffer`), the
+  damage-tracker-level cooperation the 2026-07-19 `blur_optimized`
+  attempt lacked: the tracker redraws the *whole* backdrop under a blur
+  whenever anything behind it changed and has the element re-capture it;
+  frames that only change what is above the blur composite the cached
+  result over the damaged rects. The per-frame `reset_buffers()` (a full
+  GBM/DRM-FB/EGLImage re-allocation per frame) is gone. Covered by a GPU
+  test that renders through a 3-buffer age-tracked swapchain and compares
+  every frame with a full redraw, on all eight output transforms.
 - **Screencast cursor-only frame.** `screencasting/pw_utils.rs` re-renders
   a full video frame even when only the cursor moved (its own FIXME).
   Needs OBS-PipeWire compat verified first, alongside the DMABUF-render

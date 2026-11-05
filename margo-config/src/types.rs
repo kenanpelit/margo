@@ -974,13 +974,10 @@ pub struct Config {
     // blur / shadows / visual effects
     pub blur: bool,
     pub blur_layer: bool,
-    /// Accepted for config compatibility but currently a **no-op**. A
-    /// damage-aware blur path (per-surface backdrop cache + scissored
-    /// composite) briefly lived behind this on 2026-07-19 and was
-    /// reverted the same week: smithay's element model can't expand
-    /// damage by the blur radius nor guarantee a clean full-region
-    /// cache prime on a mid-session reload, so it shimmered/ghosted on
-    /// hardware. Blur always uses the full-redraw path.
+    /// Accepted for config compatibility but a **no-op**. Blur is always
+    /// damage-aware: the blur element is a smithay framebuffer effect, so
+    /// the damage tracker redraws and re-captures the backdrop under it
+    /// only when something behind it changed (`margo/src/render/blur.rs`).
     pub blur_optimized: bool,
     pub border_radius: i32,
     pub blur_params: BlurParams,

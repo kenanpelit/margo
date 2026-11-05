@@ -577,32 +577,14 @@ fn render_output(
     // through the primary plane, not a flaky overlay plane.
     let frame_flags =
         FrameFlags::ALLOW_PRIMARY_PLANE_SCANOUT_ANY | FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT;
-    // Blur captures the framebuffer behind a translucent window. Under
-    // smithay's age-based damage tracking only the damaged region is
-    // redrawn into the rotating GBM buffers, so the blur can sample stale
-    // backdrop in the parts of its area that weren't damaged this frame —
-    // which shimmers/flickers as the buffers rotate (seen on tab strips and
-    // any translucent window). Forcing a full redraw on each rendered frame
-    // while blur is on keeps the captured backdrop current. Gated on the
-    // opt-in, default-off blur flags AND on a blur element actually being
-    // in this output's element list: an output showing no blurred surface
-    // (fullscreen video, a monitor without the bar, no translucent window
-    // open) samples nothing, so it keeps full age-based damage tracking.
-    // This only fires on frames that already render (an idle screen still
-    // renders nothing and idles). A damage-aware alternative (persistent
-    // backdrop cache + scissored composite, 2026-07-19) was tried and
-    // reverted: smithay's element model can't expand damage by the blur
-    // radius nor guarantee a clean full-region prime on a mid-session
-    // reload, so it shimmered and ghosted on hardware.
-    if (state.config.blur || state.config.blur_layer)
-        && elements.iter().any(|e| match e {
-            MargoRenderElement::Blur(_) => true,
-            MargoRenderElement::Mirrored(m) => m.is_blur(),
-            _ => false,
-        })
-    {
-        od.compositor.reset_buffers();
-    }
+    // Blur needs no special handling here: `BlurRenderElement` is a
+    // smithay framebuffer effect, so the damage tracker itself redraws the
+    // whole backdrop under a blur whenever anything behind it changed and
+    // has the element re-capture it (see `render::blur`). Age-based damage
+    // tracking and the swapchain stay intact while blur is on. (This used
+    // to call `reset_buffers()` on every frame with a blur element, which
+    // dropped and re-allocated every GBM buffer, DRM framebuffer and
+    // EGLImage of the output once per frame.)
     let render_start = std::time::Instant::now();
     match od
         .compositor
