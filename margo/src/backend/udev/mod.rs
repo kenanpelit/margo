@@ -174,6 +174,22 @@ pub struct OutputDevice {
     pub(super) vblank_seq: u64,
 }
 
+/// Atomic gamma updates must never wait for a vblank on the event-loop
+/// thread. Legacy drivers have no atomic ioctl and retain SETPROPERTY.
+fn gamma_commit_flags(atomic: bool) -> Option<smithay::reexports::drm::control::AtomicCommitFlags> {
+    atomic.then_some(smithay::reexports::drm::control::AtomicCommitFlags::NONBLOCK)
+}
+
+#[cfg(test)]
+mod gamma_commit_tests {
+    #[test]
+    fn atomic_gamma_commits_are_nonblocking_and_have_no_flip_event() {
+        use smithay::reexports::drm::control::AtomicCommitFlags as F;
+        assert_eq!(super::gamma_commit_flags(true), Some(F::NONBLOCK));
+        assert_eq!(super::gamma_commit_flags(false), None);
+    }
+}
+
 // ── DRM gamma properties ──────────────────────────────────────────────────────
 //
 // Adapted from niri's `src/backend/tty.rs` GammaProps.
@@ -187,6 +203,11 @@ pub(super) struct GammaProps {
     /// The ramp last committed (`Some(None)` = identity), `None` while
     /// unknown. Lets `set_gamma` skip a commit that would change nothing.
     applied: Option<Option<Vec<u16>>>,
+    /// When the last GAMMA_LUT commit went in (rate limit, see
+    /// `frame::GAMMA_MIN_INTERVAL`).
+    pub(super) last_commit: Option<std::time::Instant>,
+    /// Deadline of the armed wake-up for a rate-limited ramp, if any.
+    pub(super) wake_at: Option<std::time::Instant>,
 }
 
 impl GammaProps {
@@ -221,6 +242,8 @@ impl GammaProps {
             gamma_lut_size: gamma_lut_size?,
             previous_blob: None,
             applied: None,
+            last_commit: None,
+            wake_at: None,
         })
     }
 
@@ -245,9 +268,10 @@ impl GammaProps {
     /// Apply a gamma ramp (R, G, B planes concatenated, each `gamma_size`
     /// u16 entries). Pass `None` to clear/restore the default identity LUT.
     ///
-    /// On an atomic driver the property write is a blocking commit that
-    /// waits for the CRTC's flip, so a ramp equal to the one last committed
-    /// is skipped (`Ok(false)`); `Ok(true)` means it was committed.
+    /// Atomic drivers use a NONBLOCK commit with no flip event: the event
+    /// loop never waits for the LUT to latch. Legacy drivers keep the
+    /// property write. An unchanged ramp is skipped (`Ok(false)`);
+    /// `Ok(true)` means the commit was accepted.
     pub(super) fn set_gamma(&mut self, device: &DrmDevice, gamma: Option<&[u16]>) -> Result<bool> {
         if gamma_unchanged(self.applied.as_ref(), gamma) {
             return Ok(false);
@@ -298,9 +322,26 @@ impl GammaProps {
 
         let blob_value = blob_id.map(NonZeroU64::get).unwrap_or(0);
         let raw: property::RawValue = property::Value::Blob(blob_value).into();
-        device
-            .set_property(self.crtc, self.gamma_lut, raw)
-            .map_err(|e| anyhow::anyhow!("set GAMMA_LUT property: {e}"))?;
+        let commit = if let Some(flags) = gamma_commit_flags(device.is_atomic()) {
+            let mut request = smithay::reexports::drm::control::atomic::AtomicModeReq::new();
+            request.add_property(self.crtc, self.gamma_lut, property::Value::Blob(blob_value));
+            // No PAGE_FLIP_EVENT: this update is not a compositor frame,
+            // so it must not consume frame_submitted / presentation feedback.
+            // If queue_frame races this update, its ordinary EBUSY retry
+            // path will re-render once the LUT has latched.
+            device.atomic_commit(flags, request)
+        } else {
+            device.set_property(self.crtc, self.gamma_lut, raw)
+        };
+        if let Err(e) = commit {
+            // The blob created above was never attached: free it, or
+            // every failed (retried) commit would leak one.
+            if let Some(blob) = blob_id {
+                let _ = device.destroy_property_blob(blob.get());
+            }
+            return Err(anyhow::Error::new(e).context("set GAMMA_LUT property"));
+        }
+        self.last_commit = Some(std::time::Instant::now());
 
         if let Some(old) = std::mem::replace(&mut self.previous_blob, blob_id) {
             let _ = device.destroy_property_blob(old.get());

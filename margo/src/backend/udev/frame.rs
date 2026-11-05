@@ -264,16 +264,25 @@ pub(super) fn flush_presentation_feedback(
     );
 }
 
+/// Minimum spacing between two GAMMA_LUT commits on one output. Atomic
+/// updates no longer block the event loop, but can still contend with the
+/// next page flip. Twilight transitions (4 steps/s), a `mctl twilight test`
+/// sweep (20/s) and fading wlr-gamma-control clients are held to two colour
+/// steps a second; the newest ramp always lands.
+pub(super) const GAMMA_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
+
 /// What to do with one queued gamma ramp on this device's render pass.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GammaStep {
     /// Commit it now.
     Apply,
     /// Keep it queued: the output lives on another device, or its page
-    /// flip is still in flight (a GAMMA_LUT write is a blocking atomic
-    /// commit that would first wait for that flip). The vblank handler wakes
-    /// the repaint source once the flip lands.
+    /// flip is still in flight (an atomic LUT update would race that
+    /// flip). The vblank handler wakes the repaint source once it lands.
     Defer,
+    /// Keep it queued until [`GAMMA_MIN_INTERVAL`] has passed since this
+    /// output's last commit; a timer wakes the repaint source then.
+    Wait(std::time::Duration),
     /// Drop it: the CRTC has no GAMMA_LUT, or the output is gone.
     Drop,
 }
@@ -283,6 +292,7 @@ fn gamma_step(
     has_gamma_lut: bool,
     flip_in_flight: bool,
     output_alive: bool,
+    since_last_commit: Option<std::time::Duration>,
 ) -> GammaStep {
     if !on_this_device {
         if output_alive {
@@ -294,9 +304,50 @@ fn gamma_step(
         GammaStep::Drop
     } else if flip_in_flight {
         GammaStep::Defer
+    } else if let Some(since) = since_last_commit
+        && since < GAMMA_MIN_INTERVAL
+    {
+        GammaStep::Wait(GAMMA_MIN_INTERVAL - since)
     } else {
         GammaStep::Apply
     }
+}
+
+/// The queued ramps with only the newest one per output kept (in the order
+/// of those newest entries): an older ramp for the same output would only
+/// be overwritten, at the price of one more atomic commit.
+fn latest_ramp_per_output<K: PartialEq, R>(pending: Vec<(K, R)>) -> Vec<(K, R)> {
+    let mut latest: Vec<(K, R)> = Vec::with_capacity(pending.len());
+    for (key, ramp) in pending {
+        latest.retain(|(k, _)| *k != key);
+        latest.push((key, ramp));
+    }
+    latest
+}
+
+/// Whether a gamma commit raced another atomic update. Keep the ramp
+/// queued and retry after the rate-limit interval (no busy loop, and an
+/// external wlr-gamma-control client's one-shot update is never lost).
+fn gamma_retryable(error: &anyhow::Error) -> bool {
+    error.downcast_ref::<std::io::Error>().is_some_and(|e| {
+        e.raw_os_error() == Some(16) // Linux EBUSY
+            || e.kind() == std::io::ErrorKind::WouldBlock
+    })
+}
+
+/// Every rate-limited output whose deadline we marked as armed must have
+/// a wake-up at that deadline, not just the earliest one. Equal deadlines
+/// can share one timer because it drains the shared queue.
+fn gamma_wake_delays(mut delays: Vec<std::time::Duration>) -> Vec<std::time::Duration> {
+    delays.sort_unstable();
+    delays.dedup();
+    delays
+}
+
+/// Whether a wake-up timer must be armed for a rate-limited ramp: none is
+/// pending (`wake_at` unset, or its deadline already passed).
+fn gamma_wake_needed(wake_at: Option<std::time::Instant>, now: std::time::Instant) -> bool {
+    wake_at.is_none_or(|t| t <= now)
 }
 
 /// Apply any gamma ramp updates queued by wlr_gamma_control clients
@@ -309,10 +360,10 @@ fn gamma_step(
 /// re-park the rest for the next render call.
 ///
 /// A ramp for an output whose page flip is still in flight is re-parked
-/// too: the GAMMA_LUT write is a blocking atomic commit that would sit on
-/// the main thread until that flip (and then its own) completes. The
-/// VBlank handler wakes the repaint source when the flip lands, and the
-/// repaint source calls this before it renders anything.
+/// too, so its NONBLOCK atomic LUT update does not race the page flip.
+/// The VBlank handler wakes the repaint source when the flip lands.
+/// A following queue_frame racing the LUT update uses the normal bounded
+/// render-retry path; a busy LUT update itself is re-parked as well.
 pub(super) fn apply_pending_gamma(
     outputs: &mut HashMap<crtc::Handle, OutputDevice>,
     drm: &DrmDevice,
@@ -321,20 +372,32 @@ pub(super) fn apply_pending_gamma(
     if state.output_pending.gamma.is_empty() {
         return;
     }
-    let pending = std::mem::take(&mut state.output_pending.gamma);
+    let pending = latest_ramp_per_output(std::mem::take(&mut state.output_pending.gamma));
+    let now = std::time::Instant::now();
     let mut deferred: Vec<(smithay::output::Output, Option<Vec<u16>>)> = Vec::new();
+    let mut wake_delays = Vec::new();
     for (output, ramp) in pending {
         let od = outputs.values_mut().find(|od| od.output == output);
         let alive = state.monitors.iter().any(|m| m.output == output);
         let step = match &od {
-            Some(od) => gamma_step(true, od.gamma.is_some(), od.flip_in_flight, alive),
-            None => gamma_step(false, false, false, alive),
+            Some(od) => gamma_step(
+                true,
+                od.gamma.is_some(),
+                od.flip_in_flight,
+                alive,
+                od.gamma
+                    .as_ref()
+                    .and_then(|g| g.last_commit)
+                    .map(|t| now.saturating_duration_since(t)),
+            ),
+            None => gamma_step(false, false, false, alive, None),
         };
         match (step, od) {
             (GammaStep::Apply, Some(od)) => {
                 let Some(g) = od.gamma.as_mut() else {
                     continue;
                 };
+                g.wake_at = None;
                 match g.set_gamma(drm, ramp.as_deref()) {
                     Ok(true) => tracing::debug!(
                         "gamma applied output={} ramp={}",
@@ -343,6 +406,12 @@ pub(super) fn apply_pending_gamma(
                     ),
                     Ok(false) => {
                         tracing::trace!("gamma unchanged output={}", od.output.name());
+                    }
+                    Err(e) if gamma_retryable(&e) => {
+                        g.wake_at = Some(now + GAMMA_MIN_INTERVAL);
+                        wake_delays.push(GAMMA_MIN_INTERVAL);
+                        deferred.push((output, ramp));
+                        tracing::debug!(output = %od.output_name, "gamma busy: retry queued");
                     }
                     Err(e) => {
                         // Let twilight queue its ramp again on the next tick
@@ -356,6 +425,16 @@ pub(super) fn apply_pending_gamma(
                     }
                 }
             }
+            (GammaStep::Wait(left), Some(od)) => {
+                if let Some(g) = od.gamma.as_mut()
+                    && gamma_wake_needed(g.wake_at, now)
+                {
+                    g.wake_at = Some(now + left);
+                    wake_delays.push(left);
+                }
+                tracing::trace!(output = %od.output_name, ?left, "gamma rate-limited");
+                deferred.push((output, ramp));
+            }
             (GammaStep::Defer, _) => deferred.push((output, ramp)),
             (GammaStep::Drop, Some(od)) if od.gamma.is_none() => {
                 tracing::debug!("gamma: skip {} (no GAMMA_LUT)", od.output.name());
@@ -364,7 +443,18 @@ pub(super) fn apply_pending_gamma(
         }
     }
     if !deferred.is_empty() {
+        // Ramps queued meanwhile go after these (newer wins on coalescing).
+        deferred.append(&mut state.output_pending.gamma);
         state.output_pending.gamma = deferred;
+    }
+    for delay in gamma_wake_delays(wake_delays) {
+        let timer = smithay::reexports::calloop::timer::Timer::from_duration(delay);
+        if let Err(e) = state.loop_handle.insert_source(timer, |_, _, state| {
+            state.wake_repaint_backend();
+            smithay::reexports::calloop::timer::TimeoutAction::Drop
+        }) {
+            warn!("gamma wake timer: {e}");
+        }
     }
 }
 
@@ -929,7 +1019,11 @@ fn publish_output_perf(od: &OutputDevice, state: &mut MargoState) {
 
 #[cfg(test)]
 mod tests {
-    use super::{GammaStep, MirrorStep, gamma_step, mirror_target_step};
+    use super::{
+        GAMMA_MIN_INTERVAL, GammaStep, MirrorStep, gamma_step, gamma_wake_needed,
+        latest_ramp_per_output, mirror_target_step,
+    };
+    use std::time::{Duration, Instant};
 
     /// A 60 Hz source mirrored to a 50 Hz projector (20 ms flips): the
     /// source renders at t = 0 and again at t = 5 ms (the last frame of a
@@ -1016,24 +1110,102 @@ mod tests {
 
     #[test]
     fn a_ramp_for_an_idle_output_is_applied() {
-        assert_eq!(gamma_step(true, true, false, true), GammaStep::Apply);
+        assert_eq!(gamma_step(true, true, false, true, None), GammaStep::Apply);
+        assert_eq!(
+            gamma_step(true, true, false, true, Some(GAMMA_MIN_INTERVAL)),
+            GammaStep::Apply
+        );
     }
 
     #[test]
     fn a_ramp_waits_while_the_output_has_a_flip_in_flight() {
-        assert_eq!(gamma_step(true, true, true, true), GammaStep::Defer);
+        assert_eq!(gamma_step(true, true, true, true, None), GammaStep::Defer);
     }
 
     #[test]
     fn a_ramp_for_an_output_without_gamma_lut_is_dropped() {
-        assert_eq!(gamma_step(true, false, false, true), GammaStep::Drop);
-        assert_eq!(gamma_step(true, false, true, true), GammaStep::Drop);
+        assert_eq!(gamma_step(true, false, false, true, None), GammaStep::Drop);
+        assert_eq!(gamma_step(true, false, true, true, None), GammaStep::Drop);
     }
 
     #[test]
     fn a_ramp_for_another_device_waits_unless_the_output_is_gone() {
-        assert_eq!(gamma_step(false, false, false, true), GammaStep::Defer);
+        assert_eq!(
+            gamma_step(false, false, false, true, None),
+            GammaStep::Defer
+        );
         // Re-parking it forever would keep re-queueing a dead entry.
-        assert_eq!(gamma_step(false, false, false, false), GammaStep::Drop);
+        assert_eq!(
+            gamma_step(false, false, false, false, None),
+            GammaStep::Drop
+        );
+    }
+
+    #[test]
+    fn ramps_are_held_to_two_commits_a_second() {
+        let ms = Duration::from_millis;
+        // 50 ms after the last commit (a `mctl twilight test` sweep step):
+        // wait out the rest of the interval.
+        assert_eq!(
+            gamma_step(true, true, false, true, Some(ms(50))),
+            GammaStep::Wait(GAMMA_MIN_INTERVAL - ms(50))
+        );
+        // A flip in flight still defers to the vblank first.
+        assert_eq!(
+            gamma_step(true, true, true, true, Some(ms(50))),
+            GammaStep::Defer
+        );
+        // Twilight's 250 ms transition steps: every other one is folded.
+        assert_eq!(
+            gamma_step(true, true, false, true, Some(ms(250))),
+            GammaStep::Wait(ms(250))
+        );
+    }
+
+    #[test]
+    fn only_the_newest_ramp_per_output_is_committed() {
+        let pending = vec![
+            ("eDP-1", 1),
+            ("DP-3", 10),
+            ("eDP-1", 2),
+            ("eDP-1", 3),
+            ("DP-3", 11),
+        ];
+        assert_eq!(
+            latest_ramp_per_output(pending),
+            vec![("eDP-1", 3), ("DP-3", 11)]
+        );
+        assert!(latest_ramp_per_output(Vec::<(&str, u8)>::new()).is_empty());
+    }
+
+    #[test]
+    fn a_busy_gamma_commit_is_retried_but_invalid_updates_are_not() {
+        let busy = anyhow::Error::new(std::io::Error::from_raw_os_error(16))
+            .context("set GAMMA_LUT property");
+        assert!(super::gamma_retryable(&busy));
+        let invalid = anyhow::Error::new(std::io::Error::from_raw_os_error(22));
+        assert!(!super::gamma_retryable(&invalid));
+    }
+
+    #[test]
+    fn outputs_with_different_gamma_deadlines_each_get_a_wake() {
+        let ms = Duration::from_millis;
+        assert_eq!(
+            super::gamma_wake_delays(vec![ms(200), ms(50), ms(200)]),
+            vec![ms(50), ms(200)],
+        );
+        assert!(super::gamma_wake_delays(vec![]).is_empty());
+    }
+
+    #[test]
+    fn one_wake_timer_per_wait() {
+        let now = Instant::now();
+        assert!(gamma_wake_needed(None, now));
+        assert!(!gamma_wake_needed(
+            Some(now + Duration::from_millis(100)),
+            now
+        ));
+        // The armed deadline passed (its timer fired): arm again.
+        assert!(gamma_wake_needed(Some(now), now));
     }
 }
