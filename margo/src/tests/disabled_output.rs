@@ -147,3 +147,68 @@ fn a_tag_pinned_to_a_disabled_output_has_no_home_there() {
     fx.server.state.disable_monitor(1);
     assert_eq!(fx.server.state.tag_home_monitor(0b10), None);
 }
+
+/// Map a window on monitor `mon` (new windows open on the monitor under
+/// the pointer when nothing is focused there); it takes focus. Returns
+/// its client index.
+fn map_window_on(fx: &mut Fixture, mon: usize) -> usize {
+    fx.server.state.focus_surface(None);
+    park_pointer_on(fx, mon);
+    map_focused_window(fx);
+    let idx = fx.server.state.clients.len() - 1;
+    assert_eq!(fx.server.state.clients[idx].monitor, mon);
+    idx
+}
+
+fn focused(fx: &Fixture) -> Option<usize> {
+    fx.server.state.focused_client_idx()
+}
+
+#[test]
+fn taking_out_an_unfocused_output_leaves_focus_where_you_type() {
+    // You type on DP-3 while DP-2 is switched off (or becomes a mirror
+    // target): focus used to jump to the migration target, DP-1.
+    for mirror in [false, true] {
+        let mut fx = three_outputs();
+        fx.add_keyboard();
+        let on_dp1 = map_window_on(&mut fx, 0);
+        map_window_on(&mut fx, 1);
+        let on_dp3 = map_window_on(&mut fx, 2);
+        assert_eq!(focused(&fx), Some(on_dp3));
+
+        if mirror {
+            fx.server
+                .state
+                .start_mirror(Some("DP-1"), Some("DP-2"))
+                .unwrap();
+        } else {
+            fx.server.state.disable_monitor(1);
+        }
+        assert_eq!(focused(&fx), Some(on_dp3), "mirror={mirror}");
+        assert_eq!(
+            fx.server.state.monitors[0].selected,
+            Some(on_dp1),
+            "mirror={mirror}: DP-1 remembers its window"
+        );
+    }
+}
+
+#[test]
+fn taking_out_the_focused_output_moves_focus_and_keeps_other_selections() {
+    let mut fx = three_outputs();
+    fx.add_keyboard();
+    let on_dp3 = map_window_on(&mut fx, 2);
+    let on_dp2 = map_window_on(&mut fx, 1);
+    assert_eq!(focused(&fx), Some(on_dp2));
+
+    fx.server.state.disable_monitor(1);
+    // DP-2's window moved to DP-1 and keeps focus there.
+    assert_eq!(fx.server.state.clients[on_dp2].monitor, 0);
+    assert_eq!(focused(&fx), Some(on_dp2));
+    assert_eq!(
+        fx.server.state.monitors[2].selected,
+        Some(on_dp3),
+        "DP-3's selection is not wiped"
+    );
+    assert_eq!(fx.server.state.monitors[1].selected, None);
+}

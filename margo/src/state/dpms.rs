@@ -110,6 +110,9 @@ impl MargoState {
         let target_tagset = self.monitors[target].current_tagset();
         let target_name = self.monitors[target].name.clone();
         let src_name = self.monitors[mon_idx].name.clone();
+        // Only when keyboard focus is on this output does it move (to the
+        // migration target); typing on a third output carries on.
+        let focus_was_here = self.keyboard_focus_on_monitor(mon_idx);
 
         // Migrate every client living on the doomed monitor.
         for c in self.clients.iter_mut() {
@@ -122,12 +125,10 @@ impl MargoState {
                 }
             }
         }
-        // Clear focus history that points at the disabled monitor.
-        if self.focused_monitor() == mon_idx {
-            for mon in &mut self.monitors {
-                mon.selected = None;
-            }
-        }
+        // Its clients live on `target` now: its own focus memory goes.
+        // Other monitors' `selected` still name their own clients.
+        self.monitors[mon_idx].selected = None;
+        self.monitors[mon_idx].prev_selected = None;
         self.monitors[mon_idx].enabled = false;
         // Blank the panel the way DPMS off does: otherwise the CRTC keeps
         // scanning out the last frame, since the render loop skips a
@@ -144,7 +145,9 @@ impl MargoState {
         self.refresh_pointer_monitor_tracking();
         self.drop_output_clock(&src_name);
         self.arrange_monitor(target);
-        self.focus_most_recent_visible_or_clear(target);
+        if focus_was_here {
+            self.focus_most_recent_visible_or_clear(target);
+        }
         self.publish_output_topology();
         self.mark_state_dirty();
         tracing::info!(
@@ -153,6 +156,28 @@ impl MargoState {
             "disabled output: migrated clients"
         );
         true
+    }
+
+    /// Whether keyboard focus is on monitor `mon_idx`: a window living
+    /// there, a layer surface on its output, or nothing focused while the
+    /// pointer is on it.
+    fn keyboard_focus_on_monitor(&self, mon_idx: usize) -> bool {
+        let focus = self.seat.get_keyboard().and_then(|k| k.current_focus());
+        match focus {
+            Some(FocusTarget::Window(w)) => self
+                .client_idx(&w)
+                .is_none_or(|i| self.clients[i].monitor == mon_idx),
+            Some(FocusTarget::LayerSurface(l)) => {
+                smithay::desktop::layer_map_for_output(&self.monitors[mon_idx].output)
+                    .layer_for_surface(
+                        l.wl_surface(),
+                        smithay::desktop::WindowSurfaceType::TOPLEVEL,
+                    )
+                    .is_some()
+            }
+            Some(FocusTarget::SessionLock(_) | FocusTarget::Popup(_)) => false,
+            None => self.pointer_monitor().is_none_or(|m| m == mon_idx),
+        }
     }
 
     /// Re-enable a previously soft-disabled monitor. New windows can
