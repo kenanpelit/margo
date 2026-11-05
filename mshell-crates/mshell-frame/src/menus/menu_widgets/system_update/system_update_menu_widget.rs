@@ -953,7 +953,7 @@ fn run_title(run: &RunStatus, error: Option<&str>) -> String {
             format!("Upgrading… {}/{expected}", log.done.min(*expected))
         }
         RunStatus::Running { .. } => "Upgrading…".to_string(),
-        RunStatus::Finished { log, .. } => run::result_message(log.exit.unwrap_or(-1), log.done).0,
+        RunStatus::Finished { log, .. } => run::finished_message(log).0,
     }
 }
 

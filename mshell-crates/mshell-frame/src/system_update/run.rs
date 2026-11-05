@@ -5,12 +5,15 @@
 //! re-checks. The interactive terminal mode
 //! ([`super::launch_terminal_upgrade`]) stays the default.
 //!
-//! The run is a `sh -c` in its own process group writing to
-//! `~/.cache/mshell/system_update/upgrade.log`, framed by `::START` /
-//! `::EXIT <code>` markers, so a restarted shell re-attaches to an
-//! unfinished run instead of losing it. Only one watcher task exists
-//! per process (multi-monitor setups build one panel per output), so
-//! the result is notified once.
+//! The run is a `sh -c` in its own transient systemd scope (outside
+//! mshell.service's cgroup, so restarting the shell doesn't kill it)
+//! writing to `~/.cache/mshell/system_update/upgrade.log`, framed by
+//! `::START <ts>` / `::EXIT <code>` markers. `upgrade.run` records the
+//! pid + start stamp until the result is reported, so a restarted shell
+//! re-attaches to an unfinished run, and reports one that ended or died
+//! meanwhile, instead of losing it. Only one watcher task exists per
+//! process (multi-monitor setups build one panel per output), so the
+//! result is notified once.
 
 use std::path::PathBuf;
 use std::sync::OnceLock;
@@ -200,7 +203,34 @@ pub(crate) fn result_message(exit: i32, done: usize) -> (String, String) {
     }
 }
 
+/// Title + body for a finished run (`exit: None` = interrupted).
+pub(crate) fn finished_message(log: &LogState) -> (String, String) {
+    match log.exit {
+        Some(code) => result_message(code, log.done),
+        None => (
+            "System update interrupted".to_string(),
+            "The upgrade stopped before it finished (killed, or the machine went down). \
+             Open the System Updates panel for the log."
+                .to_string(),
+        ),
+    }
+}
+
 // ── Run state (one watcher per process) ──────────────────────────
+
+/// A recorded background run: the shell's pid and the `::START` stamp
+/// of its script.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RunHandle {
+    pub(crate) pid: u32,
+    pub(crate) started_at: u64,
+    pub(crate) scope: bool,
+}
+impl RunHandle {
+    fn unit(self) -> String {
+        format!("mshell-upgrade-{}.scope", self.started_at)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RunStatus {
@@ -233,7 +263,16 @@ pub(crate) fn log_path() -> PathBuf {
     run_dir().join("upgrade.log")
 }
 
-fn pid_path() -> PathBuf {
+/// `<pid> <started_at>` of the run not yet reported to the user. It
+/// is removed once the result has been shown + notified, so a run that
+/// ended (or died) while the shell was down is still reported.
+fn handle_path() -> PathBuf {
+    run_dir().join("upgrade.run")
+}
+
+/// The pid-only file older shells wrote (no start stamp, so a recycled
+/// pid looked like a live run forever).
+fn legacy_pid_path() -> PathBuf {
     run_dir().join("upgrade.pid")
 }
 
@@ -241,8 +280,104 @@ fn expected_path() -> PathBuf {
     run_dir().join("upgrade.expected")
 }
 
-fn pid_alive(pid: u32) -> bool {
-    std::path::Path::new(&format!("/proc/{pid}")).exists()
+pub(crate) fn parse_handle(s: &str) -> Option<RunHandle> {
+    let mut it = s.split_whitespace();
+    let pid = it.next()?.parse().ok()?;
+    let started_at = it.next()?.parse().ok()?;
+    let scope = match it.next() {
+        Some("scope") => true,
+        Some("process") | None => false,
+        _ => return None,
+    };
+    it.next().is_none().then_some(RunHandle {
+        pid,
+        started_at,
+        scope,
+    })
+}
+
+pub(crate) fn format_handle(h: RunHandle) -> String {
+    format!(
+        "{} {} {}",
+        h.pid,
+        h.started_at,
+        if h.scope { "scope" } else { "process" }
+    )
+}
+
+fn read_handle() -> Option<RunHandle> {
+    parse_handle(&std::fs::read_to_string(handle_path()).ok()?)
+}
+
+/// `/proc/<pid>/cmdline` belongs to the run that started at
+/// `started_at`: the script carries its own `::START <ts>` marker, so a
+/// pid the kernel handed to another process never matches.
+pub(crate) fn cmdline_is_ours(cmdline: &[u8], started_at: u64) -> bool {
+    let marker = format!("'::START {started_at}'");
+    cmdline
+        .windows(marker.len())
+        .any(|w| w == marker.as_bytes())
+}
+
+fn run_alive(h: RunHandle) -> bool {
+    std::fs::read(format!("/proc/{}/cmdline", h.pid))
+        .is_ok_and(|c| cmdline_is_ours(&c, h.started_at))
+}
+
+/// A systemd run is tracked by its independent unit, never a PID.
+/// The PID/cmdline identity is only used on machines without a user manager.
+async fn tracked_alive(h: RunHandle) -> bool {
+    if !h.scope {
+        return run_alive(h);
+    }
+    tokio::process::Command::new("systemctl")
+        .args(["--user", "is-active", "--quiet", &h.unit()])
+        .status()
+        .await
+        .is_ok_and(|s| s.success())
+}
+
+/// Where a recorded run stands, from its log and whether its shell is
+/// still alive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RunPhase {
+    Running,
+    /// `::EXIT <code>` was written.
+    Exited(i32),
+    /// The process is gone without an `::EXIT` (killed, crashed, the
+    /// machine went down).
+    Interrupted,
+}
+
+pub(crate) fn run_phase(log: &LogState, alive: bool) -> RunPhase {
+    match (log.exit, alive) {
+        (Some(c), _) => RunPhase::Exited(c),
+        (None, true) => RunPhase::Running,
+        (None, false) => RunPhase::Interrupted,
+    }
+}
+
+/// The command that runs the detached script. With a systemd user
+/// manager it goes into its own transient scope: `systemd-run --scope`
+/// execs the script in place (same pid) in a cgroup of its own, so
+/// stopping or restarting mshell.service (KillMode=control-group)
+/// doesn't take pacman down with it. A process group alone doesn't
+/// leave the cgroup.
+pub(crate) fn upgrade_argv(script: &str, unit: &str, scope: bool) -> Vec<String> {
+    let mut argv: Vec<String> = Vec::new();
+    if scope {
+        argv.extend(["systemd-run", "--user", "--scope", "--collect", "--quiet"].map(String::from));
+        argv.push(format!("--unit={unit}"));
+        argv.push("--".into());
+    }
+    argv.extend(["sh".to_string(), "-c".to_string(), script.to_string()]);
+    argv
+}
+
+/// A systemd user manager we can ask for a scope.
+fn user_manager_available() -> bool {
+    super::on_path("systemd-run")
+        && margo_fs::xdg::runtime_dir().is_some_and(|d| d.join("systemd/private").exists())
 }
 
 /// Start a detached background run. Refuses while one is running.
@@ -256,21 +391,31 @@ pub(crate) fn start(steps: Vec<String>, expected: usize) -> Result<(), String> {
     std::fs::create_dir_all(run_dir()).map_err(|e| e.to_string())?;
     let log = std::fs::File::create(log_path()).map_err(|e| e.to_string())?;
     let err = log.try_clone().map_err(|e| e.to_string())?;
-    let script = background_script(&steps, super::now_secs());
+    let started_at = super::now_secs();
+    let script = background_script(&steps, started_at);
+    let scope = user_manager_available();
+    let argv = upgrade_argv(&script, &format!("mshell-upgrade-{started_at}"), scope);
     use mshell_process::SpawnReaped;
     use std::os::unix::process::CommandExt;
-    let pid = std::process::Command::new("sh")
-        .arg("-c")
-        .arg(&script)
+    let pid = std::process::Command::new(&argv[0])
+        .args(&argv[1..])
         .stdin(std::process::Stdio::null())
         .stdout(log)
         .stderr(err)
-        // Own process group: survives a shell restart, and a Ctrl-C in
-        // whatever launched mshell doesn't reach pacman.
+        // A Ctrl-C in whatever launched mshell doesn't reach pacman.
+        // (Surviving an mshell restart is the scope's job.)
         .process_group(0)
         .spawn_reaped()
         .map_err(|e| format!("spawn: {e}"))?;
-    let _ = std::fs::write(pid_path(), pid.to_string());
+    let _ = std::fs::write(
+        handle_path(),
+        format_handle(RunHandle {
+            pid,
+            started_at,
+            scope,
+        }),
+    );
+    let _ = std::fs::remove_file(legacy_pid_path());
     let _ = std::fs::write(expected_path(), expected.to_string());
     let _ = channel().0.send(RunStatus::Running {
         log: LogState::default(),
@@ -288,15 +433,18 @@ pub(crate) fn dismiss() {
 }
 
 /// Spawn the single watcher (idempotent). Re-attaches to a run left
-/// by a previous shell instance.
+/// by a previous shell instance, and reports one that ended or died
+/// while no shell was watching.
 pub(crate) fn ensure_watcher() {
     use std::sync::atomic::{AtomicBool, Ordering};
     static STARTED: AtomicBool = AtomicBool::new(false);
     if STARTED.swap(true, Ordering::SeqCst) {
         return;
     }
+    let _ = std::fs::remove_file(legacy_pid_path());
     relm4::spawn(async move {
         loop {
+            let handle = read_handle();
             let text = tokio::fs::read_to_string(log_path())
                 .await
                 .unwrap_or_default();
@@ -305,27 +453,26 @@ pub(crate) fn ensure_watcher() {
                 .ok()
                 .and_then(|s| s.trim().parse().ok())
                 .unwrap_or(0);
-            let pid: Option<u32> = std::fs::read_to_string(pid_path())
-                .ok()
-                .and_then(|s| s.trim().parse().ok());
             let current = status();
-            let running = log.started.is_some() && log.exit.is_none() && pid.is_some_and(pid_alive);
-            let next = match (&current, running, log.exit) {
-                (_, true, _) => RunStatus::Running { log, expected },
-                // A run we watched ended (EXIT written, or the process
-                // died without one — killed / crashed → -1).
-                (RunStatus::Running { .. }, false, exit) => {
+            let phase = if let Some(h) = handle { Some(run_phase(&log, tracked_alive(h).await)) } else { None };
+            let next = match phase {
+                Some(RunPhase::Running) => RunStatus::Running { log, expected },
+                Some(phase) => {
+                    // Ended (or died) since we last looked — maybe while
+                    // the shell was down: report it once.
                     let mut log = log;
-                    log.exit = Some(exit.unwrap_or(-1));
-                    let code = log.exit.unwrap_or(-1);
-                    notify(code, log.done);
-                    let _ = std::fs::remove_file(pid_path());
+                    log.exit = match phase {
+                        RunPhase::Exited(c) => Some(c),
+                        _ => None,
+                    };
+                    let (title, body) = finished_message(&log);
+                    notify(&title, &body, log.exit == Some(0));
+                    let _ = std::fs::remove_file(handle_path());
                     RunStatus::Finished { log, expected }
                 }
-                (other, false, _) => other.clone(),
+                None => current.clone(),
             };
-            let finished_now = matches!(current, RunStatus::Running { .. })
-                && matches!(next, RunStatus::Finished { .. });
+            let finished_now = handle.is_some() && matches!(next, RunStatus::Finished { .. });
             if next != current {
                 let _ = channel().0.send(next.clone());
             }
@@ -345,16 +492,15 @@ pub(crate) fn ensure_watcher() {
     });
 }
 
-fn notify(code: i32, done: usize) {
+fn notify(title: &str, body: &str, ok: bool) {
     use mshell_process::SpawnReaped;
-    let (title, body) = result_message(code, done);
-    let icon = if code == 0 {
+    let icon = if ok {
         "software-update-available-symbolic"
     } else {
         "software-update-urgent-symbolic"
     };
     if let Err(e) = std::process::Command::new("notify-send")
-        .args(["-a", "System Updates", "-i", icon, &title, &body])
+        .args(["-a", "System Updates", "-i", icon, title, body])
         .spawn_reaped()
     {
         warn!(error = %e, "system_update: notify-send failed");
@@ -364,6 +510,101 @@ fn notify(code: i32, done: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_run_lives_in_its_own_scope_outside_mshell_service() {
+        // KillMode=control-group on mshell.service killed a run that only
+        // had its own process group; a transient scope is its own cgroup.
+        let argv = upgrade_argv("echo hi", "mshell-upgrade-42", true);
+        assert_eq!(
+            argv,
+            [
+                "systemd-run",
+                "--user",
+                "--scope",
+                "--collect",
+                "--quiet",
+                "--unit=mshell-upgrade-42",
+                "--",
+                "sh",
+                "-c",
+                "echo hi"
+            ]
+        );
+        assert_eq!(upgrade_argv("echo hi", "u", false), ["sh", "-c", "echo hi"]);
+    }
+
+    #[test]
+    fn scope_identity_survives_pid_reuse() {
+        let h = RunHandle {
+            pid: 12,
+            started_at: 42,
+            scope: true,
+        };
+        assert_eq!(parse_handle(&format_handle(h)), Some(h));
+        assert_eq!(h.unit(), "mshell-upgrade-42.scope");
+    }
+
+    #[test]
+    fn a_recycled_pid_is_not_our_run() {
+        let script = background_script(&["true".into()], 42);
+        let mut ours = b"sh\0-c\0".to_vec();
+        ours.extend_from_slice(script.as_bytes());
+        ours.push(0);
+        assert!(cmdline_is_ours(&ours, 42));
+        // Same script text, an older run's start stamp.
+        assert!(!cmdline_is_ours(&ours, 41));
+        // The pid now belongs to something else entirely.
+        assert!(!cmdline_is_ours(b"firefox\0--new-window\0", 42));
+        assert!(!cmdline_is_ours(b"", 42));
+    }
+
+    #[test]
+    fn handle_file_round_trips_and_ignores_the_old_pid_only_format() {
+        let h = RunHandle {
+            pid: 1234,
+            started_at: 42,
+            scope: false,
+        };
+        assert_eq!(parse_handle(&format_handle(h)), Some(h));
+        assert_eq!(parse_handle("1234\n"), None);
+        assert_eq!(parse_handle("junk"), None);
+    }
+
+    #[test]
+    fn a_live_run_is_recognised_by_its_own_cmdline() {
+        let script = background_script(&["sleep 5".into()], 77);
+        let mut child = std::process::Command::new("sh")
+            .args(["-c", &script])
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let h = RunHandle {
+            pid: child.id(),
+            started_at: 77,
+            scope: false,
+        };
+        assert!(run_alive(h));
+        assert!(!run_alive(RunHandle {
+            started_at: 76,
+            ..h
+        }));
+        child.kill().unwrap();
+        child.wait().unwrap();
+        assert!(!run_alive(h));
+    }
+
+    #[test]
+    fn a_run_that_died_without_exit_is_interrupted() {
+        let started = parse_log("::START 5\nupgrading a\n", 10);
+        assert_eq!(run_phase(&started, true), RunPhase::Running);
+        assert_eq!(run_phase(&started, false), RunPhase::Interrupted);
+        let done = parse_log("::START 5\n::EXIT 0\n", 10);
+        assert_eq!(run_phase(&done, false), RunPhase::Exited(0));
+        // EXIT is the last thing the script prints; it wins even if
+        // the shell is still being reaped.
+        assert_eq!(run_phase(&done, true), RunPhase::Exited(0));
+    }
 
     #[test]
     fn background_never_builds_aur_packages() {

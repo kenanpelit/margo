@@ -440,6 +440,19 @@ fn probe_err(cmd: &str, code: i32, stderr: &str) -> String {
     msg
 }
 
+/// `binary` is an executable file in one of `$PATH`'s directories.
+pub(crate) fn on_path(binary: &str) -> bool {
+    std::env::var_os("PATH").is_some_and(|path| find_in_path(binary, &path))
+}
+
+pub(crate) fn find_in_path(binary: &str, path: &std::ffi::OsStr) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::env::split_paths(path).any(|dir| {
+        std::fs::metadata(dir.join(binary))
+            .is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+    })
+}
+
 pub(crate) async fn which(binary: &str) -> bool {
     tokio::process::Command::new("which")
         .arg(binary)
@@ -883,6 +896,23 @@ mod tests {
             ..Default::default()
         };
         assert!(!aur_left_for_review(&no_aur, SystemUpdateMode::Background));
+    }
+
+    #[test]
+    fn path_lookup_finds_only_executable_files() {
+        use std::os::unix::fs::PermissionsExt;
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let exe = b.path().join("paru");
+        std::fs::write(&exe, "#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(a.path().join("yay"), "not executable").unwrap();
+        std::fs::create_dir(a.path().join("flatpak")).unwrap();
+        let path = std::env::join_paths([a.path(), b.path()]).unwrap();
+        assert!(find_in_path("paru", &path));
+        assert!(!find_in_path("yay", &path));
+        assert!(!find_in_path("flatpak", &path));
+        assert!(!find_in_path("checkupdates", &path));
     }
 
     #[test]
