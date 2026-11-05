@@ -28,7 +28,7 @@ use mshell_config::schema::config::{
 };
 use mshell_services::media_service;
 use mshell_utils::media::spawn_media_players_watcher;
-use reactive_graph::traits::{Get, GetUntracked};
+use reactive_graph::traits::{Get, GetUntracked, Track};
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::gtk::{glib, pango};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -62,9 +62,9 @@ pub(crate) struct LyricsModel {
     retry_attempt: u32,
     /// The fast karaoke repaint tick, when running.
     tick: Option<glib::SourceId>,
-    /// Last seen `netease_fallback`, to tell a real change from the
-    /// effect's first run.
-    netease: bool,
+    /// Last seen source settings (`netease_fallback`, `local_dir`), to tell a
+    /// real change from the effect's first run.
+    sources: (bool, String),
     /// Whether to show the current line in the bar (else icon-only; words live
     /// in the menu). Live from `bars.widgets.lyrics.show_line_in_bar`.
     show_line: bool,
@@ -104,7 +104,7 @@ pub(crate) enum LyricsCommandOutput {
     OffsetChanged(i32),
     /// `netease_fallback` config changed — the source chain differs, so
     /// resolve the current track again.
-    SourcesChanged(bool),
+    SourcesChanged(bool, String),
     /// `show_line_in_bar` config changed.
     ShowLineChanged(bool),
     /// `max_width_chars` config changed.
@@ -216,16 +216,23 @@ impl Component for LyricsModel {
         });
         let cs = sender.clone();
         effects.push(move |_| {
-            let v = config_manager()
-                .config()
-                .bars()
-                .widgets()
-                .lyrics()
-                .netease_fallback()
-                .get();
+            let lyr = || config_manager().config().bars().widgets().lyrics();
             let _ = cs
                 .command_sender()
-                .send(LyricsCommandOutput::SourcesChanged(v));
+                .send(LyricsCommandOutput::SourcesChanged(
+                    lyr().netease_fallback().get(),
+                    lyr().local_dir().get(),
+                ));
+        });
+        // The player allow/block lists pick which player drives the pill.
+        let cs = sender.clone();
+        effects.push(move |_| {
+            let lyr = || config_manager().config().bars().widgets().lyrics();
+            lyr().player_allowlist().track();
+            lyr().player_blocklist().track();
+            let _ = cs
+                .command_sender()
+                .send(LyricsCommandOutput::PlayersChanged);
         });
 
         let mut model = LyricsModel {
@@ -249,7 +256,7 @@ impl Component for LyricsModel {
             painted_split: 0,
             retry_attempt: 0,
             tick: None,
-            netease: ui::fetch_options().netease,
+            sources: current_sources(),
             show_line: config_manager()
                 .config()
                 .bars()
@@ -342,11 +349,12 @@ impl Component for LyricsModel {
                 self.offset_ms = v;
                 self.active_idx = self.compute_active();
             }
-            LyricsCommandOutput::SourcesChanged(netease) => {
+            LyricsCommandOutput::SourcesChanged(netease, local_dir) => {
                 // Forget the key so `refresh_track` resolves it again under
                 // the new chain — only on a real change (the effect also
                 // fires once at start-up).
-                if std::mem::replace(&mut self.netease, netease) != netease
+                let next = (netease, local_dir);
+                if std::mem::replace(&mut self.sources, next.clone()) != next
                     && self.key.take().is_some()
                 {
                     self.refresh_track(&sender);
@@ -368,7 +376,11 @@ impl LyricsModel {
     /// Lyric-clock position now: the smoothed player position plus the
     /// user's offset.
     fn lyric_position(&self) -> u64 {
-        lyrics::effective_position(self.clock.at(Instant::now()), self.offset_ms)
+        let track = self.key.as_ref().map(lyrics::offsets::get).unwrap_or(0);
+        lyrics::effective_position(
+            self.clock.at(Instant::now()),
+            lyrics::total_offset(self.offset_ms, track),
+        )
     }
 
     /// Active synced-line index for the current position, or `None`.
@@ -433,7 +445,7 @@ impl LyricsModel {
     /// Re-pick the display player, follow its position, and kick a lyrics fetch
     /// when the track key changed.
     fn refresh_track(&mut self, sender: &ComponentSender<Self>) {
-        let Some(player) = display_player() else {
+        let Some(player) = ui::display_player() else {
             self.has_player = false;
             self.key = None;
             self.lyrics = Lyrics::None;
@@ -491,22 +503,6 @@ impl LyricsModel {
     }
 }
 
-/// The player to mirror: the first one actually *playing*, else wayle's
-/// `active_player`, else the first in the list. (Matches the media pill.)
-fn display_player() -> Option<Arc<Player>> {
-    let svc = media_service();
-    let players = svc
-        .as_ref()
-        .map(|s| s.player_list.get())
-        .unwrap_or_default();
-    players
-        .iter()
-        .find(|p| p.playback_state.get() == PlaybackState::Playing)
-        .cloned()
-        .or_else(|| svc.as_ref().and_then(|s| s.active_player.get()))
-        .or_else(|| players.first().cloned())
-}
-
 /// Watch every player's metadata + playback state under a fresh token so the
 /// display player + track key follow playback across players.
 fn subscribe_players(sender: &ComponentSender<LyricsModel>, token: &mut WatcherToken) {
@@ -551,7 +547,7 @@ fn subscribe_position(
 /// Non-empty embedded lyrics text when the display player is mtune and its
 /// current track's tags carry any — `None` for every other player.
 fn embedded_hint() -> Option<String> {
-    display_player()
+    ui::display_player()
         .filter(|p| p.id.bus_name() == mshell_services::mtune::BUS_NAME)
         .map(|_| {
             mshell_services::mtune::mtune_service()
@@ -594,6 +590,15 @@ fn schedule_retry(sender: &ComponentSender<LyricsModel>, key: TrackKey, delay: D
             }
         }
     });
+}
+
+/// The source settings a resolved key depends on.
+fn current_sources() -> (bool, String) {
+    let lyr = || config_manager().config().bars().widgets().lyrics();
+    (
+        lyr().netease_fallback().get_untracked(),
+        lyr().local_dir().get_untracked(),
+    )
 }
 
 /// Clamp a configured bar-line width (chars) to a sane range so a stray value

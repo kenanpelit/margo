@@ -111,6 +111,37 @@
   padding: 0 var(--space-2) var(--space-1);
 }
 
+// Synced lines are clickable (seek there): the canonical hover wash, no
+// colour swap; the active line keeps its own accent container.
+.lyrics-line-seekable:hover:not(.lyrics-line-active) {
+  background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+}
+
+// Player footer under the lines (seek bar + transport + timing stepper).
+// The rows reuse the media player card's classes; this only spaces the
+// footer off the list (§5: footer is its own region).
+.lyrics-transport {
+  margin-top: var(--space-4);
+}
+
+.lyrics-offset-row {
+  margin-top: var(--space-1);
+
+  > button.lyrics-offset-btn {
+    min-width: 34px;
+    min-height: 34px;
+    padding: 0;
+  }
+
+  > button.lyrics-offset-label {
+    min-width: 80px;
+    padding: 0 var(--space-2);
+    font-size: var(--font-xs);
+    font-variant-numeric: tabular-nums;
+    color: var(--on-surface-variant);
+  }
+}
+
 // ── Bar pill ────────────────────────────────────────────────
 .lyrics-bar-label {
   font-size: var(--font-bar);

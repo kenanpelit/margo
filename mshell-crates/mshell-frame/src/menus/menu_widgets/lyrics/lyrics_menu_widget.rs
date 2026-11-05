@@ -15,8 +15,13 @@
 //! while the panel is open, the player plays and the lyrics carry word
 //! timings. With `show_translation` on, a source's translation /
 //! romanization sits under each line as a dim second line.
+//!
+//! Below the lines sits a player footer ([`super::transport`]): seek bar,
+//! prev / play / next, and a per-track timing stepper for an LRC that is
+//! out of sync for this one recording. Clicking a synced line seeks there.
 
-use crate::lyrics::{self, Lyrics, LyricsSource, PlayClock, Resolution, TrackKey, ui};
+use super::transport::{Transport, TransportState};
+use crate::lyrics::{self, Lyrics, LyricsSource, PlayClock, Resolution, TrackKey, offsets, ui};
 use futures::StreamExt;
 use mshell_common::scoped_effects::EffectScope;
 use mshell_common::{WatcherToken, watch_cancellable};
@@ -27,7 +32,7 @@ use mshell_config::schema::config::{
 };
 use mshell_services::media_service;
 use mshell_utils::media::spawn_media_players_watcher;
-use reactive_graph::traits::Get;
+use reactive_graph::traits::{Get, GetUntracked, Track};
 use relm4::gtk::prelude::*;
 use relm4::gtk::{glib, pango};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -57,8 +62,18 @@ pub(crate) struct LyricsMenuWidgetModel {
     offset_ms: i32,
     /// Live `bars.widgets.lyrics.show_translation`.
     show_translation: bool,
-    /// Last seen `netease_fallback` (tells a change from the first run).
-    netease: bool,
+    /// Last seen source settings (`netease_fallback`, `local_dir`) — tells
+    /// a real change from the effect's first run.
+    sources: (bool, String),
+    /// The display player (transport target).
+    player: Option<Arc<Player>>,
+    /// The player footer (built after the view, see `init`).
+    transport: Option<Transport>,
+    /// A seek just sent: hold the shown position there until the player's
+    /// own position catches up (≤ 1.5 s), so the bar doesn't jump back.
+    pending_seek: Option<(Duration, Instant)>,
+    /// Click-to-seek handlers on the line labels send through this.
+    seek_sender: relm4::Sender<LyricsMenuWidgetInput>,
     active_idx: Option<usize>,
     /// Karaoke split (byte offset) last painted on the active line.
     painted_split: usize,
@@ -90,8 +105,21 @@ pub(crate) enum LyricsMenuWidgetInput {
     SetOffset(i32),
     /// `bars.widgets.lyrics.show_translation` changed.
     SetShowTranslation(bool),
-    /// `bars.widgets.lyrics.netease_fallback` changed.
-    SetNetease(bool),
+    /// `bars.widgets.lyrics.netease_fallback` / `local_dir` changed.
+    SetSources(bool, String),
+    /// The player allow / block lists changed — re-pick the player.
+    PlayerListsChanged,
+    Previous,
+    PlayPause,
+    Next,
+    /// Seek bar dragged (display only).
+    SeekPreview(f64),
+    /// Seek bar settled — seek there.
+    SeekCommit(f64),
+    /// A synced line was clicked — seek to where it starts.
+    SeekToLine(usize),
+    /// Per-track timing stepper: add `delta` ms (0 = reset).
+    NudgeOffset(i32),
 }
 
 #[derive(Debug)]
@@ -287,10 +315,18 @@ impl Component for LyricsMenuWidgetModel {
             });
             let eff_sender = sender.clone();
             effects.push(move |_| {
-                let lyr = config_manager().config().bars().widgets().lyrics();
-                eff_sender.input(LyricsMenuWidgetInput::SetNetease(
-                    lyr.netease_fallback().get(),
+                let lyr = || config_manager().config().bars().widgets().lyrics();
+                eff_sender.input(LyricsMenuWidgetInput::SetSources(
+                    lyr().netease_fallback().get(),
+                    lyr().local_dir().get(),
                 ));
+            });
+            let eff_sender = sender.clone();
+            effects.push(move |_| {
+                let lyr = || config_manager().config().bars().widgets().lyrics();
+                lyr().player_allowlist().track();
+                lyr().player_blocklist().track();
+                eff_sender.input(LyricsMenuWidgetInput::PlayerListsChanged);
             });
         }
 
@@ -309,7 +345,23 @@ impl Component for LyricsMenuWidgetModel {
             clock: PlayClock::new(Instant::now()),
             offset_ms: 0,
             show_translation: false,
-            netease: ui::fetch_options().netease,
+            sources: {
+                let o = ui::fetch_options();
+                (
+                    o.netease,
+                    config_manager()
+                        .config()
+                        .bars()
+                        .widgets()
+                        .lyrics()
+                        .local_dir()
+                        .get_untracked(),
+                )
+            },
+            player: None,
+            transport: None,
+            pending_seek: None,
+            seek_sender: sender.input_sender().clone(),
             active_idx: None,
             painted_split: 0,
             retry_attempt: 0,
@@ -319,8 +371,12 @@ impl Component for LyricsMenuWidgetModel {
             _effects: effects,
         };
 
+        let mut model = model;
         let widgets = view_output!();
         pin_lines_scroller(&widgets.scroller, model.max_height);
+        let transport = Transport::new(&sender);
+        root.append(transport.root());
+        model.transport = Some(transport);
 
         ComponentParts { model, widgets }
     }
@@ -356,8 +412,67 @@ impl Component for LyricsMenuWidgetModel {
                     self.rebuild_lines(widgets);
                 }
             }
-            LyricsMenuWidgetInput::SetNetease(v) => {
-                if std::mem::replace(&mut self.netease, v) != v && self.key.take().is_some() {
+            LyricsMenuWidgetInput::PlayerListsChanged => {
+                if self.revealed {
+                    self.pick_track(&sender);
+                    self.rebuild_lines(widgets);
+                }
+            }
+            LyricsMenuWidgetInput::Previous => {
+                if let Some(p) = self.player.clone() {
+                    tokio::spawn(async move {
+                        let _ = p.previous().await;
+                    });
+                }
+            }
+            LyricsMenuWidgetInput::Next => {
+                if let Some(p) = self.player.clone() {
+                    tokio::spawn(async move {
+                        let _ = p.next().await;
+                    });
+                }
+            }
+            LyricsMenuWidgetInput::PlayPause => {
+                if let Some(p) = self.player.clone() {
+                    // Flip the icon now (feedback within a frame); the
+                    // player's own state change confirms it.
+                    let now = Instant::now();
+                    self.clock.set_playing(!self.clock.playing(), now);
+                    tokio::spawn(async move {
+                        let _ = p.play_pause().await;
+                    });
+                }
+            }
+            LyricsMenuWidgetInput::SeekPreview(f) => {
+                if let (Some(t), Some(len)) = (&self.transport, self.track_length()) {
+                    t.preview(f, len);
+                }
+                return;
+            }
+            LyricsMenuWidgetInput::SeekCommit(f) => {
+                if let Some(len) = self.track_length() {
+                    self.seek_to(len.mul_f64(f));
+                }
+            }
+            LyricsMenuWidgetInput::SeekToLine(i) => {
+                if let Lyrics::Synced(lines) = &self.lyrics
+                    && let Some(line) = lines.get(i)
+                {
+                    let ms = lyrics::seek_position_for(line.time_ms, self.total_offset());
+                    self.seek_to(Duration::from_millis(ms));
+                }
+            }
+            LyricsMenuWidgetInput::NudgeOffset(delta) => {
+                if let Some(key) = &self.key {
+                    offsets::nudge(key, delta);
+                    self.active_idx = self.compute_active();
+                }
+            }
+            LyricsMenuWidgetInput::SetSources(netease, local_dir) => {
+                let next = (netease, local_dir);
+                if std::mem::replace(&mut self.sources, next.clone()) != next
+                    && self.key.take().is_some()
+                {
                     if self.revealed {
                         self.pick_track(&sender);
                         self.rebuild_lines(widgets);
@@ -388,6 +503,7 @@ impl Component for LyricsMenuWidgetModel {
         }
         self.apply_active(widgets);
         self.sync_tick(&sender);
+        self.refresh_transport();
         self.update_view(widgets, sender);
     }
 
@@ -413,7 +529,18 @@ impl Component for LyricsMenuWidgetModel {
                 }
             }
             LyricsMenuWidgetCommandOutput::Position(pos) => {
+                // Right after a seek, players report the old position for a
+                // tick or two — ignore samples until they reach the target.
+                if let Some((target, at)) = self.pending_seek {
+                    let close = pos.abs_diff(target) < Duration::from_millis(1_500);
+                    if close || at.elapsed() > Duration::from_millis(1_500) {
+                        self.pending_seek = None;
+                    } else {
+                        return;
+                    }
+                }
                 self.clock.sample(pos.as_millis() as u64, Instant::now());
+                self.refresh_transport();
                 if !self.advance() {
                     return;
                 }
@@ -450,6 +577,7 @@ impl Component for LyricsMenuWidgetModel {
         }
         self.apply_active(widgets);
         self.sync_tick(&sender);
+        self.refresh_transport();
         self.update_view(widgets, sender);
     }
 }
@@ -508,9 +636,61 @@ impl LyricsMenuWidgetModel {
         classes
     }
 
-    /// Lyric-clock position now: smoothed player position + user offset.
+    /// Global offset + this track's nudge.
+    fn total_offset(&self) -> i32 {
+        let track = self.key.as_ref().map(offsets::get).unwrap_or(0);
+        lyrics::total_offset(self.offset_ms, track)
+    }
+
+    /// Lyric-clock position now: smoothed player position + timing offset.
     fn lyric_position(&self) -> u64 {
-        lyrics::effective_position(self.clock.at(Instant::now()), self.offset_ms)
+        lyrics::effective_position(self.clock.at(Instant::now()), self.total_offset())
+    }
+
+    fn track_length(&self) -> Option<Duration> {
+        self.player
+            .as_ref()
+            .and_then(|p| p.metadata.length.get())
+            .filter(|d| !d.is_zero())
+    }
+
+    /// Seek the display player and move the clock there at once.
+    fn seek_to(&mut self, target: Duration) {
+        let Some(p) = self.player.clone() else {
+            return;
+        };
+        if !p.can_seek.get() {
+            return;
+        }
+        let target = self.track_length().map_or(target, |len| target.min(len));
+        self.pending_seek = Some((target, Instant::now()));
+        self.clock.sample(target.as_millis() as u64, Instant::now());
+        self.active_idx = self.compute_active();
+        tokio::spawn(async move {
+            let _ = p.set_position(target).await;
+        });
+    }
+
+    /// Push the current player state into the footer.
+    fn refresh_transport(&mut self) {
+        let synced = matches!(self.lyrics, Lyrics::Synced(_));
+        let track_offset_ms = self.key.as_ref().map(offsets::get).unwrap_or(0);
+        let st = self.player.as_ref().map(|p| TransportState {
+            position: Duration::from_millis(self.clock.at(Instant::now())),
+            length: p.metadata.length.get(),
+            playing: self.clock.playing(),
+            can_seek: p.can_seek.get(),
+            can_prev: p.can_go_previous.get(),
+            can_next: p.can_go_next.get(),
+            synced,
+            track_offset_ms,
+        });
+        if let Some(t) = &mut self.transport {
+            t.root().set_visible(st.is_some());
+            if let Some(st) = st {
+                t.set_state(st);
+            }
+        }
     }
 
     fn compute_active(&self) -> Option<usize> {
@@ -583,7 +763,8 @@ impl LyricsMenuWidgetModel {
     /// Re-pick the display player, follow its position, refresh title/artist,
     /// and kick a fetch when the track key changed.
     fn pick_track(&mut self, sender: &ComponentSender<Self>) {
-        let Some(player) = display_player() else {
+        let Some(player) = ui::display_player() else {
+            self.player = None;
             self.has_player = false;
             self.title.clear();
             self.artist.clear();
@@ -599,6 +780,7 @@ impl LyricsMenuWidgetModel {
         };
 
         self.has_player = true;
+        self.player = Some(player.clone());
         self.clock.set_playing(
             player.playback_state.get() == PlaybackState::Playing,
             Instant::now(),
@@ -643,8 +825,9 @@ impl LyricsMenuWidgetModel {
         self.painted_split = usize::MAX;
         match &self.lyrics {
             Lyrics::Synced(lines) => {
-                for line in lines {
+                for (i, line) in lines.iter().enumerate() {
                     let label = make_line_label(&line.text, false);
+                    make_seekable(&label, i, &self.seek_sender);
                     let secondary = line.secondary().filter(|_| self.show_translation);
                     match secondary {
                         Some(sub) => {
@@ -719,6 +902,22 @@ fn pin_lines_scroller(scroller: &gtk::ScrolledWindow, max_height: i32) {
     scroller.set_min_content_height(h);
 }
 
+/// Click a synced line → seek to where it starts. The seek bar covers the
+/// keyboard path; this is the direct-manipulation shortcut.
+fn make_seekable(label: &gtk::Label, index: usize, sender: &relm4::Sender<LyricsMenuWidgetInput>) {
+    label.add_css_class("lyrics-line-seekable");
+    label.set_cursor_from_name(Some("pointer"));
+    let click = gtk::GestureClick::new();
+    let s = sender.clone();
+    click.connect_released(move |gesture, n_press, _, _| {
+        if n_press == 1 {
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+            let _ = s.send(LyricsMenuWidgetInput::SeekToLine(index));
+        }
+    });
+    label.add_controller(click);
+}
+
 fn make_line_label(text: &str, plain: bool) -> gtk::Label {
     let shown = if text.trim().is_empty() { "♪" } else { text };
     let mut classes = vec!["lyrics-line"];
@@ -771,21 +970,6 @@ fn track_key(player: &Player) -> TrackKey {
     )
 }
 
-/// The player to mirror: first actually playing, else active, else first.
-fn display_player() -> Option<Arc<Player>> {
-    let svc = media_service();
-    let players = svc
-        .as_ref()
-        .map(|s| s.player_list.get())
-        .unwrap_or_default();
-    players
-        .iter()
-        .find(|p| p.playback_state.get() == PlaybackState::Playing)
-        .cloned()
-        .or_else(|| svc.as_ref().and_then(|s| s.active_player.get()))
-        .or_else(|| players.first().cloned())
-}
-
 fn subscribe_players(sender: &ComponentSender<LyricsMenuWidgetModel>, token: &mut WatcherToken) {
     let token = token.reset();
     for player in media_service()
@@ -826,7 +1010,7 @@ fn subscribe_position(
 /// Non-empty embedded lyrics text when the display player is mtune and its
 /// current track's tags carry any — `None` for every other player.
 fn embedded_hint() -> Option<String> {
-    display_player()
+    ui::display_player()
         .filter(|p| p.id.bus_name() == mshell_services::mtune::BUS_NAME)
         .map(|_| {
             mshell_services::mtune::mtune_service()

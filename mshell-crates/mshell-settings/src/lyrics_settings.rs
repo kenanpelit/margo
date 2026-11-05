@@ -1,6 +1,7 @@
 //! Settings → Widgets → Lyrics — the lyrics pill + menu knobs: whether the
 //! current synced line scrolls in the bar, its width, the global timing
-//! offset, the optional NetEase source and the translation line. Composed in `settings.rs` with the generic per-menu geometry page
+//! offset, the sources (NetEase fallback, a local `.lrc` folder), the
+//! translation line, and which MPRIS players may drive the lyrics. Composed in `settings.rs` with the generic per-menu geometry page
 //! (position / width / height), the same way Media Player is.
 
 use mshell_common::scoped_effects::EffectScope;
@@ -10,7 +11,7 @@ use mshell_config::schema::config::{
 };
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::glib;
-use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, EditableExt, EntryExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
 pub(crate) struct LyricsSettingsModel {
@@ -19,6 +20,9 @@ pub(crate) struct LyricsSettingsModel {
     offset_ms: f64,
     netease: bool,
     show_translation: bool,
+    local_dir: String,
+    allowlist: String,
+    blocklist: String,
     _effects: EffectScope,
 }
 
@@ -34,6 +38,12 @@ pub(crate) enum LyricsSettingsInput {
     NeteaseEffect(bool),
     TranslationChanged(bool),
     TranslationEffect(bool),
+    LocalDirChanged(String),
+    LocalDirEffect(String),
+    AllowlistChanged(String),
+    AllowlistEffect(Vec<String>),
+    BlocklistChanged(String),
+    BlocklistEffect(Vec<String>),
 }
 
 #[derive(Debug)]
@@ -280,6 +290,128 @@ impl Component for LyricsSettingsModel {
                             } @translation_handler,
                         },
                     },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Local lyrics folder",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Your own .lrc files, checked before the cache and the network: Artist - Title.lrc, Artist/Title.lrc or Title.lrc (.txt for plain text). Empty = off.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::Entry {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 240,
+                            set_placeholder_text: Some("~/Music/Lyrics"),
+                            #[watch]
+                            #[block_signal(local_dir_handler)]
+                            set_text: &model.local_dir,
+                            connect_changed[sender] => move |e| {
+                                sender.input(LyricsSettingsInput::LocalDirChanged(e.text().to_string()));
+                            } @local_dir_handler,
+                        },
+                    },
+                },
+
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Players",
+                    set_halign: gtk::Align::Start,
+                },
+
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Only these players",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Comma-separated names or bus names (spotify, mpv). Only matching players drive the lyrics. Empty = every player.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::Entry {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 240,
+                            set_placeholder_text: Some("spotify, mpv"),
+                            #[watch]
+                            #[block_signal(allowlist_handler)]
+                            set_text: &model.allowlist,
+                            connect_changed[sender] => move |e| {
+                                sender.input(LyricsSettingsInput::AllowlistChanged(e.text().to_string()));
+                            } @allowlist_handler,
+                        },
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Never these players",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Comma-separated names that never drive the lyrics, e.g. firefox so a video tab doesn't take over.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::Entry {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 240,
+                            set_placeholder_text: Some("firefox"),
+                            #[watch]
+                            #[block_signal(blocklist_handler)]
+                            set_text: &model.blocklist,
+                            connect_changed[sender] => move |e| {
+                                sender.input(LyricsSettingsInput::BlocklistChanged(e.text().to_string()));
+                            } @blocklist_handler,
+                        },
+                    },
                 },
             }
         }
@@ -334,8 +466,31 @@ impl Component for LyricsSettingsModel {
             ));
         });
 
+        let sc = sender.clone();
+        effects.push(move |_| {
+            let l = config_manager().config().bars().widgets().lyrics();
+            sc.input(LyricsSettingsInput::LocalDirEffect(l.local_dir().get()));
+        });
+        let sc = sender.clone();
+        effects.push(move |_| {
+            let l = config_manager().config().bars().widgets().lyrics();
+            sc.input(LyricsSettingsInput::AllowlistEffect(
+                l.player_allowlist().get(),
+            ));
+        });
+        let sc = sender.clone();
+        effects.push(move |_| {
+            let l = config_manager().config().bars().widgets().lyrics();
+            sc.input(LyricsSettingsInput::BlocklistEffect(
+                l.player_blocklist().get(),
+            ));
+        });
+
         let lyr = || config_manager().config().bars().widgets().lyrics();
         let model = LyricsSettingsModel {
+            local_dir: lyr().local_dir().get_untracked(),
+            allowlist: join_list(&lyr().player_allowlist().get_untracked()),
+            blocklist: join_list(&lyr().player_blocklist().get_untracked()),
             offset_ms: lyr().offset_ms().get_untracked() as f64,
             netease: lyr().netease_fallback().get_untracked(),
             show_translation: lyr().show_translation().get_untracked(),
@@ -384,6 +539,58 @@ impl Component for LyricsSettingsModel {
                 config_manager().update_config(|c| c.bars.widgets.lyrics.show_translation = v);
             }
             LyricsSettingsInput::TranslationEffect(v) => self.show_translation = v,
+            LyricsSettingsInput::LocalDirChanged(v) => {
+                self.local_dir = v.clone();
+                config_manager().update_config(|c| c.bars.widgets.lyrics.local_dir = v);
+            }
+            LyricsSettingsInput::LocalDirEffect(v) => self.local_dir = v,
+            LyricsSettingsInput::AllowlistChanged(v) => {
+                self.allowlist = v.clone();
+                let list = split_list(&v);
+                config_manager().update_config(|c| c.bars.widgets.lyrics.player_allowlist = list);
+            }
+            LyricsSettingsInput::AllowlistEffect(v) => {
+                // Don't rewrite the text under the cursor when it already
+                // means the same list (typing "spotify, " → same entries).
+                if split_list(&self.allowlist) != v {
+                    self.allowlist = join_list(&v);
+                }
+            }
+            LyricsSettingsInput::BlocklistChanged(v) => {
+                self.blocklist = v.clone();
+                let list = split_list(&v);
+                config_manager().update_config(|c| c.bars.widgets.lyrics.player_blocklist = list);
+            }
+            LyricsSettingsInput::BlocklistEffect(v) => {
+                if split_list(&self.blocklist) != v {
+                    self.blocklist = join_list(&v);
+                }
+            }
         }
+    }
+}
+
+/// "spotify, mpv ," → ["spotify", "mpv"].
+fn split_list(text: &str) -> Vec<String> {
+    text.split(',')
+        .map(str::trim)
+        .filter(|e| !e.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn join_list(list: &[String]) -> String {
+    list.join(", ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn list_round_trip() {
+        assert_eq!(split_list(" spotify, ,mpv ,"), vec!["spotify", "mpv"]);
+        assert!(split_list("").is_empty());
+        assert_eq!(join_list(&split_list("a,b")), "a, b");
     }
 }

@@ -15,7 +15,7 @@ const SEEK_DEBOUNCE: Duration = Duration::from_millis(300);
 /// `preview(value)`, and the real seek `commit(value)` is sent once the bar
 /// has been still for [`SEEK_DEBOUNCE`]. Returns the `value-changed` handler
 /// so programmatic position updates can block it.
-pub(super) fn setup_debounced_seek<C>(
+pub(crate) fn setup_debounced_seek<C>(
     scale: &gtk::Scale,
     sender: &ComponentSender<C>,
     preview: fn(f64) -> C::Input,
@@ -60,7 +60,7 @@ where
 /// Set the seek bar without it reporting the change as a user seek: the
 /// `value-changed` handler from [`setup_debounced_seek`] is blocked around a
 /// programmatic update.
-pub(super) fn set_scale_silently(
+pub(crate) fn set_scale_silently(
     scale: &gtk::Scale,
     handler: Option<&glib::SignalHandlerId>,
     value: f64,
@@ -77,7 +77,7 @@ pub(super) fn set_scale_silently(
 
 /// Seek-bar position for `position` into a track of `length`, in `0.0..=1.0`;
 /// `0.0` for a zero-length (unknown) track.
-pub(super) fn seek_fraction(position: Duration, length: Duration) -> f64 {
+pub(crate) fn seek_fraction(position: Duration, length: Duration) -> f64 {
     if length.is_zero() {
         0.0
     } else {

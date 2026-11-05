@@ -3,7 +3,8 @@
 //! Resolves time-synced lyrics for the now-playing track and turns a
 //! playback position into the active line (and, for word-timed lyrics, how
 //! far into it the singer is). Lookup order: the playing file's embedded
-//! lyrics (mtune) → on-disk cache → lrclib.net (`/api/get` exact match, then
+//! lyrics (mtune) → a local `.lrc` folder when set ([`local`]) → on-disk
+//! cache → lrclib.net (`/api/get` exact match, then
 //! `/api/search` fuzzy) → NetEase Cloud Music when the user enabled it
 //! (`bars.widgets.lyrics.netease_fallback`) and lrclib had nothing synced.
 //! Results — including a definitive "no lyrics" — are cached under
@@ -16,8 +17,10 @@
 //! `tokio::task::spawn_blocking`). Parsing ([`lrc`]), [`index_for_time`],
 //! [`lrc::karaoke_split`] and [`PlayClock`] are cheap pure work.
 
+mod local;
 pub(crate) mod lrc;
 mod netease;
+pub(crate) mod offsets;
 pub(crate) mod ui;
 
 use serde::{Deserialize, Serialize};
@@ -85,6 +88,8 @@ pub(crate) enum LyricsSource {
     Lrclib,
     /// Resolved via NetEase Cloud Music (the opt-in fallback).
     NetEase,
+    /// A `.lrc` / `.txt` file in the user's local lyrics folder.
+    Local,
 }
 
 impl LyricsSource {
@@ -94,6 +99,7 @@ impl LyricsSource {
             LyricsSource::Embedded => "embedded",
             LyricsSource::Lrclib => "lrclib.net",
             LyricsSource::NetEase => "NetEase",
+            LyricsSource::Local => "local file",
         }
     }
 }
@@ -113,6 +119,19 @@ pub(crate) struct Resolution {
 pub(crate) struct FetchOptions {
     /// Ask NetEase when lrclib has no synced lyrics.
     pub netease: bool,
+    /// Folder of the user's own `.lrc` files, asked before everything but
+    /// embedded lyrics.
+    pub local_dir: Option<PathBuf>,
+}
+
+impl FetchOptions {
+    /// Options from the raw config values (`local_dir` may use `~`).
+    pub(crate) fn new(netease: bool, local_dir: &str) -> Self {
+        Self {
+            netease,
+            local_dir: local::expand_dir(local_dir),
+        }
+    }
 }
 
 impl Lyrics {
@@ -301,6 +320,17 @@ fn fetch_inner(key: &TrackKey, opts: &FetchOptions, force: bool) -> Resolution {
         return Resolution {
             lyrics: Lyrics::None,
             source: LyricsSource::Lrclib,
+            transient: false,
+        };
+    }
+    // The user's own files always win over a cache entry or the network,
+    // and are never cached (editing the file must show at once).
+    if let Some(dir) = &opts.local_dir
+        && let Some(lyrics) = local::lookup(dir, key)
+    {
+        return Resolution {
+            lyrics,
+            source: LyricsSource::Local,
             transient: false,
         };
     }
@@ -495,6 +525,47 @@ pub(crate) fn effective_position(position_ms: u64, offset_ms: i32) -> u64 {
     } else {
         position_ms.saturating_sub(offset.unsigned_abs() as u64)
     }
+}
+
+/// The player position to seek to so that a line stamped `line_ms` becomes
+/// active under the total timing `offset_ms` — the inverse of
+/// [`effective_position`].
+pub(crate) fn seek_position_for(line_ms: u64, offset_ms: i32) -> u64 {
+    let offset = offset_ms.clamp(-MAX_OFFSET_MS, MAX_OFFSET_MS);
+    if offset >= 0 {
+        line_ms.saturating_sub(offset as u64)
+    } else {
+        line_ms.saturating_add(offset.unsigned_abs() as u64)
+    }
+}
+
+/// Global offset + this track's nudge, clamped.
+pub(crate) fn total_offset(global_ms: i32, track_ms: i32) -> i32 {
+    global_ms
+        .saturating_add(track_ms)
+        .clamp(-MAX_OFFSET_MS, MAX_OFFSET_MS)
+}
+
+/// Whether an MPRIS player may drive the lyrics. Entries are
+/// case-insensitive substrings matched against the player's identity
+/// ("Spotify", "Mozilla Firefox") and bus name
+/// ("org.mpris.MediaPlayer2.spotify"). A non-empty allowlist admits only
+/// matching players; the blocklist then removes matches. Both empty = every
+/// player (today's behaviour).
+pub(crate) fn player_allowed(
+    identity: &str,
+    bus: &str,
+    allow: &[String],
+    block: &[String],
+) -> bool {
+    let hay = format!("{identity} {bus}").to_lowercase();
+    let hit = |list: &[String]| {
+        list.iter()
+            .map(|e| e.trim().to_lowercase())
+            .any(|e| !e.is_empty() && hay.contains(&e))
+    };
+    let has_allow = allow.iter().any(|e| !e.trim().is_empty());
+    (!has_allow || hit(allow)) && !hit(block)
 }
 
 /// Smooth playback position between MPRIS position samples (wayle polls
@@ -772,6 +843,61 @@ mod tests {
             MAX_OFFSET_MS as u64,
             "clamped"
         );
+    }
+
+    #[test]
+    fn seeking_to_a_line_inverts_the_offset() {
+        for offset in [-1_500, 0, 750] {
+            let pos = seek_position_for(30_000, offset);
+            let lines = parse_lrc("[00:29.00]a\n[00:30.00]b\n[00:31.00]c");
+            assert_eq!(
+                index_for_time(&lines, effective_position(pos, offset)),
+                Some(1),
+                "offset {offset}"
+            );
+        }
+        assert_eq!(seek_position_for(100, 500), 0, "saturates");
+        assert_eq!(total_offset(9_000, 5_000), MAX_OFFSET_MS);
+        assert_eq!(total_offset(-250, 500), 250);
+    }
+
+    #[test]
+    fn player_filter_lists() {
+        let none: Vec<String> = Vec::new();
+        let spotify = ("Spotify", "org.mpris.MediaPlayer2.spotify");
+        let firefox = (
+            "Mozilla Firefox",
+            "org.mpris.MediaPlayer2.firefox.instance_1_42",
+        );
+        assert!(player_allowed(spotify.0, spotify.1, &none, &none));
+        let allow = vec!["spotify".to_string(), " ".to_string()];
+        assert!(player_allowed(spotify.0, spotify.1, &allow, &none));
+        assert!(!player_allowed(firefox.0, firefox.1, &allow, &none));
+        let block = vec!["FIREFOX".to_string()];
+        assert!(!player_allowed(firefox.0, firefox.1, &none, &block));
+        assert!(player_allowed(spotify.0, spotify.1, &none, &block));
+        // Blank entries never match everything.
+        let blank = vec![String::new()];
+        assert!(player_allowed(firefox.0, firefox.1, &blank, &blank));
+    }
+
+    #[test]
+    fn local_folder_wins_over_everything_but_embedded() {
+        let d = std::env::temp_dir().join(format!("mshell-lyrics-chain-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("Song.lrc"), "[00:01.00]mine").unwrap();
+        let opts = FetchOptions {
+            netease: false,
+            local_dir: Some(d.clone()),
+        };
+        let key = key_for("Song", "", "", 0);
+        let res = fetch(&key, None, &opts);
+        assert_eq!(res.source, LyricsSource::Local);
+        assert!(matches!(res.lyrics, Lyrics::Synced(_)));
+        let res = fetch(&key, Some("embedded words"), &opts);
+        assert_eq!(res.source, LyricsSource::Embedded);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

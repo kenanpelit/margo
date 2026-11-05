@@ -643,7 +643,7 @@ impl Default for SystemUpdateBarWidget {
     }
 }
 
-/// Lyrics bar pill behaviour.
+/// Lyrics bar pill + menu behaviour (the lyrics engine's sources too).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
 pub struct LyricsBarWidget {
@@ -671,6 +671,20 @@ pub struct LyricsBarWidget {
     /// under each lyric in the menu, when the source provides one.
     #[serde(default)]
     pub show_translation: bool,
+    /// Folder of your own lyrics files (`Artist - Title.lrc`,
+    /// `Artist/Title.lrc` or `Title.lrc`; `.txt` for plain text), looked up
+    /// before the cache and the network. `~` expands. Empty = off.
+    #[serde(default)]
+    pub local_dir: String,
+    /// Only these MPRIS players drive the lyrics: case-insensitive
+    /// substrings of the player's name or bus name (`spotify`, `mpv`).
+    /// Empty = every player.
+    #[serde(default)]
+    pub player_allowlist: Vec<String>,
+    /// MPRIS players that never drive the lyrics (same matching as the
+    /// allowlist), e.g. `firefox` so a video tab doesn't take over.
+    #[serde(default)]
+    pub player_blocklist: Vec<String>,
 }
 
 pub(super) fn default_lyrics_max_width_chars() -> i32 {
@@ -685,6 +699,9 @@ impl Default for LyricsBarWidget {
             offset_ms: 0,
             netease_fallback: false,
             show_translation: false,
+            local_dir: String::new(),
+            player_allowlist: Vec::new(),
+            player_blocklist: Vec::new(),
         }
     }
 }
