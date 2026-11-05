@@ -224,7 +224,7 @@ impl ScreenshotBackend {
             }
         }
         let target = if plan.choose {
-            match capture_target(picker::choose(&self.conn).await) {
+            match capture_target(picker::choose(&self.conn, &app_id).await) {
                 Ok(target) => Some(target),
                 Err(response) => {
                     info!(%app_id, response, "screenshot: nothing chosen");

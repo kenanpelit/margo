@@ -587,9 +587,18 @@ impl IPCService {
         rx.await.map_err(|_| no_reply())
     }
     async fn screenshare(&self, payload: &str) -> fdo::Result<String> {
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        self.send(IPCCommand::Screenshare(tx, payload.to_string()))?;
-        rx.await.map_err(|_| no_reply())
+        Ok(super::screenshare::one_picker(async {
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            // A vanished shell is a cancelled selection, never a wider pick.
+            if self
+                .send(IPCCommand::Screenshare(tx, payload.to_string()))
+                .is_err()
+            {
+                return String::new();
+            }
+            rx.await.unwrap_or_default()
+        })
+        .await)
     }
     /// Open the in-shell area selector and block until the user
     /// commits a rect (or cancels). Returns the geometry in slurp

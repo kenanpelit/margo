@@ -144,6 +144,7 @@ impl Frame {
                 MenuOutput::ToggleSessionMenu => FrameInput::ToggleMenu(MenuId::Session),
                 MenuOutput::OpenAppLauncher => FrameInput::ToggleMenu(MenuId::AppLauncher),
                 MenuOutput::OpenMenu(id) => FrameInput::SwitchToMenu(id),
+                MenuOutput::ShowScreenshareMenu => FrameInput::ShowScreenshareMenu,
             })
     }
 

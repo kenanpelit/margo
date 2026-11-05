@@ -1049,9 +1049,16 @@ impl Component for Frame {
                 }
             }
             FrameInput::ToggleScreenshareMenu(reply, payload) => {
+                // The chooser queues the request and asks for ShowScreenshareMenu
+                // once it is on screen; a toggle here let a second request
+                // close (or hijack) the chooser the user was answering.
                 self.screenshare_menu
                     .emit(ForwardHyprlandScreenshareReply(reply, payload));
-                self.toggle_menu(SCREENSHARE_MENU, widgets);
+            }
+            FrameInput::ShowScreenshareMenu => {
+                if !self.is_menu_visible_now(SCREENSHARE_MENU, widgets) {
+                    self.toggle_menu(SCREENSHARE_MENU, widgets);
+                }
                 self.sync_keyboard_mode(root);
             }
             FrameInput::ClipboardExitSearch => {

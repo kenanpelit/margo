@@ -289,6 +289,9 @@ pub(crate) enum MenuOutput {
     OpenAppLauncher,
     /// A dashboard shortcut: close every menu, then open this one.
     OpenMenu(crate::frame::MenuId),
+    /// The screen-share chooser has a request on screen: open it (never
+    /// toggle) if it is not open.
+    ShowScreenshareMenu,
 }
 
 pub(crate) struct MenuInit {
@@ -1210,6 +1213,9 @@ impl Component for MenuModel {
                         .launch(ScreenshareMenuWidgetInit {})
                         .forward(sender.output_sender(), |msg| match msg {
                             ScreenshareMenuWidgetOutput::CloseMenu => MenuOutput::CloseMenu,
+                            ScreenshareMenuWidgetOutput::ShowMenu => {
+                                MenuOutput::ShowScreenshareMenu
+                            }
                         }),
                 );
                 widgets.widget_container.append(&controller.root_widget());

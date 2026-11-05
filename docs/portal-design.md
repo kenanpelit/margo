@@ -87,7 +87,12 @@ xdp-wlr is needed for.
 * `org.freedesktop.impl.portal.ScreenCast.CreateSession()`,
   `SelectSources()`, `Start()`.
 * Source picker: native dialog showing margo's outputs + visible
-  windows (already enumerable via dwl-ipc-v2).
+  windows (already enumerable via dwl-ipc-v2). It names the requesting
+  app ("Requested by <app_id>", sent as a leading `[HAPP>]<app_id>`
+  element of the chooser payload) because for a ScreenCast it is the only
+  consent step. The D-Bus endpoint refuses a second chooser while one is
+  pending (including across monitors), rather than taking over its answer.
+  The per-frame chooser also queues requests internally, defensively.
 * Pipewire stream: re-publish the existing wlr-screencopy frames into
   pipewire's portal node. The `block_out_from_screencast` flag is
   honoured by the renderer already; the portal just inherits the

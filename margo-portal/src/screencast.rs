@@ -252,7 +252,7 @@ impl ScreenCastBackend {
         &self,
         _handle: OwnedObjectPath,
         session_handle: OwnedObjectPath,
-        _app_id: String,
+        app_id: String,
         _parent_window: String,
         _options: HashMap<String, OwnedValue>,
     ) -> (u32, HashMap<String, OwnedValue>) {
@@ -275,7 +275,7 @@ impl ScreenCastBackend {
         };
 
         // Ask the user which window / output to share.
-        let source = match picker::pick(&self.conn, types).await {
+        let source = match picker::pick(&self.conn, types, &app_id).await {
             Ok(Some(src)) => src,
             Ok(None) => {
                 info!(session = %key, "start: user cancelled source pick");

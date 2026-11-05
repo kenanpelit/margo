@@ -1,3 +1,4 @@
+use super::request_queue::{PickerQueue, Pushed};
 use crate::common_widgets::big_button::BigButton;
 use mshell_screenshot::{ScreenSelectAreaRequest, ScreenSelection, select_screen};
 use relm4::gtk::prelude::*;
@@ -20,7 +21,11 @@ pub(crate) struct Program {
 #[derive(Debug)]
 pub(crate) struct ScreenshareMenuWidgetModel {
     pub programs: Vec<Program>,
-    reply: Option<tokio::sync::oneshot::Sender<String>>,
+    /// Pending requests; the one on screen owns the answer.
+    queue: PickerQueue,
+    /// "Requested by …" for the request on screen (`None`: the caller did
+    /// not say, e.g. mshellshare).
+    requester: Option<String>,
     is_revealed: bool,
 }
 
@@ -36,6 +41,10 @@ pub(crate) enum ScreenshareMenuWidgetInput {
 #[derive(Debug)]
 pub(crate) enum ScreenshareMenuWidgetOutput {
     CloseMenu,
+    /// A request is now on screen: open the chooser if it is not open.
+    /// Never a toggle, so a second request cannot close the chooser under
+    /// the user (requests queue, see `request_queue.rs`).
+    ShowMenu,
 }
 
 pub(crate) struct ScreenshareMenuWidgetInit {}
@@ -75,6 +84,22 @@ impl Component for ScreenshareMenuWidgetModel {
                     set_hexpand: true,
                     set_valign: gtk::Align::Center,
                 },
+            },
+
+            // Who is asking: for a ScreenCast the chooser is the only
+            // consent step. Plain text (made inert by margo-portal and
+            // `requester_line`), never markup.
+            gtk::Label {
+                add_css_class: "label-medium",
+                set_halign: gtk::Align::Start,
+                set_xalign: 0.0,
+                set_wrap: true,
+                set_wrap_mode: gtk::pango::WrapMode::WordChar,
+                set_use_markup: false,
+                #[watch]
+                set_visible: model.requester.is_some(),
+                #[watch]
+                set_label: model.requester.as_deref().unwrap_or_default(),
             },
 
             gtk::Box {
@@ -143,7 +168,8 @@ impl Component for ScreenshareMenuWidgetModel {
 
         let model = ScreenshareMenuWidgetModel {
             programs: Vec::new(),
-            reply: None,
+            queue: PickerQueue::default(),
+            requester: None,
             is_revealed: false,
         };
 
@@ -174,18 +200,33 @@ impl Component for ScreenshareMenuWidgetModel {
                     widgets.monitor_button.grab_focus();
                 }
                 self.is_revealed = revealed;
+                // Dismissed without a choice (click outside, another menu):
+                // answer it with a cancel so the requests behind it move on.
+                if let Some(next) = self.queue.revealed(revealed) {
+                    self.show_request(&next, &widgets.programs_box, &sender);
+                }
             }
             ScreenshareMenuWidgetInput::SetReply(reply, payload) => {
-                self.reply = Some(reply);
-                self.programs = group_by_window_program(parse_screen_share_string(&payload));
-                rebuild_programs_list(&widgets.programs_box, &self.programs, &sender);
+                match self.queue.push(reply, payload) {
+                    Pushed::Show(payload) => {
+                        self.show_request(&payload, &widgets.programs_box, &sender)
+                    }
+                    Pushed::Queued => {
+                        tracing::info!("screenshare: request queued behind the open one")
+                    }
+                    Pushed::Refused => {
+                        tracing::warn!("screenshare: too many pending requests; cancelled one")
+                    }
+                }
             }
             ScreenshareMenuWidgetInput::SendReply(reply_value) => {
-                if let Some(reply) = self.reply.take() {
-                    let _ = reply.send(reply_value);
+                if let Some(next) = self.queue.answer(reply_value) {
+                    self.show_request(&next, &widgets.programs_box, &sender);
                 }
             }
             ScreenshareMenuWidgetInput::MonitorClicked => {
+                // The menu hides for the overlay; that is not a dismiss.
+                self.queue.begin_selecting();
                 let _ = sender.output(ScreenshareMenuWidgetOutput::CloseMenu);
                 let sender_clone = sender.clone();
                 select_screen(
@@ -205,6 +246,7 @@ impl Component for ScreenshareMenuWidgetModel {
                 );
             }
             ScreenshareMenuWidgetInput::AreaClicked => {
+                self.queue.begin_selecting();
                 let _ = sender.output(ScreenshareMenuWidgetOutput::CloseMenu);
                 let sender_clone = sender.clone();
                 select_screen(
@@ -221,6 +263,48 @@ impl Component for ScreenshareMenuWidgetModel {
                 );
             }
         }
+    }
+}
+
+impl ScreenshareMenuWidgetModel {
+    /// Put `payload`'s request on screen and open the chooser.
+    fn show_request(
+        &mut self,
+        payload: &str,
+        programs_box: &gtk::Box,
+        sender: &ComponentSender<Self>,
+    ) {
+        let (requester, windows) = split_requester(payload);
+        self.requester = requester.map(requester_line);
+        self.programs = group_by_window_program(parse_screen_share_string(windows));
+        rebuild_programs_list(programs_box, &self.programs, sender);
+        let _ = sender.output(ScreenshareMenuWidgetOutput::ShowMenu);
+    }
+}
+
+/// margo-portal puts the requesting app first: `[HAPP>]<app_id>[HA>]…`.
+/// Returns that app id (empty for an unsandboxed caller) and the window
+/// list; `None` when the payload has no requester (mshellshare / xdph).
+fn split_requester(payload: &str) -> (Option<&str>, &str) {
+    match payload.strip_prefix("[HAPP>]") {
+        Some(rest) => match rest.split_once("[HA>]") {
+            Some((app, windows)) => (Some(app), windows),
+            None => (Some(rest), ""),
+        },
+        None => (None, payload),
+    }
+}
+
+/// The line naming the requester. The id is the sandbox's app id, made
+/// inert by margo-portal; control characters are dropped again here and a
+/// very long id is cut so it cannot push the chooser off screen.
+fn requester_line(app_id: &str) -> String {
+    let app: String = app_id.chars().filter(|c| !c.is_control()).collect();
+    let app = app.trim();
+    if app.is_empty() {
+        "Requested by an app without an ID".to_string()
+    } else {
+        format!("Requested by {}", truncate(app, 60))
     }
 }
 
@@ -400,6 +484,39 @@ mod tests {
         assert_eq!(
             triples(&parse_screen_share_string(payload)),
             [("4", "term", "echo [HC>] > x")]
+        );
+    }
+
+    #[test]
+    fn the_requester_is_split_off_the_window_list() {
+        let payload = "[HAPP>]us.zoom.Zoom[HA>]7[HC>]foot[HT>]~[HE>]";
+        let (app, windows) = split_requester(payload);
+        assert_eq!(app, Some("us.zoom.Zoom"));
+        assert_eq!(
+            triples(&parse_screen_share_string(windows)),
+            [("7", "foot", "~")]
+        );
+        assert_eq!(split_requester("[HAPP>]a.b"), (Some("a.b"), ""));
+        assert_eq!(
+            split_requester("[HAPP>][HA>]1[HC>]a[HT>]b"),
+            (Some(""), "1[HC>]a[HT>]b")
+        );
+        // mshellshare / xdph: no requester, the whole payload is windows.
+        assert_eq!(split_requester("1[HC>]a[HT>]b"), (None, "1[HC>]a[HT>]b"));
+    }
+
+    #[test]
+    fn the_requester_line_names_the_app() {
+        assert_eq!(
+            requester_line("org.mozilla.firefox"),
+            "Requested by org.mozilla.firefox"
+        );
+        assert_eq!(requester_line(""), "Requested by an app without an ID");
+        assert_eq!(requester_line("a\nb"), "Requested by ab");
+        let long = "x".repeat(200);
+        assert_eq!(
+            requester_line(&long).chars().count(),
+            "Requested by ".len() + 61
         );
     }
 

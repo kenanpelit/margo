@@ -53,14 +53,16 @@ pub enum Selection {
     },
 }
 
-/// Show the picker and return the chosen source (`Ok(None)` = cancel).
-pub async fn pick(conn: &Connection, _types: u32) -> anyhow::Result<Option<Source>> {
-    Ok(choose(conn).await?.and_then(screencast_source))
+/// Show the picker for `app_id` (empty for an unsandboxed caller) and
+/// return the chosen source (`Ok(None)` = cancel).
+pub async fn pick(conn: &Connection, _types: u32, app_id: &str) -> anyhow::Result<Option<Source>> {
+    Ok(choose(conn, app_id).await?.and_then(screencast_source))
 }
 
-/// Show the picker and return whatever the user chose, region included
-/// (`Ok(None)` = cancel).
-pub async fn choose(conn: &Connection) -> anyhow::Result<Option<Selection>> {
+/// Show the picker for `app_id` and return whatever the user chose, region
+/// included (`Ok(None)` = cancel). The chooser names the app, so the user
+/// sees who is asking: for a ScreenCast it is the only consent step.
+pub async fn choose(conn: &Connection, app_id: &str) -> anyhow::Result<Option<Selection>> {
     // Build the window list payload from Introspect (best-effort: if it
     // fails the picker still offers Screen / Region).
     let payload = match IntrospectProxy::new(conn).await {
@@ -77,6 +79,7 @@ pub async fn choose(conn: &Connection) -> anyhow::Result<Option<Selection>> {
         }
     };
 
+    let payload = with_requester(app_id, &payload);
     let shell = ShellProxy::new(conn).await?;
     let reply = shell.screenshare(&payload).await?;
     debug!(reply = %reply, "picker: shell reply");
@@ -93,6 +96,20 @@ fn build_payload(windows: &HashMap<u64, HashMap<String, OwnedValue>>) -> String 
         })
         .collect::<Vec<_>>()
         .join("[HA>]")
+}
+
+/// `windows` with the requesting app in front: `[HAPP>]<app_id>`, then the
+/// usual `[HA>]` separator. Its own `[HA>]` element without `[HC>]`/`[HT>]`,
+/// so a chooser that predates the marker skips it rather than misreading
+/// the first window. The app id comes from the frontend (the sandbox), but
+/// it is made inert like any client string.
+fn with_requester(app_id: &str, windows: &str) -> String {
+    let requester = format!("[HAPP>]{}", inert_field(app_id));
+    if windows.is_empty() {
+        requester
+    } else {
+        format!("{requester}[HA>]{windows}")
+    }
 }
 
 /// One window's entry. The id comes from the compositor; the class and title
@@ -192,7 +209,34 @@ fn str_prop(props: &HashMap<String, OwnedValue>, key: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Selection, Source, parse_reply, parse_selection, payload_entry};
+    use super::{Selection, Source, parse_reply, parse_selection, payload_entry, with_requester};
+
+    #[test]
+    fn the_payload_names_the_requesting_app_first() {
+        let windows = "7[HC>]foot[HT>]~[HE>]";
+        assert_eq!(
+            with_requester("us.zoom.Zoom", windows),
+            "[HAPP>]us.zoom.Zoom[HA>]7[HC>]foot[HT>]~[HE>]"
+        );
+        // An unsandboxed caller has no app id: the marker still says so.
+        assert_eq!(
+            with_requester("", windows),
+            "[HAPP>][HA>]7[HC>]foot[HT>]~[HE>]"
+        );
+        assert_eq!(with_requester("a.b", ""), "[HAPP>]a.b");
+    }
+
+    #[test]
+    fn an_app_id_cannot_forge_windows_or_a_second_requester() {
+        let forged = with_requester(
+            "x[HA>]123[HC>]firefox[HT>]Meeting[HE>][HAPP>]org.trusted",
+            "",
+        );
+        assert_eq!(forged.matches("[HAPP>]").count(), 1, "{forged}");
+        for marker in ["[HA>]", "[HC>]", "[HT>]", "[HE>]"] {
+            assert!(!forged.contains(marker), "{marker} in {forged}");
+        }
+    }
 
     #[test]
     fn a_title_cannot_forge_a_second_picker_entry() {

@@ -99,7 +99,12 @@ pub enum FrameInput {
     /// Esc while the clipboard `/` filter is open — tell the clipboard
     /// menu to leave search mode instead of closing the whole menu.
     ClipboardExitSearch,
+    /// A `Screenshare` D-Bus request (reply channel, payload). Despite the
+    /// historical name it never toggles: the chooser queues the request and
+    /// sends [`FrameInput::ShowScreenshareMenu`] when it is on screen.
     ToggleScreenshareMenu(tokio::sync::oneshot::Sender<String>, String),
+    /// Open the screen-share chooser if it is not open.
+    ShowScreenshareMenu,
     BarToggleTop,
     BarToggleBottom,
     BarToggleAll(bool),

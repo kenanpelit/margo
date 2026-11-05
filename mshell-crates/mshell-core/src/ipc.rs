@@ -36,6 +36,7 @@ mod command;
 mod daily_wallpaper;
 mod media;
 mod plugin_watch;
+mod screenshare;
 mod service;
 use alarm::*;
 use audio::*;
