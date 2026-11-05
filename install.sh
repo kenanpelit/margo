@@ -224,9 +224,22 @@ ensure_gtk4_layer_shell() {
   log "gtk4-layer-shell: built + installed from source"
 }
 
-# Ensure a Rust toolchain at least the workspace `rust-version`. Use an
-# existing one if recent; otherwise bootstrap rustup non-interactively.
+# Ensure a Rust toolchain that can build the tree, without touching the
+# user's global rustup default. With rustup, cargo inside the repo uses the
+# toolchain rust-toolchain.toml pins (the one CI builds, tests and lints
+# with), so install exactly that — the same step as the PKGBUILD's
+# prepare(). Without rustup, a system toolchain at least the workspace
+# `rust-version` is used as-is; otherwise bootstrap rustup with no default
+# toolchain and install the pin.
 ensure_rust() {
+  local pin
+  pin="$(sed -n 's/^channel = "\(.*\)"$/\1/p' "${REPO_ROOT}/rust-toolchain.toml")"
+  [[ -n "$pin" ]] || die "no toolchain channel in ${REPO_ROOT}/rust-toolchain.toml"
+  if have rustup; then
+    log "rust: rustup present — installing the pinned toolchain ${pin} (your default is left alone)"
+    rustup toolchain install --profile minimal "$pin"
+    return
+  fi
   local minor=0
   if have rustc; then
     minor="$(rustc --version | sed -n 's/^rustc 1\.\([0-9]\+\).*/\1/p')"
@@ -236,17 +249,15 @@ ensure_rust() {
     log "rust: using existing toolchain ($(rustc --version))"
     return
   fi
-  if have rustup; then
-    log "rust: rustup present — installing/using stable"
-    rustup toolchain install stable
-    rustup default stable
-  else
-    log "rust: bootstrapping rustup (need ≥ 1.${MIN_RUST_MINOR}, found 1.${minor})"
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
-  fi
+  log "rust: bootstrapping rustup (need ≥ 1.${MIN_RUST_MINOR}, found 1.${minor})"
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |
+    sh -s -- -y --profile minimal --default-toolchain none
   # shellcheck disable=SC1091
   [[ -r "${HOME}/.cargo/env" ]] && . "${HOME}/.cargo/env"
+  have rustup || die "rustup still not on PATH after the bootstrap"
+  rustup toolchain install --profile minimal "$pin"
   have cargo || die "cargo still not on PATH after rustup bootstrap"
+  log "rust: rustup has no default toolchain; margo builds with the pin. Run 'rustup default stable' if you want one."
 }
 
 # Two separate cargo invocations, matching the PKGBUILD split, so the

@@ -84,12 +84,16 @@ via apt; if unavailable on the host's release, clone + build
 
 ### 2. Rust toolchain
 
-Needs at least the workspace `rust-version` (Cargo.toml; install.sh
-reads it from there, so the two can't drift). If `rustc` is missing or
-older, bootstrap rustup non-interactively
-(`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y`),
-source `$HOME/.cargo/env`, and use the freshly-installed stable. If a
-recent enough `rustc`/`cargo` is already on PATH, use it as-is.
+The user's global rustup default is never changed. With `rustup` on PATH,
+install the toolchain `rust-toolchain.toml` pins
+(`rustup toolchain install --profile minimal <channel>`, the same step as
+the PKGBUILD's prepare()); cargo inside the repo picks it from that file.
+Without rustup, a system `rustc`/`cargo` at least the workspace
+`rust-version` (read from Cargo.toml, so the two can't drift) is used
+as-is. Otherwise bootstrap rustup non-interactively with no default
+toolchain (`sh.rustup.rs … -y --profile minimal --default-toolchain none`),
+source `$HOME/.cargo/env`, and install the pin.
+`scripts/test-install-rust.sh` covers the four cases.
 
 ### 3. Build
 

@@ -57,9 +57,10 @@ on the tree locally. Build dependencies are resolved by `makepkg`.
     distro with GTK 4.20+). The installer verifies the GTK version up front
     and stops early with a clear message on older releases.
 
-The Ubuntu path installs the build dependencies via `apt`, bootstraps a
-current Rust toolchain with `rustup` if the system one is too old (margo is
-Rust edition 2024), builds `gtk4-layer-shell` from source when it isn't
+The Ubuntu path installs the build dependencies via `apt`, installs the
+Rust toolchain the repo pins (`rust-toolchain.toml`) through `rustup` —
+bootstrapping rustup when the system toolchain is missing or too old, and
+never changing your rustup default — builds `gtk4-layer-shell` from source when it isn't
 packaged, then compiles and installs to `/usr`. Every installed path is
 recorded in `/usr/local/share/margo/install-manifest.txt`, so `uninstall`
 removes exactly what was added.
