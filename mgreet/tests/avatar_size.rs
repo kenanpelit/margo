@@ -39,12 +39,20 @@ fn natural_height(widget: &impl IsA<gtk::Widget>) -> i32 {
     widget.measure(gtk::Orientation::Vertical, -1).1
 }
 
+/// GTK may be initialised from one thread only, and libtest runs every
+/// `#[test]` on its own thread: two tests each calling `gtk::init()` raced
+/// (an occasional SIGSEGV in `just check`) or, with `--test-threads=1`, the
+/// second always panicked. So one test initialises GTK and runs both checks.
 #[test]
-fn the_avatar_is_the_size_of_the_circle_not_the_photograph() {
+fn avatar_sizing() {
     if gtk::init().is_err() {
         return; // headless CI: no display, nothing to measure
     }
+    the_avatar_is_the_size_of_the_circle_not_the_photograph();
+    a_size_request_would_not_have_held_a_picture_back();
+}
 
+fn the_avatar_is_the_size_of_the_circle_not_the_photograph() {
     let image = gtk::Image::from_paintable(Some(&texture()));
     image.set_pixel_size(AVATAR_PX);
     assert_eq!(
@@ -54,12 +62,7 @@ fn the_avatar_is_the_size_of_the_circle_not_the_photograph() {
     );
 }
 
-#[test]
 fn a_size_request_would_not_have_held_a_picture_back() {
-    if gtk::init().is_err() {
-        return;
-    }
-
     let picture = gtk::Picture::for_paintable(&texture());
     picture.set_can_shrink(true);
     picture.set_size_request(AVATAR_PX, AVATAR_PX);
