@@ -190,7 +190,10 @@ impl ScreencopyManagerState {
         self.cleanup_queues();
     }
 
-    /// Forget every queued screencopy targeting the given output.
+    /// Forget every queued screencopy targeting the given output; each
+    /// one is answered `failed` (see `Screencopy`'s `Drop`). Called when
+    /// the output is unplugged or goes dark (switched off, DPMS-off) —
+    /// the render path no longer serves it.
     pub fn remove_output(&mut self, output: &Output) {
         for queue in self.queues.values_mut() {
             queue.remove_output(output);

@@ -39,6 +39,8 @@ impl MargoState {
                 self.dpms_off.remove(&o.name());
             } else {
                 self.dpms_off.insert(o.name());
+                // Not rendered while off: fail its queued captures.
+                self.protocols.screencopy.remove_output(o);
             }
         }
         if !want_on {
@@ -63,6 +65,16 @@ impl MargoState {
         self.monitors
             .iter()
             .any(|m| self.dpms_reachable(m) && self.dpms_off.contains(&m.name))
+    }
+
+    /// Whether `output` shows a picture the render path draws (and so
+    /// serves screencopies for): in the layout or the mirror target, and
+    /// not DPMS-off.
+    pub fn output_capturable(&self, output: &Output) -> bool {
+        self.monitors
+            .iter()
+            .find(|m| m.output == *output)
+            .is_some_and(|m| self.dpms_reachable(m) && !self.dpms_off.contains(&m.name))
     }
 
     /// Whether `name`'s panel is on as far as DPMS goes (what
@@ -168,6 +180,8 @@ impl MargoState {
             self.output_pending.dpms.push((output.clone(), false));
             // Dark because it is off now, not because of DPMS.
             self.dpms_off.remove(&src_name);
+            // Not rendered any more: fail its queued captures.
+            self.protocols.screencopy.remove_output(&output);
         }
         self.space.unmap_output(&output);
         self.wake_repaint_backend();
