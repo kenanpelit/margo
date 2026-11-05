@@ -13,6 +13,10 @@
 //! the very first access). When the refresh lands it stores the value and
 //! fires the [`RefreshNotifier`] so the launcher re-runs the current query
 //! and the new rows appear.
+//!
+//! A cache built with [`BgCache::with_idle_evict`] also drops its value
+//! once nothing has read it for that long, so a big snapshot (the file
+//! index) doesn't stay resident for the rest of the session after one use.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -25,20 +29,50 @@ struct Cached<T> {
     captured_at: Instant,
 }
 
+/// The value plus what the idle eviction needs, under one lock.
+struct Slot<T> {
+    cached: Option<Cached<T>>,
+    /// Last [`BgCache::get`].
+    last_used: Instant,
+    /// Bumped when the idle eviction drops the value, so a refresh that
+    /// started before it doesn't bring the dropped value back.
+    generation: u64,
+    /// An eviction thread is waiting on this cache.
+    reaper: bool,
+}
+
 pub(crate) struct BgCache<T> {
-    inner: Arc<Mutex<Option<Cached<T>>>>,
+    inner: Arc<Mutex<Slot<T>>>,
     in_flight: Arc<AtomicBool>,
     notifier: Arc<Mutex<Option<RefreshNotifier>>>,
     ttl: Duration,
+    /// Drop the value after this long without a `get`.
+    idle_evict: Option<Duration>,
 }
 
 impl<T: Clone + Send + 'static> BgCache<T> {
     pub(crate) fn new(ttl: Duration) -> Self {
         Self {
-            inner: Arc::new(Mutex::new(None)),
+            inner: Arc::new(Mutex::new(Slot {
+                cached: None,
+                last_used: Instant::now(),
+                generation: 0,
+                reaper: false,
+            })),
             in_flight: Arc::new(AtomicBool::new(false)),
             notifier: Arc::new(Mutex::new(None)),
             ttl,
+            idle_evict: None,
+        }
+    }
+
+    /// Like [`Self::new`], and the value is dropped (freed) after `idle`
+    /// without a [`Self::get`]. The waiting thread only exists while a
+    /// value is held.
+    pub(crate) fn with_idle_evict(ttl: Duration, idle: Duration) -> Self {
+        Self {
+            idle_evict: Some(idle),
+            ..Self::new(ttl)
         }
     }
 
@@ -58,15 +92,20 @@ impl<T: Clone + Send + 'static> BgCache<T> {
     where
         F: FnOnce() -> T + Send + 'static,
     {
-        let (value, fresh) = match self.inner.lock() {
-            Ok(guard) => match guard.as_ref() {
-                Some(cached) => (
-                    Some(cached.value.clone()),
-                    cached.captured_at.elapsed() < self.ttl,
-                ),
-                None => (None, false),
-            },
-            Err(_) => (None, false),
+        let (value, fresh, generation) = match self.inner.lock() {
+            Ok(mut slot) => {
+                slot.last_used = Instant::now();
+                let generation = slot.generation;
+                match slot.cached.as_ref() {
+                    Some(cached) => (
+                        Some(cached.value.clone()),
+                        cached.captured_at.elapsed() < self.ttl,
+                        generation,
+                    ),
+                    None => (None, false, generation),
+                }
+            }
+            Err(_) => (None, false, 0),
         };
 
         if !fresh
@@ -78,16 +117,29 @@ impl<T: Clone + Send + 'static> BgCache<T> {
             let inner = Arc::clone(&self.inner);
             let in_flight = Arc::clone(&self.in_flight);
             let notifier = Arc::clone(&self.notifier);
+            let idle_evict = self.idle_evict;
             std::thread::spawn(move || {
                 let value = refresh();
-                if let Ok(mut guard) = inner.lock() {
-                    *guard = Some(Cached {
+                let mut stored = false;
+                if let Ok(mut slot) = inner.lock()
+                    && slot.generation == generation
+                {
+                    slot.cached = Some(Cached {
                         value,
                         captured_at: Instant::now(),
                     });
+                    stored = true;
+                    if let Some(idle) = idle_evict
+                        && !slot.reaper
+                    {
+                        slot.reaper = true;
+                        let inner = Arc::clone(&inner);
+                        std::thread::spawn(move || reap_when_idle(&inner, idle));
+                    }
                 }
                 in_flight.store(false, Ordering::Release);
-                if let Ok(slot) = notifier.lock()
+                if stored
+                    && let Ok(slot) = notifier.lock()
                     && let Some(notify) = slot.as_ref()
                 {
                     notify();
@@ -98,13 +150,19 @@ impl<T: Clone + Send + 'static> BgCache<T> {
         value
     }
 
+    /// Whether a value is held (fresh or stale).
+    #[cfg(test)]
+    pub(crate) fn is_cached(&self) -> bool {
+        self.inner.lock().is_ok_and(|s| s.cached.is_some())
+    }
+
     /// Drop the cached snapshot so the next [`Self::get`] is treated as
     /// cold and kicks a fresh off-thread refresh. Used by providers
     /// whose inputs changed (e.g. a panel-open asked for a re-scan):
     /// the rescan still happens on a worker thread, not the caller's.
     pub(crate) fn invalidate(&self) {
-        if let Ok(mut guard) = self.inner.lock() {
-            *guard = None;
+        if let Ok(mut slot) = self.inner.lock() {
+            slot.cached = None;
         }
     }
 
@@ -112,12 +170,37 @@ impl<T: Clone + Send + 'static> BgCache<T> {
     /// injecting a deterministic value.
     #[cfg(test)]
     pub(crate) fn seed(&self, value: T) {
-        if let Ok(mut guard) = self.inner.lock() {
-            *guard = Some(Cached {
+        if let Ok(mut slot) = self.inner.lock() {
+            slot.cached = Some(Cached {
                 value,
                 captured_at: Instant::now(),
             });
         }
+    }
+}
+
+/// Sleep until the slot has gone `idle` without a read, then drop its
+/// value and exit. Runs once per stored value; a read meanwhile pushes the
+/// deadline out.
+fn reap_when_idle<T>(inner: &Mutex<Slot<T>>, idle: Duration) {
+    loop {
+        let wait = match inner.lock() {
+            Ok(mut slot) => {
+                let unused = slot.last_used.elapsed();
+                if slot.cached.is_none() || unused >= idle {
+                    // Freed after the lock is released.
+                    let dropped = slot.cached.take();
+                    slot.generation += 1;
+                    slot.reaper = false;
+                    drop(slot);
+                    drop(dropped);
+                    return;
+                }
+                idle - unused
+            }
+            Err(_) => return,
+        };
+        std::thread::sleep(wait);
     }
 }
 
@@ -162,6 +245,33 @@ mod tests {
             std::thread::sleep(Duration::from_millis(5));
         }
         assert_eq!(got, Some(99), "value appears once the refresh completes");
+    }
+
+    /// An idle-evicting cache frees its value once nobody read it for the
+    /// idle period, and a read keeps it alive.
+    #[test]
+    fn idle_value_is_dropped_and_freed() {
+        let idle = Duration::from_millis(150);
+        let cache: BgCache<Arc<Vec<u8>>> = BgCache::with_idle_evict(Duration::from_secs(60), idle);
+        let value = Arc::new(vec![0u8; 1024]);
+        let weak = Arc::downgrade(&value);
+        let _ = cache.get(move || value);
+        for _ in 0..400 {
+            if cache.is_cached() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(cache.is_cached(), "the refresh stored the value");
+        // Reads inside the idle period keep it.
+        for _ in 0..4 {
+            std::thread::sleep(idle / 3);
+            assert!(cache.get(|| Arc::new(Vec::new())).is_some());
+        }
+        assert!(weak.upgrade().is_some(), "still held while in use");
+        std::thread::sleep(idle * 3);
+        assert!(!cache.is_cached(), "evicted after the idle period");
+        assert!(weak.upgrade().is_none(), "and the value is freed");
     }
 
     /// The notifier fires after a background refresh stores a value.

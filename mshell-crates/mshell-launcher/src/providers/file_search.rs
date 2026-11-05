@@ -33,8 +33,9 @@ use nucleo_matcher::{
     Utf32Str,
     pattern::{CaseMatching, Normalization, Pattern},
 };
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -49,6 +50,10 @@ const MAX_INDEX: usize = 400_000;
 /// Re-index at most this often; a stale index is still served while the
 /// refresh runs.
 const INDEX_TTL: Duration = Duration::from_secs(300);
+/// The index (~30 MB for 200k paths) is dropped after this long without an
+/// `fs` query, instead of staying resident for the rest of the session. An
+/// index this old would be rebuilt by the next query anyway.
+const INDEX_IDLE: Duration = INDEX_TTL;
 /// Folders never worth indexing.
 const EXCLUDES: &[&str] = &["node_modules", "target", ".git", "__pycache__"];
 /// Depth limit for the std fallback walk.
@@ -104,46 +109,78 @@ pub struct Index {
     pub backend: Option<Backend>,
 }
 
+/// One `fd` output line: an absolute path, folders with a trailing `/`
+/// (fd ≥ 9).
+fn fd_entry(l: &str) -> Option<Entry> {
+    if l.is_empty() {
+        return None;
+    }
+    Some(match l.strip_suffix('/') {
+        Some(dir) if !dir.is_empty() => Entry {
+            path: dir.to_string(),
+            is_dir: Some(true),
+        },
+        _ => Entry {
+            path: l.to_string(),
+            is_dir: Some(false),
+        },
+    })
+}
+
 /// Parse `fd` output: one absolute path per line, folders with a trailing
 /// `/` (fd ≥ 9).
 pub fn parse_fd(stdout: &str) -> Vec<Entry> {
     stdout
         .lines()
-        .filter(|l| !l.is_empty())
+        .filter_map(fd_entry)
         .take(MAX_INDEX)
-        .map(|l| match l.strip_suffix('/') {
-            Some(dir) if !dir.is_empty() => Entry {
-                path: dir.to_string(),
-                is_dir: Some(true),
-            },
-            _ => Entry {
-                path: l.to_string(),
-                is_dir: Some(false),
-            },
-        })
         .collect()
 }
 
-/// Parse `plocate -r ^<root>/` output, dropping hidden paths and excluded
-/// folders (plocate has no exclude flag) — matching what fd would list.
+/// One `plocate -r ^<root>/` line, unless it is hidden or under an
+/// excluded folder (plocate has no exclude flag) — matching what fd would
+/// list.
+fn locate_entry(l: &str, root: &str) -> Option<Entry> {
+    let rel = l.strip_prefix(root)?;
+    let keep = !rel.is_empty()
+        && rel
+            .split('/')
+            .all(|c| !c.starts_with('.') && !EXCLUDES.contains(&c));
+    keep.then(|| Entry {
+        path: l.to_string(),
+        is_dir: None,
+    })
+}
+
+/// Parse `plocate -r ^<root>/` output (see [`locate_entry`]).
 pub fn parse_locate(stdout: &str, root: &str) -> Vec<Entry> {
     stdout
         .lines()
-        .filter(|l| {
-            let Some(rel) = l.strip_prefix(root) else {
-                return false;
-            };
-            !rel.is_empty()
-                && rel
-                    .split('/')
-                    .all(|c| !c.starts_with('.') && !EXCLUDES.contains(&c))
-        })
+        .filter_map(|l| locate_entry(l, root))
         .take(MAX_INDEX)
-        .map(|l| Entry {
-            path: l.to_string(),
-            is_dir: None,
-        })
         .collect()
+}
+
+/// Read entries line by line (one reused buffer), at most [`MAX_INDEX`].
+/// Returns the entries and whether the cap stopped the read.
+fn collect_entries(
+    mut reader: impl BufRead,
+    mut entry: impl FnMut(&str) -> Option<Entry>,
+) -> (Vec<Entry>, bool) {
+    let mut out = Vec::new();
+    let mut buf = Vec::new();
+    while out.len() < MAX_INDEX {
+        buf.clear();
+        match reader.read_until(b'\n', &mut buf) {
+            Ok(0) | Err(_) => return (out, false),
+            Ok(_) => {}
+        }
+        let line = String::from_utf8_lossy(&buf);
+        if let Some(e) = entry(line.trim_end_matches('\n')) {
+            out.push(e);
+        }
+    }
+    (out, true)
 }
 
 /// fd argv for indexing `root`.
@@ -173,11 +210,28 @@ pub fn fd_argv(root: &str) -> Vec<String> {
     argv
 }
 
-fn run_stdout(argv: &[String]) -> Option<String> {
-    let out = Command::new(&argv[0]).args(&argv[1..]).output().ok()?;
-    out.status
-        .success()
-        .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+/// Run `argv` and turn its stdout into entries as it streams in. The
+/// output (~20 MB for a 200k-path home) is never held whole; `None` when
+/// the command fails.
+fn run_entries(argv: &[String], entry: impl FnMut(&str) -> Option<Entry>) -> Option<Vec<Entry>> {
+    let mut child = Command::new(&argv[0])
+        .args(&argv[1..])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let stdout = child.stdout.take()?;
+    let (mut entries, capped) = collect_entries(BufReader::new(stdout), entry);
+    if capped {
+        // The rest is not wanted; don't wait for the walk to finish.
+        let _ = child.kill();
+    }
+    let status = child.wait().ok()?;
+    (capped || status.success()).then(|| {
+        entries.shrink_to_fit();
+        entries
+    })
 }
 
 fn walk(dir: &Path, depth: usize, out: &mut Vec<Entry>) {
@@ -211,7 +265,7 @@ fn walk(dir: &Path, depth: usize, out: &mut Vec<Entry>) {
 fn build_index(root: PathBuf, backend: Backend) -> Arc<Index> {
     let root_s = root.to_string_lossy().into_owned();
     let entries = match backend {
-        Backend::Fd => run_stdout(&fd_argv(&root_s)).map(|s| parse_fd(&s)),
+        Backend::Fd => run_entries(&fd_argv(&root_s), fd_entry),
         Backend::Plocate => {
             let prefix = format!("{}/", root_s.trim_end_matches('/'));
             let argv = vec![
@@ -219,7 +273,7 @@ fn build_index(root: PathBuf, backend: Backend) -> Arc<Index> {
                 "-r".into(),
                 format!("^{}", regex::escape(&prefix)),
             ];
-            run_stdout(&argv).map(|s| parse_locate(&s, &prefix))
+            run_entries(&argv, |l| locate_entry(l, &prefix))
         }
         Backend::Walk => None,
     };
@@ -459,7 +513,7 @@ impl FileSearchProvider {
         Self {
             root,
             backend,
-            cache: BgCache::new(INDEX_TTL),
+            cache: BgCache::with_idle_evict(INDEX_TTL, INDEX_IDLE),
             searcher: Searcher::default(),
         }
     }
@@ -664,6 +718,23 @@ mod tests {
             path: path.into(),
             is_dir: Some(false),
         }
+    }
+
+    #[test]
+    fn streamed_command_output_matches_the_parsers() {
+        let sh = |script: &str| vec!["sh".to_string(), "-c".into(), script.into()];
+        let script = format!("printf '%s' '{FD_OUT}'");
+        assert_eq!(run_entries(&sh(&script), fd_entry), Some(parse_fd(FD_OUT)));
+        // A failing command is no index (the walk fallback takes over).
+        assert_eq!(run_entries(&sh("echo /x; exit 3"), fd_entry), None);
+        // An endless producer stops at the cap and is killed, not waited on.
+        let v = run_entries(&sh("yes /home/x"), fd_entry).unwrap();
+        assert_eq!(v.len(), MAX_INDEX);
+        // A last line without a newline still counts.
+        assert_eq!(
+            run_entries(&sh("printf '/a/\\n/a/b'"), fd_entry).map(|v| v.len()),
+            Some(2)
+        );
     }
 
     #[test]
