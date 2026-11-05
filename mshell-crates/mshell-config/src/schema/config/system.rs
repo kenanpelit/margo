@@ -416,7 +416,7 @@ impl Default for AudioConfig {
 /// Control Center tile visibility and order.
 ///
 /// All tiles are shown by default (`true`) except the opt-in ones
-/// (`mirror`, `hotspot`, `mic_denoise`, `thinkpad_led`), which default to `false`. Set a tile to `false` via the
+/// (`mirror`, `hotspot`, `mic_denoise`, `thinkpad_led`, `custom_shortcut`), which default to `false`. Set a tile to `false` via the
 /// Control Center's edit mode (the pencil icon in the header) to hide it
 /// from the normal grid view. `tile_order` controls the order tiles appear in
 /// the grid (first entry = top-left, reading left-to-right). Tiles not present
@@ -451,6 +451,9 @@ pub struct ControlCenterConfig {
     /// ThinkPad lid logo LED (`tpacpi::lid_logo_dot`) on/off tile. Off by
     /// default; hidden on machines without the LED.
     pub thinkpad_led: bool,
+    /// Your own tile (label, icon, command; see `custom_shortcut_tile`).
+    /// Off by default.
+    pub custom_shortcut: bool,
     /// Display order of tiles in the grid. Each entry is a tile-id string
     /// (e.g. `"wifi"`, `"bluetooth"`, …). Unknown ids are skipped; ids
     /// not listed here are appended at the end in canonical order.
@@ -473,6 +476,29 @@ pub struct ControlCenterConfig {
     /// shown only while a player is active. On by default.
     #[serde(default = "default_true")]
     pub show_media: bool,
+    /// What the `custom_shortcut` tile shows and runs.
+    #[serde(default)]
+    pub custom_shortcut_tile: CustomShortcutTile,
+}
+
+/// The user-defined Control Center tile. Blank `label` / `icon` fall back
+/// to "Custom" / `utilities-terminal-symbolic`; an empty `command` leaves
+/// the tile inert (a click opens its Settings).
+#[derive(
+    Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize, Store, Patch, JsonSchema,
+)]
+#[serde(default)]
+pub struct CustomShortcutTile {
+    /// Tile title.
+    pub label: String,
+    /// Symbolic icon name.
+    pub icon: String,
+    /// Run with `sh -c` on click.
+    pub command: String,
+    /// Optional, run with `sh -c` when the Control Center opens and after
+    /// a click: exit status 0 = active (accent fill), the first output line
+    /// = the subtitle. Empty = a plain launcher tile.
+    pub state_command: String,
 }
 
 pub(super) fn default_cc_tile_order() -> Vec<String> {
@@ -520,11 +546,13 @@ impl Default for ControlCenterConfig {
             hotspot: false,
             mic_denoise: false,
             thinkpad_led: false,
+            custom_shortcut: false,
             tile_order: default_cc_tile_order(),
             wide_tiles: Vec::new(),
             show_battery_chip: true,
             show_power_profile: true,
             show_media: true,
+            custom_shortcut_tile: CustomShortcutTile::default(),
         }
     }
 }

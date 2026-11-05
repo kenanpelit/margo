@@ -14,7 +14,7 @@ use mshell_config::config_manager::config_manager;
 use mshell_config::control_center_tiles::{self, CONTROL_CENTER_TILES};
 use mshell_config::schema::config::{ConfigStoreFields, ControlCenterConfigStoreFields};
 use reactive_graph::prelude::{Get, GetUntracked};
-use relm4::gtk::prelude::{BoxExt, ButtonExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, EditableExt, EntryExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
 // ── Tile metadata ─────────────────────────────────────────────────────────────
@@ -219,6 +219,95 @@ fn build_section_toggle(
     row
 }
 
+/// One labelled entry row of the Custom tile section, seeded once (the
+/// entry is the only editor; a reactive `set_text` would reset the cursor).
+fn custom_tile_entry(
+    title: &str,
+    subtitle: &str,
+    placeholder: &str,
+    initial: &str,
+    on_change: fn(&mut mshell_config::schema::config::CustomShortcutTile, String),
+) -> gtk::Box {
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let col = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    col.set_hexpand(true);
+    let t = gtk::Label::new(Some(title));
+    t.add_css_class("label-medium");
+    t.set_halign(gtk::Align::Start);
+    let s = gtk::Label::new(Some(subtitle));
+    s.add_css_class("label-small");
+    s.set_halign(gtk::Align::Start);
+    s.set_xalign(0.0);
+    s.set_wrap(true);
+    col.append(&t);
+    col.append(&s);
+    row.append(&col);
+    let entry = gtk::Entry::new();
+    entry.set_valign(gtk::Align::Center);
+    entry.set_width_request(260);
+    entry.set_placeholder_text(Some(placeholder));
+    entry.set_text(initial);
+    entry.connect_changed(move |e| {
+        let v = e.text().to_string();
+        config_manager()
+            .update_config(move |c| on_change(&mut c.control_center.custom_shortcut_tile, v));
+    });
+    row.append(&entry);
+    row
+}
+
+/// The "Custom tile" section: what the `custom_shortcut` tile shows and
+/// runs (enable the tile itself in the list below).
+fn build_custom_tile_section() -> gtk::Box {
+    let section = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    let label = gtk::Label::new(Some("Custom tile"));
+    label.add_css_class("label-large-bold");
+    label.set_halign(gtk::Align::Start);
+    section.append(&label);
+    let desc = gtk::Label::new(Some(
+        "Your own tile: a click runs the command (sh -c). With a state command it becomes a toggle — exit status 0 lights the tile, its first output line is the subtitle. Turn the tile on below (Custom Shortcut).",
+    ));
+    desc.add_css_class("label-small");
+    desc.set_halign(gtk::Align::Start);
+    desc.set_xalign(0.0);
+    desc.set_wrap(true);
+    section.append(&desc);
+    let cur = config_manager()
+        .config()
+        .get_untracked()
+        .control_center
+        .custom_shortcut_tile;
+    section.append(&custom_tile_entry(
+        "Label",
+        "Tile title.",
+        "Custom",
+        &cur.label,
+        |t, v| t.label = v,
+    ));
+    section.append(&custom_tile_entry(
+        "Icon",
+        "A symbolic icon name.",
+        "utilities-terminal-symbolic",
+        &cur.icon,
+        |t, v| t.icon = v,
+    ));
+    section.append(&custom_tile_entry(
+        "Command",
+        "Run on click.",
+        "notify-send hello",
+        &cur.command,
+        |t, v| t.command = v,
+    ));
+    section.append(&custom_tile_entry(
+        "State command",
+        "Optional; run when the Control Center opens and after a click.",
+        "systemctl --user is-active syncthing",
+        &cur.state_command,
+        |t, v| t.state_command = v,
+    ));
+    section
+}
+
 pub(crate) struct CcTilesSettingsModel {
     /// Current effective ordered tile ids.
     tile_order: Vec<String>,
@@ -314,6 +403,9 @@ impl Component for CcTilesSettingsModel {
         // Section header
         let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
         root.append(&separator);
+
+        root.append(&build_custom_tile_section());
+        root.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
 
         let header_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
         let header_label = gtk::Label::new(Some("Tiles"));
@@ -524,6 +616,7 @@ mod tests {
                 "mic_denoise",
                 "hotspot",
                 "thinkpad_led",
+                "custom_shortcut",
             ]
         );
         let order = effective_order(&["mic_denoise".to_string(), "bogus".to_string()]);

@@ -24,6 +24,8 @@ pub(crate) struct TileWidget {
     pub(crate) icon: gtk::Image,
     /// Subtitle label (hidden on small tiles).
     pub(crate) subtitle: gtk::Label,
+    /// Title label (the user-defined tile renames itself).
+    pub(crate) title: gtk::Label,
 }
 
 impl TileWidget {
@@ -39,6 +41,11 @@ impl TileWidget {
     /// Update the subtitle text.
     pub(crate) fn set_subtitle(&self, text: &str) {
         self.subtitle.set_label(text);
+    }
+
+    /// Update the title text.
+    pub(crate) fn set_title(&self, text: &str) {
+        self.title.set_label(text);
     }
 
     /// Update the icon name.
@@ -116,5 +123,6 @@ fn build_tile_inner(icon_name: &str, title: &str, subtitle: &str, expandable: bo
         button,
         icon,
         subtitle: subtitle_label,
+        title: title_label,
     }
 }

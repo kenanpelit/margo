@@ -152,6 +152,15 @@ pub(super) fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTi
     led.button
         .set_sensitive(model.led.available && !model.led.busy);
 
+    // Custom shortcut — the user's label / icon; active per its state command.
+    let custom = w.tile(TileId::CustomShortcut);
+    if !model.custom.label.is_empty() {
+        custom.set_title(&model.custom.label);
+        custom.set_icon(&model.custom.icon);
+        custom.set_subtitle(&model.custom.subtitle);
+    }
+    custom.set_active(model.custom.active);
+
     // Disk
     w.tile(TileId::Disk).set_subtitle(&model.disk.format());
 

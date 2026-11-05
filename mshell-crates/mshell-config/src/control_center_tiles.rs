@@ -61,6 +61,7 @@ cc_tiles! {
     mic_denoise => "Noise Suppression",
     hotspot => "Hotspot",
     thinkpad_led => "ThinkPad Logo LED",
+    custom_shortcut => "Custom Shortcut",
 }
 
 /// The registry row for a config id; `None` for an unknown id (e.g. a

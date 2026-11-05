@@ -37,6 +37,7 @@ pub(crate) enum TileId {
     MicDenoise,
     Hotspot,
     ThinkpadLed,
+    CustomShortcut,
 }
 
 /// What a primary (left) click on a tile does.
@@ -249,6 +250,15 @@ pub(crate) const TILES: &[TileSpec] = &[
         Input(|| In::ToggleLed),
         None,
     ),
+    // The user's own tile: label, icon and command from config.
+    spec(
+        TileId::CustomShortcut,
+        "utilities-terminal-symbolic",
+        "Custom",
+        "…",
+        Input(|| In::ClickCustom),
+        None,
+    ),
 ];
 
 impl TileId {
@@ -334,6 +344,7 @@ mod tests {
                 "mic_denoise",
                 "hotspot",
                 "thinkpad_led",
+                "custom_shortcut",
             ]
         );
     }

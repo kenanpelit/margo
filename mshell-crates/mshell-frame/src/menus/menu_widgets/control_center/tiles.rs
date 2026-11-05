@@ -34,6 +34,7 @@
 //! model onto them; `tiles/pollers.rs` starts the watchers and
 //! `tiles/tile_probes.rs` reads the live system state.
 
+mod custom;
 mod grid;
 mod led;
 mod pollers;
@@ -133,6 +134,8 @@ pub(crate) struct ControlCenterTilesModel {
     denoise_busy: bool,
     // ThinkPad lid logo LED (tpacpi::lid_logo_dot) + its in-flight write.
     led: led::LedState,
+    // The user-defined tile (label / icon / state from config + command).
+    custom: custom::CustomState,
     // Lazy-start guard — watchers only start on first reveal
     watchers_started: bool,
     // Shared with the pollers (twilight / ufw / podman / disk / valent):
@@ -200,6 +203,8 @@ pub(crate) enum ControlCenterTilesInput {
     ToggleDenoise,
     /// ThinkPad LED tile click → lid logo LED on/off.
     ToggleLed,
+    /// Custom tile click → run its command.
+    ClickCustom,
 
     /// Reactive dark-mode update from EffectScope.
     DarkModeChanged(MatugenMode),
@@ -250,6 +255,8 @@ pub(crate) enum ControlCenterTilesCommandOutput {
     DenoiseRefreshed(DenoiseStatus),
     /// ThinkPad LED re-read after a toggle (with its error, if any).
     LedRefreshed(led::LedState),
+    /// Custom tile re-read (config + state command).
+    CustomRefreshed(custom::CustomState),
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -380,6 +387,7 @@ impl Component for ControlCenterTilesModel {
             denoise: DenoiseStatus::default(),
             denoise_busy: false,
             led: led::probe(),
+            custom: custom::CustomState::default(),
             revealed: RevealGate::new(false),
             podman_poll: PODMAN_POLL.subscribe(),
             valent_poll: crate::valent::VALENT_POLL.subscribe(),
@@ -439,6 +447,7 @@ impl Component for ControlCenterTilesModel {
                 if !self.led.busy {
                     self.led = led::probe();
                 }
+                custom::refresh(&sender, false);
             }
 
             ControlCenterTilesInput::Reveal(false) => {
@@ -598,6 +607,7 @@ impl Component for ControlCenterTilesModel {
             }
 
             ControlCenterTilesInput::ToggleLed => led::toggle(self, &sender),
+            ControlCenterTilesInput::ClickCustom => custom::click(&sender),
 
             ControlCenterTilesInput::DarkModeChanged(mode) => {
                 self.dark = mode;
@@ -681,6 +691,7 @@ impl Component for ControlCenterTilesModel {
                 self.denoise_busy = false;
             }
             ControlCenterTilesCommandOutput::LedRefreshed(state) => self.led = state,
+            ControlCenterTilesCommandOutput::CustomRefreshed(state) => self.custom = state,
         }
 
         apply_visuals(self, widgets);
