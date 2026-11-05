@@ -10,7 +10,9 @@
 //! commands on the services runtime: the loop awaits [`RevealGate::tick`]
 //! instead of `sleep`, so no timer is armed while the menu is hidden.
 
+use relm4::gtk;
 use relm4::gtk::glib;
+use relm4::gtk::prelude::{IsA, WidgetExt};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -104,6 +106,17 @@ impl RevealGate {
         *self.0.borrow()
     }
 
+    /// A gate that follows `widget`'s mapped state, for menu widgets
+    /// without a reveal message: open menu = mapped.
+    pub(crate) fn follow_mapped(widget: &impl IsA<gtk::Widget>) -> Self {
+        let gate = Self::new(widget.is_mapped());
+        let g = gate.clone();
+        widget.connect_map(move |_| g.set(true));
+        let g = gate.clone();
+        widget.connect_unmap(move |_| g.set(false));
+        gate
+    }
+
     /// Wait `period` of revealed time, the gated replacement for
     /// `sleep(period)` in a poll loop. While the menu is hidden no timer
     /// is armed at all; a hide mid-wait drops the sleep. Returns `false`
@@ -158,6 +171,20 @@ impl RevealGate {
             }
         }
     }
+}
+
+/// A `watch` receiver as a stream: the current value first, then every
+/// change. Dropping the stream drops the receiver.
+pub(crate) fn watch_stream<T: Clone + Send + Sync + 'static>(
+    rx: watch::Receiver<T>,
+) -> impl futures::Stream<Item = T> {
+    futures::stream::unfold((rx, true), |(mut rx, first)| async move {
+        if !first && rx.changed().await.is_err() {
+            return None;
+        }
+        let value = rx.borrow_and_update().clone();
+        Some((value, (rx, false)))
+    })
 }
 
 impl std::fmt::Debug for RevealGate {

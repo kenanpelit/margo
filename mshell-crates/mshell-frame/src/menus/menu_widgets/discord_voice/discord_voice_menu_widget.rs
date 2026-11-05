@@ -8,6 +8,7 @@
 //! rebuilds the list under a slider being dragged.
 
 use crate::discord::{self, DiscordCommand};
+use crate::menus::reveal_poll::{RevealGate, watch_stream};
 use mshell_utils::discord::{DiscordState, DiscordStatus, Participant};
 use relm4::gtk::prelude::{
     AccessibleExtManual, BoxExt, ButtonExt, ObjectExt, OrientableExt, RangeExt, ScaleExt, WidgetExt,
@@ -155,18 +156,19 @@ impl Component for DiscordVoiceMenuWidgetModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        // Subscribed only while the menu is open, so a closed menu doesn't
+        // keep the Discord client probing for its socket.
+        let open = RevealGate::follow_mapped(&root);
         sender.command(|out, shutdown| async move {
-            let mut rx = discord::subscribe();
-            let shutdown_fut = shutdown.wait();
-            tokio::pin!(shutdown_fut);
-            loop {
-                let _ = out.send(DiscordVoiceMenuWidgetCommandOutput::State(
-                    rx.borrow_and_update().clone(),
-                ));
-                tokio::select! {
-                    () = &mut shutdown_fut => break,
-                    r = rx.changed() => if r.is_err() { break },
-                }
+            let watch = open.stream_while_revealed(
+                || watch_stream(discord::subscribe()),
+                |state| {
+                    let _ = out.send(DiscordVoiceMenuWidgetCommandOutput::State(state));
+                },
+            );
+            tokio::select! {
+                () = shutdown.wait() => {}
+                () = watch => {}
             }
         });
         let model = DiscordVoiceMenuWidgetModel {

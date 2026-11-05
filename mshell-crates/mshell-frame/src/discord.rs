@@ -14,8 +14,10 @@
 //! * subscribe to voice events, keep [`DiscordState`] current and
 //!   publish it on a `watch` channel.
 //!
-//! While Discord isn't running the loop just re-checks for the socket
-//! every [`RECONNECT`] (a few `stat`s — no process spawn). The access
+//! While Discord isn't running the loop re-checks for the socket every
+//! [`RECONNECT`] (a few `stat`s — no process spawn), but only while
+//! something subscribes: with no pill and no open menu it parks and drops
+//! any Discord connection, until the next [`subscribe`]. The access
 //! token is written to `$XDG_STATE_HOME/margo/discord-token` with mode
 //! 0600 and never logged.
 
@@ -25,13 +27,14 @@ use mshell_utils::discord::{
 };
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::future::Future;
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{Notify, mpsc, watch};
 use tracing::{debug, warn};
 
 const RECONNECT: Duration = Duration::from_secs(5);
@@ -48,26 +51,35 @@ pub(crate) enum DiscordCommand {
 }
 
 struct Handle {
-    state: watch::Receiver<DiscordState>,
+    /// Its receiver count is the number of live subscribers.
+    state: watch::Sender<DiscordState>,
     cmd: mpsc::UnboundedSender<DiscordCommand>,
+    /// Wakes a parked client when someone subscribes.
+    wake: Arc<Notify>,
 }
 
 fn handle() -> &'static Handle {
     static H: OnceLock<Handle> = OnceLock::new();
     H.get_or_init(|| {
-        let (state_tx, state_rx) = watch::channel(DiscordState::default());
+        let (state_tx, _) = watch::channel(DiscordState::default());
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
-        mshell_services::tokio_rt_spawn(run(state_tx, cmd_rx));
+        let wake = Arc::new(Notify::new());
+        mshell_services::tokio_rt_spawn(run(state_tx.clone(), cmd_rx, wake.clone(), connect_boxed));
         Handle {
-            state: state_rx,
+            state: state_tx,
             cmd: cmd_tx,
+            wake,
         }
     })
 }
 
-/// A receiver of the live state (starts the client on first use).
+/// A receiver of the live state. The client runs while at least one
+/// receiver exists: hold it only while showing the state.
 pub(crate) fn subscribe() -> watch::Receiver<DiscordState> {
-    handle().state.clone()
+    let h = handle();
+    let rx = h.state.subscribe();
+    h.wake.notify_one();
+    rx
 }
 
 pub(crate) fn send(cmd: DiscordCommand) {
@@ -447,6 +459,8 @@ async fn session(
             }
         }
     });
+    // Also when the session is dropped mid-way (last subscriber left).
+    let _reader = AbortOnDrop(reader.abort_handle());
     let (code_tx, mut code_rx) = mpsc::unbounded_channel::<Result<String, String>>();
     loop {
         tokio::select! {
@@ -483,16 +497,45 @@ async fn session(
             changed
         });
     }
-    reader.abort();
+}
+
+/// Aborts a task when dropped.
+struct AbortOnDrop(tokio::task::AbortHandle);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+/// Park until `tx` has a receiver (`wake` is notified on subscribe).
+async fn wait_for_subscriber<T>(tx: &watch::Sender<T>, wake: &Notify) {
+    while tx.receiver_count() == 0 {
+        wake.notified().await;
+    }
+}
+
+type ConnectFuture = std::pin::Pin<Box<dyn Future<Output = Option<UnixStream>> + Send>>;
+
+fn connect_boxed() -> ConnectFuture {
+    Box::pin(connect())
 }
 
 async fn run(
     state_tx: watch::Sender<DiscordState>,
     mut cmd_rx: mpsc::UnboundedReceiver<DiscordCommand>,
+    wake: Arc<Notify>,
+    connect: impl Fn() -> ConnectFuture,
 ) {
     loop {
+        // Nobody shows Discord state: no socket probing at all.
+        wait_for_subscriber(&state_tx, &wake).await;
         if let Some(stream) = connect().await {
-            session(stream, &state_tx, &mut cmd_rx).await;
+            tokio::select! {
+                () = session(stream, &state_tx, &mut cmd_rx) => {}
+                // The last subscriber left: drop the connection too.
+                () = state_tx.closed() => {}
+            }
         }
         state_tx.send_if_modified(|cur| {
             let idle = DiscordState::default();
@@ -507,8 +550,62 @@ async fn run(
         loop {
             tokio::select! {
                 () = &mut sleep => break,
+                () = state_tx.closed() => break,
                 c = cmd_rx.recv() => if c.is_none() { return },
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static CONNECTS: AtomicUsize = AtomicUsize::new(0);
+
+    fn no_discord() -> ConnectFuture {
+        CONNECTS.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async { None })
+    }
+
+    async fn settle() {
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+    }
+
+    /// The reconnect loop probes for Discord's socket only while someone
+    /// subscribes; with no pill and no open menu it parks.
+    #[tokio::test(start_paused = true)]
+    async fn probes_only_while_subscribed() {
+        let (state_tx, _) = watch::channel(DiscordState::default());
+        let (_cmd_tx, cmd_rx) = mpsc::unbounded_channel();
+        let wake = Arc::new(Notify::new());
+        tokio::spawn(run(state_tx.clone(), cmd_rx, wake.clone(), no_discord));
+        tokio::time::sleep(RECONNECT * 12).await;
+        settle().await;
+        assert_eq!(
+            CONNECTS.load(Ordering::SeqCst),
+            0,
+            "no subscriber, no probe"
+        );
+
+        let rx = state_tx.subscribe();
+        wake.notify_one();
+        settle().await;
+        assert_eq!(CONNECTS.load(Ordering::SeqCst), 1, "probes on subscribe");
+        tokio::time::sleep(RECONNECT * 3).await;
+        settle().await;
+        let while_shown = CONNECTS.load(Ordering::SeqCst);
+        assert!(while_shown >= 3, "keeps looking while shown: {while_shown}");
+
+        drop(rx);
+        tokio::time::sleep(RECONNECT * 12).await;
+        settle().await;
+        assert!(
+            CONNECTS.load(Ordering::SeqCst) <= while_shown + 1,
+            "parks once the last subscriber is gone"
+        );
     }
 }

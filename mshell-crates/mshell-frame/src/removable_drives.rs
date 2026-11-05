@@ -6,9 +6,12 @@
 //! polkit agent answers any prompt.
 //!
 //! * **State** — `ObjectManager.GetManagedObjects` → [`RawObject`]s →
-//!   [`build_drives`] (pure, unit-tested). Re-read on every udisks
-//!   `InterfacesAdded` / `InterfacesRemoved` / `PropertiesChanged` signal
-//!   (debounced), so mounts made elsewhere show up too. No polling.
+//!   [`build_drives`] (pure, unit-tested). Re-read on udisks
+//!   `InterfacesAdded` / `InterfacesRemoved` and on `PropertiesChanged`
+//!   of the drive / block / filesystem / LUKS interfaces (debounced), so
+//!   mounts made elsewhere show up too — but not on the periodic SMART
+//!   updates of internal disks ([`match_rules`]). No polling. The watcher
+//!   runs only while something subscribes (a USB pill, an open USB menu).
 //! * **Actions** — `Filesystem.Mount/Unmount`, `Encrypted.Unlock/Lock`,
 //!   `Drive.PowerOff/Eject`. Safe removal follows [`removal_plan`]:
 //!   unmount everything, lock unlocked LUKS containers, then power the
@@ -21,9 +24,11 @@
 
 use mshell_osd::toast::{ToastEvent, ToastSeverity, push_toast};
 use std::collections::HashMap;
-use std::sync::OnceLock;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
-use tokio::sync::watch;
+use tokio::sync::{Notify, watch};
 use tracing::warn;
 use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
 use zbus::{Connection, MatchRule, MessageStream};
@@ -466,52 +471,125 @@ pub(crate) struct DrivesState {
     pub(crate) drives: Vec<Drive>,
 }
 
-static SERVICE: OnceLock<watch::Sender<DrivesState>> = OnceLock::new();
+struct Service {
+    /// Its receiver count is the number of live subscribers.
+    tx: watch::Sender<DrivesState>,
+    /// Wakes the parked watcher on subscribe.
+    wake: Arc<Notify>,
+}
+
+static SERVICE: OnceLock<Service> = OnceLock::new();
 
 /// Subscribe to the removable-drive state. Starts the single udisks
-/// watcher on first use (per process, not per bar / monitor).
+/// watcher on first use (per process, not per bar / monitor); it runs
+/// while at least one receiver exists, so hold it only while showing it.
 pub(crate) fn subscribe() -> watch::Receiver<DrivesState> {
-    SERVICE
-        .get_or_init(|| {
-            let (tx, _) = watch::channel(DrivesState::default());
-            let task_tx = tx.clone();
-            relm4::spawn(async move { run(task_tx).await });
-            tx
-        })
-        .subscribe()
+    let service = SERVICE.get_or_init(|| {
+        let (tx, _) = watch::channel(DrivesState::default());
+        let wake = Arc::new(Notify::new());
+        relm4::spawn(run(tx.clone(), wake.clone(), watch_boxed));
+        Service { tx, wake }
+    });
+    let rx = service.tx.subscribe();
+    service.wake.notify_one();
+    rx
 }
 
 /// Current snapshot (empty before the first scan).
 pub(crate) fn current() -> DrivesState {
-    subscribe().borrow().clone()
+    SERVICE
+        .get()
+        .map(|s| s.tx.borrow().clone())
+        .unwrap_or_default()
 }
 
-async fn run(tx: watch::Sender<DrivesState>) {
-    let conn = match Connection::system().await {
+type WatchFuture = Pin<Box<dyn Future<Output = ()> + Send>>;
+
+fn watch_boxed(tx: watch::Sender<DrivesState>) -> WatchFuture {
+    Box::pin(watch_udisks(tx))
+}
+
+/// Run `watch` while `tx` has receivers; drop it (and its bus streams)
+/// when the last one goes, start it again on the next subscribe. A watch
+/// that gives up (no udisks) idles until then too.
+async fn run(
+    tx: watch::Sender<DrivesState>,
+    wake: Arc<Notify>,
+    watch: fn(watch::Sender<DrivesState>) -> WatchFuture,
+) {
+    loop {
+        while tx.receiver_count() == 0 {
+            wake.notified().await;
+        }
+        let watching = watch(tx.clone());
+        tokio::select! {
+            () = async {
+                watching.await;
+                std::future::pending::<()>().await;
+            } => {}
+            () = tx.closed() => {}
+        }
+    }
+}
+
+/// The udisks signals that can change the drive list: objects appearing
+/// or going, and property changes of the interfaces [`decode`] reads.
+/// Everything else udisks emits (SMART / ATA / NVMe health updates of
+/// internal disks every few minutes) is never delivered.
+fn match_rules() -> zbus::Result<Vec<MatchRule<'static>>> {
+    let base = || {
+        MatchRule::builder()
+            .msg_type(zbus::message::Type::Signal)
+            .sender(UDISKS)
+    };
+    let mut rules = Vec::new();
+    for member in ["InterfacesAdded", "InterfacesRemoved"] {
+        rules.push(
+            base()?
+                .interface("org.freedesktop.DBus.ObjectManager")?
+                .member(member)?
+                .build(),
+        );
+    }
+    for iface in [IF_DRIVE, IF_BLOCK, IF_FS, IF_ENCRYPTED] {
+        rules.push(
+            base()?
+                .interface("org.freedesktop.DBus.Properties")?
+                .member("PropertiesChanged")?
+                .arg(0, iface)?
+                .build(),
+        );
+    }
+    Ok(rules)
+}
+
+async fn watch_udisks(tx: watch::Sender<DrivesState>) {
+    use futures::StreamExt;
+    let conn = match mshell_services::systemd::system_bus().await {
         Ok(c) => c,
         Err(e) => {
             warn!(error = %e, "usb: no system bus — removable drives disabled");
             return;
         }
     };
-    let rule = match MatchRule::builder()
-        .msg_type(zbus::message::Type::Signal)
-        .sender(UDISKS)
-        .map(|b| b.build())
-    {
+    let rules = match match_rules() {
         Ok(r) => r,
         Err(e) => {
             warn!(error = %e, "usb: bad match rule");
             return;
         }
     };
-    let mut stream = match MessageStream::for_match_rule(rule, &conn, Some(64)).await {
-        Ok(s) => s,
-        Err(e) => {
-            warn!(error = %e, "usb: cannot watch udisks2 signals");
-            return;
+    let mut streams = Vec::with_capacity(rules.len());
+    for rule in rules {
+        match MessageStream::for_match_rule(rule, &conn, Some(64)).await {
+            Ok(s) => streams.push(s),
+            Err(e) => {
+                warn!(error = %e, "usb: cannot watch udisks2 signals");
+                return;
+            }
         }
-    };
+    }
+    let mut stream = futures::stream::select_all(streams);
     let mut previous: Option<Vec<Drive>> = None;
     loop {
         match fetch(&conn).await {
@@ -543,7 +621,6 @@ async fn run(tx: watch::Sender<DrivesState>) {
             }
         }
         // Wait for the next udisks signal, then drain the burst.
-        use futures::StreamExt;
         if stream.next().await.is_none() {
             break;
         }
@@ -743,6 +820,88 @@ pub(crate) fn report(title: &str, result: Result<String, String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn match_rules_skip_smart_updates() {
+        let rules: Vec<String> = match_rules()
+            .expect("rules")
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        assert_eq!(rules.len(), 6);
+        // Every rule names a member: no catch-all for udisks2 signals.
+        assert!(rules.iter().all(|r| r.contains("member=")), "{rules:?}");
+        assert!(rules.iter().any(|r| r.contains("member='InterfacesAdded'")));
+        for iface in [IF_DRIVE, IF_BLOCK, IF_FS, IF_ENCRYPTED] {
+            assert!(
+                rules.iter().any(|r| r.contains(&format!("arg0='{iface}'"))),
+                "{iface}: {rules:?}"
+            );
+        }
+        assert!(!rules.iter().any(|r| r.contains("Ata")));
+    }
+
+    static WATCHES: AtomicUsize = AtomicUsize::new(0);
+    static LIVE: AtomicUsize = AtomicUsize::new(0);
+
+    struct Live;
+    impl Drop for Live {
+        fn drop(&mut self) {
+            LIVE.fetch_sub(1, Ordering::SeqCst);
+        }
+    }
+
+    fn fake_watch(_tx: watch::Sender<DrivesState>) -> WatchFuture {
+        WATCHES.fetch_add(1, Ordering::SeqCst);
+        LIVE.fetch_add(1, Ordering::SeqCst);
+        let live = Live;
+        Box::pin(async move {
+            let _live = live;
+            std::future::pending::<()>().await;
+        })
+    }
+
+    async fn settle() {
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+    }
+
+    /// The udisks watch (bus connection + signal matches) exists only
+    /// while someone holds a receiver.
+    #[tokio::test(start_paused = true)]
+    async fn watcher_lives_only_while_subscribed() {
+        let (tx, _) = watch::channel(DrivesState::default());
+        let wake = Arc::new(Notify::new());
+        tokio::spawn(run(tx.clone(), wake.clone(), fake_watch));
+        tokio::time::sleep(Duration::from_secs(60)).await;
+        settle().await;
+        assert_eq!(WATCHES.load(Ordering::SeqCst), 0, "nobody subscribed");
+
+        let pill = tx.subscribe();
+        wake.notify_one();
+        settle().await;
+        assert_eq!(LIVE.load(Ordering::SeqCst), 1);
+        let menu = tx.subscribe();
+        wake.notify_one();
+        settle().await;
+        assert_eq!(WATCHES.load(Ordering::SeqCst), 1, "one watch for all");
+
+        drop(pill);
+        drop(menu);
+        settle().await;
+        assert_eq!(
+            LIVE.load(Ordering::SeqCst),
+            0,
+            "last receiver gone: dropped"
+        );
+
+        let _again = tx.subscribe();
+        wake.notify_one();
+        settle().await;
+        assert_eq!(WATCHES.load(Ordering::SeqCst), 2, "restarts on subscribe");
+    }
 
     fn usb_drive(path: &str, can_power_off: bool) -> RawObject {
         RawObject {

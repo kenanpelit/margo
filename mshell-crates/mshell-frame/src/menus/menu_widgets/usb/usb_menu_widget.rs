@@ -12,6 +12,7 @@
 //! elsewhere show up too); nothing polls. Outcomes are reported as
 //! toasts. udisks asks polkit, so the shell's polkit agent may prompt.
 
+use crate::menus::reveal_poll::{RevealGate, watch_stream};
 use crate::removable_drives::{self, Crypt, Drive, DrivesState, Volume, format_size};
 use mshell_process::SpawnReaped;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, EditableExt, OrientableExt, WidgetExt};
@@ -114,17 +115,19 @@ impl Component for UsbMenuWidgetModel {
         let status_label_widget = gtk::Label::new(None);
         let content = gtk::Box::new(gtk::Orientation::Vertical, 8);
 
-        let mut rx = removable_drives::subscribe();
+        // Subscribed only while the menu is open: a closed menu keeps no
+        // udisks watch alive (a USB pill still does).
+        let open = RevealGate::follow_mapped(&root);
         sender.command(|out, shutdown| async move {
-            let shutdown_fut = shutdown.wait();
-            tokio::pin!(shutdown_fut);
-            loop {
-                let state = rx.borrow_and_update().clone();
-                let _ = out.send(UsbMenuWidgetCommandOutput::State(state));
-                tokio::select! {
-                    () = &mut shutdown_fut => break,
-                    r = rx.changed() => if r.is_err() { break },
-                }
+            let watch = open.stream_while_revealed(
+                || watch_stream(removable_drives::subscribe()),
+                |state| {
+                    let _ = out.send(UsbMenuWidgetCommandOutput::State(state));
+                },
+            );
+            tokio::select! {
+                () = shutdown.wait() => {}
+                () = watch => {}
             }
         });
 
