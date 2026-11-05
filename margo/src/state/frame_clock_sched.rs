@@ -379,29 +379,19 @@ impl MargoState {
         self.ensure_output_clocks();
         let now = Instant::now();
         let mut due = Vec::new();
-        // Snapshot (name, output, interval) to avoid borrowing
-        // `monitors` and `per_output_clocks` simultaneously.
-        let candidates: Vec<(String, Output, Duration)> = self
-            .monitors
-            .iter()
-            .filter(|m| m.enabled)
-            .map(|m| {
-                let out = m.output.clone();
-                let interval = Self::output_refresh_interval(&out);
-                (m.name.clone(), out, interval)
-            })
-            .collect();
-        for (name, output, interval) in candidates {
-            if self.render_retry_pending.contains_key(&name) {
+        for monitor in self.monitors.iter().filter(|m| m.enabled) {
+            if self.render_retry_pending.contains_key(&monitor.name) {
                 continue;
             }
-            let Some(clock) = self.per_output_clocks.get_mut(&name) else {
+            let Some(clock) = self.per_output_clocks.get_mut(&monitor.name) else {
                 continue;
             };
-            if clock.is_due(now, interval) {
+            if clock.is_due(now, Self::output_refresh_interval(&monitor.output)) {
                 clock.dirty = false;
                 clock.pending_vblank = true;
-                due.push(output);
+                // Clone only the outputs actually returned: no candidate
+                // snapshot or connector-name allocation per tick.
+                due.push(monitor.output.clone());
             }
         }
         due

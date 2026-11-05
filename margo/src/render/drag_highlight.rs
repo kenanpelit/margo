@@ -26,6 +26,7 @@ use crate::render::rounded_solid::RoundedSolidElement;
 /// straight RGBA in `0.0..=1.0`; its alpha is overridden so the target's
 /// own content stays legible underneath the fill.
 pub fn render_element(
+    id: Id,
     target_geom: crate::layout::Rect,
     output_origin: Point<i32, Logical>,
     output_scale: f64,
@@ -43,5 +44,31 @@ pub fn render_element(
     ));
     let mut fill = accent;
     fill[3] = 0.35;
-    RoundedSolidElement::new(Id::new(), Rectangle::new(loc, size), radius, fill, program)
+    let key = fill
+        .iter()
+        .chain(std::iter::once(&radius))
+        .fold(0usize, |a, c| {
+            a.wrapping_mul(31).wrapping_add(c.to_bits() as usize)
+        });
+    RoundedSolidElement::new(id, Rectangle::new(loc, size), radius, fill, program)
+        .with_commit(smithay::backend::renderer::utils::CommitCounter::from(key))
+}
+
+/// Keep the highlight distinct from the window surface it sits on.
+pub fn highlight_id(surface: &Id) -> Id {
+    surface.namespaced(0x4452_4147) // "DRAG", separate from surface rendering.
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_stationary_target_keeps_one_highlight_identity() {
+        let surface = Id::new();
+        let first = highlight_id(&surface);
+        assert_eq!(first, highlight_id(&surface));
+        assert_ne!(first, surface);
+        assert_ne!(first, highlight_id(&Id::new()));
+    }
 }

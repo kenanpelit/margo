@@ -722,14 +722,19 @@ fn render_output(
     super::take_mru_thumbnails(renderer, od, state);
 
     let is_mirror = mirror.is_some();
-    let elements: SharedScene = Rc::new(match mirror {
+    let elements = match mirror {
         Some(elements) => elements,
         None => build_output_scene(renderer, od, state),
-    });
+    };
     present_output(
         renderer, od, state, reason, per_output, &elements, is_mirror,
     );
-    Some(elements)
+    // Only the mirror source shares its scene. Ordinary outputs need no
+    // Rc allocation at all (the vec is consumed when this call returns).
+    state
+        .mirror
+        .is_source(&od.output_name)
+        .then(|| Rc::new(elements))
 }
 
 /// The rest of [`render_output`] once the scene is built: serve

@@ -906,19 +906,23 @@ fn build_desktop_elements(
     }
 
     let layer_map = layer_map_for_output(&od.output);
+    // Scroller overview returned above. On the ordinary desktop the
+    // visibility decision is the same for every layer role; resolve the
+    // monitor and exclusive-fullscreen scan once, not per layer.
+    let layers_visible = state.layer_renders_on_output(&od.output, WlrLayer::Top);
     // Use the same role-aware predicate as commit and callback scheduling.
     // Exclusive fullscreen suppresses all layers; classic overview restores
     // them even when an exclusive client appears among its thumbnails.
     let upper_layers: Vec<_> = layer_map
         .layers()
         .rev()
-        .filter(|surface| state.layer_renders_on_output(&od.output, surface.layer()))
+        .filter(|_| layers_visible)
         .filter(|surface| matches!(surface.layer(), WlrLayer::Overlay | WlrLayer::Top))
         .collect();
     let lower_layers: Vec<_> = layer_map
         .layers()
         .rev()
-        .filter(|surface| state.layer_renders_on_output(&od.output, surface.layer()))
+        .filter(|_| layers_visible)
         .filter(|surface| matches!(surface.layer(), WlrLayer::Bottom | WlrLayer::Background))
         .collect();
     let border_program = crate::render::rounded_border::shader(renderer).map(|program| program.0);
@@ -1869,6 +1873,15 @@ fn push_drag_swap_highlight(
     let radius = state.client_radius(client_idx) * output_scale as f32;
     elements.push(MargoRenderElement::RoundedSolid(
         crate::render::drag_highlight::render_element(
+            client
+                .window
+                .wl_surface()
+                .map(|s| {
+                    crate::render::drag_highlight::highlight_id(
+                        &smithay::backend::renderer::element::Id::from_wayland_resource(&*s),
+                    )
+                })
+                .unwrap_or_else(smithay::backend::renderer::element::Id::new),
             client.geom,
             output_geo.loc,
             output_scale,
