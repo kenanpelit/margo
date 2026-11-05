@@ -9,6 +9,7 @@ license.workspace = true
 
 [dependencies]
 margo-fs.workspace = true
+mvpn-proto.workspace = true
 anyhow.workspace = true
 futures.workspace = true
 gio-unix.workspace = true

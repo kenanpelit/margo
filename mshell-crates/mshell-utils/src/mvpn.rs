@@ -4,41 +4,13 @@
 //! or an escaped quote.)
 
 use crate::shared_poll::{EventFeed, SharedPoll};
-use serde::Deserialize;
 use std::sync::LazyLock;
 use std::time::Duration;
 
-/// `mvpn status --json`.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
-pub struct VpnStatus {
-    #[serde(default)]
-    pub connected: bool,
-    #[serde(default)]
-    pub relay: String,
-    #[serde(default)]
-    pub location: String,
-}
-
-impl VpnStatus {
-    /// Parse `mvpn status --json`; unparseable or empty output (no `mvpn`,
-    /// daemon down) reads as disconnected.
-    pub fn parse(json: &str) -> Self {
-        serde_json::from_str(json.trim()).unwrap_or_default()
-    }
-
-    /// `Connected · <relay>[ · <location>]` or `Disconnected`.
-    pub fn summary(&self) -> String {
-        if !self.connected {
-            return "Disconnected".to_string();
-        }
-        let mut s = format!("Connected · {}", self.relay);
-        if !self.location.is_empty() {
-            s.push_str(" · ");
-            s.push_str(&self.location);
-        }
-        s
-    }
-}
+/// `mvpn status --json` — mvpn's own type (`mvpn-proto`), so the exit
+/// city / country are read, not re-parsed: `place()` for the pill label,
+/// `summary()` for the hero / Settings line.
+pub type VpnStatus = mvpn_proto::Status;
 
 /// What the shared VPN poll reports: the tunnel plus the blocky DNS guard.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -69,9 +41,10 @@ pub static VPN_POLL: LazyLock<SharedPoll<VpnProbe>> = LazyLock::new(|| {
 static STREAM_STATUS: std::sync::Mutex<Option<VpnStatus>> = std::sync::Mutex::new(None);
 
 fn accept_status_line(line: &str) -> bool {
-    let Ok(status) = serde_json::from_str::<VpnStatus>(line) else {
+    if serde_json::from_str::<serde_json::Value>(line).is_err() {
         return false;
-    };
+    }
+    let status = VpnStatus::parse(line);
     if let Ok(mut cur) = STREAM_STATUS.lock() {
         *cur = Some(status);
     }
@@ -90,44 +63,6 @@ fn streamed_status(alive: bool, cache: &mut Option<VpnStatus>) -> Option<VpnStat
     }
 }
 
-/// Last known visible location per relay. `mullvad status listen` reports a
-/// connect before the daemon has looked up the visible location and does not
-/// report again when the lookup lands, so a streamed status can stay
-/// location-less until the next tunnel change.
-static RELAY_LOCATION: std::sync::Mutex<Option<(String, String)>> = std::sync::Mutex::new(None);
-
-/// A streamed status that is connected but misses its relay or location
-/// needs one full `mvpn status` query (the location is cached per relay).
-fn needs_location(status: &VpnStatus) -> bool {
-    status.connected && (status.location.is_empty() || status.relay.is_empty())
-}
-
-/// Take the missing relay/location from a full `mvpn status` answer that
-/// describes the same tunnel (an empty streamed relay matches any).
-fn fill_from(mut status: VpnStatus, full: VpnStatus) -> VpnStatus {
-    if full.connected && (status.relay.is_empty() || full.relay == status.relay) {
-        if status.relay.is_empty() {
-            status.relay = full.relay;
-        }
-        if status.location.is_empty() {
-            status.location = full.location;
-        }
-    }
-    status
-}
-
-/// Fill `status`'s missing location from `known` (relay, location) when it
-/// is for the same relay.
-fn with_known_location(mut status: VpnStatus, known: Option<&(String, String)>) -> VpnStatus {
-    if needs_location(&status)
-        && let Some((relay, location)) = known
-        && *relay == status.relay
-    {
-        status.location = location.clone();
-    }
-    status
-}
-
 async fn cli_status() -> VpnStatus {
     match tokio::process::Command::new("mvpn")
         .args(["status", "--json"])
@@ -144,21 +79,12 @@ async fn probe_vpn() -> VpnProbe {
         .lock()
         .ok()
         .and_then(|mut s| streamed_status(VPN_POLL.feed_alive(), &mut s));
-    let mut status = match cached {
+    // The stream already carries a complete status: mvpn fills a
+    // connect's late location itself (`mvpn::engine::status::Follower`).
+    let status = match cached {
         Some(status) => status,
         None => cli_status().await,
     };
-    let known = RELAY_LOCATION.lock().ok().and_then(|k| k.clone());
-    status = with_known_location(status, known.as_ref());
-    if needs_location(&status) {
-        status = fill_from(status, cli_status().await);
-    }
-    if status.connected
-        && !status.location.is_empty()
-        && let Ok(mut k) = RELAY_LOCATION.lock()
-    {
-        *k = Some((status.relay.clone(), status.location.clone()));
-    }
     // The blocky DNS guard: a D-Bus property read on the shared system-bus
     // connection, not a `systemctl` spawn.
     let blocky = match mshell_services::systemd::system_bus().await {
@@ -308,43 +234,6 @@ mod tests {
         );
         assert!(s.connected);
         assert_eq!(s.relay, "de-fra-wg-002");
-    }
-
-    /// The daemon's change stream reports a connect before the location is
-    /// known and never again for the lookup; the last known location for the
-    /// same relay fills the gap, a different relay's never does.
-    #[test]
-    fn a_streamed_connect_without_location_takes_the_relays_known_location() {
-        let streamed =
-            VpnStatus::parse(r#"{"connected":true,"relay":"de-fra-wg-002","location":""}"#);
-        assert!(needs_location(&streamed));
-        let known = (
-            "de-fra-wg-002".to_string(),
-            "Germany, Frankfurt. IPv4: 1.2.3.4".to_string(),
-        );
-        let filled = with_known_location(streamed.clone(), Some(&known));
-        assert_eq!(filled.location, known.1);
-        assert!(!needs_location(&filled));
-        let other = ("se-sto-wg-001".to_string(), "Sweden, Stockholm".to_string());
-        assert!(needs_location(&with_known_location(streamed, Some(&other))));
-        // Disconnected never asks.
-        assert!(!needs_location(&VpnStatus::default()));
-    }
-
-    /// An older mvpn streamed a reconnect's final block with neither relay
-    /// nor location; the full status fills both.
-    #[test]
-    fn a_streamed_status_without_relay_is_filled_from_the_full_status() {
-        let streamed = VpnStatus::parse(r#"{"connected":true,"relay":"","location":""}"#);
-        assert!(needs_location(&streamed));
-        let full = VpnStatus::parse(
-            r#"{"connected":true,"relay":"de-fra-wg-002","location":"Germany, Frankfurt. IPv4: 1.2.3.4"}"#,
-        );
-        let filled = fill_from(streamed, full.clone());
-        assert_eq!(filled, full);
-        // A different relay's location is never borrowed.
-        let other = VpnStatus::parse(r#"{"connected":true,"relay":"se-sto-wg-001","location":""}"#);
-        assert_eq!(fill_from(other.clone(), full).location, "");
     }
 
     #[test]

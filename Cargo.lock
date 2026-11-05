@@ -5676,6 +5676,7 @@ dependencies = [
  "mshell-process",
  "mshell-services",
  "mshell-session",
+ "mvpn-proto",
  "notify-rust",
  "reactive_graph",
  "regex",
@@ -5820,9 +5821,18 @@ dependencies = [
  "glib",
  "gtk4",
  "gtk4-layer-shell",
+ "mvpn-proto",
  "serde",
  "serde_json",
  "toml",
+]
+
+[[package]]
+name = "mvpn-proto"
+version = "4.9.2"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -23,6 +23,8 @@ pub(crate) struct VpnState {
     pub(crate) connected: bool,
     pub(crate) relay: String,
     pub(crate) location: String,
+    /// The exit city (else country) mvpn reported — the beside-icon label.
+    pub(crate) place: String,
     /// Blocky DNS guard active (systemctl `is-active blocky.service`).
     pub(crate) blocky: bool,
     /// Short upstream-resolver name (Google / Cloudflare / Quad9 / …) when a
@@ -187,25 +189,6 @@ impl Component for VpnModel {
     }
 }
 
-/// The city of a Mullvad "Visible location" string ("Sweden, Stockholm.
-/// IPv4: …" → "Stockholm"), or the country when there is no city part.
-fn city_of(location: &str) -> &str {
-    let mut parts = location.splitn(2, ',');
-    let country = parts.next().unwrap_or("").trim();
-    match parts.next() {
-        Some(rest) => {
-            let city = rest
-                .split(". ")
-                .next()
-                .unwrap_or("")
-                .trim()
-                .trim_end_matches('.');
-            if city.is_empty() { country } else { city }
-        }
-        None => country.split(". ").next().unwrap_or("").trim(),
-    }
-}
-
 fn apply_visual(image: &gtk::Image, label: &gtk::Label, root: &gtk::Box, s: &VpnState) {
     let icon = if s.connected {
         "network-vpn-symbolic"
@@ -218,7 +201,7 @@ fn apply_visual(image: &gtk::Image, label: &gtk::Label, root: &gtk::Box, s: &Vpn
     // is up; the upstream resolver's short name when a known DNS is set; else
     // hidden.
     let label_text = if s.connected {
-        city_of(&s.location).to_string()
+        s.place.clone()
     } else if s.blocky {
         "Blocky".to_string()
     } else {
@@ -252,9 +235,11 @@ fn apply_visual(image: &gtk::Image, label: &gtk::Label, root: &gtk::Box, s: &Vpn
 /// The pill's view of one shared probe. The plain-DNS label is only
 /// surfaced when neither Mullvad nor blocky owns DNS.
 fn vpn_state(probe: VpnProbe) -> VpnState {
+    let place = probe.status.place().to_string();
     let mut state = VpnState {
         connected: probe.status.connected,
         relay: probe.status.relay,
+        place,
         location: probe.status.location,
         blocky: probe.blocky,
         dns_label: String::new(),
@@ -316,19 +301,8 @@ mod tests {
         assert!(s.connected);
         assert_eq!(s.relay, "de-fra-wg-002");
         assert!(s.location.starts_with("Germany"));
+        assert_eq!(s.place, "Frankfurt", "the label is the exit city");
         assert!(s.dns_label.is_empty(), "Mullvad owns DNS");
-    }
-
-    #[test]
-    fn the_label_is_the_exit_city() {
-        assert_eq!(
-            city_of("Germany, Frankfurt. IPv4: 185.213.155.228"),
-            "Frankfurt"
-        );
-        assert_eq!(city_of("Sweden, Stockholm"), "Stockholm");
-        assert_eq!(city_of("USA, New York, NY. IPv4: 1.2.3.4"), "New York, NY");
-        assert_eq!(city_of("Germany"), "Germany");
-        assert_eq!(city_of(""), "");
     }
 
     #[test]

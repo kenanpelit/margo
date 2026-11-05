@@ -2,21 +2,7 @@
 
 use super::sys;
 
-#[derive(Default, Clone, Debug, PartialEq, Eq, serde::Serialize)]
-pub struct Status {
-    pub connected: bool,
-    pub connecting: bool,
-    /// First status line verbatim (e.g. "Connected", "Disconnected").
-    pub state: String,
-    pub relay: String,
-    /// Raw "Country, City" visible-location string.
-    pub location: String,
-    pub ipv4: String,
-    pub country: String,
-    pub city: String,
-    /// "WireGuard" / "OpenVPN", inferred from the tunnel interface / relay id.
-    pub tunnel_type: String,
-}
+pub use mvpn_proto::Status;
 
 /// Query the daemon and parse. Plain `status` already carries the Relay +
 /// Visible-location lines and gives a clean relay id (no address suffix).
@@ -70,18 +56,8 @@ pub fn parse(s: &str) -> Status {
             }
         }
         if let Some(l) = field(t, "Visible location") {
-            st.location = l.trim().to_string();
-            // "Country, City. IPv4: 1.2.3.4"
-            if let Some((before_ip, after_ip)) = l.split_once("IPv4:") {
-                st.ipv4 = after_ip.trim().to_string();
-                let trimmed = before_ip.trim().trim_end_matches('.').trim().to_string();
-                if let Some((country, city)) = trimmed.split_once(',') {
-                    st.country = country.trim().to_string();
-                    st.city = city.trim().to_string();
-                } else {
-                    st.country = trimmed;
-                }
-            }
+            // "Country, City. IPv4: 1.2.3.4" — split by the rule mshell reads.
+            st.set_location(l);
         }
     }
     // Fall back to the relay id for the protocol when no interface line.
@@ -106,6 +82,10 @@ pub fn parse(s: &str) -> Status {
 pub struct Follower {
     block: String,
     last: Option<Status>,
+    /// The last connected status that had a location: the daemon reports a
+    /// connect before its visible-location lookup lands and does not report
+    /// again when it does, so a reconnect to the same relay borrows it.
+    known: Option<Status>,
 }
 
 impl Follower {
@@ -140,12 +120,71 @@ impl Follower {
         if let Some(prev) = &self.last {
             carry_over(&mut st, prev);
         }
+        if let Some(known) = &self.known {
+            st = with_known_location(st, known);
+        }
+        self.publish(st)
+    }
+
+    /// The last reported status still lacks its relay or location (see
+    /// [`needs_location`]) — the caller should ask for a full status.
+    pub fn wants_full_status(&self) -> bool {
+        self.last.as_ref().is_some_and(needs_location)
+    }
+
+    /// Fill the last reported status from a full `mullvad status` answer;
+    /// the filled status to report, if anything changed.
+    pub fn on_full_status(&mut self, full: Status) -> Option<Status> {
+        let last = self.last.clone()?;
+        self.publish(fill_from(last, full))
+    }
+
+    fn publish(&mut self, st: Status) -> Option<Status> {
+        if st.connected && !st.location.is_empty() && !st.relay.is_empty() {
+            self.known = Some(st.clone());
+        }
         if self.last.as_ref() == Some(&st) {
             return None;
         }
         self.last = Some(st.clone());
         Some(st)
     }
+}
+
+/// A connected status that misses its relay or location.
+pub fn needs_location(st: &Status) -> bool {
+    st.connected && (st.location.is_empty() || st.relay.is_empty())
+}
+
+/// Take the missing relay / location from `full` when it describes the
+/// same tunnel (an empty relay matches any).
+fn fill_from(mut st: Status, full: Status) -> Status {
+    if full.connected && (st.relay.is_empty() || full.relay == st.relay) {
+        if st.relay.is_empty() {
+            st.relay = full.relay;
+        }
+        if st.location.is_empty() {
+            st.location = full.location;
+            st.country = full.country;
+            st.city = full.city;
+            st.ipv4 = full.ipv4;
+        }
+        if st.tunnel_type.is_empty() {
+            st.tunnel_type = full.tunnel_type;
+        }
+    }
+    st
+}
+
+/// Fill `st`'s missing location from `known` when it is the same relay.
+fn with_known_location(mut st: Status, known: &Status) -> Status {
+    if needs_location(&st) && !st.relay.is_empty() && st.relay == known.relay {
+        st.location = known.location.clone();
+        st.country = known.country.clone();
+        st.city = known.city.clone();
+        st.ipv4 = known.ipv4.clone();
+    }
+    st
 }
 
 /// Fill the details `st` left out from `prev`, while both are the same
@@ -172,6 +211,10 @@ fn carry_over(st: &mut Status, prev: &Status) {
 /// How long `mullvad status listen` must be quiet before the block being
 /// read counts as complete.
 const FOLLOW_QUIET: std::time::Duration = std::time::Duration::from_millis(150);
+
+/// While the reported status still lacks its relay / location, ask for a
+/// full `mullvad status` at most this often.
+const FULL_STATUS_RETRY: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Stream status changes from `mullvad status listen` to `emit` until the
 /// daemon stream ends (returns `false`), `emit` fails (the reader is gone),
@@ -228,10 +271,20 @@ pub fn follow(mut emit: impl FnMut(&Status) -> std::io::Result<()>) -> bool {
     });
 
     let mut follower = Follower::default();
+    let mut last_full: Option<std::time::Instant> = None;
     loop {
         let st = match rx.recv_timeout(FOLLOW_QUIET) {
             Ok(line) => follower.on_line(&line),
-            Err(mpsc::RecvTimeoutError::Timeout) => follower.on_quiet(),
+            Err(mpsc::RecvTimeoutError::Timeout) => match follower.on_quiet() {
+                Some(st) => Some(st),
+                None if follower.wants_full_status()
+                    && last_full.is_none_or(|t| t.elapsed() >= FULL_STATUS_RETRY) =>
+                {
+                    last_full = Some(std::time::Instant::now());
+                    follower.on_full_status(query())
+                }
+                None => None,
+            },
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         };
         if let Some(st) = st
@@ -395,6 +448,80 @@ mod tests {
         );
         assert_eq!(st.relay, "se-sto-wg-001");
         assert_eq!(st.city, "Stockholm");
+    }
+
+    /// The daemon's change stream reports a connect before the location is
+    /// known and never again for the lookup: the last known location for
+    /// the same relay fills the gap, a different relay's never does.
+    #[test]
+    fn a_reconnect_without_location_takes_the_relays_known_location() {
+        let mut f = Follower::default();
+        feed(&mut f, CONNECTED);
+        let first = f.on_quiet().expect("connected");
+        assert!(!f.wants_full_status());
+        feed(&mut f, "Disconnected\n");
+        f.on_quiet();
+        feed(&mut f, "Connected\n    Relay: de-fra-wg-002\n");
+        let again = f.on_quiet().expect("reconnected");
+        assert_eq!(again.location, first.location);
+        assert_eq!(again.city, "Frankfurt");
+        // Another relay never borrows it: the caller is asked to query.
+        feed(&mut f, "Disconnected\n");
+        f.on_quiet();
+        feed(&mut f, "Connected\n    Relay: se-sto-wg-001\n");
+        let other = f.on_quiet().expect("other relay");
+        assert!(other.location.is_empty());
+        assert!(f.wants_full_status());
+    }
+
+    /// A reconnect's final block can carry neither relay nor location; the
+    /// full status fills both, once, and only for the same tunnel.
+    #[test]
+    fn a_status_without_relay_is_filled_from_the_full_status() {
+        let mut f = Follower::default();
+        feed(&mut f, "Connected\n");
+        assert!(f.on_quiet().is_some());
+        assert!(f.wants_full_status());
+        let full = parse(CONNECTED);
+        let filled = f.on_full_status(full.clone()).expect("filled");
+        assert_eq!(filled.relay, "de-fra-wg-002");
+        assert_eq!(filled.city, "Frankfurt");
+        assert!(!f.wants_full_status());
+        assert!(f.on_full_status(full.clone()).is_none(), "no repeat");
+        // A full status for a different relay is never borrowed.
+        let mut g = Follower::default();
+        feed(&mut g, "Connected\n    Relay: se-sto-wg-001\n");
+        g.on_quiet();
+        assert!(g.on_full_status(full).is_none());
+        // Disconnected never asks.
+        let mut h = Follower::default();
+        feed(&mut h, "Disconnected\n");
+        h.on_quiet();
+        assert!(!h.wants_full_status());
+    }
+
+    /// The bug: country/city were only split out when an `IPv4:` part
+    /// followed, so a "Connecting" block (`Visible location: Germany,
+    /// Frankfurt`) and an IPv6-only exit had no city — and mshell re-parsed
+    /// the raw location itself to make up for it.
+    #[test]
+    fn city_and_country_without_an_ipv4_part() {
+        let st =
+            parse("Connecting\n    Relay: de-fra-wg-002\n    Visible location: Germany, Frankfurt");
+        assert_eq!(
+            (st.country.as_str(), st.city.as_str()),
+            ("Germany", "Frankfurt")
+        );
+        assert!(st.ipv4.is_empty());
+        let st = parse("Connected\n    Visible location: USA, New York, NY. IPv6: 2001:db8::1");
+        assert_eq!(
+            (st.country.as_str(), st.city.as_str()),
+            ("USA", "New York, NY")
+        );
+        let st = parse(
+            "Connected\n    Visible location: Germany, Frankfurt. IPv4: 1.2.3.4, IPv6: 2001:db8::1",
+        );
+        assert_eq!(st.ipv4, "1.2.3.4");
     }
 
     #[test]

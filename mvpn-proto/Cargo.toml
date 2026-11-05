@@ -1,0 +1,21 @@
+# mvpn-proto — the `mvpn status --json` wire type.
+#
+# Written by `mvpn` (which parses `mullvad status`) and read by mshell (the
+# VPN pill, menu, toast and Settings → VPN), so the field set, the
+# "Country, City. IPv4: …" split and the display helpers exist once.
+# MIT, matching mvpn (mshell is GPL and may consume permissive code).
+[package]
+name = "mvpn-proto"
+description = "The `mvpn status --json` type shared by mvpn and mshell"
+license = "MIT"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

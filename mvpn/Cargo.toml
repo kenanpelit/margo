@@ -12,6 +12,8 @@ name = "mvpn"
 path = "src/main.rs"
 
 [dependencies]
+# The `status --json` type, shared with mshell.
+mvpn-proto.workspace = true
 # CLI + config
 clap = { workspace = true }
 serde = { workspace = true }
