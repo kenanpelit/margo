@@ -8,8 +8,8 @@
 //! upgrade logic lives in [`crate::system_update`] so the pill, the
 //! panel, and the launcher all share one implementation.
 
-use crate::system_update::LAST_PROBE_SECS;
 use crate::bars::pill_classes::PillClasses;
+use crate::system_update::LAST_PROBE_SECS;
 use crate::system_update::{self, ProbeConfig, Source, UpdateReport};
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;

@@ -264,7 +264,6 @@ fn a_failed_reload_replies_with_the_error() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
-
 /// Subscribe a fresh connection to `watch state` and swallow its initial
 /// frame plus the first push (the first push is never de-duplicated
 /// against the subscribe-time frame).
