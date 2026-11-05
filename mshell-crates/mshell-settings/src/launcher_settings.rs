@@ -46,6 +46,8 @@ pub(crate) enum LauncherSettingsInput {
     /// Set the GNU pass store directory (`config.pass.store_path`).
     /// Empty falls back to $PASSWORD_STORE_DIR / ~/.password-store.
     SetPassStorePath(String),
+    /// Set `config.launcher.nvim_projects_dir` (blank = sessions only).
+    SetNvimProjectsDir(String),
     /// Append a `Name|url` favourite (validated first).
     WebSiteAdd(String),
     /// Remove the favourite at this index.
@@ -505,6 +507,31 @@ impl Component for LauncherSettingsModel {
                     },
                 },
 
+                // Neovim projects ──────────────────────────────
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Neovim projects",
+                    set_halign: gtk::Align::Start,
+                    set_margin_top: 12,
+                },
+                gtk::Label {
+                    add_css_class: "label-small",
+                    set_label: "The `nv` launcher prefix lists your saved Neovim sessions (~/.local/state/nvim/sessions). Set a folder to also list each of its sub-directories as a project. Blank = sessions only. Applies on the next launcher open.",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                },
+                #[name = "nvim_projects_entry"]
+                gtk::Entry {
+                    set_widget_name: "setting:/launcher/nvim_projects_dir",
+                    set_placeholder_text: Some("e.g. ~/Projects   (blank = sessions only)"),
+                    set_hexpand: true,
+                    connect_changed[sender] => move |e| {
+                        sender.input(LauncherSettingsInput::SetNvimProjectsDir(e.text().to_string()));
+                    },
+                },
+
                 // Paths (debug) ────────────────────────────────
                 gtk::Label {
                     add_css_class: "label-large-bold",
@@ -636,6 +663,14 @@ impl Component for LauncherSettingsModel {
                 .get_untracked(),
         );
 
+        widgets.nvim_projects_entry.set_text(
+            &config_manager()
+                .config()
+                .launcher()
+                .nvim_projects_dir()
+                .get_untracked(),
+        );
+
         let _ = root;
         ComponentParts { model, widgets }
     }
@@ -677,6 +712,10 @@ impl Component for LauncherSettingsModel {
                 config_manager().update_config(move |config| {
                     config.pass.store_path = path;
                 });
+            }
+            LauncherSettingsInput::SetNvimProjectsDir(path) => {
+                let path = path.trim().to_string();
+                config_manager().update_config(move |c| c.launcher.nvim_projects_dir = path);
             }
             LauncherSettingsInput::WebSiteAdd(line) => {
                 if parse_sites(std::slice::from_ref(&line)).is_empty() {

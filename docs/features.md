@@ -60,7 +60,8 @@ The GTK4 + relm4 shell hosting the bars, menus, settings, and dashboard.
   `mshellctl toast` is the `notify-send` equivalent.
 - **OSD** — volume / brightness value pulses.
 - **Launcher** — app / calc / ssh / sysinfo / emoji providers, plus prefix
-  providers such as `case <text>` (naming-convention converter); type `;` in
+  providers such as `case <text>` (naming-convention converter) and `nv`
+  (reopen Neovim sessions / projects in the terminal); type `;` in
   the launcher for the full prefix list.
 - **Material You theming** — matugen palette extraction from the wallpaper,
   applied across the shell, the compositor border, and the login screen.

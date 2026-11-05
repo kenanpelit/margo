@@ -31,6 +31,9 @@ pub struct Launcher {
     /// (the domain is sent to Google's favicon service; icons are cached
     /// in ~/.cache/margo/favicons and ~/.local/share/margo/webapps).
     pub web_site_favicons: bool,
+    /// Folder whose sub-directories the launcher's `nv` provider lists as
+    /// Neovim projects next to the saved sessions. Empty = sessions only.
+    pub nvim_projects_dir: String,
 }
 
 /// Default `launcher.web_sites` — mirrors
@@ -58,6 +61,7 @@ impl Default for Launcher {
             large_app_icons: true,
             web_sites: default_web_sites(),
             web_site_favicons: true,
+            nvim_projects_dir: String::new(),
         }
     }
 }

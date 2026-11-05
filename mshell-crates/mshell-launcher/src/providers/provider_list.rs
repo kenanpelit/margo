@@ -161,6 +161,12 @@ const ENTRIES: &[Entry] = &[
         icon: "utilities-terminal-symbolic",
     },
     Entry {
+        prefix: "nv <project>",
+        example: "nv margo",
+        description: "Neovim — reopen a saved session / project in the terminal",
+        icon: "nvim",
+    },
+    Entry {
         prefix: "pass <query>",
         example: "pass github",
         description: "GNU pass — Enter copies, Ctrl+Enter types; `entry:` lists OTP/user/fields",

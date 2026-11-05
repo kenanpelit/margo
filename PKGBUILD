@@ -168,6 +168,7 @@ optdepends=(
   "pass: launcher password-store provider"
   "playerctl: launcher media provider + media keys on the lock screen"
   "libqalculate: calculator units, currency and percentages (qalc)"
+  "neovim: launcher \`nv\` provider (reopen Neovim sessions / projects)"
   "wtype: launcher typing (pass type/autotype, case convert Ctrl+Enter)"
   # mlayout (per-tag layout profiles)
   "wlr-randr: mlayout monitor apply / capture"

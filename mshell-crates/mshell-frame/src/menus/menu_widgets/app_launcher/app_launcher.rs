@@ -59,7 +59,7 @@ use mshell_config::schema::config::{
 };
 use mshell_launcher::providers::{
     ArchLinuxPkgsProvider, BluetoothProvider, CalculatorProvider, CaseConvertProvider,
-    CommandProvider, EmojiProvider, FileSearchProvider, MctlProvider, PassProvider,
+    CommandProvider, EmojiProvider, FileSearchProvider, MctlProvider, NvimProvider, PassProvider,
     PlayerctlProvider, ProviderListProvider, ScriptsProvider, SessionProvider, SettingsProvider,
     SshProvider, SymbolsProvider, SystemdProvider, TmuxProvider, WebappProvider, WebsearchProvider,
     WireplumberProvider,
@@ -547,6 +547,14 @@ impl Component for AppLauncherModel {
         runtime.register(Box::new(BluetoothProvider::new()));
         runtime.register(Box::new(SshProvider::new()));
         runtime.register(Box::new(TmuxProvider::new()));
+        // `nv`: the projects folder follows Settings → Launcher; re-read on open.
+        runtime.register(Box::new(NvimProvider::new(Box::new(|| {
+            config_manager()
+                .config()
+                .launcher()
+                .nvim_projects_dir()
+                .get_untracked()
+        }))));
         runtime.register(Box::new(
             SystemdProvider::new().with_search_setter(make_search_setter()),
         ));
