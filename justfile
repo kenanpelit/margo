@@ -94,16 +94,21 @@ all: margo shell cli dots mtune helpers
 reload:
     mctl reload
 
-# The pre-push CI gate set: the steps of ci.yml's `check` job, with the
-# same `--locked`. Run this before pushing — a clean `cargo check` is NOT
-# enough: CI fails on clippy --all-targets -D warnings, fmt, the panic
+# The pre-push CI gate set: the steps of ci.yml's `check` and `wasm` jobs,
+# with the same `--locked`. Run this before pushing — a clean `cargo check`
+# is NOT enough: CI fails on clippy --all-targets -D warnings, fmt, the panic
 # ratchet, the file-size gate, the design lint, the packaging parity and
-# completion-drift checks, and the example-config check. Not run here: the
-# separate machete / MSRV / cargo-deny / debian jobs.
+# completion-drift checks, the example-config check and the WASM plugin
+# host tests against the real guest fixtures (needs `rustup target add
+# wasm32-wasip2`). Not run here: the separate machete / MSRV / cargo-deny /
+# debian jobs.
 check:
     cargo fmt --all -- --check
     cargo clippy --workspace --all-targets --locked -- -D warnings
     cargo clippy --locked --all-targets -p mshell -p mshell-frame -p mshell-plugin-ui -p mshell-plugin-host --features mshell/wasm-plugins,mshell-plugin-ui/wasm -- -D warnings
+    ./scripts/build-wasm-fixtures.sh
+    MARGO_REQUIRE_WASM_FIXTURES=1 cargo test --locked -p mshell-plugin-host --features wasm
+    MARGO_REQUIRE_WASM_FIXTURES=1 cargo test --locked -p mshell-frame -p mshell-plugin-ui --features mshell-frame/wasm-plugins,mshell-plugin-ui/wasm
     ./scripts/design-lint.sh
     ./scripts/test-panic-baseline-guard.sh
     ./scripts/panic-ratchet.sh

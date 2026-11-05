@@ -116,17 +116,6 @@ jobs:
         # lints. `--all-targets` so tests/examples are linted too.
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
-      - name: cargo clippy (wasm plugin feature, gate)
-        # The packaged shell is built with `--features mshell/wasm-plugins`
-        # (PKGBUILD), which the workspace run above never enables, so the
-        # wasmtime host, the plugin panel renderer and mshell-frame's
-        # cfg(feature = "wasm-plugins") code are linted here.
-        run: >-
-          cargo clippy --locked --all-targets
-          -p mshell -p mshell-frame -p mshell-plugin-ui -p mshell-plugin-host
-          --features mshell/wasm-plugins,mshell-plugin-ui/wasm
-          -- -D warnings
-
       - name: design lint (gate)
         # DESIGN.md §15 L1–L7: no hardcoded hex, no raw ≥4px
         # spacing/radius/font, --radius-widget only in bar/frame styles,
@@ -204,6 +193,65 @@ jobs:
             STRICT=--strict
           fi
           ./target/debug/mctl check-config $STRICT --config "$CFG"
+
+  # The WASM plugin path the package ships. The PKGBUILD builds the shell with
+  # `--features mshell/wasm-plugins`, which the `check` job never enables, so
+  # the wasmtime host, the plugin panel renderer and mshell-frame's
+  # cfg(feature = "wasm-plugins") code are built, linted and tested here —
+  # against the real guest fixtures (tests/fixtures/*-guest, built for
+  # wasm32-wasip2), so the host <-> guest contract (wit/world.wit) is
+  # exercised end to end. MARGO_REQUIRE_WASM_FIXTURES makes a fixture that
+  # failed to appear a test failure instead of a silent skip.
+  wasm:
+    name: wasm plugins (host + guests, arch)
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    timeout-minutes: 40
+    env:
+      MARGO_REQUIRE_WASM_FIXTURES: "1"
+    steps:
+      # Same build deps as `check`: mshell-frame links the full GTK stack.
+      - name: System dependencies (pacman)
+        run: |
+          pacman -Syu --noconfirm --needed \
+            git rustup clang pkgconf \
+            wayland wayland-protocols libinput libxkbcommon \
+            mesa libdrm seatd pixman libgudev systemd-libs \
+            pcre2 pam cairo pango dbus \
+            mpv \
+            gtk4 gtk4-layer-shell libadwaita gdk-pixbuf2 graphene fontconfig freetype2 \
+            gstreamer gst-plugins-base gst-plugins-base-libs gst-plugins-good \
+            alsa-lib libpulse pipewire
+
+      - uses: actions/checkout@v5
+
+      - name: Rust (rust-toolchain.toml pin) + wasm32-wasip2
+        run: |
+          rustup toolchain install
+          rustup target add wasm32-wasip2
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: wasm
+
+      - name: Build the guest fixtures (wasm32-wasip2)
+        run: ./scripts/build-wasm-fixtures.sh
+
+      - name: cargo test (plugin host, real guests)
+        run: cargo test --locked -p mshell-plugin-host --features wasm
+
+      - name: cargo test (plugin UI + frame, wasm features)
+        run: >-
+          cargo test --locked -p mshell-frame -p mshell-plugin-ui
+          --features mshell-frame/wasm-plugins,mshell-plugin-ui/wasm
+
+      - name: cargo clippy (wasm plugin feature, gate)
+        run: >-
+          cargo clippy --locked --all-targets
+          -p mshell -p mshell-frame -p mshell-plugin-ui -p mshell-plugin-host
+          --features mshell/wasm-plugins,mshell-plugin-ui/wasm
+          -- -D warnings
 
   # install.sh's Debian path on a current Debian: its apt list must carry
   # every -dev package the build needs (pkg-config probes and the -sys build

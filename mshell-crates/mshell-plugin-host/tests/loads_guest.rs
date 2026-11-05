@@ -3,9 +3,14 @@
 //! `capabilities` test drives the W3 host imports (`get-setting` + `http`)
 //! against a local one-shot HTTP server — no external network.
 //!
-//! Build the fixture first:
-//!   (cd tests/fixtures/hello-guest && cargo build --target wasm32-wasip2 --release)
+//! Build the guest fixtures first (needs `rustup target add wasm32-wasip2`):
+//!   ./scripts/build-wasm-fixtures.sh
 //! then: cargo test -p mshell-plugin-host --features wasm
+//!
+//! A fixture that isn't built makes its test print `skip:` and pass, so a
+//! plain local `cargo test` works without the wasm target. CI sets
+//! `MARGO_REQUIRE_WASM_FIXTURES=1`, which turns a missing fixture into a
+//! failure: the host/guest contract must never go green untested there.
 #![cfg(feature = "wasm")]
 
 use mshell_plugin_host::{PluginCapabilities, PluginRuntime, UiEvent, UiEventKind, UiKind};
@@ -15,19 +20,46 @@ use std::net::TcpListener;
 use std::path::PathBuf;
 use std::time::Duration;
 
-fn fixture() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/hello-guest/target/wasm32-wasip2/release/hello_guest.wasm")
+/// Env var that makes a missing guest fixture fail the test instead of
+/// skipping it (set by CI and `just check`).
+const REQUIRE_FIXTURES_ENV: &str = "MARGO_REQUIRE_WASM_FIXTURES";
+
+/// True when `value` (the [`REQUIRE_FIXTURES_ENV`] value) asks for the
+/// fixtures to be required: set, non-empty and not `0`.
+fn fixtures_required(value: Option<&std::ffi::OsStr>) -> bool {
+    value.is_some_and(|v| !v.is_empty() && v != "0")
 }
 
-fn sdk_fixture() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/sdk-guest/target/wasm32-wasip2/release/sdk_guest.wasm")
+/// The built `.wasm` of the guest crate `tests/fixtures/<name>`, or `None`
+/// when it isn't built (the test then skips) — unless the fixtures are
+/// required, when a missing one fails the test.
+fn guest(name: &str) -> Option<PathBuf> {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures")
+        .join(name)
+        .join("target/wasm32-wasip2/release")
+        .join(format!("{}.wasm", name.replace('-', "_")));
+    if path.exists() {
+        return Some(path);
+    }
+    assert!(
+        !fixtures_required(std::env::var_os(REQUIRE_FIXTURES_ENV).as_deref()),
+        "{name} fixture not built ({}) and {REQUIRE_FIXTURES_ENV} is set: \
+         run ./scripts/build-wasm-fixtures.sh first",
+        path.display()
+    );
+    eprintln!("skip: {name} fixture not built ({})", path.display());
+    None
 }
 
-fn assistant_fixture() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/assistant-guest/target/wasm32-wasip2/release/assistant_guest.wasm")
+#[test]
+fn fixture_requirement_flag() {
+    use std::ffi::OsStr;
+    assert!(!fixtures_required(None));
+    assert!(!fixtures_required(Some(OsStr::new(""))));
+    assert!(!fixtures_required(Some(OsStr::new("0"))));
+    assert!(fixtures_required(Some(OsStr::new("1"))));
+    assert!(fixtures_required(Some(OsStr::new("yes"))));
 }
 
 /// Serve one canned HTTP/1.1 response from a fresh local socket; returns the
@@ -52,11 +84,9 @@ fn serve_once(body: &'static str) -> (String, std::thread::JoinHandle<()>) {
 
 #[test]
 fn loads_and_drives_guest() {
-    let path = fixture();
-    if !path.exists() {
-        eprintln!("skip: guest fixture not built ({})", path.display());
+    let Some(path) = guest("hello-guest") else {
         return;
-    }
+    };
 
     let rt = PluginRuntime::new().expect("runtime");
     let mut inst = rt
@@ -104,11 +134,9 @@ fn loads_and_drives_guest() {
 /// deterministically.
 #[test]
 fn capabilities_get_setting_and_http() {
-    let path = fixture();
-    if !path.exists() {
-        eprintln!("skip: guest fixture not built ({})", path.display());
+    let Some(path) = guest("hello-guest") else {
         return;
-    }
+    };
 
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
     let addr = listener.local_addr().expect("addr");
@@ -166,11 +194,9 @@ fn denies_network_without_capability() {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
 
-    let path = fixture();
-    if !path.exists() {
-        eprintln!("skip: guest fixture not built ({})", path.display());
+    let Some(path) = guest("hello-guest") else {
         return;
-    }
+    };
 
     // A server that *would* answer if the (denied) request ever arrived. The
     // accept is non-blocking and polled briefly so the test can never hang when
@@ -232,11 +258,9 @@ fn denies_network_without_capability() {
 /// GTK timeout plays in the live shell.
 #[test]
 fn streaming_http_delivers_chunks() {
-    let path = fixture();
-    if !path.exists() {
-        eprintln!("skip: guest fixture not built ({})", path.display());
+    let Some(path) = guest("hello-guest") else {
         return;
-    }
+    };
 
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
     let addr = listener.local_addr().expect("addr");
@@ -306,11 +330,9 @@ fn streaming_http_delivers_chunks() {
 /// the reply into an "ai" bubble. Proves the authoring SDK end to end.
 #[test]
 fn sdk_chat_guest_runs_a_turn() {
-    let path = sdk_fixture();
-    if !path.exists() {
-        eprintln!("skip: sdk-guest fixture not built ({})", path.display());
+    let Some(path) = guest("sdk-guest") else {
         return;
-    }
+    };
 
     let (addr, server) = serve_once("hello from the model");
 
@@ -379,14 +401,9 @@ fn sdk_chat_guest_runs_a_turn() {
 /// setting at it.
 #[test]
 fn assistant_guest_streams_gemini_sse() {
-    let path = assistant_fixture();
-    if !path.exists() {
-        eprintln!(
-            "skip: assistant-guest fixture not built ({})",
-            path.display()
-        );
+    let Some(path) = guest("assistant-guest") else {
         return;
-    }
+    };
 
     // Two SSE events, each a Gemini generateContent chunk with a text delta.
     let sse = "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hello\"}]}}]}\n\n\
