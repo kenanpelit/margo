@@ -16,6 +16,23 @@ pub(super) fn push_background_hooks(effects: &mut EffectScope) {
         }
     });
 
+    // Removable-drive toasts: the udisks watcher otherwise only starts with
+    // the USB pill or menu, which left Settings → Toasts → Removable drives
+    // dead for everyone without them. The watcher is event-driven (udisks
+    // signals), so running it costs nothing while no drive changes. The
+    // watcher parks when nobody holds a receiver, so the toggle keeps one.
+    thread_local! {
+        static DRIVE_TOASTS: std::cell::RefCell<
+            Option<tokio::sync::watch::Receiver<crate::removable_drives::DrivesState>>,
+        > = const { std::cell::RefCell::new(None) };
+    }
+    effects.push(move |_| {
+        let on = config_manager().config().toasts().removable_drives().get();
+        DRIVE_TOASTS.with(|slot| {
+            *slot.borrow_mut() = on.then(crate::removable_drives::subscribe);
+        });
+    });
+
     // Crash notifications (systemd-coredump watcher): started and stopped
     // with the toggle, so it costs nothing while off.
     effects.push(move |_| {

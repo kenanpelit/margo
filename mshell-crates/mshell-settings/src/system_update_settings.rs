@@ -70,6 +70,7 @@ impl Component for SystemUpdateSettingsModel {
             set_hexpand: true,
             set_vexpand: true,
 
+            #[name = "page_box"]
             gtk::Box {
                 add_css_class: "settings-page",
                 set_orientation: gtk::Orientation::Vertical,

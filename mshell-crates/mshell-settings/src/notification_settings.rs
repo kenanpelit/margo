@@ -1,8 +1,8 @@
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
-    ConfigStoreFields, CrashesConfigStoreFields, MenuStoreFields, MenusStoreFields,
-    NotificationsStoreFields,
+    ConfigStoreFields, CrashesConfigStoreFields, JOURNAL_PRIORITIES, MenuStoreFields,
+    MenusStoreFields, NotificationsStoreFields, known_journal_priority,
 };
 use mshell_config::schema::position::NotificationPosition;
 use reactive_graph::prelude::{Get, GetUntracked};
@@ -27,7 +27,11 @@ pub(crate) struct NotificationSettingsModel {
     inline_reply: bool,
     show_progress: bool,
     auto_dnd: bool,
+    auto_dnd_release_ms: u32,
     crash_notify: bool,
+    /// Index into `JOURNAL_PRIORITIES` (Crashes menu → Errors tab level).
+    journal_priority: u32,
+    journal_priority_model: gtk::StringList,
     sound_enabled: bool,
     sound_low: bool,
     sound_normal: bool,
@@ -67,8 +71,12 @@ pub(crate) enum NotificationSettingsInput {
     ShowProgressChanged(bool),
     AutoDndChanged(bool),
     AutoDndEffect(bool),
+    AutoDndReleaseChanged(u32),
+    AutoDndReleaseEffect(u32),
     CrashNotifyChanged(bool),
     CrashNotifyEffect(bool),
+    JournalPriorityPicked(u32),
+    JournalPriorityEffect(u32),
     SoundEnabledChanged(bool),
     SoundLowChanged(bool),
     SoundNormalChanged(bool),
@@ -540,6 +548,48 @@ impl Component for NotificationSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/notifications/auto_dnd_release_ms",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        #[watch]
+                        set_sensitive: model.auto_dnd,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Restore delay (ms)",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "How long sharing must stay stopped before do-not-disturb is restored, so switching the shared window doesn't flicker it. Default 1000.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 60000.0),
+                            set_increments: (250.0, 1000.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(auto_dnd_release_handler)]
+                            set_value: model.auto_dnd_release_ms as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(NotificationSettingsInput::AutoDndReleaseChanged(s.value() as u32));
+                            } @auto_dnd_release_handler,
+                        },
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
                         set_widget_name: "setting:/crashes/notify",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
@@ -573,6 +623,44 @@ impl Component for NotificationSettingsModel {
                             connect_active_notify[sender] => move |s| {
                                 sender.input(NotificationSettingsInput::CrashNotifyChanged(s.is_active()));
                             } @crash_notify_handler,
+                        },
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/crashes/journal_priority",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Journal errors shown",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "The lowest journal priority the Crashes menu's Errors tab lists (this boot).",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.journal_priority_model),
+                            #[watch]
+                            #[block_signal(journal_priority_handler)]
+                            set_selected: model.journal_priority,
+                            connect_selected_notify[sender] => move |dd| {
+                                sender.input(NotificationSettingsInput::JournalPriorityPicked(dd.selected()));
+                            } @journal_priority_handler,
                         },
                     },
 
@@ -1197,6 +1285,24 @@ impl Component for NotificationSettingsModel {
             let v = config_manager().config().crashes().notify().get();
             sender_clone.input(NotificationSettingsInput::CrashNotifyEffect(v));
         });
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let v = config_manager()
+                .config()
+                .notifications()
+                .auto_dnd_release_ms()
+                .get();
+            sender_clone.input(NotificationSettingsInput::AutoDndReleaseEffect(v));
+        });
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let v = config_manager().config().crashes().journal_priority().get();
+            sender_clone.input(NotificationSettingsInput::JournalPriorityEffect(
+                journal_priority_index(&v),
+            ));
+        });
+        let journal_priority_labels: Vec<&str> =
+            JOURNAL_PRIORITIES.iter().map(|(_, label)| *label).collect();
 
         let (sound_rules_section, sound_rules_effects) =
             crate::notification_sound_rules::build_sound_rules_section();
@@ -1204,6 +1310,19 @@ impl Component for NotificationSettingsModel {
         let model = NotificationSettingsModel {
             _sound_rules_effects: sound_rules_effects,
             crash_notify: config_manager().config().crashes().notify().get_untracked(),
+            journal_priority: journal_priority_index(
+                &config_manager()
+                    .config()
+                    .crashes()
+                    .journal_priority()
+                    .get_untracked(),
+            ),
+            journal_priority_model: gtk::StringList::new(&journal_priority_labels),
+            auto_dnd_release_ms: config_manager()
+                .config()
+                .notifications()
+                .auto_dnd_release_ms()
+                .get_untracked(),
             auto_dnd: config_manager()
                 .config()
                 .notifications()
@@ -1467,6 +1586,27 @@ impl Component for NotificationSettingsModel {
                 self.crash_notify = v;
                 config_manager().update_config(|c| c.crashes.notify = v);
             }
+            NotificationSettingsInput::AutoDndReleaseChanged(v) => {
+                if self.auto_dnd_release_ms != v {
+                    self.auto_dnd_release_ms = v;
+                    config_manager().update_config(|c| c.notifications.auto_dnd_release_ms = v);
+                }
+            }
+            NotificationSettingsInput::AutoDndReleaseEffect(v) => {
+                self.auto_dnd_release_ms = v;
+            }
+            NotificationSettingsInput::JournalPriorityPicked(idx) => {
+                if let Some((value, _)) = JOURNAL_PRIORITIES.get(idx as usize)
+                    && self.journal_priority != idx
+                {
+                    self.journal_priority = idx;
+                    let value = value.to_string();
+                    config_manager().update_config(move |c| c.crashes.journal_priority = value);
+                }
+            }
+            NotificationSettingsInput::JournalPriorityEffect(idx) => {
+                self.journal_priority = idx;
+            }
             NotificationSettingsInput::CrashNotifyEffect(v) => {
                 self.crash_notify = v;
             }
@@ -1610,4 +1750,35 @@ fn parse_hhmm(s: &str) -> bool {
         return false;
     };
     h < 24 && m < 60
+}
+
+/// The Settings dropdown position for a configured journal priority. An
+/// unknown value shows as the default (`err`) — what the menu then uses.
+fn journal_priority_index(value: &str) -> u32 {
+    let value = known_journal_priority(value).unwrap_or("err");
+    JOURNAL_PRIORITIES
+        .iter()
+        .position(|(v, _)| *v == value)
+        .unwrap_or(0) as u32
+}
+
+#[cfg(test)]
+mod journal_priority_tests {
+    use super::*;
+
+    #[test]
+    fn the_dropdown_shows_the_configured_priority_and_typos_as_err() {
+        assert_eq!(
+            JOURNAL_PRIORITIES[journal_priority_index("warning") as usize].0,
+            "warning"
+        );
+        assert_eq!(
+            JOURNAL_PRIORITIES[journal_priority_index(" Crit ") as usize].0,
+            "crit"
+        );
+        assert_eq!(
+            JOURNAL_PRIORITIES[journal_priority_index("warn") as usize].0,
+            "err"
+        );
+    }
 }

@@ -27,3 +27,40 @@ impl Default for CrashesConfig {
         }
     }
 }
+
+/// The `crashes.journal_priority` values the Errors tab understands, in
+/// syslog order (index = priority number), with their Settings labels.
+pub const JOURNAL_PRIORITIES: &[(&str, &str)] = &[
+    ("emerg", "Emergency"),
+    ("alert", "Alert and worse"),
+    ("crit", "Critical and worse"),
+    ("err", "Error and worse (default)"),
+    ("warning", "Warning and worse"),
+];
+
+/// A configured priority normalised to its journalctl `-p` value, or `None`
+/// when it is not one of [`JOURNAL_PRIORITIES`] (a typo such as `warn`).
+pub fn known_journal_priority(value: &str) -> Option<&'static str> {
+    let want = value.trim().to_ascii_lowercase();
+    JOURNAL_PRIORITIES
+        .iter()
+        .map(|(v, _)| *v)
+        .find(|v| *v == want)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn known_priorities_normalise_and_typos_are_rejected() {
+        assert_eq!(known_journal_priority("warning"), Some("warning"));
+        assert_eq!(known_journal_priority(" CRIT "), Some("crit"));
+        assert_eq!(known_journal_priority("warn"), None);
+        assert_eq!(known_journal_priority(""), None);
+        assert_eq!(
+            known_journal_priority(&CrashesConfig::default().journal_priority),
+            Some("err")
+        );
+    }
+}

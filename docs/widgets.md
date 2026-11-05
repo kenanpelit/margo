@@ -193,7 +193,9 @@ crash history: core dumps of **your own** processes from systemd-coredump,
 newest first (program, signal, PID, time, whether the core file still
 exists), each with a bell button that mutes crash notifications for that
 program (`crashes.muted`). The **Journal errors** tab lists this boot's
-journal at `crashes.journal_priority` (`err` by default) and above.
+journal at `crashes.journal_priority` (`err` by default) and above — set
+it under **Settings → Notifications → Journal errors shown** (an unknown
+value falls back to `err` with a warning in the log).
 
 Turn on **Settings → Notifications → Crash notifications**
 (`crashes.notify`) for a critical notification when one of your programs
@@ -208,9 +210,12 @@ The Valent menu ends with a **Screen mirroring** card: every adb device
 a scrcpy window you can control with mouse and keyboard, and **Stop** to
 close it. Pair a phone once with the IP:port and 6-digit code from its
 *Developer options → Wireless debugging → Pair device with pairing code*,
-then **Connect** to the IP:port shown there. `valent.scrcpy_screen_off`
-keeps the phone's own screen dark; `valent.scrcpy_args` adds scrcpy flags
-(e.g. `--max-size=1280 --stay-awake`). Needs `scrcpy` and `android-tools`.
+then **Connect** to the IP:port shown there. Under **Settings → Widgets →
+Valent Connect → Screen mirroring**, *Turn the phone screen off*
+(`valent.scrcpy_screen_off`) keeps the phone's own screen dark and *Extra
+scrcpy arguments* (`valent.scrcpy_args`) adds scrcpy flags (e.g.
+`--max-size=1280 --stay-awake`). Mirror windows run in their own scope, so
+they stay open across a shell restart. Needs `scrcpy` and `android-tools`.
 
 See [Configuration](configuration.md) for the full profile layout, and
 [Scripting](scripting.md) for driving the shell and compositor from scripts.

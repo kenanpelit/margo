@@ -99,6 +99,7 @@ mod toast_settings;
 mod translate_settings;
 mod tune_bar_settings;
 mod users_settings;
+mod valent_mirror_settings;
 mod vpn_settings;
 mod wallpaper_settings;
 mod weather_settings;

@@ -162,14 +162,24 @@ pub(crate) struct JournalEntry {
 /// Journal priority names, most severe first (journalctl `-p` values).
 pub(crate) const PRIORITIES: &[&str] = &["emerg", "alert", "crit", "err", "warning"];
 
-/// Normalise a configured priority to a journalctl `-p` value.
+/// Normalise a configured priority to a journalctl `-p` value. An unknown
+/// value (a typo such as `warn`) falls back to `err` with a warning, once
+/// per value, instead of silently.
 pub(crate) fn journal_priority(cfg: &str) -> &'static str {
-    let want = cfg.trim().to_ascii_lowercase();
-    PRIORITIES
-        .iter()
-        .copied()
-        .find(|p| *p == want)
-        .unwrap_or("err")
+    use mshell_config::schema::config::known_journal_priority;
+    known_journal_priority(cfg).unwrap_or_else(|| {
+        static WARNED: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+        if let Ok(mut last) = WARNED.lock()
+            && last.as_deref() != Some(cfg)
+        {
+            tracing::warn!(
+                value = cfg,
+                "crashes.journal_priority: unknown value; using err (expected emerg, alert, crit, err or warning)"
+            );
+            *last = Some(cfg.to_string());
+        }
+        "err"
+    })
 }
 
 /// Parse `journalctl -o json` (one object per line), newest first.
@@ -617,6 +627,17 @@ mod tests {
         assert_eq!(journal_priority("warning"), "warning");
         assert_eq!(journal_priority(" CRIT "), "crit");
         assert_eq!(journal_priority("bogus"), "err");
+    }
+
+    /// The chip labels index PRIORITIES by syslog number; the config list
+    /// (and the Settings dropdown built from it) must be the same order.
+    #[test]
+    fn priority_lists_agree() {
+        let config: Vec<&str> = mshell_config::schema::config::JOURNAL_PRIORITIES
+            .iter()
+            .map(|(v, _)| *v)
+            .collect();
+        assert_eq!(config, PRIORITIES);
     }
 
     #[test]

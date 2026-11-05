@@ -352,6 +352,8 @@ pub(crate) struct WidgetMenuSettingsModel {
     /// Mdash-only: the quick-action buttons add/remove/reorder editor.
     /// `None` for every other menu kind.
     _mdash_buttons_controller: Option<Controller<MdashButtonsSettingsModel>>,
+    /// Valent-only: keeps the screen-mirroring section's config mirror.
+    _valent_effects: Option<EffectScope>,
     _effects: EffectScope,
 }
 
@@ -690,6 +692,10 @@ impl Component for WidgetMenuSettingsModel {
             None
         };
 
+        // Valent-only: the scrcpy (screen mirroring) options.
+        let valent_section = (kind == MenuKind::Valent)
+            .then(crate::valent_mirror_settings::build_valent_mirror_section);
+
         let model = WidgetMenuSettingsModel {
             kind,
             position: kind.read_position(),
@@ -705,6 +711,7 @@ impl Component for WidgetMenuSettingsModel {
             position_model,
             _cc_tiles_controller: cc_tiles_controller,
             _mdash_buttons_controller: mdash_buttons_controller,
+            _valent_effects: None,
             _effects: effects,
         };
 
@@ -717,6 +724,11 @@ impl Component for WidgetMenuSettingsModel {
         // Append the Mdash buttons section widget to the page box when present.
         if let Some(ctrl) = &model._mdash_buttons_controller {
             widgets.page_box.append(ctrl.widget());
+        }
+        let mut model = model;
+        if let Some((section, effects)) = valent_section {
+            widgets.page_box.append(&section);
+            model._valent_effects = Some(effects);
         }
 
         ComponentParts { model, widgets }
