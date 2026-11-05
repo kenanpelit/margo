@@ -64,6 +64,9 @@ use crate::menus::menu_widgets::screenshare::screenshare_menu_widget::{
     ScreenshareMenuWidgetInit, ScreenshareMenuWidgetInput, ScreenshareMenuWidgetModel,
     ScreenshareMenuWidgetOutput,
 };
+use crate::menus::menu_widgets::screenshot::screenshot_menu_widget::{
+    ScreenshotMenuWidgetInput, ScreenshotMenuWidgetModel,
+};
 use crate::menus::menu_widgets::session::session_menu_widget::{
     SessionMenuWidgetInput, SessionMenuWidgetModel,
 };
@@ -902,6 +905,14 @@ impl Component for MenuModel {
                         controller
                             .sender()
                             .send(ScreenshareMenuWidgetInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<ScreenshotMenuWidgetModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(ScreenshotMenuWidgetInput::ParentRevealChanged(visible))
                             .ok();
                     }
                     if let Some(controller) =

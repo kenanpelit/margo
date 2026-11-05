@@ -24,10 +24,8 @@ pub(crate) struct ScreenshotMenuWidgetModel {
     delay_row: Controller<RevealerRowModel<RevealerRowLabelModel, DelayOptionsList>>,
     save_option: OutputTarget,
     save_row: Controller<RevealerRowModel<RevealerRowLabelModel, SaveOptionsList>>,
-    /// `(sensitive, tooltip)` per region tool, probed once at build.
-    ocr_tool: (bool, String),
-    qr_tool: (bool, String),
-    palette_tool: (bool, String),
+    /// `(sensitive, tooltip)` per region tool, re-probed on every open.
+    tools: region_tools::ToolStates,
 }
 
 #[derive(Debug)]
@@ -39,6 +37,10 @@ pub(crate) enum ScreenshotMenuWidgetInput {
     WindowClicked,
     AreaClicked,
     ToolClicked(RegionTool),
+    /// T / Q / P pressed; launches the tool if it is available now.
+    ToolKey(char),
+    /// The hosting menu opened / closed: re-probe the region tools on open.
+    ParentRevealChanged(bool),
 }
 
 #[derive(Debug)]
@@ -185,8 +187,10 @@ impl Component for ScreenshotMenuWidgetModel {
 
                 #[template]
                 BigButton {
-                    set_sensitive: model.ocr_tool.0,
-                    set_tooltip_text: Some(&model.ocr_tool.1),
+                    #[watch]
+                    set_sensitive: model.tools.ocr.0,
+                    #[watch]
+                    set_tooltip_text: Some(&model.tools.ocr.1),
                     connect_clicked[sender] => move |_| {
                         sender.input(ScreenshotMenuWidgetInput::ToolClicked(RegionTool::Ocr));
                     },
@@ -203,8 +207,10 @@ impl Component for ScreenshotMenuWidgetModel {
 
                 #[template]
                 BigButton {
-                    set_sensitive: model.qr_tool.0,
-                    set_tooltip_text: Some(&model.qr_tool.1),
+                    #[watch]
+                    set_sensitive: model.tools.qr.0,
+                    #[watch]
+                    set_tooltip_text: Some(&model.tools.qr.1),
                     connect_clicked[sender] => move |_| {
                         sender.input(ScreenshotMenuWidgetInput::ToolClicked(RegionTool::Qr));
                     },
@@ -221,8 +227,10 @@ impl Component for ScreenshotMenuWidgetModel {
 
                 #[template]
                 BigButton {
-                    set_sensitive: model.palette_tool.0,
-                    set_tooltip_text: Some(&model.palette_tool.1),
+                    #[watch]
+                    set_sensitive: model.tools.palette.0,
+                    #[watch]
+                    set_tooltip_text: Some(&model.tools.palette.1),
                     connect_clicked[sender] => move |_| {
                         sender.input(ScreenshotMenuWidgetInput::ToolClicked(RegionTool::Palette));
                     },
@@ -341,9 +349,7 @@ impl Component for ScreenshotMenuWidgetModel {
             delay_row,
             save_option: OutputTarget::FileAndClipboard,
             save_row: save_option_row,
-            ocr_tool: region_tools::availability(RegionTool::Ocr, region_tools::on_path),
-            qr_tool: region_tools::availability(RegionTool::Qr, region_tools::on_path),
-            palette_tool: region_tools::availability(RegionTool::Palette, region_tools::on_path),
+            tools: region_tools::ToolStates::probe(region_tools::on_path),
         };
 
         let widgets = view_output!();
@@ -354,9 +360,6 @@ impl Component for ScreenshotMenuWidgetModel {
         // Capture-phase controller on the root sees the keys.
         {
             let sender = sender.clone();
-            let ocr_ok = model.ocr_tool.0;
-            let qr_ok = model.qr_tool.0;
-            let palette_ok = model.palette_tool.0;
             let kc = gtk::EventControllerKey::new();
             kc.set_propagation_phase(gtk::PropagationPhase::Capture);
             kc.connect_key_pressed(move |_, keyval, _, _| {
@@ -370,14 +373,10 @@ impl Component for ScreenshotMenuWidgetModel {
                     Some('m' | 'M') => Some(ScreenshotMenuWidgetInput::MonitorClicked),
                     Some('w' | 'W') => Some(ScreenshotMenuWidgetInput::WindowClicked),
                     Some('r' | 'R' | 's' | 'S') => Some(ScreenshotMenuWidgetInput::AreaClicked),
-                    Some('t' | 'T') if ocr_ok => {
-                        Some(ScreenshotMenuWidgetInput::ToolClicked(RegionTool::Ocr))
-                    }
-                    Some('q' | 'Q') if qr_ok => {
-                        Some(ScreenshotMenuWidgetInput::ToolClicked(RegionTool::Qr))
-                    }
-                    Some('p' | 'P') if palette_ok => {
-                        Some(ScreenshotMenuWidgetInput::ToolClicked(RegionTool::Palette))
+                    // Availability is decided by the model at press time
+                    // (tools are re-probed on every open), not captured here.
+                    Some(c @ ('t' | 'T' | 'q' | 'Q' | 'p' | 'P')) => {
+                        Some(ScreenshotMenuWidgetInput::ToolKey(c))
                     }
                     _ => None,
                 };
@@ -396,7 +395,7 @@ impl Component for ScreenshotMenuWidgetModel {
 
     fn update_with_view(
         &mut self,
-        _widgets: &mut Self::Widgets,
+        widgets: &mut Self::Widgets,
         message: Self::Input,
         sender: ComponentSender<Self>,
         _root: &Self::Root,
@@ -472,8 +471,21 @@ impl Component for ScreenshotMenuWidgetModel {
                 );
             }
             ScreenshotMenuWidgetInput::ToolClicked(tool) => {
-                let _ = sender.output(ScreenshotMenuWidgetOutput::CloseMenu);
-                region_tools::launch(tool);
+                if self.tools.enabled(tool) {
+                    let _ = sender.output(ScreenshotMenuWidgetOutput::CloseMenu);
+                    region_tools::launch(tool);
+                }
+            }
+            ScreenshotMenuWidgetInput::ToolKey(key) => {
+                if let Some(tool) = region_tools::tool_for_key(key, &self.tools) {
+                    let _ = sender.output(ScreenshotMenuWidgetOutput::CloseMenu);
+                    region_tools::launch(tool);
+                }
+            }
+            ScreenshotMenuWidgetInput::ParentRevealChanged(visible) => {
+                if visible {
+                    self.tools = region_tools::ToolStates::probe(region_tools::on_path);
+                }
             }
             ScreenshotMenuWidgetInput::AreaClicked => {
                 let _ = sender.output(ScreenshotMenuWidgetOutput::CloseMenu);
@@ -490,6 +502,7 @@ impl Component for ScreenshotMenuWidgetModel {
                 );
             }
         }
+        self.update_view(widgets, sender);
     }
 }
 
