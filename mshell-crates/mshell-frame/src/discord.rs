@@ -4,7 +4,8 @@
 //! started lazily the first time a pill or menu subscribes and driven on
 //! the shared wayle tokio runtime. Protocol framing and the voice-state
 //! reducer live in `mshell_utils::discord` (pure, tested); this file is
-//! only the socket loop:
+//! the session state machine ([`Session`], I/O-free, tested in
+//! `discord_tests.rs`) and the socket loop:
 //!
 //! * find Discord's IPC socket and accept it only when its peer UID is
 //!   ours (a `discord-ipc-N` in a shared `/tmp` could belong to someone
@@ -28,7 +29,7 @@ use mshell_utils::discord::{
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::future::Future;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -92,17 +93,16 @@ fn token_path() -> PathBuf {
     margo_fs::xdg::state_home().join("margo/discord-token")
 }
 
-fn load_token() -> Option<String> {
-    std::fs::read_to_string(token_path())
+fn load_token(path: &Path) -> Option<String> {
+    std::fs::read_to_string(path)
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
 }
 
-fn save_token(token: &str) {
+fn save_token(path: &Path, token: &str) {
     use std::io::Write;
     use std::os::unix::fs::OpenOptionsExt;
-    let path = token_path();
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
@@ -111,14 +111,14 @@ fn save_token(token: &str) {
         .create(true)
         .truncate(true)
         .mode(0o600)
-        .open(&path);
+        .open(path);
     if let Ok(mut f) = file {
         let _ = f.write_all(token.as_bytes());
     }
 }
 
-fn clear_token() {
-    let _ = std::fs::remove_file(token_path());
+fn clear_token(path: &Path) {
+    let _ = std::fs::remove_file(path);
 }
 
 /// StreamKit's broker turns the AUTHORIZE code into an access token.
@@ -194,28 +194,55 @@ enum Kind {
     Other,
 }
 
+/// The protocol state machine, free of I/O: requests are queued in
+/// [`Session::out`] and written by [`session`] after each step, so the
+/// decisions are unit-tested without a socket (`discord_tests.rs`).
 struct Session {
-    w: OwnedWriteHalf,
     state: DiscordState,
     pending: HashMap<String, Kind>,
     nonce: u64,
     token: Option<String>,
     /// Channel whose events we're subscribed to.
     subscribed: Option<String>,
+    /// Where the access token is stored.
+    token_file: PathBuf,
+    /// Command payloads not yet written to the socket, in order.
+    out: Vec<Value>,
 }
 
 impl Session {
-    async fn request(&mut self, cmd: &str, args: Value, kind: Kind, evt: Option<&str>) {
-        self.nonce += 1;
-        let nonce = self.nonce.to_string();
-        self.pending.insert(nonce.clone(), kind);
-        let payload = discord::command(cmd, args, &nonce, evt);
-        if let Err(e) = write_frame(&mut self.w, OP_FRAME, &payload).await {
-            debug!(error = %e, cmd, "discord write failed");
+    fn new(token_file: PathBuf) -> Self {
+        Self {
+            state: DiscordState {
+                status: DiscordStatus::NeedsAuth,
+                ..Default::default()
+            },
+            pending: HashMap::new(),
+            nonce: 0,
+            token: None,
+            subscribed: None,
+            token_file,
+            out: Vec::new(),
         }
     }
 
-    async fn sync_subscriptions(&mut self) {
+    fn request(&mut self, cmd: &str, args: Value, kind: Kind, evt: Option<&str>) {
+        self.nonce += 1;
+        let nonce = self.nonce.to_string();
+        self.pending.insert(nonce.clone(), kind);
+        self.out.push(discord::command(cmd, args, &nonce, evt));
+    }
+
+    /// Write the queued requests.
+    async fn flush(&mut self, w: &mut OwnedWriteHalf) {
+        for payload in std::mem::take(&mut self.out) {
+            if let Err(e) = write_frame(w, OP_FRAME, &payload).await {
+                debug!(error = %e, cmd = ?payload.get("cmd"), "discord write failed");
+            }
+        }
+    }
+
+    fn sync_subscriptions(&mut self) {
         let want = self.state.channel_id.clone();
         if want == self.subscribed {
             return;
@@ -227,8 +254,7 @@ impl Session {
                     json!({ "channel_id": old }),
                     Kind::Other,
                     Some(evt),
-                )
-                .await;
+                );
             }
         }
         if let Some(new) = want {
@@ -238,31 +264,27 @@ impl Session {
                     json!({ "channel_id": new }),
                     Kind::Other,
                     Some(evt),
-                )
-                .await;
+                );
             }
             self.subscribed = Some(new);
         }
     }
 
-    async fn on_ready_authenticated(&mut self) {
+    fn on_ready_authenticated(&mut self) {
         for evt in GLOBAL_EVENTS {
-            self.request("SUBSCRIBE", json!({}), Kind::Other, Some(evt))
-                .await;
+            self.request("SUBSCRIBE", json!({}), Kind::Other, Some(evt));
         }
         self.request(
             "GET_SELECTED_VOICE_CHANNEL",
             json!({}),
             Kind::SelectedChannel,
             None,
-        )
-        .await;
-        self.request("GET_VOICE_SETTINGS", json!({}), Kind::VoiceSettings, None)
-            .await;
+        );
+        self.request("GET_VOICE_SETTINGS", json!({}), Kind::VoiceSettings, None);
     }
 
     /// Handle one payload; returns an AUTHORIZE code to exchange, if any.
-    async fn on_payload(&mut self, p: Value) -> Option<String> {
+    fn on_payload(&mut self, p: Value) -> Option<String> {
         let nonce = p.get("nonce").and_then(Value::as_str).map(str::to_string);
         let evt = p
             .get("evt")
@@ -280,7 +302,7 @@ impl Session {
                 .to_string();
             match kind {
                 Some(Kind::Authenticate) => {
-                    clear_token();
+                    clear_token(&self.token_file);
                     self.token = None;
                     self.state.status = DiscordStatus::NeedsAuth;
                     self.state.message = "Authorization expired — authorize again".to_string();
@@ -314,13 +336,13 @@ impl Session {
                 self.state.status = DiscordStatus::Ready;
                 self.state.message.clear();
                 if let Some(t) = &self.token {
-                    save_token(t);
+                    save_token(&self.token_file, t);
                 }
-                self.on_ready_authenticated().await;
+                self.on_ready_authenticated();
             }
             Some(Kind::SelectedChannel) => {
                 self.state.set_channel(&data);
-                self.sync_subscriptions().await;
+                self.sync_subscriptions();
             }
             Some(Kind::VoiceSettings) => self.state.set_voice_settings(&data),
             Some(Kind::Other) => {}
@@ -333,18 +355,17 @@ impl Session {
                         json!({}),
                         Kind::SelectedChannel,
                         None,
-                    )
-                    .await;
+                    );
                 } else if evt == "VOICE_CHANNEL_SELECT" {
                     // Left the channel: drop its event subscriptions.
-                    self.sync_subscriptions().await;
+                    self.sync_subscriptions();
                 }
             }
         }
         None
     }
 
-    async fn authenticate(&mut self, token: String) {
+    fn authenticate(&mut self, token: String) {
         self.token = Some(token.clone());
         self.state.status = DiscordStatus::Authorizing;
         self.request(
@@ -352,11 +373,21 @@ impl Session {
             json!({ "access_token": token }),
             Kind::Authenticate,
             None,
-        )
-        .await;
+        );
     }
 
-    async fn on_command(&mut self, cmd: DiscordCommand) {
+    /// Result of the StreamKit code exchange.
+    fn on_token_exchange(&mut self, token: Result<String, String>) {
+        match token {
+            Ok(t) => self.authenticate(t),
+            Err(e) => {
+                self.state.status = DiscordStatus::NeedsAuth;
+                self.state.message = e;
+            }
+        }
+    }
+
+    fn on_command(&mut self, cmd: DiscordCommand) {
         let ready = self.state.status == DiscordStatus::Ready;
         match cmd {
             DiscordCommand::Authorize if self.state.status == DiscordStatus::NeedsAuth => {
@@ -367,8 +398,7 @@ impl Session {
                     discord::authorize_args(),
                     Kind::Authorize,
                     None,
-                )
-                .await;
+                );
             }
             DiscordCommand::SetMute(m) if ready => {
                 self.request(
@@ -376,8 +406,7 @@ impl Session {
                     json!({ "mute": m }),
                     Kind::VoiceSettings,
                     None,
-                )
-                .await;
+                );
             }
             DiscordCommand::SetDeaf(d) if ready => {
                 self.request(
@@ -385,8 +414,7 @@ impl Session {
                     json!({ "deaf": d }),
                     Kind::VoiceSettings,
                     None,
-                )
-                .await;
+                );
             }
             DiscordCommand::Leave if ready => {
                 self.request(
@@ -394,10 +422,9 @@ impl Session {
                     json!({ "channel_id": null }),
                     Kind::Other,
                     None,
-                )
-                .await;
+                );
                 self.state.leave();
-                self.sync_subscriptions().await;
+                self.sync_subscriptions();
             }
             DiscordCommand::SetUserVolume(id, v) if ready => {
                 let v = v.min(200);
@@ -409,8 +436,7 @@ impl Session {
                     json!({ "user_id": id, "volume": v }),
                     Kind::Other,
                     None,
-                )
-                .await;
+                );
             }
             _ => {}
         }
@@ -421,6 +447,7 @@ async fn session(
     stream: UnixStream,
     state_tx: &watch::Sender<DiscordState>,
     cmd_rx: &mut mpsc::UnboundedReceiver<DiscordCommand>,
+    token_file: PathBuf,
 ) {
     let (mut r, mut w) = stream.into_split();
     if write_frame(&mut w, OP_HANDSHAKE, &discord::handshake_payload())
@@ -433,20 +460,11 @@ async fn session(
         Ok((OP_FRAME, v)) if v.get("evt").and_then(Value::as_str) == Some("READY") => {}
         _ => return,
     }
-    let mut s = Session {
-        w,
-        state: DiscordState {
-            status: DiscordStatus::NeedsAuth,
-            ..Default::default()
-        },
-        pending: HashMap::new(),
-        nonce: 0,
-        token: None,
-        subscribed: None,
-    };
-    if let Some(t) = load_token() {
-        s.authenticate(t).await;
+    let mut s = Session::new(token_file);
+    if let Some(t) = load_token(&s.token_file) {
+        s.authenticate(t);
     }
+    s.flush(&mut w).await;
     state_tx.send_replace(s.state.clone());
 
     // `read_exact` isn't cancel-safe, so frames are read on their own task
@@ -467,10 +485,10 @@ async fn session(
             frame = frame_rx.recv() => {
                 let Some((op, v)) = frame else { break };
                 match op {
-                    OP_PING => { let _ = write_frame(&mut s.w, OP_PONG, &v).await; }
+                    OP_PING => { let _ = write_frame(&mut w, OP_PONG, &v).await; }
                     OP_CLOSE => break,
                     OP_FRAME => {
-                        if let Some(code) = s.on_payload(v).await {
+                        if let Some(code) = s.on_payload(v) {
                             let tx = code_tx.clone();
                             tokio::task::spawn_blocking(move || {
                                 let _ = tx.send(exchange_code(&code));
@@ -480,15 +498,10 @@ async fn session(
                     _ => {}
                 }
             }
-            Some(token) = code_rx.recv() => match token {
-                Ok(t) => s.authenticate(t).await,
-                Err(e) => {
-                    s.state.status = DiscordStatus::NeedsAuth;
-                    s.state.message = e;
-                }
-            },
-            Some(cmd) = cmd_rx.recv() => s.on_command(cmd).await,
+            Some(token) = code_rx.recv() => s.on_token_exchange(token),
+            Some(cmd) = cmd_rx.recv() => s.on_command(cmd),
         }
+        s.flush(&mut w).await;
         state_tx.send_if_modified(|cur| {
             let changed = *cur != s.state;
             if changed {
@@ -532,7 +545,7 @@ async fn run(
         wait_for_subscriber(&state_tx, &wake).await;
         if let Some(stream) = connect().await {
             tokio::select! {
-                () = session(stream, &state_tx, &mut cmd_rx) => {}
+                () = session(stream, &state_tx, &mut cmd_rx, token_path()) => {}
                 // The last subscriber left: drop the connection too.
                 () = state_tx.closed() => {}
             }
@@ -556,6 +569,10 @@ async fn run(
         }
     }
 }
+
+#[path = "discord_tests.rs"]
+#[cfg(test)]
+mod discord_tests;
 
 #[cfg(test)]
 mod tests {
