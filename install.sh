@@ -283,7 +283,8 @@ debian_build() {
   cargo build --locked --profile dist --features mshell/wasm-plugins \
     --config 'profile.dist.lto="thin"' --config 'profile.dist.codegen-units=16' \
     -p mshell -p mshellctl -p mshellshare \
-    -p mpicker -p mwizard -p mkeys -p mvpn -p margo-portal -p mgreet
+    -p mpicker -p mwizard -p mkeys -p mvpn -p margo-portal -p mgreet \
+    -p mshell-privileged
   # mtune on its own — its async-io zbus stack must not feature-unify with
   # the shell group's tokio (matches the PKGBUILD's isolated invocation).
   log "building mtune (dist)"
@@ -335,6 +336,11 @@ debian_install_files() {
   done
   # margo-portal lives under /usr/lib (D-Bus-activated, not a CLI)
   install_file 755 "${tgt}/margo-portal" "/usr/lib/margo/margo-portal"
+  # mshell's root helper (run through pkexec) + its polkit actions; the
+  # code and the policy both name these exact paths.
+  install_file 755 "${tgt}/mshell-privileged" "/usr/lib/mshell/mshell-privileged"
+  install_file 644 "${REPO_ROOT}/mshell-crates/mshell-privileged/data/org.margo.mshell.privileged.policy" \
+    "/usr/share/polkit-1/actions/org.margo.mshell.privileged.policy"
 
   # ── man pages (margo / mctl / mshellctl, section 1) ──
   local manpage
@@ -576,6 +582,8 @@ debian_uninstall() {
     for p in /usr/bin/{margo,start-margo,mctl,mlock,mlayout,mscreenshot,mvisual,mdots,mlogind,mgreet,mpower,mshell,mshellctl,mshellshare,mpicker,mwizard,mkeys,mvpn,mcal,mtm,mtune} \
              /usr/bin/margo-uwsm-session /usr/bin/margo-session \
              /usr/lib/margo/margo-portal \
+             /usr/lib/mshell/mshell-privileged \
+             /usr/share/polkit-1/actions/org.margo.mshell.privileged.policy \
              /usr/share/wayland-sessions/margo-uwsm.desktop \
              /etc/xdg/uwsm/env-margo \
              /usr/share/xdg-desktop-portal/margo-portals.conf \
@@ -601,7 +609,7 @@ debian_uninstall() {
   [[ -d /usr/share/doc/${DEB_DOCNAME}/sessions ]] &&
     $SUDO find /usr/share/doc/${DEB_DOCNAME}/sessions -depth -type d -empty -delete 2>/dev/null || true
   local d
-  for d in /usr/lib/margo /usr/lib/systemd/user/graphical-session.target.wants \
+  for d in /usr/lib/margo /usr/lib/mshell /usr/lib/systemd/user/graphical-session.target.wants \
            /usr/share/margo/wallpapers \
            /usr/share/margo/mshell/profiles /usr/share/margo/mshell /usr/share/margo \
            /usr/share/icons/MargoMaterial /usr/share/mshell/sounds \

@@ -143,11 +143,14 @@ in
         -p margo -p start-margo \
         -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mlogind -p mpower \
         -p mdots -p mcal -p mtm
+      # mshell runs its root helper by absolute path, and the polkit policy
+      # names the same one: point both at the store, not /usr/lib/mshell.
+      export MSHELL_PRIVILEGED_HELPER="$out/lib/mshell/mshell-privileged"
       cargo build --frozen --release -j "$NIX_BUILD_CORES" \
         --features mshell/wasm-plugins \
         -p mshell -p mshellctl -p mshellshare -p mpicker -p mwizard \
         -p mkeys -p mvpn -p mgreet \
-        -p margo-portal
+        -p margo-portal -p mshell-privileged
       cargo build --frozen --release -j "$NIX_BUILD_CORES" -p mtune
       runHook postBuild
     '';
@@ -169,14 +172,22 @@ in
         install -Dm755 "$rel/$bin" "$out/bin/$bin"
       done
       install -Dm755 "$rel/margo-portal" "$out/lib/margo/margo-portal"
+      install -Dm755 "$rel/mshell-privileged" "$out/lib/mshell/mshell-privileged"
 
       # usr <file>: point the /usr (and /usr/local) paths at this package.
       usr() {
         substituteInPlace "$1" \
           --replace-quiet /usr/local/bin/ "$out/bin/" \
           --replace-quiet /usr/bin/ "$out/bin/" \
-          --replace-quiet /usr/lib/margo/ "$out/lib/margo/"
+          --replace-quiet /usr/lib/margo/ "$out/lib/margo/" \
+          --replace-quiet /usr/lib/mshell/ "$out/lib/mshell/"
       }
+
+      # mshell's root helper's polkit actions (NixOS links share/polkit-1
+      # of systemPackages); exec.path must be the store path pkexec runs.
+      install -Dm644 mshell-crates/mshell-privileged/data/org.margo.mshell.privileged.policy \
+        "$out/share/polkit-1/actions/org.margo.mshell.privileged.policy"
+      usr "$out/share/polkit-1/actions/org.margo.mshell.privileged.policy"
 
       # Session: the uwsm-managed entry only (the PKGBUILD's package() says
       # why the bare `Exec=margo` entry is not offered).

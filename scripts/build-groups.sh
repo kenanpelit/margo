@@ -24,7 +24,7 @@
 set -euo pipefail
 
 compositor="margo start-margo mctl mlock mlayout mscreenshot mvisual mlogind mpower mdots mcal mtm"
-shell="mshell mshellctl mshellshare mpicker mwizard mkeys mvpn mgreet margo-portal"
+shell="mshell mshellctl mshellshare mpicker mwizard mkeys mvpn mgreet margo-portal mshell-privileged"
 # Built on its own (its async-io zbus stack must not unify with the shell's tokio).
 mtune="mtune"
 

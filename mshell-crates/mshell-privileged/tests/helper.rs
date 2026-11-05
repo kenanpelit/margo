@@ -422,6 +422,44 @@ fn upgrade_and_rollback_exec_pacman_with_a_fixed_argv() {
 #[test]
 fn the_policy_has_one_action_per_subcommand() {
     let policy = include_str!("../data/org.margo.mshell.privileged.policy");
+    // The packages install the helper where the code runs it (Nix
+    // rewrites both to the store path).
+    if option_env!("MSHELL_PRIVILEGED_HELPER").is_none() {
+        assert_eq!(
+            mshell_privileged::HELPER,
+            "/usr/lib/mshell/mshell-privileged"
+        );
+    }
+    let repo = |rel: &str| {
+        std::fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../..")
+                .join(rel),
+        )
+        .unwrap_or_else(|e| panic!("{rel}: {e}"))
+    };
+    for (file, needle) in [
+        ("PKGBUILD", "\"$pkgdir/usr/lib/mshell/mshell-privileged\""),
+        (
+            "PKGBUILD",
+            "/usr/share/polkit-1/actions/org.margo.mshell.privileged.policy",
+        ),
+        ("install.sh", "\"/usr/lib/mshell/mshell-privileged\""),
+        (
+            "install.sh",
+            "/usr/share/polkit-1/actions/org.margo.mshell.privileged.policy",
+        ),
+        (
+            "nix/default.nix",
+            "MSHELL_PRIVILEGED_HELPER=\"$out/lib/mshell/mshell-privileged\"",
+        ),
+        (
+            "nix/default.nix",
+            "$out/share/polkit-1/actions/org.margo.mshell.privileged.policy",
+        ),
+    ] {
+        assert!(repo(file).contains(needle), "{file} lost {needle}");
+    }
     for sub in mshell_privileged::SUBCOMMANDS {
         let id = format!("<action id=\"{}{sub}\">", mshell_privileged::ACTION_PREFIX);
         let start = policy

@@ -115,7 +115,7 @@ optdepends=(
   # Sessions & XDG plumbing
   "xdg-desktop-portal-wlr: alternative wlroots-native screencast backend (not used by default; margo-portal serves ScreenCast/Screenshot natively)"
   "xdg-utils: xdg-open / xdg-mime for opening links, files and default apps"
-  "polkit: pkexec for privileged actions (power menu, firewall widget)"
+  "polkit: pkexec for privileged actions (power menu, firewall widget, update/pacnew/rollback, CPU dashboard)"
   # Toolkit Wayland backends (for non-GTK apps under margo)
   "qt5-wayland: Qt5 native Wayland backend"
   "qt6-wayland: Qt6 native Wayland backend"
@@ -344,11 +344,13 @@ build() {
   # wayland-client/khronos-egl/wayland-egl for the wallpaper engine's own
   # EGL context; it already lives in this tokio/GTK group, so nothing
   # else changes here.
+  # mshell-privileged (the root helper mshell's pkexec actions run) is
+  # libc-only; it sits with mshell, whose frame links its library half.
   cargo build --frozen --release \
     --features mshell/wasm-plugins \
     -p mshell -p mshellctl -p mshellshare -p mpicker -p mwizard \
     -p mkeys -p mvpn -p mgreet \
-    -p margo-portal
+    -p margo-portal -p mshell-privileged
 
   # mtune (folder-first music player) gets its OWN invocation. Its
   # `mpris-server` dep pulls zbus on the `async-io` executor (same as
@@ -583,6 +585,19 @@ package() {
     "$pkgdir/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.margo.service"
   install -Dm644 "assets/margo-portal.service" \
     "$pkgdir/usr/lib/systemd/user/margo-portal.service"
+
+  # ── mshell's root helper + its polkit actions ───────────────────
+  # Every privileged action mshell offers (pacnew review, rollback,
+  # background upgrade, signalling another user's process, SMART read,
+  # ThinkPad fan level) is one fixed verb of this helper, run through
+  # pkexec. Root-owned 0755 in a directory users can't write; the policy
+  # matches each verb on exec.path + exec.argv1 so the polkit dialog
+  # names what root will do. Both paths are fixed by the code
+  # (mshell_privileged::HELPER) and the policy file.
+  install -Dm755 "target/release/mshell-privileged" \
+    "$pkgdir/usr/lib/mshell/mshell-privileged"
+  install -Dm644 "mshell-crates/mshell-privileged/data/org.margo.mshell.privileged.policy" \
+    "$pkgdir/usr/share/polkit-1/actions/org.margo.mshell.privileged.policy"
 
   # ── mshell desktop-shell user service ──────────────────────────
   # Starts mshell (the bar / menus / notifications) when a margo
