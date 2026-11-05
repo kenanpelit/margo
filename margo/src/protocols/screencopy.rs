@@ -137,6 +137,9 @@ impl ScreencopyQueue {
 #[derive(Default)]
 pub struct ScreencopyManagerState {
     queues: HashMap<ZwlrScreencopyManagerV1, ScreencopyQueue>,
+    /// The session is paused (VT switch): nothing renders until the
+    /// resume, so no frame can be served.
+    session_paused: bool,
 }
 
 pub struct ScreencopyManagerGlobalData {
@@ -160,15 +163,36 @@ impl ScreencopyManagerState {
 
         Self {
             queues: HashMap::new(),
+            session_paused: false,
         }
     }
 
     pub fn push(&mut self, manager: &ZwlrScreencopyManagerV1, screencopy: Screencopy) {
+        if self.session_paused {
+            trace!("screencopy: session paused, failing the frame");
+            drop(screencopy); // → `failed`
+            return;
+        }
         let Some(queue) = self.queues.get_mut(manager) else {
             error!("screencopy queue must not be deleted while frames exist");
             return;
         };
         queue.push(screencopy);
+    }
+
+    /// The session paused (`true`) or resumed. Nothing is rendered
+    /// while it is paused, so every queued frame is failed now, and new
+    /// ones are failed as they come (see [`Self::push`]), instead of
+    /// waiting for the switch back.
+    pub fn set_session_paused(&mut self, paused: bool) {
+        self.session_paused = paused;
+        if paused {
+            for queue in self.queues.values_mut() {
+                queue.screencopies.clear(); // → `failed`
+                queue.damage_trackers.clear();
+            }
+            self.cleanup_queues();
+        }
     }
 
     /// Iterate every queue.

@@ -357,3 +357,35 @@ fn failing_an_output_reaches_frames_behind_another_outputs() {
     assert_eq!(*edp_frame.lock().unwrap(), ["buffer", "failed"]);
     assert_eq!(queued(&fx), ["DP-3"]);
 }
+
+/// While the session is paused (VT switch) nothing is rendered, so a
+/// queued frame would only be answered after the switch back: grim and
+/// the portal Screenshot hung for as long as the user was away. Queued
+/// frames fail when the session pauses, new ones fail at once, and
+/// capturing works again after the resume.
+#[test]
+fn screencopy_fails_promptly_while_the_session_is_paused() {
+    let (mut fx, id, manager, outputs) = grim_desk();
+    let queued_before = capture(&mut fx, id, &manager, &outputs[0], (64, 48));
+    assert_eq!(queued(&fx), ["eDP-1"]);
+
+    fx.server
+        .state
+        .protocols
+        .screencopy
+        .set_session_paused(true);
+    fx.roundtrip(id);
+    assert_eq!(*queued_before.lock().unwrap(), ["buffer", "failed"]);
+    let during = capture(&mut fx, id, &manager, &outputs[1], (80, 40));
+    assert_eq!(*during.lock().unwrap(), ["buffer", "failed"]);
+    assert!(queued(&fx).is_empty());
+
+    fx.server
+        .state
+        .protocols
+        .screencopy
+        .set_session_paused(false);
+    let after = capture(&mut fx, id, &manager, &outputs[0], (64, 48));
+    assert_eq!(*after.lock().unwrap(), ["buffer"]);
+    assert_eq!(queued(&fx), ["eDP-1"]);
+}

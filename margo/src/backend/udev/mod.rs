@@ -1024,9 +1024,13 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                     // Release DRM master and stop committing: repaint_tick
                     // and the hotplug rescan skip KMS until the resume.
                     session::pause_drm(&mut backend_data.borrow_mut().drm);
+                    // Nothing renders until the resume: answer captures
+                    // now instead of after the switch back.
+                    state.protocols.screencopy.set_session_paused(true);
                 }
                 SessionEvent::ActivateSession => {
                     info!("session activated");
+                    state.protocols.screencopy.set_session_paused(false);
                     {
                         let mut bd = backend_data.borrow_mut();
                         session::activate_drm(&mut bd.drm);
@@ -1104,6 +1108,7 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
         // Same as a PauseSession: no KMS commits until ActivateSession, which
         // re-takes master and resets every output's state.
         session::pause_drm(&mut backend_data.borrow_mut().drm);
+        state.protocols.screencopy.set_session_paused(true);
     }
 
     state.libinput = Some(libinput.clone());
