@@ -215,11 +215,19 @@ backup=(
   "etc/mlogind/xsetup.sh"
 )
 # Cargo profile already enables thin LTO; the outer makepkg LTO
-# pass would just spend time twice. `!strip` preserves the symbol
-# tables so `coredumpctl info` / `addr2line` can resolve mesa-side
-# render aborts. The Cargo release profile sets `strip = "none"`;
-# this line keeps makepkg's outer strip from overriding it.
-options=(!lto !strip)
+# pass would just spend time twice.
+#
+# `debug` (with makepkg's default `strip`) splits the debug info out:
+# the installed binaries are stripped (measured on r2960: 1144 MB of ELF
+# -> 214 MB; /usr/bin/mshell 644 -> 113 MB) and the symbols + line
+# tables go to a separate `margo-git-debug` package under
+# /usr/lib/debug (build-id + .gnu_debuglink). Install that package to
+# keep symbolized backtraces: `coredumpctl info`/gdb and margo's own
+# panic-hook backtrace both find the split debug info there; without it
+# a panic still names its file:line, but the frames are addresses. The
+# Cargo release profile keeps `strip = "none"` so the symbols survive
+# until makepkg moves them.
+options=(!lto debug)
 # The install scriptlet retires an /etc/mlogind/variables.toml that the
 # pre-4.5.1 `mlogind sync-theme` wrote (post_install/post_upgrade run the
 # helper installed below). It also refreshes mtune's GSettings schema,
@@ -254,10 +262,18 @@ prepare() {
 build() {
   cd "$srcdir/margo"
 
-  # `--remap-path-prefix` rewrites the build dir to `/build` in
-  # the embedded debug strings; otherwise pacman warns about a
-  # reference to `$srcdir` in the installed binary.
-  export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$srcdir=/build"
+  # The debug strings point at the sources the `debug` option ships in
+  # margo-git-debug (/usr/src/debug/margo-git), not at `$srcdir`, or
+  # pacman warns about a reference to `$srcdir` in the installed binary.
+  # makepkg's `debug` option adds this same remap itself; repeating it
+  # keeps builders that skip makepkg's build environment clean too.
+  local dbgsrc="${DBGSRCDIR:-/usr/src/debug}/${pkgbase:-$pkgname}"
+  # `-C debuginfo=line-tables-only` overrides makepkg's DEBUG_RUSTFLAGS
+  # (`-C debuginfo=2`, rust.conf), which would replace the Cargo
+  # profile's line tables with full DWARF: a far larger debug package and
+  # a much slower link, for variable-level detail nobody steps through.
+  # Line tables + symbols are what backtraces and coredumps need.
+  export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$srcdir=$dbgsrc -C debuginfo=line-tables-only"
   # `--remap-path-prefix` only touches rustc — build scripts that
   # spawn the C compiler via `cc-rs` (e.g. `libspa-sys`, which
   # generates `static_fns.c` for PipeWire bindings) bake their
@@ -265,8 +281,8 @@ build() {
   # info via gcc/clang's own path encoding. Mirror the remap on
   # the C side with `-ffile-prefix-map` so makepkg's "reference
   # to $srcdir" check stays clean.
-  export CFLAGS="${CFLAGS:-} -ffile-prefix-map=$srcdir=/build"
-  export CXXFLAGS="${CXXFLAGS:-} -ffile-prefix-map=$srcdir=/build"
+  export CFLAGS="${CFLAGS:-} -ffile-prefix-map=$srcdir=$dbgsrc"
+  export CXXFLAGS="${CXXFLAGS:-} -ffile-prefix-map=$srcdir=$dbgsrc"
 
   # Two invocations on purpose — do NOT collapse back to a single
   # `--workspace` build. The shell-side crates pull the `wayle-*`

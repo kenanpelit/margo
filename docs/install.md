@@ -29,6 +29,16 @@ paru -S margo-git        # or: yay -S margo-git
 It's a VCS (`-git`) package — re-running the same command rebuilds against
 the latest `main`. Uninstall with `pacman -Rns margo-git`.
 
+The binaries are stripped; their symbols and line tables are built into a
+separate `margo-git-debug` package (`/usr/lib/debug`, ~0.9 GB). Install it
+when you want symbolized crash reports — `coredumpctl info` / gdb and
+margo's own panic backtraces find it automatically. Without it a panic
+still names its source file and line, but the backtrace frames are bare
+addresses. AUR helpers build it alongside the main package (paru keeps it
+in `~/.cache/paru/clone/margo-git/`); `./install.sh` leaves it in its build
+directory (or your `PKGDEST`):
+`sudo pacman -U ~/.kod/margo_build/margo-git-debug-*.pkg.tar.zst`.
+
 **From the repo.** `./install.sh` runs the bundled `PKGBUILD` through
 `makepkg` + `pacman` — the same flow as `makepkg -si`, handy when working
 on the tree locally. Build dependencies are resolved by `makepkg`.

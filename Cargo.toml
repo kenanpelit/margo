@@ -349,10 +349,12 @@ debug = "line-tables-only"
 debug = "line-tables-only"
 overflow-checks = true
 lto = "thin"
-# Keep symbols in the installed binary so coredumps from crashes
-# (looking at you, mesa abort inside the render path on overview
-# trigger) can be symbolized via `addr2line -e /usr/bin/margo …`.
-# Default `cargo install` strips; this prevents that.
+# Keep symbols + line tables in the built binary so crashes (looking at
+# you, mesa abort inside the render path on overview trigger) can be
+# symbolized. The PKGBUILD's `debug` option then moves them into the
+# separate `margo-git-debug` package (/usr/lib/debug); install.sh's
+# Debian path and `just` install them in the binary as built. Default
+# `cargo install` strips; this prevents that.
 strip = "none"
 
 # Release-grade distribution build. Inherits `release` but trades a longer
