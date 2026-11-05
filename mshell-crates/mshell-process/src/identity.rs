@@ -382,7 +382,17 @@ mod tests {
             .spawn()
             .expect("spawn sleep");
         let pid = child.id();
-        let info = read_in(Path::new(PROC), pid).expect("readable");
+        // `spawn` returns when the close-on-exec pipe closes, which the kernel
+        // does in `begin_new_exec`, before the new argv is mapped: a read in
+        // that window sees an empty cmdline. Wait for the exec to finish.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let info = loop {
+            let info = read_in(Path::new(PROC), pid).expect("readable");
+            if info.program_name().is_some() || std::time::Instant::now() > deadline {
+                break info;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        };
         assert_eq!(Some(info.uid), own_uid());
         assert_eq!(info.program_name(), Some("sleep".as_ref()));
         let id = info.identity();
