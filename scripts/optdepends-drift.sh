@@ -17,11 +17,16 @@ sources() { find "$root" \( -name target -o -name .git \) -prune -o -name '*.rs'
 
 # (1) program names in the code: the call forms that take a program name
 # (absolute paths are left out: they name a file, not a package).
-code_tools="$(sources | xargs -0 grep -ohE \
-    '\b(Command::new|command_exists|which_exists|which|on_path|is_command_available|find_on_path|find_in_path)\(\s*"[A-Za-z0-9][A-Za-z0-9_.+-]*"' |
+# One grep over every file's text: `xargs grep` runs grep per batch of
+# files, and a batch with no match exits 1, which xargs turns into 123 and
+# pipefail into a failed gate (it hit as soon as the file count moved a
+# batch boundary). A tree with no match at all is fine too.
+text() { sources | xargs -0 cat --; }
+code_tools="$(text | { grep -ohE \
+    '\b(Command::new|command_exists|which_exists|which|on_path|is_command_available|find_on_path|find_in_path)\(\s*"[A-Za-z0-9][A-Za-z0-9_.+-]*"' || true; } |
     sed -E 's/.*"([^"]+)"$/\1/' | sort -u)"
 # Every string literal, for the stale-row check.
-literals="$(sources | xargs -0 grep -ohE '"[A-Za-z0-9][A-Za-z0-9_.+-]*"' | tr -d '"' | sort -u)"
+literals="$(text | { grep -ohE '"[A-Za-z0-9][A-Za-z0-9_.+-]*"' || true; } | tr -d '"' | sort -u)"
 
 rows="$(grep -vE '^[[:space:]]*(#|$)' "$table" | awk '{print $1, $2}')"
 table_tools="$(awk '$1 != "-" {print $1}' <<<"$rows" | sort -u)"

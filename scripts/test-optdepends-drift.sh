@@ -40,4 +40,10 @@ check "a row for a program the code no longer names fails" 1 "$(run)"
 fresh; printf 'fn f() { let _ = std::process::Command::new("/usr/bin/env"); }\n' > "$tmp/r/new.rs"
 check "an absolute path is not a program name" 0 "$(run)"
 
+# Enough files that the scan spans several grep batches, some of them
+# with no program name at all: that is no drift.
+fresh; mkdir -p "$tmp/r/pad"
+for i in $(seq 1 5000); do printf '// nothing here\n' >"$tmp/r/pad/f$i.rs"; done
+check "batches of files that name no program still pass" 0 "$(run)"
+
 exit "$fail"
