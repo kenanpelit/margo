@@ -459,12 +459,9 @@ pub(crate) fn review_blocking(file: &ConfigFile) -> Review {
     let Some(i) = pick_base(&candidates, &theirs) else {
         return r;
     };
-    let dir = std::env::temp_dir().join(format!("mshell-pacnew-{}", std::process::id()));
-    let _ = std::fs::create_dir_all(&dir);
-    let base_path = dir.join("base");
-    if std::fs::write(&base_path, &candidates[i]).is_err() {
+    let Ok(base_path) = stage_base(&margo_fs::xdg::runtime_dir_or_tmp(), &candidates[i]) else {
         return r;
-    }
+    };
     if let Ok(o) = Command::new("diff3")
         .args(["-m", "-L", "mine", "-L", "base", "-L", "theirs"])
         .arg(&file.live)
@@ -479,6 +476,46 @@ pub(crate) fn review_blocking(file: &ConfigFile) -> Review {
     }
     let _ = std::fs::remove_file(&base_path);
     r
+}
+
+/// Write the base copy for diff3 into `dir` (the user's 0700 runtime
+/// dir in practice): a fresh name opened `O_CREAT|O_EXCL` with mode
+/// 0600, so a pre-planted symlink or FIFO is never followed or opened.
+/// The caller removes it.
+pub(crate) fn stage_base(dir: &Path, bytes: &[u8]) -> std::io::Result<PathBuf> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static SEQ: AtomicU32 = AtomicU32::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let mut last = None;
+    for _ in 0..8 {
+        let p = dir.join(format!(
+            "mshell-pacnew-base-{}-{nanos:x}-{}",
+            std::process::id(),
+            SEQ.fetch_add(1, Ordering::Relaxed)
+        ));
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&p)
+        {
+            Ok(mut f) => {
+                if let Err(e) = f.write_all(bytes) {
+                    let _ = std::fs::remove_file(&p);
+                    return Err(e);
+                }
+                return Ok(p);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => last = Some(e),
+            Err(e) => return Err(e),
+        }
+    }
+    Err(last.unwrap_or_else(|| std::io::Error::other("no free name")))
 }
 
 #[cfg(test)]
@@ -773,6 +810,32 @@ mod tests {
         std::os::unix::fs::symlink(&secret, &review).unwrap();
         assert!(!run_install(&review, &live, &review).success());
         assert_eq!(std::fs::read_to_string(&live).unwrap(), "mine\n");
+    }
+
+    #[test]
+    fn the_diff3_base_never_follows_a_planted_path() {
+        // The base used to go to /tmp/mshell-pacnew-<pid>/base: another
+        // user could pre-create that as a symlink to one of our files
+        // (overwritten with the package default) or a FIFO (diff3 hangs).
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let victim = dir.path().join("authorized_keys");
+        std::fs::write(&victim, "ssh-ed25519 KEY\n").unwrap();
+        std::os::unix::fs::symlink(&victim, dir.path().join("base")).unwrap();
+        let mut staged = Vec::new();
+        for _ in 0..2 {
+            let p = stage_base(dir.path(), b"default\n").unwrap();
+            let m = std::fs::symlink_metadata(&p).unwrap();
+            assert!(m.file_type().is_file());
+            assert_eq!(m.permissions().mode() & 0o777, 0o600);
+            assert_eq!(std::fs::read(&p).unwrap(), b"default\n");
+            staged.push(p);
+        }
+        assert_ne!(staged[0], staged[1], "a fresh name every time");
+        assert_eq!(
+            std::fs::read_to_string(&victim).unwrap(),
+            "ssh-ed25519 KEY\n"
+        );
     }
 
     #[test]
