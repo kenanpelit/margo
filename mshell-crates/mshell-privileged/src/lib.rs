@@ -2,7 +2,7 @@
 //!
 //! Every privileged action the shell offers (pacnew review, rollback,
 //! the background upgrade, signalling another user's process, a SMART
-//! read, a ThinkPad fan level) is one fixed subcommand of this binary,
+//! read, a ThinkPad fan level, the battery charge limit) is one fixed subcommand of this binary,
 //! with its own polkit action (`org.margo.mshell.privileged.<sub>`,
 //! matched on `exec.path` + `exec.argv1`), so the password dialog says
 //! exactly what root is about to do instead of "run /bin/sh". There is
@@ -44,13 +44,14 @@ pub fn installed() -> bool {
 }
 
 /// Every subcommand, in policy order.
-pub const SUBCOMMANDS: [&str; 8] = [
+pub const SUBCOMMANDS: [&str; 9] = [
     "pacnew-install",
     "pacnew-merge",
     "pacnew-remove",
     "kill",
     "smart-read",
     "fan-set",
+    "charge-limit",
     "upgrade",
     "rollback",
 ];
@@ -107,6 +108,10 @@ pub enum Request {
     SmartRead { devices: Vec<String> },
     /// Write `level <level>` to `/proc/acpi/ibm/fan`.
     FanSet { level: FanLevel },
+    /// Write the charge limit (end threshold, %) of every battery that
+    /// has one under `/sys/class/power_supply` (found by the helper
+    /// itself), and the start threshold to 5 below it where present.
+    ChargeLimit { limit: u8 },
     /// `pacman -Syu --noconfirm` (official repositories only).
     Upgrade,
     /// `pacman -U --noconfirm <cached package>`.
@@ -122,6 +127,7 @@ impl Request {
             Request::Kill { .. } => "kill",
             Request::SmartRead { .. } => "smart-read",
             Request::FanSet { .. } => "fan-set",
+            Request::ChargeLimit { .. } => "charge-limit",
             Request::Upgrade => "upgrade",
             Request::Rollback { .. } => "rollback",
         }
@@ -146,6 +152,7 @@ impl Request {
             ],
             Request::SmartRead { devices } => devices.iter().map(OsString::from).collect(),
             Request::FanSet { level } => vec![level.keyword().into()],
+            Request::ChargeLimit { limit } => vec![limit.to_string().into()],
             Request::Upgrade => Vec::new(),
             Request::Rollback { package } => vec![p(package)],
         }
@@ -223,6 +230,12 @@ impl Request {
                 arity(1)?;
                 Request::FanSet {
                     level: FanLevel::parse(a(0))?,
+                }
+            }
+            "charge-limit" => {
+                arity(1)?;
+                Request::ChargeLimit {
+                    limit: validate::charge_limit(a(0))?,
                 }
             }
             "upgrade" => {
@@ -308,6 +321,7 @@ mod tests {
         round_trip(Request::FanSet {
             level: FanLevel::FullSpeed,
         });
+        round_trip(Request::ChargeLimit { limit: 80 });
         round_trip(Request::Upgrade);
         round_trip(Request::Rollback {
             package: "/var/cache/pacman/pkg/a-1-1-any.pkg.tar.zst".into(),
@@ -362,6 +376,8 @@ mod tests {
         assert_eq!(p(&["upgrade", "--overwrite=*"]).unwrap_err().code(), 2);
         assert_eq!(p(&["kill", "5", "1"]).unwrap_err().code(), 2);
         assert_eq!(p(&["smart-read"]).unwrap_err().code(), 2);
+        assert_eq!(p(&["charge-limit", "101"]).unwrap_err().code(), 2);
+        assert!(Request::ChargeLimit { limit: 0 }.validated().is_err());
         let many: Vec<String> = (0..17).map(|i| format!("/dev/sd{i}")).collect();
         let mut v = vec!["smart-read"];
         v.extend(many.iter().map(String::as_str));

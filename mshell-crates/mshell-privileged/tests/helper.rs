@@ -293,6 +293,116 @@ fn fan_writes_one_allowed_line_to_the_fixed_file() {
     assert!(!h.p("/proc/acpi/ibm/fan").exists());
 }
 
+/// A battery in the fixture's `/sys/class/power_supply` with both
+/// thresholds.
+fn battery(f: &Fixture, name: &str, start: &str, end: &str) {
+    let dir = format!("/sys/class/power_supply/{name}");
+    f.write(&format!("{dir}/type"), "Battery\n");
+    f.write(&format!("{dir}/charge_control_start_threshold"), start);
+    f.write(&format!("{dir}/charge_control_end_threshold"), end);
+}
+
+#[test]
+fn charge_limit_writes_the_thresholds_the_helper_finds_itself() {
+    let f = Fixture::new();
+    battery(&f, "BAT0", "75\n", "80\n");
+    battery(&f, "BAT1", "75\n", "80\n");
+    // Not batteries: the AC adapter and a peripheral's battery-less
+    // supply (a fake threshold file must not be written).
+    f.write("/sys/class/power_supply/AC/type", "Mains\n");
+    f.write(
+        "/sys/class/power_supply/AC/charge_control_end_threshold",
+        "keep",
+    );
+    // Lowering: the start threshold goes first (start < end always).
+    let o = f.run(&["charge-limit", "60"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    for b in ["BAT0", "BAT1"] {
+        let d = format!("/sys/class/power_supply/{b}");
+        assert_eq!(f.read(&format!("{d}/charge_control_end_threshold")), "60\n");
+        assert_eq!(
+            f.read(&format!("{d}/charge_control_start_threshold")),
+            "55\n"
+        );
+    }
+    assert_eq!(
+        f.read("/sys/class/power_supply/AC/charge_control_end_threshold"),
+        "keep"
+    );
+    // Raising: end first, then start.
+    let o = f.run(&["charge-limit", "100"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert_eq!(
+        f.read("/sys/class/power_supply/BAT0/charge_control_end_threshold"),
+        "100\n"
+    );
+    assert_eq!(
+        f.read("/sys/class/power_supply/BAT0/charge_control_start_threshold"),
+        "95\n"
+    );
+    // A battery with only an end threshold (generic drivers).
+    let g = Fixture::new();
+    g.write("/sys/class/power_supply/BAT0/type", "Battery\n");
+    g.write(
+        "/sys/class/power_supply/BAT0/charge_control_end_threshold",
+        "100\n",
+    );
+    let o = g.run(&["charge-limit", "80"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert_eq!(
+        g.read("/sys/class/power_supply/BAT0/charge_control_end_threshold"),
+        "80\n"
+    );
+    assert!(
+        !g.p("/sys/class/power_supply/BAT0/charge_control_start_threshold")
+            .exists(),
+        "nothing is created"
+    );
+}
+
+#[test]
+fn charge_limit_refuses_hostile_values_and_planted_links() {
+    let f = Fixture::new();
+    battery(&f, "BAT0", "75\n", "80\n");
+    for bad in [
+        "0", "101", "-5", "080", "80 ", " 80", "8a", "", "80\n", "1e2", "255", "256",
+    ] {
+        let o = f.run(&["charge-limit", bad]);
+        assert_eq!(code(&o), 2, "{bad:?}: {}", stderr(&o));
+    }
+    assert_eq!(code(&f.run(&["charge-limit"])), 2);
+    assert_eq!(code(&f.run(&["charge-limit", "80", "/etc/shadow"])), 2);
+    assert_eq!(
+        f.read("/sys/class/power_supply/BAT0/charge_control_end_threshold"),
+        "80\n"
+    );
+
+    // A threshold file replaced by a symlink is not written through.
+    let g = Fixture::new();
+    let victim = g.write("/etc/sudoers", "root ALL\n");
+    g.write("/sys/class/power_supply/BAT0/type", "Battery\n");
+    symlink(
+        &victim,
+        g.p("/sys/class/power_supply/BAT0/charge_control_end_threshold"),
+    )
+    .expect("symlink");
+    let o = g.run(&["charge-limit", "60"]);
+    assert_eq!(code(&o), 3, "{}", stderr(&o));
+    assert_eq!(g.read("/etc/sudoers"), "root ALL\n");
+
+    // No battery with a threshold: refused, nothing created.
+    let h = Fixture::new();
+    std::fs::create_dir_all(h.p("/sys/class/power_supply/BAT0")).expect("mkdir");
+    h.write("/sys/class/power_supply/BAT0/type", "Battery\n");
+    let o = h.run(&["charge-limit", "80"]);
+    assert_eq!(code(&o), 3, "{}", stderr(&o));
+    assert!(stderr(&o).contains("charge limit"), "{}", stderr(&o));
+    assert!(
+        !h.p("/sys/class/power_supply/BAT0/charge_control_end_threshold")
+            .exists()
+    );
+}
+
 #[test]
 fn kill_rechecks_the_start_time() {
     let f = Fixture::new();

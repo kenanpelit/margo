@@ -111,6 +111,7 @@ pub fn execute(root: &Sysroot, req: Request, stdin: &mut dyn std::io::Read) -> R
         Request::Kill { pid, start, signal } => crate::procsig::kill(*pid, *start, *signal),
         Request::SmartRead { devices } => smart_read(root, devices),
         Request::FanSet { level } => fsops::fan_set(root, *level),
+        Request::ChargeLimit { limit } => fsops::charge_limit(root, *limit),
         Request::Upgrade => {
             let pacman = program(root, &[PACMAN], "pacman")?;
             let args = pacman_args(&req, None).unwrap_or_default();

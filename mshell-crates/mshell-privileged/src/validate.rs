@@ -187,6 +187,18 @@ impl FanLevel {
     }
 }
 
+/// A battery charge limit (end threshold, %): a plain decimal 1–100.
+/// Drivers that take only some values (a few vendor ACPI drivers)
+/// reject the others themselves with `EINVAL`.
+pub fn charge_limit(arg: &OsStr) -> Result<u8, Error> {
+    let b = arg.as_bytes();
+    digits(b)
+        .then(|| std::str::from_utf8(b).ok()?.parse::<u8>().ok())
+        .flatten()
+        .filter(|n| (1..=100).contains(n))
+        .ok_or_else(|| invalid("charge limit (1-100)", arg))
+}
+
 /// Package file extensions pacman writes to its cache.
 const PKG_EXTS: [&str; 9] = [
     ".pkg.tar",
@@ -387,6 +399,18 @@ mod tests {
             "07",
         ] {
             assert!(FanLevel::parse(os(bad)).is_err(), "{bad:?} accepted");
+        }
+    }
+
+    #[test]
+    fn charge_limits_are_plain_percentages() {
+        assert_eq!(charge_limit(os("80")).unwrap(), 80);
+        assert_eq!(charge_limit(os("1")).unwrap(), 1);
+        assert_eq!(charge_limit(os("100")).unwrap(), 100);
+        for bad in [
+            "0", "101", "255", "256", "-1", "+80", "080", " 80", "80 ", "80\n", "8.0", "", "0x50",
+        ] {
+            assert!(charge_limit(os(bad)).is_err(), "{bad:?} accepted");
         }
     }
 

@@ -534,12 +534,18 @@ impl Component for PowerMenuWidgetModel {
                 });
             }
             PowerMenuWidgetInput::SetChargeLimit(limit) => {
-                // pkexec writes the sysfs threshold asynchronously (polkit
-                // prompt). Reflect the intended value optimistically; the
-                // battery watcher / next read confirms the applied value.
-                set_charge_limit(limit);
+                // The helper writes the sysfs threshold behind a polkit
+                // prompt. Reflect the intended value optimistically, then
+                // re-read once it returns: a cancelled or refused prompt
+                // puts the real value back.
                 self.state.charge_limit = Some(limit);
                 sync_view(self);
+                sender.command(move |out, _shutdown| async move {
+                    if let Err(e) = set_charge_limit(limit).await {
+                        warn!("power: charge limit {limit}%: {e}");
+                    }
+                    let _ = out.send(PowerMenuWidgetCommandOutput::StateChanged);
+                });
             }
             PowerMenuWidgetInput::SetHistoryHours(hours) => {
                 self.history_hours = battery_history::clamp_hours(hours);

@@ -15,7 +15,6 @@
 //! colour-coded — performance = red, balanced = neutral,
 //! power-saver = green.
 
-use mshell_process::SpawnReaped;
 use mshell_services::{battery_service, line_power_service, power_profile_service};
 use mshell_utils::battery::{
     get_battery_icon, get_charging_battery_icon, spawn_battery_online_watcher,
@@ -442,24 +441,44 @@ pub(crate) fn read_charge_limit() -> Option<u8> {
     std::fs::read_to_string(p).ok()?.trim().parse::<u8>().ok()
 }
 
-/// Set the charge limit (end threshold) via `pkexec` — the sysfs file is
-/// root-owned, so the polkit agent prompts. The start threshold is nudged
-/// just below the limit first (ThinkPad's EC rejects start ≥ end).
-pub(crate) fn set_charge_limit(limit: u8) {
+/// The `pkexec` argv setting the charge limit: the helper's fixed
+/// `charge-limit` verb, which finds the batteries' sysfs thresholds
+/// itself (end = the limit, start 5 below it, in the order ThinkPad's
+/// EC accepts). Clamped to the menu's 20–100 range.
+pub(crate) fn charge_limit_argv(limit: u8) -> Vec<String> {
     let limit = limit.clamp(20, 100);
-    let Some(end_path) = charge_limit_end_path() else {
-        return;
-    };
-    let start_path = end_path.with_file_name("charge_control_start_threshold");
-    let start = limit.saturating_sub(5);
-    let script = format!(
-        "echo {start} > '{}' 2>/dev/null; echo {limit} > '{}'",
-        start_path.display(),
-        end_path.display(),
-    );
-    let _ = std::process::Command::new("pkexec")
-        .arg("sh")
-        .arg("-c")
-        .arg(script)
-        .spawn_reaped();
+    mshell_privileged::lossy(&mshell_privileged::Request::ChargeLimit { limit }.argv())
+}
+
+/// Set the charge limit as root through `pkexec mshell-privileged
+/// charge-limit` (the sysfs files are root-owned, so the polkit agent
+/// prompts). `Err` carries the user-facing reason.
+pub(crate) async fn set_charge_limit(limit: u8) -> Result<(), String> {
+    if !mshell_privileged::installed() {
+        return Err(mshell_privileged::MISSING.to_string());
+    }
+    let out = tokio::process::Command::new("pkexec")
+        .args(charge_limit_argv(limit))
+        .output()
+        .await
+        .map_err(|e| format!("pkexec unavailable: {e}"))?;
+    crate::menus::menu_widgets::cpu_dashboard::pkexec_outcome(
+        out.status.code(),
+        &String::from_utf8_lossy(&out.stderr),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::charge_limit_argv;
+
+    #[test]
+    fn the_charge_limit_goes_through_the_helper_with_a_fixed_argv() {
+        let argv = charge_limit_argv(80);
+        assert_eq!(argv, [mshell_privileged::HELPER, "charge-limit", "80"]);
+        assert!(!argv.iter().any(|a| a == "sh" || a == "-c"), "no shell");
+        // The menu's floor and ceiling.
+        assert_eq!(charge_limit_argv(5)[2], "20");
+        assert_eq!(charge_limit_argv(250)[2], "100");
+    }
 }

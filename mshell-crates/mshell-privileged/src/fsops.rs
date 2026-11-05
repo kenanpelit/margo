@@ -421,3 +421,153 @@ pub fn fan_set(root: &Sysroot, level: crate::FanLevel) -> Result<(), Error> {
     f.write_all(format!("level {}\n", level.keyword()).as_bytes())
         .map_err(|e| Error::Io(format!("{FAN_FILE}: {e} (is fan_control=1 set?)")))
 }
+
+/// The kernel's power-supply class directory.
+pub const POWER_SUPPLY: &str = "/sys/class/power_supply";
+/// The per-battery charge thresholds (thinkpad_acpi and the generic
+/// power-supply class both publish these names).
+const END_THRESHOLD: &str = "charge_control_end_threshold";
+const START_THRESHOLD: &str = "charge_control_start_threshold";
+/// `SYSFS_MAGIC` from `linux/magic.h`.
+const SYSFS_MAGIC: i64 = 0x6265_6572;
+
+/// Open an existing control file write-only (truncating) without
+/// following a symlink or creating it. On the real root it must live on
+/// sysfs, so a bind mount or a stray regular file is never written.
+fn open_control(root: &Sysroot, logical: &Path) -> Result<File, Error> {
+    let path = root.phys(logical);
+    let c = cstr(path.as_os_str())?;
+    // SAFETY: NUL-terminated path; no O_CREAT, so no mode argument.
+    let fd = unsafe {
+        libc::open(
+            c.as_ptr(),
+            libc::O_WRONLY | libc::O_TRUNC | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+        )
+    };
+    if fd < 0 {
+        let e = errno();
+        return Err(match e.raw_os_error() {
+            Some(libc::ELOOP) => {
+                Error::Refused(format!("refusing {}: a symlink", logical.display()))
+            }
+            Some(libc::ENOENT) => Error::Refused(format!("{} is missing", logical.display())),
+            _ => Error::Io(format!("{}: {e}", logical.display())),
+        });
+    }
+    // SAFETY: just opened, not shared.
+    let f = File::from(unsafe { OwnedFd::from_raw_fd(fd) });
+    if root.is_real() {
+        // SAFETY: zeroed `statfs` is a valid out-parameter; valid fd.
+        let mut st: libc::statfs = unsafe { std::mem::zeroed() };
+        // SAFETY: as above.
+        let r = unsafe { libc::fstatfs(f.as_raw_fd(), &mut st) };
+        #[allow(clippy::unnecessary_cast)] // f_type's width differs per arch
+        if r != 0 || st.f_type as i64 != SYSFS_MAGIC {
+            return Err(Error::Refused(format!(
+                "refusing {}: not on sysfs",
+                logical.display()
+            )));
+        }
+    }
+    let m = f
+        .metadata()
+        .map_err(|e| Error::Io(format!("{}: {e}", logical.display())))?;
+    if !m.file_type().is_file() {
+        return Err(Error::Refused(format!(
+            "refusing {}: not a regular file",
+            logical.display()
+        )));
+    }
+    Ok(f)
+}
+
+/// A power-supply entry name as the kernel makes them (`BAT0`,
+/// `macsmc-battery`, `hidpp_battery_0`): no `/`, no leading dot.
+fn supply_name(name: &OsStr) -> bool {
+    let b = name.as_bytes();
+    !b.is_empty()
+        && b.len() <= 64
+        && b[0] != b'.'
+        && b.iter()
+            .all(|c| c.is_ascii_alphanumeric() || b"_-.:".contains(c))
+}
+
+/// Every battery under [`POWER_SUPPLY`] with a charge-limit file, by
+/// name. The class entries are kernel symlinks into `/sys/devices`;
+/// the files inside are then opened with `O_NOFOLLOW`.
+pub fn threshold_batteries(root: &Sysroot) -> Result<Vec<PathBuf>, Error> {
+    let class = root.phys(Path::new(POWER_SUPPLY));
+    let rd = match std::fs::read_dir(&class) {
+        Ok(rd) => rd,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(Error::Io(format!("{POWER_SUPPLY}: {e}"))),
+    };
+    let mut out: Vec<PathBuf> = Vec::new();
+    for entry in rd.flatten() {
+        let name = entry.file_name();
+        if !supply_name(&name) {
+            continue;
+        }
+        let logical = Path::new(POWER_SUPPLY).join(&name);
+        let phys = root.phys(&logical);
+        let mut kind = String::new();
+        let typed = File::open(phys.join("type"))
+            .and_then(|f| f.take(64).read_to_string(&mut kind))
+            .is_ok();
+        if !typed || kind.trim() != "Battery" {
+            continue;
+        }
+        if std::fs::symlink_metadata(phys.join(END_THRESHOLD)).is_ok() {
+            out.push(logical);
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
+fn read_threshold(root: &Sysroot, logical: &Path) -> Option<u8> {
+    let mut s = String::new();
+    File::open(root.phys(logical))
+        .and_then(|f| f.take(16).read_to_string(&mut s))
+        .ok()?;
+    s.trim().parse().ok()
+}
+
+fn write_threshold(root: &Sysroot, logical: &Path, value: u8) -> Result<(), Error> {
+    open_control(root, logical)?
+        .write_all(format!("{value}\n").as_bytes())
+        .map_err(|e| Error::Io(format!("{}: {e}", logical.display())))
+}
+
+/// Set every battery's charge limit to `limit` %, and its start
+/// threshold (where the driver has one) to 5 below it. ThinkPad's EC
+/// rejects a start at or above the end, so lowering writes the start
+/// first and raising writes the end first. A start write that fails
+/// is not an error (some firmwares lock it); an end write that fails is.
+pub fn charge_limit(root: &Sysroot, limit: u8) -> Result<(), Error> {
+    let batteries = threshold_batteries(root)?;
+    if batteries.is_empty() {
+        return Err(Error::Refused(
+            "this machine has no battery charge limit (charge_control_end_threshold)".into(),
+        ));
+    }
+    let start = limit.saturating_sub(5);
+    let mut first_err = None;
+    for bat in batteries {
+        let end_p = bat.join(END_THRESHOLD);
+        let start_p = bat.join(START_THRESHOLD);
+        let has_start = std::fs::symlink_metadata(root.phys(&start_p)).is_ok();
+        let lowering = read_threshold(root, &end_p).is_none_or(|cur| limit < cur);
+        if has_start && lowering {
+            let _ = write_threshold(root, &start_p, start);
+        }
+        if let Err(e) = write_threshold(root, &end_p, limit) {
+            first_err.get_or_insert(e);
+            continue;
+        }
+        if has_start && !lowering {
+            let _ = write_threshold(root, &start_p, start);
+        }
+    }
+    first_err.map_or(Ok(()), Err)
+}
