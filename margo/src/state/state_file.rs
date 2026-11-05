@@ -3,7 +3,8 @@
 //! `build_state_snapshot` produces the JSON document every IPC `get`/
 //! `watch` reply is built from. `mark_state_dirty` / `flush_ipc_if_dirty`
 //! coalesce a burst of changes into one pushed `watch` frame per
-//! event-loop iteration. There is no longer a state snapshot file — the
+//! event-loop iteration, at most 60 a second, and a subscriber is never
+//! sent the same frame twice in a row. There is no longer a state snapshot file — the
 //! Unix socket is the only state egress.
 
 use super::MargoState;
@@ -11,13 +12,30 @@ use smithay::reexports::wayland_server::protocol::wl_output::Transform as WlTran
 
 use crate::MAX_TAGS;
 
+/// Minimum spacing of `watch` pushes (60 Hz). The shell parses every
+/// snapshot on its GTK main thread; a drag arranging every 8 ms used to
+/// push ~125 full snapshots a second.
+pub const IPC_PUSH_INTERVAL: std::time::Duration = std::time::Duration::from_micros(16_667);
+
+/// How long a dirty flush at `now` must wait so pushes stay at least
+/// `interval` apart: `None` = push now.
+pub fn ipc_push_delay(
+    last_push: Option<std::time::Instant>,
+    now: std::time::Instant,
+    interval: std::time::Duration,
+) -> Option<std::time::Duration> {
+    let since = now.saturating_duration_since(last_push?);
+    interval.checked_sub(since).filter(|wait| !wait.is_zero())
+}
+
 impl MargoState {
     /// Mark compositor state as changed since the last flush. The
     /// actual fan-out (a fresh frame to every IPC `watch` subscriber)
-    /// is **coalesced** to once per event-loop iteration in
-    /// `flush_ipc_if_dirty`, so a burst of changes (one layout switch
-    /// touches focus + windows + tags, each of which calls this) pushes
-    /// the snapshot once instead of N times.
+    /// is **coalesced** in `flush_ipc_if_dirty`: once per event-loop
+    /// iteration and at most every [`IPC_PUSH_INTERVAL`], so a burst of
+    /// changes (one layout switch touches focus + windows + tags, each of
+    /// which calls this; a drag arranges every few ms) pushes one
+    /// snapshot instead of N.
     pub fn mark_state_dirty(&self) {
         self.state_dirty.set(true);
     }
@@ -25,10 +43,47 @@ impl MargoState {
     /// Once per event-loop iteration: if state changed, push a fresh
     /// snapshot frame to every IPC `watch` subscriber. This is the sole
     /// state-egress path — there is no state snapshot file anymore.
+    ///
+    /// Rate-capped: within [`IPC_PUSH_INTERVAL`] of the previous push the
+    /// state stays dirty and a one-shot timer flushes it when the interval
+    /// is up, so the last change always goes out even if nothing else
+    /// wakes the loop. A change after a quiet spell is pushed at once.
     pub fn flush_ipc_if_dirty(&mut self) {
-        if !self.state_dirty.replace(false) {
+        if !self.state_dirty.get() {
             return;
         }
+        if self.ipc.watches.watches.is_empty() {
+            // Nobody listens: nothing to build or rate-limit.
+            self.state_dirty.set(false);
+            return;
+        }
+        let now = std::time::Instant::now();
+        if let Some(wait) = ipc_push_delay(self.ipc.last_push, now, IPC_PUSH_INTERVAL) {
+            if !self.ipc.push_timer_armed {
+                let timer = calloop::timer::Timer::from_duration(wait);
+                let armed = self.loop_handle.insert_source(timer, |_, _, state| {
+                    state.ipc.push_timer_armed = false;
+                    state.flush_ipc_if_dirty();
+                    calloop::timer::TimeoutAction::Drop
+                });
+                match armed {
+                    Ok(_) => self.ipc.push_timer_armed = true,
+                    Err(e) => {
+                        // Without the timer the frame could be held back
+                        // indefinitely: push now rather than risk that.
+                        tracing::warn!(error = %e, "ipc: push timer");
+                        self.push_now(now);
+                    }
+                }
+            }
+            return;
+        }
+        self.push_now(now);
+    }
+
+    fn push_now(&mut self, now: std::time::Instant) {
+        self.state_dirty.set(false);
+        self.ipc.last_push = Some(now);
         self.ipc_push_watches();
     }
 
@@ -405,5 +460,30 @@ impl MargoState {
                 "night_gamma_pct": self.config.twilight_night_gamma,
             },
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ipc_push_delay;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn push_delay_spaces_pushes_by_the_interval() {
+        let t0 = Instant::now();
+        let iv = Duration::from_millis(16);
+        assert_eq!(ipc_push_delay(None, t0, iv), None, "first push goes out");
+        assert_eq!(
+            ipc_push_delay(Some(t0), t0 + Duration::from_millis(4), iv),
+            Some(Duration::from_millis(12))
+        );
+        assert_eq!(ipc_push_delay(Some(t0), t0 + iv, iv), None);
+        assert_eq!(
+            ipc_push_delay(Some(t0), t0 + Duration::from_secs(5), iv),
+            None
+        );
+        // A clock reading before the last push (no monotonic guarantee
+        // across the call sites) waits the full interval, never panics.
+        assert_eq!(ipc_push_delay(Some(t0 + iv), t0, iv), Some(iv));
     }
 }

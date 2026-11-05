@@ -263,3 +263,79 @@ fn a_failed_reload_replies_with_the_error() {
     assert_refused(&r, "reload");
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+
+/// Subscribe a fresh connection to `watch state` and swallow its initial
+/// frame plus the first push (the first push is never de-duplicated
+/// against the subscribe-time frame).
+fn subscribe_state(fx: &mut Fixture) -> UnixStream {
+    let (mut client, _token) = connect(fx);
+    client.write_all(b"watch state\n").expect("write");
+    let first = frames(&read_available(fx, &mut client).expect("open"));
+    assert_eq!(first.len(), 1, "initial frame");
+    fx.server.state.ipc_push_watches();
+    let _ = read_available(fx, &mut client);
+    client
+}
+
+#[test]
+fn an_unchanged_state_snapshot_is_not_pushed_again() {
+    // Focus refreshes and no-op arranges mark state dirty without changing
+    // anything a watcher can see; each used to push a byte-identical frame.
+    let mut fx = Fixture::new();
+    fx.add_output("DP-1", (1920, 1080));
+    let mut client = subscribe_state(&mut fx);
+
+    fx.server.state.ipc_push_watches();
+    let again = frames(&read_available(&mut fx, &mut client).expect("open"));
+    assert!(again.is_empty(), "identical frame pushed: {again:?}");
+
+    fx.server.state.current_kb_layout = "Turkish".into();
+    fx.server.state.ipc_push_watches();
+    let changed = frames(&read_available(&mut fx, &mut client).expect("open"));
+    assert_eq!(changed.len(), 1);
+    assert_eq!(changed[0]["keyboard_layout"], "Turkish");
+}
+
+#[test]
+fn state_pushes_are_rate_capped_and_the_deferred_frame_still_arrives() {
+    // A drag arranges every few ms; each arrange used to push a full
+    // snapshot. Pushes are capped, and the frame held back by the cap is
+    // sent from a timer even if nothing else wakes the loop.
+    let mut fx = Fixture::new();
+    fx.add_output("DP-1", (1920, 1080));
+    let mut client = subscribe_state(&mut fx);
+
+    fx.server.state.current_kb_layout = "A".into();
+    fx.server.state.mark_state_dirty();
+    fx.server.state.flush_ipc_if_dirty();
+    fx.server.state.current_kb_layout = "B".into();
+    fx.server.state.mark_state_dirty();
+    fx.server.state.flush_ipc_if_dirty();
+
+    let mut layouts = Vec::new();
+    let start = std::time::Instant::now();
+    while start.elapsed() < Duration::from_millis(500) && layouts.last() != Some(&"B".to_string()) {
+        for f in frames(&read_available(&mut fx, &mut client).expect("open")) {
+            layouts.push(f["keyboard_layout"].as_str().unwrap_or("").to_string());
+        }
+    }
+    assert_eq!(layouts, vec!["A".to_string(), "B".to_string()]);
+    assert!(!fx.server.state.state_dirty.get(), "the deferred push ran");
+}
+
+#[test]
+fn a_flush_inside_the_cap_interval_defers_the_push() {
+    let mut fx = Fixture::new();
+    fx.add_output("DP-1", (1920, 1080));
+    let _client = subscribe_state(&mut fx);
+    fx.server.state.mark_state_dirty();
+    fx.server.state.flush_ipc_if_dirty();
+    fx.server.state.current_kb_layout = "C".into();
+    fx.server.state.mark_state_dirty();
+    fx.server.state.flush_ipc_if_dirty();
+    assert!(
+        fx.server.state.state_dirty.get(),
+        "a second flush within the cap interval must wait for the timer"
+    );
+}

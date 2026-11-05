@@ -417,7 +417,8 @@ fn on_loop_iteration(state: &mut MargoState) {
     }
     // Coalesced IPC push: a burst of state changes within one
     // dispatch marks state dirty repeatedly but fans out one
-    // `watch` snapshot frame here, once per iteration.
+    // `watch` snapshot frame here, once per iteration and at most
+    // 60 a second (a held-back frame is flushed by a timer).
     state.flush_ipc_if_dirty();
     let now = utils::now_ms();
     if animation::animation_tick_due(

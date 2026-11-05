@@ -20,7 +20,7 @@ file — both removed.
 |---|---|---|
 | `get <topic> [args…]` | one JSON frame | stays open, reusable |
 | `dispatch <action> [a1..a5]` | `{"ok":true}` / `{"ok":false,"error":…}` | stays open |
-| `watch <topic> [args…]` | initial frame, then a frame on every change | stays open until the client disconnects |
+| `watch <topic> [args…]` | initial frame, then a frame whenever the topic's document changes (at most 60 a second; an unchanged document is not re-sent) | stays open until the client disconnects |
 
 ## Topics (`get` and `watch`)
 

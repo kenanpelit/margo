@@ -59,6 +59,10 @@ pub struct IpcServer {
     pub next_token: u32,
     /// `watch`-mode IPC subscriptions, fanned out on each dirty flush.
     pub watches: crate::ipc::watch::WatchRegistry,
+    /// When the last `watch` fan-out ran (the push rate cap).
+    pub last_push: Option<std::time::Instant>,
+    /// A timer will run the rate-capped flush held back by `last_push`.
+    pub push_timer_armed: bool,
 }
 
 /// Per-connection framing state.

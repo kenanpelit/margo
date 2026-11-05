@@ -11,6 +11,10 @@ pub struct Watch {
     pub topic: String,
     /// Topic args (e.g. monitor name for `watch tags <mon>`).
     pub args: Vec<String>,
+    /// The last frame pushed to this subscription, so an unchanged one
+    /// (a focus refresh, a no-op arrange) isn't sent again. `None` until
+    /// the first push.
+    pub last_sent: Option<std::rc::Rc<str>>,
 }
 
 /// A single connection may hold several *distinct* subscriptions (e.g.
@@ -44,7 +48,12 @@ impl WatchRegistry {
         {
             return;
         }
-        self.watches.push(Watch { token, topic, args });
+        self.watches.push(Watch {
+            token,
+            topic,
+            args,
+            last_sent: None,
+        });
     }
     pub fn remove_conn(&mut self, token: u32) {
         self.watches.retain(|w| w.token != token);
@@ -52,51 +61,58 @@ impl WatchRegistry {
 }
 
 impl MargoState {
-    /// Push a fresh frame to every active watch subscription. Called
-    /// once per loop iteration when state changed.
+    /// Push a fresh frame to every active watch subscription whose frame
+    /// changed since its last push. Called from `flush_ipc_if_dirty`
+    /// (rate-capped) when state changed.
     pub fn ipc_push_watches(&mut self) {
         if self.ipc.watches.watches.is_empty() {
             return;
         }
-        // Snapshot (token, topic, args) first to avoid borrow conflicts
-        // with `ipc_send` (which mutates `ipc.conns`).
-        let subs: Vec<(u32, String, Vec<String>)> = self
-            .ipc
-            .watches
-            .watches
-            .iter()
-            .map(|w| (w.token, w.topic.clone(), w.args.clone()))
-            .collect();
         // Build the full snapshot ONCE per flush, not once per subscriber.
         // Every `state` subscriber gets a byte-identical document, so its
         // serialized line is produced once and reused; projection topics
         // (`tags`, `twilight`, `monitor`, …) derive from the same `snap`
         // instead of each forcing another O(monitors×clients) rebuild.
         let snap = self.build_state_snapshot();
-        let mut state_line: Option<String> = None;
-        for (token, topic, args) in subs {
+        let mut state_line: Option<std::rc::Rc<str>> = None;
+        let mut sends: Vec<(u32, std::rc::Rc<str>)> = Vec::new();
+        for i in 0..self.ipc.watches.watches.len() {
+            let w = &self.ipc.watches.watches[i];
             // `shortcuts` is an event stream — frames come from
             // `push_global_shortcut_event` on activation, never from
             // the state-dirty fan-out.
-            if topic == "shortcuts" {
+            if w.topic == "shortcuts" {
                 continue;
             }
-            if topic == "state" {
-                let line: &str = state_line.get_or_insert_with(|| {
-                    let mut s = snap.to_string();
-                    s.push('\n');
-                    s
-                });
-                self.ipc_send_line(token, line);
+            let line = if w.topic == "state" {
+                std::rc::Rc::clone(state_line.get_or_insert_with(|| frame_line(&snap)))
             } else {
-                let payload = match self.ipc_non_snapshot_topic(&topic) {
+                let payload = match self.ipc_non_snapshot_topic(&w.topic) {
                     Some(payload) => payload,
-                    None => project_topic(&snap, &self.current_kb_layout, &topic, &args),
+                    None => project_topic(&snap, &self.current_kb_layout, &w.topic, &w.args),
                 };
-                self.ipc_send(token, &payload);
+                frame_line(&payload)
+            };
+            let w = &mut self.ipc.watches.watches[i];
+            if w.last_sent.as_deref() == Some(&*line) {
+                continue;
             }
+            w.last_sent = Some(std::rc::Rc::clone(&line));
+            sends.push((w.token, line));
+        }
+        // Sent after the loop: a send can drop a slow connection, which
+        // removes its watches from the list being walked.
+        for (token, line) in sends {
+            self.ipc_send_line(token, &line);
         }
     }
+}
+
+/// `value` as one newline-terminated wire frame.
+fn frame_line(value: &serde_json::Value) -> std::rc::Rc<str> {
+    let mut s = value.to_string();
+    s.push('\n');
+    s.into()
 }
 
 #[cfg(test)]
