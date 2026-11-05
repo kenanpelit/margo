@@ -99,9 +99,17 @@ impl Dispatch<ZwlrScreencopyFrameV1, FrameLog> for ClientState {
 /// eDP-1 (wl_output #0) and DP-3 (#1), with a client bound to both and
 /// to the screencopy manager — what `grim` does.
 fn grim_desk() -> (Fixture, ClientId, ZwlrScreencopyManagerV1, Vec<WlOutput>) {
+    desk((64, 48), (80, 40))
+}
+
+/// eDP-1 and DP-3 with the given mode sizes, bound as in [`grim_desk`].
+fn desk(
+    edp: (i32, i32),
+    dp3: (i32, i32),
+) -> (Fixture, ClientId, ZwlrScreencopyManagerV1, Vec<WlOutput>) {
     let mut fx = Fixture::new();
-    fx.add_output("eDP-1", (64, 48));
-    fx.add_output("DP-3", (80, 40));
+    fx.add_output("eDP-1", edp);
+    fx.add_output("DP-3", dp3);
     let id = fx.add_client();
     fx.roundtrip(id);
     let c = fx.client(id);
@@ -120,6 +128,18 @@ fn capture(
     output: &WlOutput,
     size: (i32, i32),
 ) -> FrameLog {
+    capture_with(fx, id, manager, output, size, false)
+}
+
+/// [`capture`], with `copy_with_damage` when `with_damage`.
+fn capture_with(
+    fx: &mut Fixture,
+    id: ClientId,
+    manager: &ZwlrScreencopyManagerV1,
+    output: &WlOutput,
+    size: (i32, i32),
+    with_damage: bool,
+) -> FrameLog {
     let log = FrameLog::default();
     let c = fx.client(id);
     let frame = manager.capture_output(0, output, &c.qh, log.clone());
@@ -127,7 +147,11 @@ fn capture(
     fx.roundtrip(id);
     let c = fx.client(id);
     let buffer = c.create_shm_buffer(size.0, size.1);
-    frame.copy(&buffer);
+    if with_damage {
+        frame.copy_with_damage(&buffer);
+    } else {
+        frame.copy(&buffer);
+    }
     c.flush();
     fx.roundtrip(id);
     log
@@ -195,5 +219,141 @@ fn a_mirror_target_can_still_be_captured() {
         .unwrap();
     let frame = capture(&mut fx, id, &manager, &outputs[1], (80, 40));
     assert_eq!(*frame.lock().unwrap(), ["buffer"]);
+    assert_eq!(queued(&fx), ["DP-3"]);
+}
+
+// ── Serving the queue after a render ────────────────────────────────────────
+
+use smithay::backend::renderer::element::solid::SolidColorRenderElement;
+use smithay::backend::renderer::element::{Id, Kind};
+use smithay::backend::renderer::utils::CommitCounter;
+use smithay::output::Output;
+use smithay::utils::{Physical, Rectangle};
+
+fn output_named(fx: &Fixture, name: &str) -> Output {
+    fx.server
+        .state
+        .monitors
+        .iter()
+        .find(|m| m.name == name)
+        .map(|m| m.output.clone())
+        .unwrap()
+}
+
+/// Serve `output` as the backend does after rendering it, with
+/// `scene` as its picture: the frames taken and their damage.
+fn serve(
+    fx: &mut Fixture,
+    output: &str,
+    scene: &[SolidColorRenderElement],
+) -> Vec<(String, Vec<Rectangle<i32, Physical>>)> {
+    let output = output_named(fx, output);
+    fx.server
+        .state
+        .protocols
+        .screencopy
+        .take_ready(&output, 1.0, |_| scene.to_vec())
+        .into_iter()
+        .map(|(sc, damage)| (sc.output().name(), damage))
+        .collect()
+}
+
+fn solid(id: &Id, commit: CommitCounter) -> SolidColorRenderElement {
+    SolidColorRenderElement::new(
+        id.clone(),
+        Rectangle::new((4, 4).into(), (8, 8).into()),
+        commit,
+        [1.0, 0.0, 0.0, 1.0],
+        Kind::Unspecified,
+    )
+}
+
+/// `grim` queues DP-3's frame, then eDP-1's, on one manager. Rendering
+/// eDP-1 must serve its frame at once: serving only from the queue's
+/// head kept it waiting for DP-3's next render, so each lit output
+/// delayed the other by a frame.
+#[test]
+fn a_rendered_output_is_served_even_behind_another_outputs_frame() {
+    let (mut fx, id, manager, outputs) = grim_desk();
+    capture(&mut fx, id, &manager, &outputs[1], (80, 40));
+    capture(&mut fx, id, &manager, &outputs[0], (64, 48));
+    assert_eq!(queued(&fx), ["DP-3", "eDP-1"]);
+
+    let served = serve(&mut fx, "eDP-1", &[]);
+    assert_eq!(served.len(), 1);
+    assert_eq!(served[0].0, "eDP-1");
+    assert_eq!(queued(&fx), ["DP-3"], "DP-3 waits for its own render");
+    assert_eq!(
+        fx.server
+            .state
+            .protocols
+            .screencopy
+            .wanted_for(&output_named(&fx, "eDP-1")),
+        (false, false)
+    );
+}
+
+/// The variant scan sees a frame queued behind another output's.
+#[test]
+fn a_frame_behind_another_outputs_frame_is_wanted() {
+    let (mut fx, id, manager, outputs) = grim_desk();
+    capture(&mut fx, id, &manager, &outputs[1], (80, 40));
+    capture(&mut fx, id, &manager, &outputs[0], (64, 48));
+    let edp = output_named(&fx, "eDP-1");
+    assert_eq!(
+        fx.server.state.protocols.screencopy.wanted_for(&edp),
+        (false, true)
+    );
+}
+
+/// A recorder's `copy_with_damage` frames are damaged against the same
+/// output's previous capture. A queue-wide tracker compared eDP-1 with
+/// whatever DP-3 last showed: a window spanning both, changed between
+/// eDP-1's two captures but already changed in DP-3's, came out
+/// undamaged, so the recorder's eDP-1 frame waited (or kept stale
+/// pixels).
+#[test]
+fn copy_with_damage_compares_against_the_same_outputs_last_capture() {
+    let (mut fx, id, manager, outputs) = desk((64, 48), (64, 48));
+    let window = Id::new();
+    let before = CommitCounter::default();
+    let mut after = before;
+    after.increment();
+
+    capture_with(&mut fx, id, &manager, &outputs[0], (64, 48), true);
+    assert_eq!(serve(&mut fx, "eDP-1", &[solid(&window, before)]).len(), 1);
+    capture_with(&mut fx, id, &manager, &outputs[1], (64, 48), true);
+    assert_eq!(serve(&mut fx, "DP-3", &[solid(&window, after)]).len(), 1);
+
+    capture_with(&mut fx, id, &manager, &outputs[0], (64, 48), true);
+    let served = serve(&mut fx, "eDP-1", &[solid(&window, after)]);
+    assert_eq!(
+        served.len(),
+        1,
+        "the window changed since eDP-1's last capture"
+    );
+    assert_eq!(
+        served[0].1,
+        [Rectangle::new((4, 4).into(), (8, 8).into())],
+        "damage is the window's change"
+    );
+
+    // Nothing changed on eDP-1 since: the next damage frame waits.
+    capture_with(&mut fx, id, &manager, &outputs[0], (64, 48), true);
+    assert!(serve(&mut fx, "eDP-1", &[solid(&window, after)]).is_empty());
+    assert_eq!(queued(&fx), ["eDP-1"]);
+}
+
+/// An output without a mode fails every frame it has queued, not only
+/// those at a queue's head.
+#[test]
+fn failing_an_output_reaches_frames_behind_another_outputs() {
+    let (mut fx, id, manager, outputs) = grim_desk();
+    capture(&mut fx, id, &manager, &outputs[1], (80, 40));
+    let edp_frame = capture(&mut fx, id, &manager, &outputs[0], (64, 48));
+    let edp = output_named(&fx, "eDP-1");
+    fx.server.state.protocols.screencopy.remove_output(&edp);
+    fx.roundtrip(id);
+    assert_eq!(*edp_frame.lock().unwrap(), ["buffer", "failed"]);
     assert_eq!(queued(&fx), ["DP-3"]);
 }

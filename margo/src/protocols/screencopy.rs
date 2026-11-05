@@ -55,9 +55,12 @@ fn screencopy_shm_buffer_stride(size: Size<i32, Physical>) -> i32 {
 /// but the client hasn't yet committed via `Copy`/`CopyWithDamage`, plus
 /// the `Screencopy`s waiting to be served by the next render pass.
 pub struct ScreencopyQueue {
-    damage_tracker: OutputDamageTracker,
-    /// `(buffer size, scale bits)` `damage_tracker` was built for.
-    damage_key: Option<(Size<i32, Physical>, u64)>,
+    /// Per output: the damage tracker of this queue's captures of it,
+    /// and the `(buffer size, scale bits)` it was built for. Per output,
+    /// because a client's `copy_with_damage` damage is relative to its
+    /// previous capture of the same output, not of whichever output this
+    /// queue captured last.
+    damage_trackers: HashMap<Output, (OutputDamageTracker, (Size<i32, Physical>, u64))>,
     pending_frames: HashSet<ZwlrScreencopyFrameV1>,
     screencopies: Vec<Screencopy>,
 }
@@ -65,8 +68,7 @@ pub struct ScreencopyQueue {
 impl ScreencopyQueue {
     fn new() -> Self {
         Self {
-            damage_tracker: OutputDamageTracker::new((0, 0), 1.0, Transform::Normal),
-            damage_key: None,
+            damage_trackers: HashMap::new(),
             pending_frames: HashSet::new(),
             screencopies: Vec::new(),
         }
@@ -74,17 +76,6 @@ impl ScreencopyQueue {
 
     fn is_empty(&self) -> bool {
         self.pending_frames.is_empty() && self.screencopies.is_empty()
-    }
-
-    /// Get a mutable handle to the damage tracker and a peek at the next
-    /// pending screencopy (if any). Used by the backend render path.
-    pub fn split(&mut self) -> (&mut OutputDamageTracker, Option<&Screencopy>) {
-        let ScreencopyQueue {
-            damage_tracker,
-            screencopies,
-            ..
-        } = self;
-        (damage_tracker, screencopies.first())
     }
 
     pub fn push(&mut self, screencopy: Screencopy) {
@@ -96,33 +87,37 @@ impl ScreencopyQueue {
         &self.screencopies
     }
 
-    /// Damage of `elements` since this queue's previous capture, in the
-    /// capture buffer's physical coordinates. Empty when nothing
-    /// changed. The tracker persists across captures (rebuilt only when
-    /// the buffer size or scale changes), so a recorder polling with
-    /// `copy_with_damage` gets the real changed region instead of a
+    /// Damage of `elements` since this queue's previous capture of
+    /// `output`, in the capture buffer's physical coordinates. Empty when
+    /// nothing changed. The tracker persists across captures (rebuilt
+    /// only when the buffer size or scale changes), so a recorder polling
+    /// with `copy_with_damage` gets the real changed region instead of a
     /// full frame every time.
-    pub fn damage_since_last_capture<E: smithay::backend::renderer::element::Element>(
+    fn damage_since_last_capture<E: smithay::backend::renderer::element::Element>(
         &mut self,
+        output: &Output,
         size: Size<i32, Physical>,
         scale: f64,
         elements: &[E],
     ) -> Vec<Rectangle<i32, Physical>> {
         let key = (size, scale.to_bits());
-        if self.damage_key != Some(key) {
-            self.damage_tracker = OutputDamageTracker::new(size, scale, Transform::Normal);
-            self.damage_key = Some(key);
+        let (tracker, built_for) =
+            self.damage_trackers
+                .entry(output.clone())
+                .or_insert_with(|| {
+                    (
+                        OutputDamageTracker::new(size, scale, Transform::Normal),
+                        key,
+                    )
+                });
+        if *built_for != key {
+            *tracker = OutputDamageTracker::new(size, scale, Transform::Normal);
+            *built_for = key;
         }
-        match self.damage_tracker.damage_output(1, elements) {
+        match tracker.damage_output(1, elements) {
             Ok((damage, _)) => damage.cloned().unwrap_or_default(),
             Err(_) => vec![Rectangle::from_size(size)],
         }
-    }
-
-    /// Pop the next screencopy. Caller is responsible for actually
-    /// performing the buffer copy and calling [`Screencopy::submit`].
-    pub fn pop(&mut self) -> Screencopy {
-        self.screencopies.remove(0)
     }
 
     /// Drop any pending screencopies for the given output. Called by
@@ -130,6 +125,7 @@ impl ScreencopyQueue {
     fn remove_output(&mut self, output: &Output) {
         self.screencopies
             .retain(|screencopy| screencopy.output() != output);
+        self.damage_trackers.remove(output);
     }
 
     fn remove_frame(&mut self, frame: &ZwlrScreencopyFrameV1) {
@@ -188,6 +184,62 @@ impl ScreencopyManagerState {
             f(queue);
         }
         self.cleanup_queues();
+    }
+
+    /// Which capture variants are queued for `output`:
+    /// `(with the cursor, without it)`.
+    pub fn wanted_for(&self, output: &Output) -> (bool, bool) {
+        let (mut cursor, mut plain) = (false, false);
+        for queue in self.queues.values() {
+            for sc in queue.screencopies.iter().filter(|sc| sc.output() == output) {
+                if sc.overlay_cursor() {
+                    cursor = true;
+                } else {
+                    plain = true;
+                }
+            }
+        }
+        (cursor, plain)
+    }
+
+    /// Take every queued frame for `output` that can be served from the
+    /// frame just rendered for it, with its damage since that queue's
+    /// previous capture of `output`. Frames for other outputs ahead of
+    /// them in a queue don't hold them back (they wait for their own
+    /// output's render). `elements_for` gives a frame's scene, already
+    /// relocated into its capture region. A frame with a zero-sized
+    /// buffer is failed; a `copy_with_damage` frame whose output did not
+    /// change stays queued, with the later frames for that output, until
+    /// it does.
+    pub fn take_ready<E: smithay::backend::renderer::element::Element>(
+        &mut self,
+        output: &Output,
+        scale: f64,
+        mut elements_for: impl FnMut(&Screencopy) -> Vec<E>,
+    ) -> Vec<(Screencopy, Vec<Rectangle<i32, Physical>>)> {
+        let mut ready = Vec::new();
+        self.with_queues_mut(|queue| {
+            let mut i = 0;
+            while let Some(sc) = queue.screencopies.get(i) {
+                if sc.output() != output {
+                    i += 1;
+                    continue;
+                }
+                let size = sc.buffer_size();
+                if size.w <= 0 || size.h <= 0 {
+                    drop(queue.screencopies.remove(i)); // → `failed`
+                    continue;
+                }
+                let with_damage = sc.with_damage();
+                let elements = elements_for(sc);
+                let damage = queue.damage_since_last_capture(output, size, scale, &elements);
+                if with_damage && damage.is_empty() {
+                    break;
+                }
+                ready.push((queue.screencopies.remove(i), damage));
+            }
+        });
+        ready
     }
 
     /// Forget every queued screencopy targeting the given output; each

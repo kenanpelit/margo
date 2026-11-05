@@ -21,9 +21,8 @@ impl ScreencopyHandler for MargoState {
 
     fn frame(&mut self, manager: &ZwlrScreencopyManagerV1, screencopy: Screencopy) {
         // A dark output (switched off, or DPMS-off) is not rendered, so
-        // its frame would never be served — and the backend serves each
-        // manager's queue from the head, so it would also hold up every
-        // other output's frame behind it (`grim` hung). Fail it now.
+        // its frame would never be served (`grim`, which waits for every
+        // output's frame, hung). Fail it now.
         if !self.output_capturable(screencopy.output()) {
             tracing::debug!(
                 output = %screencopy.output().name(),

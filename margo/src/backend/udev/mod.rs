@@ -1586,35 +1586,14 @@ pub(super) fn serve_screencopies(
     let now = monotonic_now();
     let output = od.output.clone();
 
-    let (mut want_cursor, mut want_plain) = (false, false);
-    for queue in state.protocols.screencopy.queues() {
-        for sc in queue
-            .screencopies()
-            .iter()
-            .take_while(|sc| sc.output() == &output)
-        {
-            if sc.overlay_cursor() {
-                want_cursor = true;
-            } else {
-                want_plain = true;
-            }
-        }
-    }
+    let (want_cursor, want_plain) = state.protocols.screencopy.wanted_for(&output);
     if !want_cursor && !want_plain {
         return;
     }
 
     // An output without a mode can't be captured: fail its queued frames.
     if od.output.current_mode().is_none() {
-        state.protocols.screencopy.with_queues_mut(|queue| {
-            while queue
-                .screencopies()
-                .first()
-                .is_some_and(|sc| sc.output() == &output)
-            {
-                drop(queue.pop()); // → fires `failed` via Drop
-            }
-        });
+        state.protocols.screencopy.remove_output(&output); // → `failed`
         return;
     }
     let scale = od.output.current_scale().fractional_scale();
@@ -1636,32 +1615,13 @@ pub(super) fn serve_screencopies(
         built.unwrap_or(elements)
     };
 
-    let mut ready = Vec::new();
-    state.protocols.screencopy.with_queues_mut(|queue| {
-        while let Some(head) = queue.screencopies().first() {
-            if head.output() != &output {
-                break;
-            }
-            let size = head.buffer_size();
-            if size.w <= 0 || size.h <= 0 {
-                drop(queue.pop());
-                continue;
-            }
-            let with_damage = head.with_damage();
-            let region_loc = head.region_loc();
-            let translate = Point::<i32, Physical>::from((-region_loc.x, -region_loc.y));
-            let relocated: Vec<_> = elements_for(head.overlay_cursor())
-                .iter()
-                .map(|e| RelocateRenderElement::from_element(e, translate, Relocate::Relative))
-                .collect();
-            let damage = queue.damage_since_last_capture(size, scale, &relocated);
-            if with_damage && damage.is_empty() {
-                // Nothing changed since this client's last frame: keep
-                // it queued until something does.
-                break;
-            }
-            ready.push((queue.pop(), damage));
-        }
+    let ready = state.protocols.screencopy.take_ready(&output, scale, |sc| {
+        let region_loc = sc.region_loc();
+        let translate = Point::<i32, Physical>::from((-region_loc.x, -region_loc.y));
+        elements_for(sc.overlay_cursor())
+            .iter()
+            .map(|e| RelocateRenderElement::from_element(e, translate, Relocate::Relative))
+            .collect()
     });
 
     for (screencopy, damage) in ready {
