@@ -138,6 +138,7 @@ DEBIAN_DEPS=(
   libdbus-1-dev
   # gtk / shell
   libgtk-4-dev libgdk-pixbuf-2.0-dev libgraphene-1.0-dev
+  libgtk-4-bin  # gtk4-launch: mshell launches desktop apps through it
   libfontconfig1-dev libfreetype-dev
   # mtune window chrome (libadwaita-1)
   libadwaita-1-dev

@@ -477,13 +477,13 @@ impl WebappProvider {
                     provider_name: NAME.into(),
                     usage_key: Some(format!("webapp:{}", app.desktop.display())),
                     on_activate: Rc::new(move || {
-                        // gtk-launch resolves the desktop id like a menu.
+                        // gtk4-launch resolves the desktop id like a menu.
                         let id = desktop
                             .file_name()
                             .map(|n| n.to_string_lossy().into_owned())
                             .unwrap_or_default();
-                        if let Err(err) = Command::new("gtk-launch").arg(&id).spawn_reaped() {
-                            tracing::warn!(?err, id, "webapp: gtk-launch failed");
+                        if let Err(err) = Command::new("gtk4-launch").arg(&id).spawn_reaped() {
+                            tracing::warn!(?err, id, "webapp: gtk4-launch failed");
                         }
                     }),
                 }
