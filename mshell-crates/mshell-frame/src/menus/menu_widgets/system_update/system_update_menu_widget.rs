@@ -412,7 +412,7 @@ impl Component for SystemUpdateMenuWidgetModel {
                                 gtk::Button {
                                     add_css_class: "ok-button-surface",
                                     #[watch]
-                                    set_visible: review_has_conflicts(model.review.as_ref()),
+                                    set_visible: review_can_merge_theirs(model.review.as_ref()),
                                     set_label: "Merge, take new lines",
                                     set_tooltip_text: Some("Write the 3-way merge; conflicting lines take the new default"),
                                     connect_clicked[sender] => move |_| {
@@ -422,7 +422,7 @@ impl Component for SystemUpdateMenuWidgetModel {
                                 gtk::Button {
                                     add_css_class: "ok-button-surface",
                                     #[watch]
-                                    set_visible: model.review.as_ref().is_some_and(|(_, r)| !r.unreadable),
+                                    set_visible: model.review.as_ref().is_some_and(|(_, r)| r.writable()),
                                     #[watch]
                                     set_label: take_label(model.review.as_ref()),
                                     connect_clicked[sender] => move |_| {
@@ -1332,6 +1332,11 @@ fn review_summary(file: &ConfigFile, r: &Review) -> String {
     if r.unreadable {
         return "Needs root to read — only Delete is available here.".into();
     }
+    if r.symlinked {
+        return "The live file is a symlink — update its target by hand; only Delete is \
+                available here."
+            .into();
+    }
     if r.identical {
         return "Identical to the live file — safe to delete.".into();
     }
@@ -1351,11 +1356,16 @@ fn review_summary(file: &ConfigFile, r: &Review) -> String {
 }
 
 fn review_can_merge(r: Option<&(ConfigFile, Review)>) -> bool {
-    r.is_some_and(|(_, r)| r.merge.is_some() && !r.identical)
+    r.is_some_and(|(_, r)| r.writable() && r.merge.is_some() && !r.identical)
 }
 
 fn review_has_conflicts(r: Option<&(ConfigFile, Review)>) -> bool {
     r.is_some_and(|(_, r)| r.merge.as_ref().is_some_and(|m| pacnew::conflicts(m) > 0))
+}
+
+/// The "Merge, take new lines" button: a writable review with conflicts.
+fn review_can_merge_theirs(r: Option<&(ConfigFile, Review)>) -> bool {
+    review_can_merge(r) && review_has_conflicts(r)
 }
 
 fn merge_label(r: Option<&(ConfigFile, Review)>, _prefer: Prefer) -> &'static str {

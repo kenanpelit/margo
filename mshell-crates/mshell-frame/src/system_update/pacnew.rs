@@ -238,6 +238,17 @@ pub(crate) enum Op {
 
 const INSTALL_SH: &str = r#"set -e
 src="$1"; live="$2"; review="$3"
+# Never write through a symlink: `stat` would read the link itself
+# (mode 777) and `install` would replace it with a world-writable
+# file (systemd-resolved's /etc/resolv.conf is one). Same for a
+# directory on the way (a dotfiles dir linked into /etc).
+if [ -L "$live" ] || [ -L "$review" ] || [ -L "$src" ]; then
+  echo "refusing a symlink" >&2; exit 3
+fi
+dir=$(dirname -- "$live")
+if [ "$(cd -P -- "$dir" && pwd)" != "$dir" ]; then
+  echo "refusing a path through a symlinked directory" >&2; exit 3
+fi
 if [ -e "$live" ]; then
   cp -a -- "$live" "$live.mshell-bak"
   mode=$(stat -c %a -- "$live"); own=$(stat -c %u:%g -- "$live")
@@ -264,22 +275,48 @@ pub(crate) fn op_argv(op: &Op) -> Vec<String> {
 }
 
 /// Every review path must stay under the search root and be one of
-/// ours — the panel never asks root to touch anything else.
+/// ours — the panel never asks root to touch anything else — and
+/// neither the live file nor a directory on its way may be a symlink
+/// (root would write through it; the script refuses too).
 pub(crate) fn op_is_safe(op: &Op) -> bool {
-    let under =
-        |p: &Path| p.starts_with(SEARCH_ROOT) && !p.components().any(|c| c.as_os_str() == "..");
+    let root = Path::new(SEARCH_ROOT);
+    let under = |p: &Path| p.starts_with(root) && !p.components().any(|c| c.as_os_str() == "..");
     match op {
         Op::Install { live, review, .. } => {
-            under(live) && under(review) && classify(review).is_some_and(|c| c.live == *live)
+            under(live)
+                && under(review)
+                && classify(review).is_some_and(|c| c.live == *live)
+                && no_symlink_below(root, live)
+                && no_symlink_below(root, review)
         }
         Op::Remove { review } => under(review) && classify(review).is_some(),
     }
 }
 
+/// No component of `p` below `root` is a symlink. Components that
+/// don't exist yet are fine (restoring a .pacsave whose live file is
+/// gone); any other error to stat one is treated as unsafe.
+pub(crate) fn no_symlink_below(root: &Path, p: &Path) -> bool {
+    let Ok(rest) = p.strip_prefix(root) else {
+        return false;
+    };
+    let mut cur = root.to_path_buf();
+    for c in rest.components() {
+        cur.push(c);
+        match std::fs::symlink_metadata(&cur) {
+            Ok(m) if m.file_type().is_symlink() => return false,
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return true,
+            Err(_) => return false,
+        }
+    }
+    true
+}
+
 /// Run an op through pkexec (one password prompt).
 pub(crate) async fn apply(op: Op) -> Result<(), String> {
     if !op_is_safe(&op) {
-        return Err("refusing a path outside /etc".into());
+        return Err("refusing a path outside /etc or through a symlink".into());
     }
     let status = tokio::process::Command::new("pkexec")
         .args(op_argv(&op))
@@ -309,13 +346,27 @@ pub(crate) struct Review {
     pub(crate) identical: bool,
     /// Couldn't read one side (root-only file).
     pub(crate) unreadable: bool,
+    /// The live file (or a directory on its way) is a symlink: the
+    /// panel won't write through it, only Delete is offered.
+    pub(crate) symlinked: bool,
+}
+
+impl Review {
+    /// Merge / replace may be offered: both sides were readable and
+    /// the live file isn't reached through a symlink.
+    pub(crate) fn writable(&self) -> bool {
+        !self.unreadable && !self.symlinked
+    }
 }
 
 /// Build the review (blocking: runs pacman/bsdtar/diff; call from a
 /// worker thread).
 pub(crate) fn review_blocking(file: &ConfigFile) -> Review {
     use std::process::Command;
-    let mut r = Review::default();
+    let mut r = Review {
+        symlinked: !no_symlink_below(Path::new(SEARCH_ROOT), &file.live),
+        ..Review::default()
+    };
     let (Ok(mine), Ok(theirs)) = (std::fs::read(&file.live), std::fs::read(&file.path)) else {
         r.unreadable = true;
         return r;
@@ -536,6 +587,14 @@ mod tests {
             live: "/etc/shadow".into(),
             review: "/etc/locale.gen.pacnew".into(),
         }));
+        // /etc/localtime is a symlink on (nearly) every systemd box.
+        if std::fs::symlink_metadata("/etc/localtime").is_ok_and(|m| m.file_type().is_symlink()) {
+            assert!(!op_is_safe(&Op::Install {
+                src: "/etc/localtime.pacnew".into(),
+                live: "/etc/localtime".into(),
+                review: "/etc/localtime.pacnew".into(),
+            }));
+        }
         assert_eq!(
             op_argv(&Op::Remove {
                 review: "/etc/a.pacnew".into()
@@ -549,8 +608,11 @@ mod tests {
         // Exercise the real script without root on a temp tree (owner =
         // us, so `install -o/-g` with our own ids succeeds).
         let dir = tempfile::tempdir().unwrap();
-        let live = dir.path().join("f.conf");
-        let review = dir.path().join("f.conf.pacnew");
+        // The script refuses a path through a symlinked dir; use the
+        // physical path in case $TMPDIR is reached through one.
+        let root = dir.path().canonicalize().unwrap();
+        let live = root.join("f.conf");
+        let review = root.join("f.conf.pacnew");
         std::fs::write(&live, "mine\n").unwrap();
         std::fs::write(&review, "theirs\n").unwrap();
         use std::os::unix::fs::PermissionsExt;
@@ -565,11 +627,115 @@ mod tests {
         assert!(st.success());
         assert_eq!(std::fs::read_to_string(&live).unwrap(), "theirs\n");
         assert_eq!(
-            std::fs::read_to_string(dir.path().join("f.conf.mshell-bak")).unwrap(),
+            std::fs::read_to_string(root.join("f.conf.mshell-bak")).unwrap(),
             "mine\n"
         );
         let mode = std::fs::metadata(&live).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
         assert!(!review.exists(), "the .pacnew is consumed");
+    }
+
+    fn run_install(src: &Path, live: &Path, review: &Path) -> std::process::ExitStatus {
+        std::process::Command::new("sh")
+            .args(["-c", INSTALL_SH, "sh"])
+            .arg(src)
+            .arg(live)
+            .arg(review)
+            .stderr(std::process::Stdio::null())
+            .status()
+            .unwrap()
+    }
+
+    #[test]
+    fn install_script_refuses_a_symlinked_live_file() {
+        // systemd-resolved's /etc/resolv.conf is a symlink and is in
+        // filesystem's backup list. `stat` without -L reads the link
+        // (mode 777) and `install` would replace it with a 0777 file.
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("stub-resolv.conf");
+        std::fs::write(&target, "nameserver 127.0.0.53\n").unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let live = dir.path().join("resolv.conf");
+        std::os::unix::fs::symlink(&target, &live).unwrap();
+        let review = dir.path().join("resolv.conf.pacnew");
+        std::fs::write(&review, "# new default\n").unwrap();
+
+        assert!(!run_install(&review, &live, &review).success());
+        assert!(
+            std::fs::symlink_metadata(&live)
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "the symlink is left alone"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            "nameserver 127.0.0.53\n"
+        );
+        assert!(review.exists(), "nothing was consumed");
+    }
+
+    #[test]
+    fn install_script_refuses_a_symlinked_parent_or_review() {
+        let dir = tempfile::tempdir().unwrap();
+        // A dotfiles dir linked into /etc: live sits under a symlink.
+        let real = dir.path().join("dotfiles");
+        std::fs::create_dir(&real).unwrap();
+        std::fs::write(real.join("pacman.conf"), "mine\n").unwrap();
+        std::fs::write(real.join("pacman.conf.pacnew"), "theirs\n").unwrap();
+        let linked = dir.path().join("etc-pacman");
+        std::os::unix::fs::symlink(&real, &linked).unwrap();
+        let live = linked.join("pacman.conf");
+        let review = linked.join("pacman.conf.pacnew");
+        assert!(!run_install(&review, &live, &review).success());
+        assert_eq!(
+            std::fs::read_to_string(real.join("pacman.conf")).unwrap(),
+            "mine\n"
+        );
+
+        // A review file that is a symlink (to a secret) is not copied.
+        let secret = dir.path().join("shadow");
+        std::fs::write(&secret, "root:hash\n").unwrap();
+        let live = dir.path().join("x.conf");
+        std::fs::write(&live, "mine\n").unwrap();
+        let review = dir.path().join("x.conf.pacnew");
+        std::os::unix::fs::symlink(&secret, &review).unwrap();
+        assert!(!run_install(&review, &live, &review).success());
+        assert_eq!(std::fs::read_to_string(&live).unwrap(), "mine\n");
+    }
+
+    #[test]
+    fn a_symlinked_live_file_is_delete_only() {
+        let r = Review {
+            symlinked: true,
+            ..Review::default()
+        };
+        assert!(!r.writable());
+        assert!(Review::default().writable());
+        assert!(
+            !Review {
+                unreadable: true,
+                ..Review::default()
+            }
+            .writable()
+        );
+    }
+
+    #[test]
+    fn symlinks_below_the_root_are_unsafe() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir(root.join("pam.d")).unwrap();
+        std::fs::write(root.join("pam.d/system-auth"), "x").unwrap();
+        std::fs::write(root.join("real"), "x").unwrap();
+        std::os::unix::fs::symlink(root.join("real"), root.join("resolv.conf")).unwrap();
+        std::os::unix::fs::symlink(root.join("pam.d"), root.join("pam-link")).unwrap();
+
+        assert!(no_symlink_below(root, &root.join("pam.d/system-auth")));
+        // Not there yet (a .pacsave restore): fine.
+        assert!(no_symlink_below(root, &root.join("pam.d/new")));
+        assert!(!no_symlink_below(root, &root.join("resolv.conf")));
+        assert!(!no_symlink_below(root, &root.join("pam-link/system-auth")));
     }
 }
