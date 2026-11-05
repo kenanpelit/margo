@@ -10,7 +10,7 @@
 //! confirmation-dialog policy can hook in via `new_inhibitor` if a
 //! security/UX preference is added.
 //!
-//! The actual short-circuit lives in `input_handler.rs`'s
+//! The actual short-circuit lives in `input_handler/keyboard.rs`'s
 //! `keyboard.input(...)` filter — this file owns the protocol lifecycle
 //! only.
 

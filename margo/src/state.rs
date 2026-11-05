@@ -333,7 +333,7 @@ pub struct MargoState {
     /// without re-querying user_data on each iteration.
     pub pending_image_copy_frames: Vec<crate::PendingImageCopyFrame>,
     /// Currently-active inhibitors, keyed by their target wl_surface.
-    /// `input_handler.rs` checks the focused surface against this map
+    /// `input_handler/keyboard.rs` checks the focused surface against this map
     /// every key press; a hit short-circuits margo's keybinding match
     /// and forwards the key straight to the client.
     pub keyboard_shortcuts_inhibiting_surfaces: std::collections::HashMap<

@@ -27,7 +27,7 @@ mshell-crates/mshell-frame/src/frame.rs 1250
 margo-config/src/parser.rs 759
 margo/src/backend/udev/mod.rs 2116
 margo/src/backend/udev/render_elements.rs 3167
-margo/src/input_handler.rs 2281
+margo/src/input_handler.rs 134
 margo/src/state/dispatch.rs 213
 mctl/src/bin/mctl.rs 599
 mdots/src/commands/init.rs 2394
