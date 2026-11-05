@@ -16,5 +16,9 @@ relm4.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
+[dev-dependencies]
+# The greeter's palette sanitiser: every shipped theme must survive it.
+mlogind-proto = { path = "../../mlogind-proto" }
+
 [lints]
 workspace = true

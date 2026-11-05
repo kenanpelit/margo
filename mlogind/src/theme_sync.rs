@@ -819,14 +819,19 @@ mod tests {
         let tmp = dir.join("theme.css.tmp");
         fs::write(
             &tmp,
-            ":root {\n  --primary: #102030;\n  --phish: #000;\n}\n",
+            ":root {\n  --secondary: #102030;\n  --phish: #000;\n}\n",
         )
         .unwrap();
         assert!(rewrite_sanitized_theme_css(&tmp));
         assert_eq!(
             fs::read_to_string(&tmp).unwrap(),
-            ":root {\n    --primary: #102030;\n}\n"
+            ":root {\n    --secondary: #102030;\n}\n"
         );
+
+        // A palette that would hide the login text: nothing is published, so
+        // the greeter keeps the last good palette or its default.
+        fs::write(&tmp, ":root { --on-surface: #0000; }").unwrap();
+        assert!(!rewrite_sanitized_theme_css(&tmp));
 
         // Anything beyond the palette: nothing is published.
         fs::write(

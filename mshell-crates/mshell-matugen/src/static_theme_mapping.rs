@@ -95,6 +95,25 @@ mod theme_invariant_tests {
     }
 
     #[test]
+    fn every_static_theme_reaches_the_login_screen() {
+        // mlogind publishes `to_css` of the user's theme to the greeter only
+        // through `theme_css::sanitize`, which refuses a palette whose login
+        // text would be unreadable. A shipped theme it refused would leave
+        // the greeter on its default palette instead of the user's theme.
+        for theme in Themes::all() {
+            let Some(built) = static_theme(theme, None) else {
+                continue;
+            };
+            let css = crate::css_mapping::to_css(&built);
+            assert!(
+                mlogind_proto::theme_css::sanitize(&css).is_some(),
+                "theme {:?} is refused by the greeter sanitiser",
+                theme.ident()
+            );
+        }
+    }
+
+    #[test]
     fn wallpaper_is_the_only_dynamic_theme() {
         // `Wallpaper` *is* the dynamic matugen mode, so it has no static palette.
         assert!(

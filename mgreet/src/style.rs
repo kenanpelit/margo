@@ -90,6 +90,33 @@ mod tests {
     }
 
     #[test]
+    fn the_sanitiser_checks_contrast_against_the_baked_palette() {
+        // `theme_css::sanitize` judges an overlay's legibility against the
+        // tokens it leaves to this palette, so its copy must be this palette.
+        let start = STYLE_CSS.find(":root").expect("the baked palette exists");
+        let block = &STYLE_CSS[start..];
+        let block = &block[..block.find('}').expect(":root is closed")];
+        let mut baked: Vec<(String, String)> = block
+            .split(['{', ';'])
+            .filter_map(|decl| {
+                let (name, value) = decl.split_once(':')?;
+                let name = name.trim().strip_prefix("--")?;
+                let value = value.trim();
+                value
+                    .starts_with('#')
+                    .then(|| (name.to_string(), value.to_ascii_lowercase()))
+            })
+            .collect();
+        baked.sort();
+        let mut copy: Vec<(String, String)> = mlogind_proto::theme_css::GREETER_DEFAULTS
+            .iter()
+            .map(|(t, v)| (t.to_string(), v.to_string()))
+            .collect();
+        copy.sort();
+        assert_eq!(baked, copy);
+    }
+
+    #[test]
     fn every_token_used_has_a_baked_default() {
         // Without one the greeter renders an unset colour — black on black —
         // whenever the matugen overlay is missing, which is every first boot.

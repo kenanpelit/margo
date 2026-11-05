@@ -5379,6 +5379,7 @@ version = "4.9.2"
 dependencies = [
  "anyhow",
  "margo-fs",
+ "mlogind-proto",
  "mshell-config",
  "mshell-margo-client",
  "relm4",
