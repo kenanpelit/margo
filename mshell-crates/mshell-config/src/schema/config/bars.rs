@@ -338,6 +338,8 @@ pub struct WallpaperBarWidget {
     pub middle_click: WallpaperPillAction,
     /// Right click.
     pub right_click: WallpaperPillAction,
+    /// Scroll over the pill: up = next wallpaper, down = previous.
+    pub scroll: bool,
 }
 
 impl Default for WallpaperBarWidget {
@@ -346,6 +348,7 @@ impl Default for WallpaperBarWidget {
             left_click: WallpaperPillAction::OpenPicker,
             middle_click: WallpaperPillAction::None,
             right_click: WallpaperPillAction::None,
+            scroll: false,
         }
     }
 }
@@ -876,6 +879,7 @@ mod tests {
         );
         assert_eq!(widgets.wallpaper.middle_click, WallpaperPillAction::None);
         assert_eq!(widgets.wallpaper.right_click, WallpaperPillAction::None);
+        assert!(!widgets.wallpaper.scroll, "scroll stays inert");
     }
 
     #[test]

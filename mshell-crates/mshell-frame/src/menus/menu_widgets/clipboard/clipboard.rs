@@ -1400,7 +1400,7 @@ fn category_badge(cat: ClipCategory) -> Option<&'static str> {
 
 /// Build one keycap chip for the footer hint bar (shared `.kbd-chip`
 /// contract): a row of `.kbd-key` caps followed by a `.kbd-caption`.
-fn kbd_chip(caps: &[&str], caption: &str) -> gtk::Box {
+pub(crate) fn kbd_chip(caps: &[&str], caption: &str) -> gtk::Box {
     let chip = gtk::Box::new(gtk::Orientation::Horizontal, 4);
     chip.add_css_class("kbd-chip");
     chip.set_valign(gtk::Align::Center);

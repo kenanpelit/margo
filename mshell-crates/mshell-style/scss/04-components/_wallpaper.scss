@@ -47,3 +47,15 @@
         inset 32px 0 16px -8px var(--surface),
         inset -32px 0 16px -8px var(--surface);
 }
+
+// Keyboard cursor (§13.9 / §16: focus must show). The child's own outline
+// is off above; the thumbnail takes the same --primary border as hover.
+.wallpaper-grid > child:focus-visible .wallpaper-thumbnail,
+.wallpaper-grid:focus-within > child:selected .wallpaper-thumbnail {
+    border: 2px solid var(--primary);
+}
+
+.wallpaper-hint-bar {
+    background: transparent;
+    padding: var(--space-1) var(--space-6);
+}

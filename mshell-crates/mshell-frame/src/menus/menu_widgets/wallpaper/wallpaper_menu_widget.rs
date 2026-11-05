@@ -1,6 +1,9 @@
+use crate::menus::menu_widgets::clipboard::clipboard::kbd_chip;
 use crate::menus::menu_widgets::wallpaper::parallelogram::ParallelogramPaintable;
 use gtk4_layer_shell::{KeyboardMode, LayerShell};
-use mshell_cache::wallpaper::{default_wallpaper_path, set_wallpaper};
+use mshell_cache::wallpaper::{
+    CycleDirection, current_wallpaper_path, cycle_wallpaper, default_wallpaper_path, set_wallpaper,
+};
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
@@ -66,6 +69,32 @@ fn is_image_file(path: &std::path::Path) -> bool {
         })
 }
 
+/// What a key does in the wallpaper carousel. Arrows inside the grid and
+/// Enter on a thumbnail are the `GridView`'s own (move, activate → apply).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CarouselKey {
+    /// Down in the search field: move into the thumbnails.
+    EnterGrid,
+    /// Space on a thumbnail: apply a random wallpaper.
+    Random,
+}
+
+fn carousel_key(key: gdk::Key, in_search: bool) -> Option<CarouselKey> {
+    match key {
+        gdk::Key::Down | gdk::Key::KP_Down if in_search => Some(CarouselKey::EnterGrid),
+        gdk::Key::space | gdk::Key::KP_Space if !in_search => Some(CarouselKey::Random),
+        _ => None,
+    }
+}
+
+/// Which thumbnail takes the keyboard cursor when the grid gets focus: the
+/// current wallpaper when it is shown, else the first one.
+fn grid_focus_index(paths: &[String], current: Option<&str>) -> u32 {
+    current
+        .and_then(|cur| paths.iter().position(|p| p == cur))
+        .unwrap_or(0) as u32
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct WallpaperMenuWidgetModel {
     is_revealed: bool,
@@ -76,6 +105,8 @@ pub(crate) struct WallpaperMenuWidgetModel {
     thumbnail_height: i32,
     row_count: u32,
     filter: gtk::CustomFilter,
+    /// The thumbnails as shown (search applied), for keyboard moves.
+    filter_model: gtk::FilterListModel,
 
     wallpaper_directory: String,
     content_fit: ContentFit,
@@ -106,6 +137,10 @@ pub(crate) enum WallpaperMenuWidgetInput {
     SearchFilterChanged(String),
     SearchFilterActivate,
     ClearSearch,
+    /// Move keyboard focus into the thumbnail grid.
+    FocusGrid,
+    /// Apply a random wallpaper (Space in the grid).
+    RandomWallpaper,
 
     ChangeWallpaperDirectoryClicked,
     ContentFitChanged(ContentFit),
@@ -454,7 +489,21 @@ impl Component for WallpaperMenuWidgetModel {
                     set_css_classes: &["wallpaper-empty-message", "label-medium-bold"],
                     set_label: "No wallpapers available",
                 },
-            }
+            },
+
+            // Keyboard hints (shared `.kbd-chip` caps, as in Clipboard).
+            #[name = "hint_bar"]
+            gtk::FlowBox {
+                add_css_class: "wallpaper-hint-bar",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_selection_mode: gtk::SelectionMode::None,
+                set_halign: gtk::Align::Start,
+                set_max_children_per_line: 6,
+                set_column_spacing: 8,
+                set_row_spacing: 4,
+                set_homogeneous: false,
+                set_can_focus: false,
+            },
         }
     }
 
@@ -693,6 +742,7 @@ impl Component for WallpaperMenuWidgetModel {
             thumbnail_height: params.thumbnail_height,
             row_count: params.row_count,
             filter,
+            filter_model: filter_model.clone(),
 
             wallpaper_directory: "".to_string(),
             content_fit: config_manager()
@@ -763,6 +813,41 @@ impl Component for WallpaperMenuWidgetModel {
         });
 
         wire_vertical_to_horizontal(&widgets.scroll_window, 64.0);
+
+        // Carousel keys: Down leaves the search for the thumbnails, Space
+        // on a thumbnail picks a random wallpaper. Capture phase on the
+        // grid so Space beats the GridView's own select binding.
+        let search_keys = gtk::EventControllerKey::new();
+        let key_sender = sender.clone();
+        search_keys.connect_key_pressed(move |_, key, _, _| {
+            if carousel_key(key, true) == Some(CarouselKey::EnterGrid) {
+                key_sender.input(WallpaperMenuWidgetInput::FocusGrid);
+                return glib::Propagation::Stop;
+            }
+            glib::Propagation::Proceed
+        });
+        widgets.search_entry.add_controller(search_keys);
+
+        let grid_keys = gtk::EventControllerKey::new();
+        grid_keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let key_sender = sender.clone();
+        grid_keys.connect_key_pressed(move |_, key, _, _| {
+            if carousel_key(key, false) == Some(CarouselKey::Random) {
+                key_sender.input(WallpaperMenuWidgetInput::RandomWallpaper);
+                return glib::Propagation::Stop;
+            }
+            glib::Propagation::Proceed
+        });
+        widgets.grid_view.add_controller(grid_keys);
+
+        for (caps, caption) in [
+            (&["\u{2193}"][..], "Thumbnails"),
+            (&["\u{2190}", "\u{2192}"][..], "Browse"),
+            (&["\u{21B5}"][..], "Apply"),
+            (&["Space"][..], "Random"),
+        ] {
+            widgets.hint_bar.insert(&kbd_chip(caps, caption), -1);
+        }
 
         ComponentParts { model, widgets }
     }
@@ -960,7 +1045,41 @@ impl Component for WallpaperMenuWidgetModel {
             WallpaperMenuWidgetInput::FilterStrengthEffect(filter) => {
                 self.filter_strength = filter;
             }
-            WallpaperMenuWidgetInput::SearchFilterActivate => {}
+            WallpaperMenuWidgetInput::SearchFilterActivate => {
+                // Enter in the search applies the first match.
+                if let Some(path) = self
+                    .filter_model
+                    .item(0)
+                    .and_downcast::<gtk::StringObject>()
+                    .map(|s| PathBuf::from(s.string().as_str()))
+                {
+                    set_wallpaper(&path);
+                }
+            }
+            WallpaperMenuWidgetInput::FocusGrid => {
+                let n = self.filter_model.n_items();
+                if n > 0 {
+                    let paths: Vec<String> = (0..n)
+                        .filter_map(|i| {
+                            self.filter_model
+                                .item(i)
+                                .and_downcast::<gtk::StringObject>()
+                        })
+                        .map(|s| s.string().to_string())
+                        .collect();
+                    let current =
+                        current_wallpaper_path().map(|p| p.to_string_lossy().into_owned());
+                    let pos = grid_focus_index(&paths, current.as_deref());
+                    widgets.grid_view.scroll_to(
+                        pos,
+                        gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT,
+                        None,
+                    );
+                }
+            }
+            WallpaperMenuWidgetInput::RandomWallpaper => {
+                cycle_wallpaper(CycleDirection::Random);
+            }
             WallpaperMenuWidgetInput::SearchFilterChanged(text) => {
                 let text_lower = text.to_lowercase();
                 self.filter.set_filter_func(move |obj| {
@@ -1000,5 +1119,41 @@ impl Component for WallpaperMenuWidgetModel {
         }
 
         self.update_view(widgets, sender);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn down_leaves_the_search_and_space_picks_random_in_the_grid() {
+        assert_eq!(
+            carousel_key(gdk::Key::Down, true),
+            Some(CarouselKey::EnterGrid)
+        );
+        assert_eq!(
+            carousel_key(gdk::Key::KP_Down, true),
+            Some(CarouselKey::EnterGrid)
+        );
+        assert_eq!(
+            carousel_key(gdk::Key::space, false),
+            Some(CarouselKey::Random)
+        );
+        // In the search Space types a space; in the grid Down moves a row.
+        assert_eq!(carousel_key(gdk::Key::space, true), None);
+        assert_eq!(carousel_key(gdk::Key::Down, false), None);
+        // Enter and the arrows are the GridView's own.
+        assert_eq!(carousel_key(gdk::Key::Return, false), None);
+        assert_eq!(carousel_key(gdk::Key::Left, false), None);
+    }
+
+    #[test]
+    fn grid_focus_starts_on_the_current_wallpaper() {
+        let paths = ["/w/a.jpg", "/w/b.jpg", "/w/c.jpg"].map(String::from);
+        assert_eq!(grid_focus_index(&paths, Some("/w/b.jpg")), 1);
+        assert_eq!(grid_focus_index(&paths, Some("/elsewhere.jpg")), 0);
+        assert_eq!(grid_focus_index(&paths, None), 0);
+        assert_eq!(grid_focus_index(&[], Some("/w/a.jpg")), 0);
     }
 }

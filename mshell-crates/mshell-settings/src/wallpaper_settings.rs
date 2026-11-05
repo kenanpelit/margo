@@ -64,6 +64,7 @@ pub(crate) enum WallpaperSettingsInput {
     FetchNowClicked,
     CompositorDrawsChanged(bool),
     PillActionChanged(PillButtonSlot, WallpaperPillAction),
+    PillScrollChanged(bool),
 
     WallpaperDirectoryEffect(String),
     ContentFitEffect(ContentFit),
@@ -755,6 +756,44 @@ impl Component for WallpaperSettingsModel {
                             } @pill_right_handler,
                         },
                     },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/bars/widgets/wallpaper/scroll",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Scroll to switch",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Scroll up over the pill for the next wallpaper, down for the previous one.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(pill_scroll_handler)]
+                            set_active: model.pill.scroll,
+                            connect_state_set[sender] => move |_, enabled| {
+                                sender.input(WallpaperSettingsInput::PillScrollChanged(enabled));
+                                glib::Propagation::Proceed
+                            } @pill_scroll_handler,
+                        },
+                    },
                 },
             }
         }
@@ -1057,6 +1096,9 @@ impl Component for WallpaperSettingsModel {
                         PillButtonSlot::Right => pill.right_click = action,
                     }
                 });
+            }
+            WallpaperSettingsInput::PillScrollChanged(enabled) => {
+                config_manager().update_config(|c| c.bars.widgets.wallpaper.scroll = enabled);
             }
             WallpaperSettingsInput::PillEffect(pill) => self.pill = pill,
         }
