@@ -8,3 +8,7 @@ exact CLI text for states that cannot be captured safely (daemon down,
 error states) from mullvad-cli's own strings.
 
 - `relay-list.txt` — `mullvad relay list`, seven countries, two relays a city.
+- `relay-get.txt` — `mullvad relay get` (multihop off, a pinned relay).
+- `relay-get-multihop.txt` — `mullvad relay get` with multihop on, from the
+  community `mullvad` plugin's own captures (same CLI version): turning
+  multihop on here would change the live tunnel.

@@ -21,6 +21,7 @@ pub struct VpnSettingsModel {
     lockdown: bool,
     autoconnect: bool,
     quantum: bool,
+    multihop: bool,
     obf: String,
     obf_model: gtk::StringList,
 }
@@ -40,6 +41,7 @@ pub enum VpnSettingsInput {
     SetLockdown(bool),
     SetAutoconnect(bool),
     SetQuantum(bool),
+    SetMultihop(bool),
     SetObf(u32),
 }
 
@@ -52,6 +54,7 @@ pub enum VpnSettingsCmd {
         lockdown: bool,
         autoconnect: bool,
         quantum: bool,
+        multihop: bool,
         obf: String,
     },
 }
@@ -189,6 +192,21 @@ impl Component for VpnSettingsModel {
                     },
                     #[template]
                     Row {
+                        #[template_child] title { set_label: "Multihop" },
+                        #[template_child] desc { set_label: "Enter Mullvad through a server in another location first (pick the entry in the VPN menu)." },
+                        #[name="multihop_sw"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            set_active: model.multihop,
+                            connect_state_set[sender] => move |_, on| {
+                                sender.input(VpnSettingsInput::SetMultihop(on));
+                                gtk::glib::Propagation::Proceed
+                            },
+                        },
+                    },
+                    #[template]
+                    Row {
                         #[template_child] title { set_label: "Anti-censorship" },
                         #[template_child] desc { set_label: "Obfuscation method (auto / off / udp2tcp / shadowsocks / quic)." },
                         #[name="obf_drop"]
@@ -231,6 +249,7 @@ impl Component for VpnSettingsModel {
             lockdown: false,
             autoconnect: false,
             quantum: false,
+            multihop: false,
             obf: "auto".to_string(),
             obf_model: gtk::StringList::new(OBF_MODES),
         };
@@ -269,6 +288,11 @@ impl Component for VpnSettingsModel {
                     act(&sender, vec!["quantum".into()]); // quantum is a toggle
                 }
             }
+            VpnSettingsInput::SetMultihop(on) => {
+                if on != self.multihop {
+                    act(&sender, vec!["multihop".into(), bool_arg(on)]);
+                }
+            }
             VpnSettingsInput::SetObf(idx) => {
                 let mode = OBF_MODES.get(idx as usize).copied().unwrap_or("auto");
                 if mode != self.obf {
@@ -292,6 +316,7 @@ impl Component for VpnSettingsModel {
             lockdown,
             autoconnect,
             quantum,
+            multihop,
             obf,
         } = message;
         self.status = status;
@@ -300,6 +325,7 @@ impl Component for VpnSettingsModel {
         self.lockdown = lockdown;
         self.autoconnect = autoconnect;
         self.quantum = quantum;
+        self.multihop = multihop;
         self.obf = obf;
         rebuild_favs(&widgets.fav_box, &self.favs, &sender);
     }
@@ -381,6 +407,7 @@ async fn load() -> VpnSettingsCmd {
         lockdown: kv("lockdown") == "on",
         autoconnect: kv("autoconnect") == "on",
         quantum: kv("quantum") == "on",
+        multihop: kv("multihop") == "on",
         obf: {
             let m = kv("obf");
             if m.is_empty() { "auto".to_string() } else { m }

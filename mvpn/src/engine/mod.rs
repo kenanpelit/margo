@@ -9,6 +9,7 @@ pub mod blocky;
 pub mod diag;
 pub mod favorites;
 pub mod latency;
+pub mod multihop;
 pub mod notify;
 pub mod obf;
 pub mod relays;

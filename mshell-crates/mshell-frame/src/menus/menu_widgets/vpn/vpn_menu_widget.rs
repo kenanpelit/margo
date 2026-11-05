@@ -18,6 +18,7 @@ use super::super::dns::dns_menu_widget::{
 };
 use super::super::dns::state::{Mode, probe_dns_state};
 use super::locations::{self, LocationAction, LocationList};
+use super::multihop::{self, Entry};
 use super::throughput::{VpnThroughputInput, VpnThroughputModel};
 use crate::menus::reveal_poll::RevealGate;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, EditableExt, OrientableExt, WidgetExt};
@@ -74,6 +75,17 @@ pub(crate) struct VpnMenuWidgetModel {
     autoconnect_sw: gtk::Switch,
     quantum_sw: gtk::Switch,
     obf_drop: gtk::DropDown,
+    multihop: bool,
+    entry: Entry,
+    multihop_sw: gtk::Switch,
+    /// Entry location pickers (country, then city) + their row, which is
+    /// only sensitive while multihop is on.
+    entry_row: gtk::Box,
+    entry_country_drop: gtk::DropDown,
+    entry_city_drop: gtk::DropDown,
+    /// Set while `sync_entry` moves the pickers, so their notify handlers
+    /// don't echo the change back into an `mvpn entry` call.
+    entry_syncing: std::rc::Rc<std::cell::Cell<bool>>,
     fav_box: gtk::Box,
     expiry_label: gtk::Label,
     /// Location picker (lazy): the list box + a one-shot load guard.
@@ -125,6 +137,14 @@ pub(crate) enum VpnMenuWidgetInput {
     SetAutoconnect(bool),
     SetQuantum(bool),
     SetObf(u32),
+    SetMultihop(bool),
+    /// The entry country picker moved (index into `multihop::country_labels`).
+    EntryCountry(u32),
+    /// The entry city picker moved (index into `multihop::city_labels`).
+    EntryCity(u32),
+    /// The Settings section's expander toggled (loads the location tree
+    /// the entry pickers list).
+    SettingsExpanded(bool),
     RefreshNow,
     /// Sent by the host menu on show/hide. The poll loop starts lazily on the
     /// first reveal and probes only while visible.
@@ -149,22 +169,8 @@ pub(crate) struct VpnMenuWidgetInit {}
 
 #[derive(Debug)]
 pub(crate) enum VpnMenuWidgetCommandOutput {
-    Loaded {
-        status: String,
-        connected: bool,
-        /// Currently-connected relay id (empty when down) — used to mark the
-        /// matching favourites row as active.
-        relay: String,
-        favs: Vec<Fav>,
-        lockdown: bool,
-        autoconnect: bool,
-        quantum: bool,
-        obf: String,
-        /// Account expiry date (`YYYY-MM-DD`), from `mvpn toggles`.
-        expiry: String,
-        /// Current network mode (VPN / Blocky / Default) from `probe_dns_state`.
-        mode: Mode,
-    },
+    /// A full reload (`load`).
+    Loaded(Box<Snapshot>),
     /// Mullvad's country → city tree — loaded lazily when the Locations
     /// section is first expanded.
     CountriesLoaded(Vec<Country>),
@@ -174,6 +180,28 @@ pub(crate) enum VpnMenuWidgetCommandOutput {
         connected: bool,
         relay: String,
     },
+}
+
+/// Everything a full reload reads.
+#[derive(Debug)]
+pub(crate) struct Snapshot {
+    status: String,
+    connected: bool,
+    /// Currently-connected relay id (empty when down) — used to mark the
+    /// matching favourites row as active.
+    relay: String,
+    favs: Vec<Fav>,
+    lockdown: bool,
+    autoconnect: bool,
+    quantum: bool,
+    obf: String,
+    /// Account expiry date (`YYYY-MM-DD`), from `mvpn toggles`.
+    expiry: String,
+    /// Current network mode (VPN / Blocky / Default) from `probe_dns_state`.
+    mode: Mode,
+    multihop: bool,
+    /// The multihop entry (`entry=` of `mvpn toggles`).
+    entry: Entry,
 }
 
 #[relm4::component(pub(crate))]
@@ -431,12 +459,15 @@ impl Component for VpnMenuWidgetModel {
                     },
                 },
 
-                // Settings — lockdown / auto-connect / quantum switches +
-                // anti-censorship dropdown, tucked away so the menu is calm
-                // by default. Rows built imperatively in `init`.
+                // Settings — lockdown / auto-connect / quantum / multihop
+                // switches + anti-censorship and entry pickers, tucked away so
+                // the menu is calm by default. Rows built imperatively in `init`.
                 gtk::Expander {
                     add_css_class: "vpn-dns-expander",
                     set_expanded: false,
+                    connect_expanded_notify[sender] => move |e| {
+                        sender.input(VpnMenuWidgetInput::SettingsExpanded(e.is_expanded()));
+                    },
 
                     #[wrap(Some)]
                     set_label_widget = &gtk::Box {
@@ -545,6 +576,53 @@ impl Component for VpnMenuWidgetModel {
             &obf_drop,
         ));
 
+        let multihop_sw = gtk::Switch::new();
+        multihop_sw.set_valign(gtk::Align::Center);
+        settings_box.append(&toggle_row(
+            "Multihop",
+            "Enter Mullvad through a server in another location first.",
+            &multihop_sw,
+        ));
+        let entry_country_drop = gtk::DropDown::new(
+            Some(gtk::StringList::new(&["Any country"])),
+            gtk::Expression::NONE,
+        );
+        let entry_city_drop = gtk::DropDown::new(
+            Some(gtk::StringList::new(&["Any city"])),
+            gtk::Expression::NONE,
+        );
+        entry_country_drop.set_hexpand(true);
+        entry_city_drop.set_hexpand(true);
+        mshell_common::a11y::name(&entry_country_drop, "Multihop entry country");
+        mshell_common::a11y::name(&entry_city_drop, "Multihop entry city");
+        let entry_row = entry_picker_row(&entry_country_drop, &entry_city_drop);
+        entry_row.set_sensitive(false);
+        settings_box.append(&entry_row);
+        let entry_syncing = std::rc::Rc::new(std::cell::Cell::new(false));
+        {
+            let s = sender.clone();
+            multihop_sw.connect_state_set(move |_, on| {
+                s.input(VpnMenuWidgetInput::SetMultihop(on));
+                gtk::glib::Propagation::Proceed
+            });
+        }
+        {
+            let (s, syncing) = (sender.clone(), entry_syncing.clone());
+            entry_country_drop.connect_selected_notify(move |d| {
+                if !syncing.get() {
+                    s.input(VpnMenuWidgetInput::EntryCountry(d.selected()));
+                }
+            });
+        }
+        {
+            let (s, syncing) = (sender.clone(), entry_syncing.clone());
+            entry_city_drop.connect_selected_notify(move |d| {
+                if !syncing.get() {
+                    s.input(VpnMenuWidgetInput::EntryCity(d.selected()));
+                }
+            });
+        }
+
         // Wire the toggle signals. Compare-guards in `update` stop the
         // imperative `sync_view` set from echoing back into an `mvpn` call.
         {
@@ -610,6 +688,13 @@ impl Component for VpnMenuWidgetModel {
             autoconnect_sw: autoconnect_sw.clone(),
             quantum_sw: quantum_sw.clone(),
             obf_drop: obf_drop.clone(),
+            multihop: false,
+            entry: Entry::default(),
+            multihop_sw: multihop_sw.clone(),
+            entry_row: entry_row.clone(),
+            entry_country_drop: entry_country_drop.clone(),
+            entry_city_drop: entry_city_drop.clone(),
+            entry_syncing,
             fav_box: fav_box_widget.clone(),
             expiry_label: expiry_label_widget.clone(),
             countries_box: countries_box_widget.clone(),
@@ -725,16 +810,30 @@ impl Component for VpnMenuWidgetModel {
                     &sender,
                 );
             }
-            VpnMenuWidgetInput::CountriesExpanded(expanded) => {
-                if expanded && !self.countries_loaded {
-                    self.countries_loaded = true;
-                    self.rebuild_locations(&sender);
-                    sender.command(|out, _shutdown| async move {
-                        let list =
-                            mshell_utils::mvpn::locations::parse(&capture(&["locations"]).await);
-                        let _ = out.send(VpnMenuWidgetCommandOutput::CountriesLoaded(list));
-                    });
+            VpnMenuWidgetInput::CountriesExpanded(expanded)
+            | VpnMenuWidgetInput::SettingsExpanded(expanded) => {
+                if expanded {
+                    self.ensure_locations(&sender);
                 }
+            }
+            VpnMenuWidgetInput::SetMultihop(on) => {
+                self.entry_row.set_sensitive(on);
+                if on != self.multihop {
+                    self.multihop = on;
+                    act(&sender, vec!["multihop".into(), bool_arg(on)]);
+                }
+            }
+            VpnMenuWidgetInput::EntryCountry(index) => {
+                // A new country starts at "any city" in it.
+                self.set_city_labels(index, 0);
+                act(&sender, multihop::entry_args(&self.countries, index, 0));
+            }
+            VpnMenuWidgetInput::EntryCity(index) => {
+                let country = self.entry_country_drop.selected();
+                act(
+                    &sender,
+                    multihop::entry_args(&self.countries, country, index),
+                );
             }
             VpnMenuWidgetInput::Remove(relay) => {
                 act(&sender, vec!["fav".into(), "remove".into(), relay]);
@@ -790,61 +889,60 @@ impl Component for VpnMenuWidgetModel {
         sender: ComponentSender<Self>,
         _root: &Self::Root,
     ) {
-        let (status, connected, relay, favs, lockdown, autoconnect, quantum, obf, expiry, mode) =
-            match message {
-                VpnMenuWidgetCommandOutput::Loaded {
-                    status,
-                    connected,
-                    relay,
-                    favs,
-                    lockdown,
-                    autoconnect,
-                    quantum,
-                    obf,
-                    expiry,
-                    mode,
-                } => (
-                    status,
-                    connected,
-                    relay,
-                    favs,
-                    lockdown,
-                    autoconnect,
-                    quantum,
-                    obf,
-                    expiry,
-                    mode,
-                ),
-                VpnMenuWidgetCommandOutput::CountriesLoaded(list) => {
-                    self.countries = list;
-                    self.countries_ready = true;
-                    self.rebuild_locations(&sender);
-                    return;
+        let snap = match message {
+            VpnMenuWidgetCommandOutput::Loaded(snap) => *snap,
+            VpnMenuWidgetCommandOutput::CountriesLoaded(list) => {
+                self.countries = list;
+                self.countries_ready = true;
+                self.rebuild_locations(&sender);
+                // The entry picker lists the same countries.
+                self.entry_syncing.set(true);
+                let labels = multihop::country_labels(&self.countries);
+                let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+                self.entry_country_drop
+                    .set_model(Some(&gtk::StringList::new(&refs)));
+                self.entry_syncing.set(false);
+                self.sync_entry();
+                return;
+            }
+            VpnMenuWidgetCommandOutput::Status {
+                status,
+                connected,
+                relay,
+            } => {
+                if (connected, relay.as_str(), status.as_str())
+                    != (
+                        self.connected,
+                        self.connected_relay.as_str(),
+                        &self.status_text,
+                    )
+                {
+                    self.apply_status(status, connected, relay);
+                    rebuild_favs(
+                        &self.fav_box,
+                        &self.favs,
+                        &self.connected_relay,
+                        &self.fav_filter,
+                        &sender,
+                    );
                 }
-                VpnMenuWidgetCommandOutput::Status {
-                    status,
-                    connected,
-                    relay,
-                } => {
-                    if (connected, relay.as_str(), status.as_str())
-                        != (
-                            self.connected,
-                            self.connected_relay.as_str(),
-                            &self.status_text,
-                        )
-                    {
-                        self.apply_status(status, connected, relay);
-                        rebuild_favs(
-                            &self.fav_box,
-                            &self.favs,
-                            &self.connected_relay,
-                            &self.fav_filter,
-                            &sender,
-                        );
-                    }
-                    return;
-                }
-            };
+                return;
+            }
+        };
+        let Snapshot {
+            status,
+            connected,
+            relay,
+            favs,
+            lockdown,
+            autoconnect,
+            quantum,
+            obf,
+            expiry,
+            mode,
+            multihop,
+            entry,
+        } = snap;
         self.apply_status(status, connected, relay);
         self.lockdown = lockdown;
         self.autoconnect = autoconnect;
@@ -852,6 +950,8 @@ impl Component for VpnMenuWidgetModel {
         self.obf = obf;
         self.favs = favs;
         self.mode = mode;
+        self.multihop = multihop;
+        self.entry = entry;
 
         // Highlight the active mode button. Mullvad/Mixed → Mullvad; Blocky →
         // Blocky; everything else → Default.
@@ -880,6 +980,8 @@ impl Component for VpnMenuWidgetModel {
         if self.obf_drop.selected() != sel {
             self.obf_drop.set_selected(sel);
         }
+        self.multihop_sw.set_active(multihop);
+        self.sync_entry();
 
         // Account expiry line — empty until known / unparseable. Kept in the
         // layout (hexpand) so the footer Refresh button stays right-aligned.
@@ -957,6 +1059,42 @@ impl VpnMenuWidgetModel {
             .set_label(if connected { "Disconnect" } else { "Connect" });
     }
 
+    /// Fetch the location tree once (Locations list + entry pickers).
+    fn ensure_locations(&mut self, sender: &ComponentSender<Self>) {
+        if self.countries_loaded {
+            return;
+        }
+        self.countries_loaded = true;
+        self.rebuild_locations(sender);
+        sender.command(|out, _shutdown| async move {
+            let list = mshell_utils::mvpn::locations::parse(&capture(&["locations"]).await);
+            let _ = out.send(VpnMenuWidgetCommandOutput::CountriesLoaded(list));
+        });
+    }
+
+    /// Show `multihop` / `entry` on the switch and the pickers (without
+    /// echoing the moves back as `mvpn entry` calls).
+    fn sync_entry(&self) {
+        self.entry_row.set_sensitive(self.multihop);
+        let (country, city) = multihop::selection(&self.countries, &self.entry);
+        self.entry_syncing.set(true);
+        self.entry_country_drop.set_selected(country);
+        self.entry_syncing.set(false);
+        self.set_city_labels(country, city);
+    }
+
+    /// Refill the city picker for the country at `country` and select `city`.
+    fn set_city_labels(&self, country: u32, city: u32) {
+        self.entry_syncing.set(true);
+        let labels = multihop::city_labels(&self.countries, country);
+        let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+        self.entry_city_drop
+            .set_model(Some(&gtk::StringList::new(&refs)));
+        self.entry_city_drop.set_selected(city);
+        self.entry_city_drop.set_sensitive(labels.len() > 1);
+        self.entry_syncing.set(false);
+    }
+
     /// Refill the location list from the tree, search and open countries.
     fn rebuild_locations(&self, sender: &ComponentSender<Self>) {
         let s = sender.clone();
@@ -1004,6 +1142,27 @@ fn toggle_row(title: &str, desc: &str, control: &impl gtk::prelude::IsA<gtk::Wid
     row.append(&text);
     let control: &gtk::Widget = control.upcast_ref();
     row.append(control);
+    row
+}
+
+/// The multihop entry row: title + description, then the country and city
+/// pickers side by side under it (two dropdowns don't fit beside the text).
+fn entry_picker_row(country: &gtk::DropDown, city: &gtk::DropDown) -> gtk::Box {
+    let row = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    row.add_css_class("ok-button-surface");
+    let t = gtk::Label::new(Some("Entry location"));
+    t.set_xalign(0.0);
+    let d = gtk::Label::new(Some("Where multihop enters Mullvad."));
+    d.add_css_class("label-small");
+    d.add_css_class("dim-label");
+    d.set_xalign(0.0);
+    let pickers = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    pickers.set_homogeneous(true);
+    pickers.append(country);
+    pickers.append(city);
+    row.append(&t);
+    row.append(&d);
+    row.append(&pickers);
     row
 }
 
@@ -1146,7 +1305,7 @@ async fn load() -> VpnMenuWidgetCommandOutput {
     let kv = |key: &str| toggle_value(&toggles, key);
     // Current network mode for the top selector (VPN / Blocky / Default).
     let mode = probe_dns_state().await.mode_id();
-    VpnMenuWidgetCommandOutput::Loaded {
+    VpnMenuWidgetCommandOutput::Loaded(Box::new(Snapshot {
         status,
         connected,
         relay,
@@ -1160,7 +1319,9 @@ async fn load() -> VpnMenuWidgetCommandOutput {
         },
         expiry: kv("expiry"),
         mode,
-    }
+        multihop: kv("multihop") == "on",
+        entry: Entry::parse(&kv("entry")),
+    }))
 }
 
 async fn capture(args: &[&str]) -> String {

@@ -21,6 +21,8 @@ mvpn fastest-fav-sweep europe [n]   # seed favorites across a country group
 mvpn fav add|remove <relay>|list|connect|refresh [cc]
 mvpn obf [auto|off|udp2tcp|shadowsocks|quic] | obf cycle | obf hunt443
 mvpn lockdown on|off       # block traffic when the tunnel drops
+mvpn multihop [on|off]     # route through an entry relay first (bare = show)
+mvpn entry any | <cc> [city]   # the multihop entry location
 mvpn auto-connect on|off
 mvpn slot whoami|list|revoke <dev>|recycle [--dry-run]|status|disconnect
 mvpn timer start <min> | stop | status   # auto-switch relays

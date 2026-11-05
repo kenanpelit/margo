@@ -8,7 +8,9 @@ mod engine;
 mod ui;
 
 use clap::{Parser, Subcommand};
-use engine::{actions, blocky, diag, favorites, notify, obf, relays, slot, status, timer};
+use engine::{
+    actions, blocky, diag, favorites, multihop, notify, obf, relays, slot, status, timer,
+};
 
 #[derive(Parser, Debug)]
 #[command(name = "mvpn", version, about = "Native Mullvad VPN control for margo")]
@@ -90,6 +92,18 @@ enum Cmd {
     Lockdown {
         #[arg(value_parser = ["on", "off"])]
         state: String,
+    },
+    /// Multihop (route through an entry relay first): bare = show the state
+    /// and entry; `on` / `off` sets it.
+    Multihop {
+        #[arg(value_parser = ["on", "off"])]
+        state: Option<String>,
+    },
+    /// Set the multihop entry location: `any`, a country code, or a
+    /// country + city code (`mvpn entry se got`).
+    Entry {
+        #[arg(required = true, num_args = 1..=2)]
+        location: Vec<String>,
     },
     /// Set auto-connect on daemon start.
     #[command(name = "auto-connect")]
@@ -284,6 +298,27 @@ fn main() {
         },
         Cmd::Lockdown { state } => actions::set_lockdown(state == "on"),
         Cmd::AutoConnect { state } => actions::set_autoconnect(state == "on"),
+        Cmd::Multihop { state: None } => {
+            let r = multihop::relay_settings();
+            println!(
+                "multihop: {} · entry: {}",
+                if r.multihop { "on" } else { "off" },
+                r.entry.short()
+            );
+            true
+        }
+        Cmd::Multihop { state: Some(s) } => multihop::set_multihop(s == "on"),
+        Cmd::Entry { location } => {
+            let country = location.first().map(String::as_str).unwrap_or("");
+            let city = location.get(1).map(String::as_str);
+            match multihop::set_entry(country, city) {
+                Ok(()) => true,
+                Err(e) => {
+                    eprintln!("mvpn entry: {e}");
+                    false
+                }
+            }
+        }
         Cmd::Slot { action } => run_slot(action),
         Cmd::Timer { action } => match action {
             TimerCmd::Start { minutes } => match timer::start(minutes) {
@@ -355,6 +390,9 @@ fn main() {
             let m = obf::current();
             println!("obf={}", if m.is_empty() { "auto" } else { &m });
             println!("expiry={}", status::account_expiry());
+            let relay = multihop::relay_settings();
+            println!("multihop={}", on(relay.multihop));
+            println!("entry={}", relay.entry.short());
             true
         }
         Cmd::Menu => ui::run(),

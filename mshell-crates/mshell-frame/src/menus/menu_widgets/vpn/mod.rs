@@ -6,5 +6,6 @@
 //! rx/tx throughput graph for the tunnel interface (`throughput.rs`).
 
 pub(crate) mod locations;
+pub(crate) mod multihop;
 pub(crate) mod throughput;
 pub(crate) mod vpn_menu_widget;

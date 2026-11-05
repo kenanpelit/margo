@@ -434,6 +434,7 @@ mvpn fastest-fav [cc]                  # same sweep, but also save the winner
 mvpn fav add | remove <relay> | list | connect | refresh [cc]
 mvpn obf [auto|off|udp2tcp|shadowsocks|quic|cycle|hunt443]   # anti-censorship
 mvpn lockdown on|off   ;  mvpn auto-connect on|off  ;  mvpn quantum
+mvpn multihop [on|off] ;  mvpn entry any | <cc> [city]      # multihop + its entry
 mvpn slot <recycle|status|whoami|list|revoke|disconnect>     # multi-machine slots
 mvpn timer <start N|stop|status>       # auto-switch relay every N minutes
 mvpn test          ;  mvpn split       # leak test · split-tunnel processes
@@ -446,7 +447,7 @@ mvpn ensure                            # drive the blocky DNS guard from VPN sta
 - **Bar pill + menu.** The **DNS / VPN** bar pill (`Vpn` widget) is accent-tinted
   when the tunnel is up; left-click opens the shell's native layer-shell VPN
   menu (connect / random / fastest / favourites + lockdown / auto-connect /
-  quantum / anti-censorship, plus a collapsible **DNS** section for the Blocky
+  quantum / multihop with its entry country and city / anti-censorship, plus a collapsible **DNS** section for the Blocky
   guard and DNS presets), right-click toggles the tunnel. Open it from a
   terminal with `mshellctl menu vpn`. Full relay management also lives in
   **Settings → VPN**.
