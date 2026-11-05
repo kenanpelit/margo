@@ -85,12 +85,15 @@ fn transformed_mode_size(output: &Output) -> Option<(i32, i32)> {
 }
 
 /// The frame for the active mirror's target: the source output's scene,
-/// scaled and letterboxed into the target. `None` when nothing is
-/// mirrored, or either end has no device / mode right now.
+/// scaled and letterboxed into the target. `source_scene` is the scene the
+/// source just rendered from in this batch, if it did; otherwise the
+/// scene is built here. `None` when nothing is mirrored, or either end has
+/// no device / mode right now.
 pub(super) fn build_mirror_frame(
     renderer: &mut GlesRenderer,
     outputs: &HashMap<crtc::Handle, OutputDevice>,
     state: &MargoState,
+    source_scene: Option<super::mirror_element::SharedScene>,
 ) -> Option<(Output, Vec<MargoRenderElement>)> {
     let session = state.mirror.active()?;
     let src = outputs
@@ -103,10 +106,11 @@ pub(super) fn build_mirror_frame(
         transformed_mode_size(&src.output)?,
         transformed_mode_size(&dst.output)?,
     )?;
-    let elements = build_output_scene(renderer, src, state)
-        .into_iter()
-        .map(|e| MargoRenderElement::Mirrored(super::mirror_element::MirroredElement::new(e, fit)))
-        .collect();
+    let scene = match source_scene {
+        Some(scene) => scene,
+        None => std::rc::Rc::new(build_output_scene(renderer, src, state)),
+    };
+    let elements = super::mirror_element::MirroredElement::frame(&scene, fit);
     Some((dst.output.clone(), elements))
 }
 

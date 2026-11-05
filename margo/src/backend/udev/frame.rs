@@ -14,6 +14,7 @@
 //! deeply — extracting them is a separate W-pass.
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use smithay::{
     backend::{
@@ -32,6 +33,7 @@ use tracing::{error, warn};
 use super::{
     MargoRenderElement, OutputDevice,
     helpers::output_refresh_duration,
+    mirror_element::SharedScene,
     render_elements::{build_mirror_frame, build_output_scene},
     serve_screencopies, take_pending_open_close_captures, take_pending_snapshots,
 };
@@ -424,21 +426,52 @@ pub(super) fn render_all_outputs(
     *mirror_pending = false;
 
     let per_output = state.per_output_frame_clock_enabled();
-    let mut mirror = build_mirror_frame(renderer, outputs, state);
+    // The mirror target renders last, from the scene its source rendered
+    // from in this loop (built once per batch).
+    let mut source_scene = None;
     for od in outputs.values_mut() {
-        if state.output_render_retry_pending(&od.output) {
+        if state.output_render_retry_pending(&od.output) || state.mirror.is_target(&od.output_name)
+        {
             continue;
         }
-        let mirrored = take_mirror_frame(&mut mirror, &od.output);
-        // A mirror target has no frame clock of its own (it is out of
-        // the layout): it renders on the global gate.
-        let per_output = per_output && mirrored.is_none();
         if per_output {
             state.begin_forced_render_per_output(&od.output);
         }
-        render_output(renderer, od, state, reason, per_output, mirrored);
+        let scene = render_output(renderer, od, state, reason, per_output, None);
+        if state.mirror.is_source(&od.output_name) {
+            source_scene = scene;
+        }
     }
+    // A mirror target has no frame clock of its own (it is out of the
+    // layout): it renders on the global gate.
+    render_mirror_target(renderer, outputs, state, reason, source_scene);
     finish_repaint_batch(state);
+}
+
+/// Render the active mirror's target from `source_scene` (the scene the
+/// source rendered from in this batch, if it did). Skipped while the
+/// target waits out a render-retry backoff, before anything is built.
+fn render_mirror_target(
+    renderer: &mut GlesRenderer,
+    outputs: &mut HashMap<crtc::Handle, OutputDevice>,
+    state: &mut MargoState,
+    reason: &'static str,
+    source_scene: Option<SharedScene>,
+) {
+    let retrying = outputs
+        .values()
+        .find(|od| state.mirror.is_target(&od.output_name))
+        .is_some_and(|od| state.output_render_retry_pending(&od.output));
+    if retrying {
+        return;
+    }
+    let Some((target, elements)) = build_mirror_frame(renderer, outputs, state, source_scene)
+    else {
+        return;
+    };
+    if let Some(od) = outputs.values_mut().find(|od| od.output == target) {
+        render_output(renderer, od, state, reason, false, Some(elements));
+    }
 }
 
 /// What the per-output-clock path does with the active mirror's target in
@@ -464,18 +497,6 @@ fn mirror_target_step(source_due: bool, pending: bool, target_in_flight: bool) -
         MirrorStep::Defer
     } else {
         MirrorStep::Render
-    }
-}
-
-/// The mirror frame, if `output` is the target it was built for.
-fn take_mirror_frame(
-    mirror: &mut Option<(Output, Vec<MargoRenderElement>)>,
-    output: &Output,
-) -> Option<Vec<MargoRenderElement>> {
-    if mirror.as_ref().is_some_and(|(target, _)| target == output) {
-        mirror.take().map(|(_, elements)| elements)
-    } else {
-        None
     }
 }
 
@@ -524,19 +545,20 @@ pub(super) fn render_due_outputs(
         _ => {}
     }
     *mirror_pending = step == MirrorStep::Defer;
-    // Built only when the target can take it: a frame built for an
-    // in-flight target would be thrown away.
-    let mut mirror = if step == MirrorStep::Render {
-        build_mirror_frame(renderer, outputs, state)
-    } else {
-        None
-    };
+    let mut source_scene = None;
     for od in outputs.values_mut() {
         if due.contains(&od.output) {
-            render_output(renderer, od, state, reason, true, None);
-        } else if let Some(elements) = take_mirror_frame(&mut mirror, &od.output) {
-            render_output(renderer, od, state, reason, false, Some(elements));
+            let scene = render_output(renderer, od, state, reason, true, None);
+            if step == MirrorStep::Render && state.mirror.is_source(&od.output_name) {
+                source_scene = scene;
+            }
         }
+    }
+    // Built only when the target can take it (a frame built for an
+    // in-flight target would be thrown away), from the source's scene
+    // when the source rendered above.
+    if step == MirrorStep::Render {
+        render_mirror_target(renderer, outputs, state, reason, source_scene);
     }
     finish_repaint_batch(state);
 }
@@ -551,7 +573,9 @@ fn finish_repaint_batch(state: &mut MargoState) {
 
 /// Render and queue one output's frame. `mirror` is the prebuilt frame
 /// when this output is the active mirror target ([`build_mirror_frame`]):
-/// it then shows that instead of its own (out-of-layout) scene.
+/// it then shows that instead of its own (out-of-layout) scene. Returns the
+/// scene it rendered from, so a mirror target can show the same one
+/// without building it again; `None` when the output was skipped.
 fn render_output(
     renderer: &mut GlesRenderer,
     od: &mut OutputDevice,
@@ -559,7 +583,7 @@ fn render_output(
     reason: &'static str,
     per_output: bool,
     mirror: Option<Vec<MargoRenderElement>>,
-) {
+) -> Option<SharedScene> {
     let _span = tracy_client::span!("render_output");
     // Delineate frames for Tracy's frame/FPS view — one mark per render
     // cycle. Compiled out without `profile-with-tracy`.
@@ -573,7 +597,7 @@ fn render_output(
         if per_output {
             state.clear_pending_vblank_per_output(&od.output);
         }
-        return;
+        return None;
     }
     // Soft-disabled output: skip entirely.
     if mirror.is_none()
@@ -583,7 +607,7 @@ fn render_output(
             if per_output {
                 state.clear_pending_vblank_per_output(&od.output);
             }
-            return;
+            return None;
         }
     }
     // HDR Phase 2 scaffolding hook — eagerly compile shaders if
@@ -602,12 +626,28 @@ fn render_output(
     super::take_mru_thumbnails(renderer, od, state);
 
     let is_mirror = mirror.is_some();
-    let elements = match mirror {
+    let elements: SharedScene = Rc::new(match mirror {
         Some(elements) => elements,
         None => build_output_scene(renderer, od, state),
-    };
+    });
+    present_output(
+        renderer, od, state, reason, per_output, &elements, is_mirror,
+    );
+    Some(elements)
+}
 
-    serve_screencopies(renderer, od, state, &elements);
+/// The rest of [`render_output`] once the scene is built: serve
+/// screencopies, render, queue the flip and do the bookkeeping.
+fn present_output(
+    renderer: &mut GlesRenderer,
+    od: &mut OutputDevice,
+    state: &mut MargoState,
+    reason: &'static str,
+    per_output: bool,
+    elements: &[MargoRenderElement],
+    is_mirror: bool,
+) {
+    serve_screencopies(renderer, od, state, elements);
     // A mirror's letterbox bars are black, like a projector's.
     let clear_color = if state.session_locked || is_mirror {
         [0.0, 0.0, 0.0, 1.0]
@@ -642,7 +682,7 @@ fn render_output(
     let render_start = std::time::Instant::now();
     match od
         .compositor
-        .render_frame(renderer, &elements, clear_color, frame_flags)
+        .render_frame(renderer, elements, clear_color, frame_flags)
     {
         Ok(result) => {
             // Time-based `perf` metrics: fold this frame's render latency,
