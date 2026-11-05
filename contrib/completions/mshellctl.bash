@@ -982,6 +982,9 @@ _mshellctl() {
             mshellctl__subcmd__help__subcmd__osk,toggle)
                 cmd="mshellctl__subcmd__help__subcmd__osk__subcmd__toggle"
                 ;;
+            mshellctl__subcmd__help__subcmd__play,__track)
+                cmd="mshellctl__subcmd__help__subcmd__play__subcmd____track"
+                ;;
             mshellctl__subcmd__help__subcmd__play,__ytdlp)
                 cmd="mshellctl__subcmd__help__subcmd__play__subcmd____ytdlp"
                 ;;
@@ -991,11 +994,17 @@ _mshellctl() {
             mshellctl__subcmd__help__subcmd__play,focus)
                 cmd="mshellctl__subcmd__help__subcmd__play__subcmd__focus"
                 ;;
+            mshellctl__subcmd__help__subcmd__play,forget)
+                cmd="mshellctl__subcmd__help__subcmd__play__subcmd__forget"
+                ;;
             mshellctl__subcmd__help__subcmd__play,pin)
                 cmd="mshellctl__subcmd__help__subcmd__play__subcmd__pin"
                 ;;
             mshellctl__subcmd__help__subcmd__play,play)
                 cmd="mshellctl__subcmd__help__subcmd__play__subcmd__play"
+                ;;
+            mshellctl__subcmd__help__subcmd__play,queue)
+                cmd="mshellctl__subcmd__help__subcmd__play__subcmd__queue"
                 ;;
             mshellctl__subcmd__help__subcmd__play,snap)
                 cmd="mshellctl__subcmd__help__subcmd__play__subcmd__snap"
@@ -1867,6 +1876,9 @@ _mshellctl() {
             mshellctl__subcmd__osk__subcmd__help,toggle)
                 cmd="mshellctl__subcmd__osk__subcmd__help__subcmd__toggle"
                 ;;
+            mshellctl__subcmd__play,__track)
+                cmd="mshellctl__subcmd__play__subcmd____track"
+                ;;
             mshellctl__subcmd__play,__ytdlp)
                 cmd="mshellctl__subcmd__play__subcmd____ytdlp"
                 ;;
@@ -1876,6 +1888,9 @@ _mshellctl() {
             mshellctl__subcmd__play,focus)
                 cmd="mshellctl__subcmd__play__subcmd__focus"
                 ;;
+            mshellctl__subcmd__play,forget)
+                cmd="mshellctl__subcmd__play__subcmd__forget"
+                ;;
             mshellctl__subcmd__play,help)
                 cmd="mshellctl__subcmd__play__subcmd__help"
                 ;;
@@ -1884,6 +1899,9 @@ _mshellctl() {
                 ;;
             mshellctl__subcmd__play,play)
                 cmd="mshellctl__subcmd__play__subcmd__play"
+                ;;
+            mshellctl__subcmd__play,queue)
+                cmd="mshellctl__subcmd__play__subcmd__queue"
                 ;;
             mshellctl__subcmd__play,snap)
                 cmd="mshellctl__subcmd__play__subcmd__snap"
@@ -1900,6 +1918,9 @@ _mshellctl() {
             mshellctl__subcmd__play,wallpaper)
                 cmd="mshellctl__subcmd__play__subcmd__wallpaper"
                 ;;
+            mshellctl__subcmd__play__subcmd__help,__track)
+                cmd="mshellctl__subcmd__play__subcmd__help__subcmd____track"
+                ;;
             mshellctl__subcmd__play__subcmd__help,__ytdlp)
                 cmd="mshellctl__subcmd__play__subcmd__help__subcmd____ytdlp"
                 ;;
@@ -1909,6 +1930,9 @@ _mshellctl() {
             mshellctl__subcmd__play__subcmd__help,focus)
                 cmd="mshellctl__subcmd__play__subcmd__help__subcmd__focus"
                 ;;
+            mshellctl__subcmd__play__subcmd__help,forget)
+                cmd="mshellctl__subcmd__play__subcmd__help__subcmd__forget"
+                ;;
             mshellctl__subcmd__play__subcmd__help,help)
                 cmd="mshellctl__subcmd__play__subcmd__help__subcmd__help"
                 ;;
@@ -1917,6 +1941,9 @@ _mshellctl() {
                 ;;
             mshellctl__subcmd__play__subcmd__help,play)
                 cmd="mshellctl__subcmd__play__subcmd__help__subcmd__play"
+                ;;
+            mshellctl__subcmd__play__subcmd__help,queue)
+                cmd="mshellctl__subcmd__play__subcmd__help__subcmd__queue"
                 ;;
             mshellctl__subcmd__play__subcmd__help,snap)
                 cmd="mshellctl__subcmd__play__subcmd__help__subcmd__snap"
@@ -6196,8 +6223,22 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help__subcmd__play)
-            opts="start toggle play download stop snap pin focus wallpaper __ytdlp"
+            opts="start toggle play queue forget download stop snap pin focus wallpaper __track __ytdlp"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__play__subcmd____track)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
@@ -6251,6 +6292,20 @@ _mshellctl() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        mshellctl__subcmd__help__subcmd__play__subcmd__forget)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         mshellctl__subcmd__help__subcmd__play__subcmd__pin)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
@@ -6266,6 +6321,20 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help__subcmd__play__subcmd__play)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__play__subcmd__queue)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -10680,8 +10749,22 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__play)
-            opts="-h --help start toggle play download stop snap pin focus wallpaper __ytdlp help"
+            opts="-h --help start toggle play queue forget download stop snap pin focus wallpaper __track __ytdlp help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__play__subcmd____track)
+            opts="-h --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
@@ -10735,9 +10818,37 @@ _mshellctl() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        mshellctl__subcmd__play__subcmd__help)
-            opts="start toggle play download stop snap pin focus wallpaper __ytdlp help"
+        mshellctl__subcmd__play__subcmd__forget)
+            opts="-h --all --help [ID]"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__play__subcmd__help)
+            opts="start toggle play queue forget download stop snap pin focus wallpaper __track __ytdlp help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__play__subcmd__help__subcmd____track)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
@@ -10791,6 +10902,20 @@ _mshellctl() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        mshellctl__subcmd__play__subcmd__help__subcmd__forget)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         mshellctl__subcmd__play__subcmd__help__subcmd__help)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
@@ -10820,6 +10945,20 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__play__subcmd__help__subcmd__play)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__play__subcmd__help__subcmd__queue)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -10946,12 +11085,58 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__play__subcmd__play)
-            opts="-h --help [TARGET]"
+            opts="-h --title --channel --channel-id --duration --help [TARGET]"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
+                --title)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --channel)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --channel-id)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --duration)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__play__subcmd__queue)
+            opts="-h --title --channel --channel-id --duration --help [TARGET]"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --title)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --channel)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --channel-id)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --duration)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
                 *)
                     COMPREPLY=()
                     ;;

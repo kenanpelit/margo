@@ -29,7 +29,7 @@ zbarimg                     zbar                       screenshot-region QR deco
 gpu-screen-recorder         gpu-screen-recorder        hardware-encoded screen recording
 swappy                      swappy                     screenshot annotation
 satty                       satty                      screenshot annotation
-yt-dlp                      yt-dlp                     mshellctl play of streaming URLs
+yt-dlp                      yt-dlp                     mshellctl play of streaming URLs, launcher YouTube provider
 topgrade                    topgrade                   system-update backend (AUR)
 arch-audit                  arch-audit                 security advisories in the update menu
 checkupdates                pacman-contrib             update count without sudo or the db lock

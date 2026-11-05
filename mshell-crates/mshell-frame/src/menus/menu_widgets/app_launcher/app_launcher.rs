@@ -62,7 +62,7 @@ use mshell_launcher::providers::{
     CommandProvider, EmojiProvider, FileSearchProvider, MctlProvider, NvimProvider, PassProvider,
     PlayerctlProvider, ProviderListProvider, ScriptsProvider, SessionProvider, SettingsProvider,
     SshProvider, SymbolsProvider, SystemdProvider, TmuxProvider, WebappProvider, WebsearchProvider,
-    WireplumberProvider,
+    WireplumberProvider, YoutubeProvider,
 };
 use mshell_launcher::{DisplayItem, FrecencyStore, LauncherItem, LauncherRuntime};
 use reactive_graph::traits::*;
@@ -534,6 +534,9 @@ impl Component for AppLauncherModel {
         runtime.register(Box::new(provider_list_provider));
         runtime.register(Box::new(PlayerctlProvider::new()));
         runtime.register(Box::new(archpkgs_provider));
+        runtime.register(Box::new(
+            YoutubeProvider::new().with_search_setter(make_search_setter()),
+        ));
         runtime.register(Box::new(FileSearchProvider::new()));
         // Same favicon switch as `web` sites (Settings → Launcher).
         runtime.register(Box::new(WebappProvider::new(|| {
@@ -1401,7 +1404,10 @@ impl AppLauncherModel {
         } else {
             (item_clone.on_activate)();
         }
-        let auto_close = should_auto_close_after_activation(id);
+        // Navigation rows (a YouTube channel, a video's actions page) keep
+        // the launcher open; the provider decides.
+        let auto_close = should_auto_close_after_activation(id)
+            && !self.runtime.borrow().keeps_open(&item_clone, alt);
         if auto_close {
             let _ = self.close_sender.borrow().as_ref().map(|s| s());
         }

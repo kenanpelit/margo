@@ -1,0 +1,170 @@
+{
+ "id": "UCaYhcUwRBNscFNUKTjgPFiA",
+ "channel": "Rust Programming Language",
+ "channel_id": "UCaYhcUwRBNscFNUKTjgPFiA",
+ "title": "Rust Programming Language - Videos",
+ "availability": "public",
+ "channel_follower_count": 70400,
+ "description": "",
+ "tags": [
+  "rust",
+  "programming",
+  "community"
+ ],
+ "thumbnails": [
+  {
+   "url": "https://yt3.googleusercontent.com/sAEKab72FRpBfwOeaIJzO_S-uS5qrs2UjxHskpAz9Hvd8XKVUKoxuieSJB6z4b5JkBlSEMidNw=s900-c-k-c0x00ffffff-no-rj",
+   "height": 900,
+   "width": 900,
+   "id": "0",
+   "resolution": "900x900"
+  },
+  {
+   "url": "https://yt3.googleusercontent.com/sAEKab72FRpBfwOeaIJzO_S-uS5qrs2UjxHskpAz9Hvd8XKVUKoxuieSJB6z4b5JkBlSEMidNw=s0",
+   "id": "avatar_uncropped",
+   "preference": 1
+  }
+ ],
+ "uploader_id": "@RustVideos",
+ "uploader_url": "https://www.youtube.com/@RustVideos",
+ "modified_date": null,
+ "view_count": null,
+ "playlist_count": null,
+ "uploader": "Rust Programming Language",
+ "channel_url": "https://www.youtube.com/channel/UCaYhcUwRBNscFNUKTjgPFiA",
+ "_type": "playlist",
+ "entries": [
+  {
+   "title": "RustConf 2025 Interview: Darko Mesaroš, Developer Advocate @ AWS",
+   "thumbnails": [
+    {
+     "url": "https://i.ytimg.com/vi/4hpjztVkxaA/hq720.jpg?sqp=-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLAcjJlXUw_QBL9uqStfbE3xst0OOg",
+     "height": 202,
+     "width": 360
+    },
+    {
+     "url": "https://i.ytimg.com/vi/4hpjztVkxaA/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLA3a1FxJR0M01_PtTQlmsEHqzCeIA",
+     "height": 404,
+     "width": 720
+    }
+   ],
+   "duration": 1343,
+   "view_count": 1400,
+   "timestamp": null,
+   "live_status": null,
+   "availability": null,
+   "channel_url": null,
+   "uploader_url": null,
+   "creators": null,
+   "ie_key": "Youtube",
+   "id": "4hpjztVkxaA",
+   "_type": "url",
+   "url": "https://www.youtube.com/watch?v=4hpjztVkxaA",
+   "__x_forwarded_for_ip": null
+  },
+  {
+   "title": "RustConf 2025 Interview: Nicholas R Smith, Software Engineer",
+   "thumbnails": [
+    {
+     "url": "https://i.ytimg.com/vi/X2uGXH5-tn0/hq720.jpg?sqp=-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLCebWM1JxhfhTYMr8yTbML4kbaKxg",
+     "height": 202,
+     "width": 360
+    },
+    {
+     "url": "https://i.ytimg.com/vi/X2uGXH5-tn0/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLBQ7LWFsh9d_eN0alIICC8mnIzUwg",
+     "height": 404,
+     "width": 720
+    }
+   ],
+   "duration": 1046,
+   "view_count": 1600,
+   "timestamp": null,
+   "live_status": null,
+   "availability": null,
+   "channel_url": null,
+   "uploader_url": null,
+   "creators": null,
+   "ie_key": "Youtube",
+   "id": "X2uGXH5-tn0",
+   "_type": "url",
+   "url": "https://www.youtube.com/watch?v=X2uGXH5-tn0",
+   "__x_forwarded_for_ip": null
+  },
+  {
+   "title": "Kangrejos 2025 Interview: Kora, Senior GPU Architect at Nvidia Corporation",
+   "thumbnails": [
+    {
+     "url": "https://i.ytimg.com/vi/tLUKCv8Z6c8/hq720.jpg?sqp=-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLBsWtFZg8J6eR7ietvTSJG9Kuqidw",
+     "height": 202,
+     "width": 360
+    },
+    {
+     "url": "https://i.ytimg.com/vi/tLUKCv8Z6c8/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLDc5ZeeXdK7xzwbl4Tu2nEejl9FFg",
+     "height": 404,
+     "width": 720
+    }
+   ],
+   "duration": 1905,
+   "view_count": 2900,
+   "timestamp": null,
+   "live_status": null,
+   "availability": null,
+   "channel_url": null,
+   "uploader_url": null,
+   "creators": null,
+   "ie_key": "Youtube",
+   "id": "tLUKCv8Z6c8",
+   "_type": "url",
+   "url": "https://www.youtube.com/watch?v=tLUKCv8Z6c8",
+   "__x_forwarded_for_ip": null
+  },
+  {
+   "title": "Fuzz Testing a Discrete Event Simulator — by Apoorv Kothari — Seattle Rust User Group, Sept 2026",
+   "thumbnails": [
+    {
+     "url": "https://i.ytimg.com/vi/yMYBCxrRJyo/hq720.jpg?sqp=-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLALLyPyrIJbf14DjSUiQBzmEhQXmw",
+     "height": 202,
+     "width": 360
+    },
+    {
+     "url": "https://i.ytimg.com/vi/yMYBCxrRJyo/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLAS6k7upGeICP-4wCVI5LYQ645jXw",
+     "height": 404,
+     "width": 720
+    }
+   ],
+   "duration": 3064,
+   "view_count": 2400,
+   "timestamp": null,
+   "live_status": null,
+   "availability": null,
+   "channel_url": null,
+   "uploader_url": null,
+   "creators": null,
+   "ie_key": "Youtube",
+   "id": "yMYBCxrRJyo",
+   "_type": "url",
+   "url": "https://www.youtube.com/watch?v=yMYBCxrRJyo",
+   "__x_forwarded_for_ip": null
+  }
+ ],
+ "extractor_key": "YoutubeTab",
+ "extractor": "youtube:tab",
+ "webpage_url": "https://www.youtube.com/channel/UCaYhcUwRBNscFNUKTjgPFiA/videos",
+ "original_url": "https://www.youtube.com/channel/UCaYhcUwRBNscFNUKTjgPFiA/videos",
+ "webpage_url_basename": "videos",
+ "webpage_url_domain": "youtube.com",
+ "release_year": null,
+ "requested_entries": [
+  1,
+  2,
+  3,
+  4
+ ],
+ "epoch": 1793910690,
+ "_version": {
+  "version": "2026.10.26",
+  "current_git_head": null,
+  "release_git_head": "c91f8de0bfb3577894abad716eaaa01659e6bd14",
+  "repository": "yt-dlp/yt-dlp"
+ }
+}

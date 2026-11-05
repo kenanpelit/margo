@@ -9,5 +9,7 @@ pub mod geometry;
 pub mod ipc;
 pub mod margo_client;
 pub mod paper;
+pub mod track;
+pub mod youtube;
 pub mod ytdl;
 pub mod ytdl_shim;

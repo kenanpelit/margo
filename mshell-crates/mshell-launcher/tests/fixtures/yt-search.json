@@ -1,0 +1,298 @@
+{
+ "id": "rust lang",
+ "title": "rust lang",
+ "_type": "playlist",
+ "entries": [
+  {
+   "_type": "url",
+   "ie_key": "Youtube",
+   "id": "Quf05tmWjaQ",
+   "url": "https://www.youtube.com/watch?v=Quf05tmWjaQ",
+   "title": "TypeScript Got Ported To Rust... And It's 3x Faster Than Go",
+   "description": "A fully compatible TypeScript compiler written in Rust just landed, and it's meant to be almost 3x faster than the Go port. We ran ...",
+   "duration": 320,
+   "channel_id": "UCkVfrGwV-iG9bSsgCbrNPxQ",
+   "channel": "Better Stack",
+   "channel_url": "https://www.youtube.com/channel/UCkVfrGwV-iG9bSsgCbrNPxQ",
+   "uploader": "Better Stack",
+   "uploader_id": "@betterstack",
+   "uploader_url": "https://www.youtube.com/@betterstack",
+   "thumbnails": [
+    {
+     "url": "https://i.ytimg.com/vi/Quf05tmWjaQ/hq720.jpg?sqp=-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLDsC6ERXuA0xtLwE9iTrdd57Qc_qA",
+     "height": 202,
+     "width": 360
+    },
+    {
+     "url": "https://i.ytimg.com/vi/Quf05tmWjaQ/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLD2yg3ed780BeFMihM6X_6BrEd6Fg",
+     "height": 404,
+     "width": 720
+    }
+   ],
+   "timestamp": null,
+   "release_timestamp": null,
+   "availability": null,
+   "view_count": 48254,
+   "live_status": null,
+   "channel_is_verified": null,
+   "__x_forwarded_for_ip": null
+  },
+  {
+   "title": "The Rust Lang Book",
+   "thumbnails": [
+    {
+     "url": "https://i.ytimg.com/vi/OX9HJsJUDxA/hq720.jpg?sqp=-oaymwEXCOgCEMoBSFryq4qpAwkIARUAAIhCGAE=&rs=AOn4CLDb7kmYKzoigxkKP2-x-ONkk5aXiw",
+     "height": 202,
+     "width": 360
+    },
+    {
+     "url": "https://i.ytimg.com/vi/OX9HJsJUDxA/hq720.jpg?sqp=-oaymwEXCNAFEJQDSFryq4qpAwkIARUAAIhCGAE=&rs=AOn4CLAWZwWdy65d2agorLt2YN3gZI0Dfw",
+     "height": 404,
+     "width": 720
+    }
+   ],
+   "duration": null,
+   "view_count": null,
+   "timestamp": null,
+   "live_status": null,
+   "availability": null,
+   "channel_url": "https://www.youtube.com/channel/UCSp-OaMpsO8K0KkOqyBl7_w",
+   "uploader_url": "https://www.youtube.com/@letsgetrusty",
+   "creators": null,
+   "channel": "Let's Get Rusty",
+   "channel_id": "UCSp-OaMpsO8K0KkOqyBl7_w",
+   "uploader": "Let's Get Rusty",
+   "uploader_id": "@letsgetrusty",
+   "ie_key": "YoutubeTab",
+   "id": "PLai5B987bZ9CoVR-QEIN9foz4QCJ0H2Y8",
+   "_type": "url",
+   "url": "https://www.youtube.com/playlist?list=PLai5B987bZ9CoVR-QEIN9foz4QCJ0H2Y8",
+   "__x_forwarded_for_ip": null
+  },
+  {
+   "_type": "url",
+   "ie_key": "Youtube",
+   "id": "5C_HPTJg5ek",
+   "url": "https://www.youtube.com/watch?v=5C_HPTJg5ek",
+   "title": "Rust in 100 Seconds",
+   "description": "Rust is a memory-safe compiled programming language for building high-performance systems. It has the simplicity of high-level ...",
+   "duration": 149,
+   "channel_id": "UCsBjURrPoezykLs9EqgamOA",
+   "channel": "Fireship",
+   "channel_url": "https://www.youtube.com/channel/UCsBjURrPoezykLs9EqgamOA",
+   "uploader": "Fireship",
+   "uploader_id": "@Fireship",
+   "uploader_url": "https://www.youtube.com/@Fireship",
+   "thumbnails": [
+    {
+     "url": "https://i.ytimg.com/vi/5C_HPTJg5ek/hq720.jpg?sqp=-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLDGE2GXUKjYf6-HRHfYYc40FmpZMw",
+     "height": 202,
+     "width": 360
+    },
+    {
+     "url": "https://i.ytimg.com/vi/5C_HPTJg5ek/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLBcfa4UXiKt9mva1T5fl_YNQJDoQw",
+     "height": 404,
+     "width": 720
+    }
+   ],
+   "timestamp": null,
+   "release_timestamp": null,
+   "availability": null,
+   "view_count": 2644877,
+   "live_status": null,
+   "channel_is_verified": true,
+   "__x_forwarded_for_ip": null
+  },
+  {
+   "_type": "url",
+   "ie_key": "Youtube",
+   "id": "IT0187cHGfI",
+   "url": "https://www.youtube.com/watch?v=IT0187cHGfI",
+   "title": "The biggest changes coming to Rust...",
+   "description": "Join the Rust Live Accelerator waitlist: https://letsgetrusty.com/join/wv-IT0187cHGfI What does the future of Rust look like?",
+   "duration": 416,
+   "channel_id": "UCSp-OaMpsO8K0KkOqyBl7_w",
+   "channel": "Let's Get Rusty",
+   "channel_url": "https://www.youtube.com/channel/UCSp-OaMpsO8K0KkOqyBl7_w",
+   "uploader": "Let's Get Rusty",
+   "uploader_id": "@letsgetrusty",
+   "uploader_url": "https://www.youtube.com/@letsgetrusty",
+   "thumbnails": [
+    {
+     "url": "https://i.ytimg.com/vi/IT0187cHGfI/hq720.jpg?sqp=-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLDCOF5t-9iysn__zEfGcrjP2FwYUg",
+     "height": 202,
+     "width": 360
+    },
+    {
+     "url": "https://i.ytimg.com/vi/IT0187cHGfI/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLD0Xu-374_lrCzoinQ92nyR4ZiUYg",
+     "height": 404,
+     "width": 720
+    }
+   ],
+   "timestamp": null,
+   "release_timestamp": null,
+   "availability": null,
+   "view_count": 141465,
+   "live_status": null,
+   "channel_is_verified": null,
+   "__x_forwarded_for_ip": null
+  },
+  {
+   "_type": "url",
+   "url": "https://www.youtube.com/channel/UCaYhcUwRBNscFNUKTjgPFiA",
+   "id": "UCaYhcUwRBNscFNUKTjgPFiA",
+   "ie_key": "YoutubeTab",
+   "channel": "Rust Programming Language",
+   "uploader": "Rust Programming Language",
+   "channel_id": "UCaYhcUwRBNscFNUKTjgPFiA",
+   "channel_url": "https://www.youtube.com/channel/UCaYhcUwRBNscFNUKTjgPFiA",
+   "title": "Rust Programming Language",
+   "uploader_id": "@RustVideos",
+   "uploader_url": "https://www.youtube.com/@RustVideos",
+   "channel_follower_count": 70400,
+   "thumbnails": [
+    {
+     "url": "//yt3.ggpht.com/sAEKab72FRpBfwOeaIJzO_S-uS5qrs2UjxHskpAz9Hvd8XKVUKoxuieSJB6z4b5JkBlSEMidNw=s88-c-k-c0x00ffffff-no-rj-mo",
+     "height": 88,
+     "width": 88
+    },
+    {
+     "url": "//yt3.ggpht.com/sAEKab72FRpBfwOeaIJzO_S-uS5qrs2UjxHskpAz9Hvd8XKVUKoxuieSJB6z4b5JkBlSEMidNw=s176-c-k-c0x00ffffff-no-rj-mo",
+     "height": 176,
+     "width": 176
+    }
+   ],
+   "playlist_count": null,
+   "description": null,
+   "channel_is_verified": null,
+   "__x_forwarded_for_ip": null
+  },
+  {
+   "_type": "url",
+   "ie_key": "Youtube",
+   "id": "0y6RKiIk6cs",
+   "url": "https://www.youtube.com/watch?v=0y6RKiIk6cs",
+   "title": "Rust for Dummies in 12 Minutes",
+   "description": "Join our Rust Live Accelerator waitlist (free Rust Job-Ready Roadmap inside): https://letsgetrusty.com/join Let's Get Rusty is the ...",
+   "duration": 750,
+   "channel_id": "UCSp-OaMpsO8K0KkOqyBl7_w",
+   "channel": "Let's Get Rusty",
+   "channel_url": "https://www.youtube.com/channel/UCSp-OaMpsO8K0KkOqyBl7_w",
+   "uploader": "Let's Get Rusty",
+   "uploader_id": "@letsgetrusty",
+   "uploader_url": "https://www.youtube.com/@letsgetrusty",
+   "thumbnails": [
+    {
+     "url": "https://i.ytimg.com/vi/0y6RKiIk6cs/hq720.jpg?sqp=-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLAmiqZe2RiANl6oI1U3pzvmOr-mUg",
+     "height": 202,
+     "width": 360
+    },
+    {
+     "url": "https://i.ytimg.com/vi/0y6RKiIk6cs/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLBfeGqXjPwdS5_T3y-TKRk3psBJgA",
+     "height": 404,
+     "width": 720
+    }
+   ],
+   "timestamp": null,
+   "release_timestamp": null,
+   "availability": null,
+   "view_count": 518937,
+   "live_status": null,
+   "channel_is_verified": null,
+   "__x_forwarded_for_ip": null
+  },
+  {
+   "_type": "url",
+   "ie_key": "Youtube",
+   "id": "R-tLX37Xgx8",
+   "url": "https://www.youtube.com/watch?v=R-tLX37Xgx8",
+   "title": "Why Everyone Is Moving To Rust For AI Engineering",
+   "description": "The Copilot runtime was rewritten in Rust and starting a session fell from over five seconds to under 300 milliseconds. The Codex ...",
+   "duration": 384,
+   "channel_id": "UCkVfrGwV-iG9bSsgCbrNPxQ",
+   "channel": "Better Stack",
+   "channel_url": "https://www.youtube.com/channel/UCkVfrGwV-iG9bSsgCbrNPxQ",
+   "uploader": "Better Stack",
+   "uploader_id": "@betterstack",
+   "uploader_url": "https://www.youtube.com/@betterstack",
+   "thumbnails": [
+    {
+     "url": "https://i.ytimg.com/vi/R-tLX37Xgx8/hq720.jpg?sqp=-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLBg-fHbfCPw0GY3aISiUnVcC_oTZw",
+     "height": 202,
+     "width": 360
+    },
+    {
+     "url": "https://i.ytimg.com/vi/R-tLX37Xgx8/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLC2wLlohnICveGKdDtjhKSUVfLAGA",
+     "height": 404,
+     "width": 720
+    }
+   ],
+   "timestamp": null,
+   "release_timestamp": null,
+   "availability": null,
+   "view_count": 371498,
+   "live_status": null,
+   "channel_is_verified": null,
+   "__x_forwarded_for_ip": null
+  },
+  {
+   "_type": "url",
+   "ie_key": "Youtube",
+   "id": "TSn2vCNvFkU",
+   "url": "https://www.youtube.com/watch?v=TSn2vCNvFkU",
+   "title": "How to Learn Rust (For Hackers)",
+   "description": "Join The Family:      ‍  https://cyberflow-academy.framer.website/ Check Out The Courses We Offer: ...",
+   "duration": 389,
+   "channel_id": "UCUvkPEm38w6pq8w5QYgtPPw",
+   "channel": "CyberFlow",
+   "channel_url": "https://www.youtube.com/channel/UCUvkPEm38w6pq8w5QYgtPPw",
+   "uploader": "CyberFlow",
+   "uploader_id": "@cyberflow10",
+   "uploader_url": "https://www.youtube.com/@cyberflow10",
+   "thumbnails": [
+    {
+     "url": "https://i.ytimg.com/vi/TSn2vCNvFkU/hq720.jpg?sqp=-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLCAa4b7e9J0udWpBA9cxIZZ3S0OVw",
+     "height": 202,
+     "width": 360
+    },
+    {
+     "url": "https://i.ytimg.com/vi/TSn2vCNvFkU/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLBQ7P6pgU3a3HZGsHlEd7uqRDZmKA",
+     "height": 404,
+     "width": 720
+    }
+   ],
+   "timestamp": null,
+   "release_timestamp": null,
+   "availability": null,
+   "view_count": 58888,
+   "live_status": null,
+   "channel_is_verified": true,
+   "__x_forwarded_for_ip": null
+  }
+ ],
+ "webpage_url": "https://www.youtube.com/results?search_query=rust+lang",
+ "original_url": "https://www.youtube.com/results?search_query=rust+lang",
+ "webpage_url_basename": "results",
+ "webpage_url_domain": "youtube.com",
+ "extractor": "youtube:search_url",
+ "extractor_key": "YoutubeSearchURL",
+ "release_year": null,
+ "requested_entries": [
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8
+ ],
+ "playlist_count": null,
+ "epoch": 1793910679,
+ "_version": {
+  "version": "2026.10.26",
+  "current_git_head": null,
+  "release_git_head": "c91f8de0bfb3577894abad716eaaa01659e6bd14",
+  "repository": "yt-dlp/yt-dlp"
+ }
+}

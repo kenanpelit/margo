@@ -2,8 +2,38 @@
 //! yt-dlp downloads, and the video-wallpaper engine (`crate::mpv`).
 
 use crate::mpv::geometry::ScaleMode;
-use crate::mpv::{control, paper, ytdl_shim};
-use clap::Subcommand;
+use crate::mpv::youtube::Hints;
+use crate::mpv::{control, paper, track, ytdl_shim};
+use clap::{Args, Subcommand};
+
+/// Metadata for a YouTube video's history row, passed by the launcher's
+/// `yt` provider (mpv only learns the title once yt-dlp answers).
+#[derive(Args, Debug, Default)]
+pub struct VideoMeta {
+    /// Video title.
+    #[arg(long)]
+    title: Option<String>,
+    /// Channel name.
+    #[arg(long)]
+    channel: Option<String>,
+    /// Channel id (UC…).
+    #[arg(long = "channel-id")]
+    channel_id: Option<String>,
+    /// Length in seconds.
+    #[arg(long)]
+    duration: Option<f64>,
+}
+
+impl VideoMeta {
+    fn hints(self) -> Hints {
+        Hints {
+            title: self.title,
+            channel: self.channel,
+            channel_id: self.channel_id,
+            duration: self.duration,
+        }
+    }
+}
 
 #[derive(Subcommand, Debug)]
 pub enum PlayCommands {
@@ -12,9 +42,29 @@ pub enum PlayCommands {
     /// Toggle play/pause on the running mpv companion.
     Toggle,
     /// Play a target (URL / path / clipboard; YouTube URLs auto-detected).
+    /// YouTube videos resume where you stopped (a `t=` in the URL wins).
     Play {
         /// What to play (omit to resume).
         target: Option<String>,
+        #[command(flatten)]
+        meta: VideoMeta,
+    },
+    /// Append a target to the mpv companion's playlist (starts mpv when
+    /// it isn't running) — one window, played in order.
+    Queue {
+        /// What to queue (omit to use the clipboard).
+        target: Option<String>,
+        #[command(flatten)]
+        meta: VideoMeta,
+    },
+    /// Forget a YouTube video's history entry and resume point.
+    Forget {
+        /// The 11-character video id.
+        #[arg(required_unless_present = "all")]
+        id: Option<String>,
+        /// Forget every video (clear the history).
+        #[arg(long, conflicts_with = "id")]
+        all: bool,
     },
     /// Download a YouTube URL (argument or clipboard) to ~/Downloads via yt-dlp.
     Download {
@@ -34,6 +84,10 @@ pub enum PlayCommands {
         #[command(subcommand)]
         command: WallpaperCommands,
     },
+    /// Hidden: the YouTube resume/history tracker `play` starts next to
+    /// mpv (`crate::mpv::track`).
+    #[command(name = "__track", hide = true)]
+    Track,
     /// Hidden: mpv's `ytdl_hook` invokes this as its `ytdl_path` (wired up
     /// by `control::ensure_ytdl_shim`) — not meant to be run by hand.
     #[command(name = "__ytdlp", hide = true, trailing_var_arg = true)]
@@ -83,7 +137,14 @@ pub async fn execute(command: PlayCommands) -> anyhow::Result<()> {
     match command {
         PlayCommands::Start => control::start(),
         PlayCommands::Toggle => control::toggle(),
-        PlayCommands::Play { target } => control::play(target.as_deref()),
+        PlayCommands::Play { target, meta } => {
+            control::load(target.as_deref(), control::LoadMode::Replace, &meta.hints())
+        }
+        PlayCommands::Queue { target, meta } => {
+            control::load(target.as_deref(), control::LoadMode::Queue, &meta.hints())
+        }
+        PlayCommands::Forget { id, all } => control::forget(if all { None } else { id.as_deref() }),
+        PlayCommands::Track => track::run(),
         PlayCommands::Download { target } => control::download(target.as_deref()),
         PlayCommands::Stop => control::stop(),
         PlayCommands::Snap => control::snap(),
@@ -145,5 +206,34 @@ mod tests {
             "some-target",
         ]);
         assert!(cli.is_ok(), "{:?}", cli.err());
+    }
+
+    /// The launcher's `yt` provider invokes exactly these shapes.
+    #[test]
+    fn launcher_invocations_parse() {
+        for argv in [
+            &[
+                "mshellctl",
+                "play",
+                "play",
+                "https://www.youtube.com/watch?v=5C_HPTJg5ek",
+                "--title",
+                "Rust in 100 Seconds",
+                "--channel",
+                "Fireship",
+                "--channel-id",
+                "UCsBjURrPoezykLs9EqgamOA",
+                "--duration",
+                "149",
+            ][..],
+            &["mshellctl", "play", "queue", "https://youtu.be/5C_HPTJg5ek"],
+            &["mshellctl", "play", "forget", "5C_HPTJg5ek"],
+            &["mshellctl", "play", "forget", "--all"],
+            &["mshellctl", "play", "__track"],
+        ] {
+            let cli = Cli::try_parse_from(argv);
+            assert!(cli.is_ok(), "{argv:?}: {:?}", cli.err());
+        }
+        assert!(Cli::try_parse_from(["mshellctl", "play", "forget"]).is_err());
     }
 }

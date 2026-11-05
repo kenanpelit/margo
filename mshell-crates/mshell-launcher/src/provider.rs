@@ -143,6 +143,15 @@ pub trait Provider {
         None
     }
 
+    /// True when activating `item` (with Ctrl+Enter when `alt`) is a
+    /// navigation step rather than a final action, so the launcher stays
+    /// open — e.g. a YouTube channel row that rewrites the query to that
+    /// channel's videos, or a toggle that relabels itself. Default: false
+    /// (the launcher closes after every activation).
+    fn keeps_open(&self, _item: &LauncherItem, _alt: bool) -> bool {
+        false
+    }
+
     /// Detail shown in the launcher's preview pane for `item` when it
     /// is the selection. Default: a plain text preview from the item's
     /// name + description. Providers override for richer content

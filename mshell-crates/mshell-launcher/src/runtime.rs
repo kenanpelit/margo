@@ -244,6 +244,15 @@ impl LauncherRuntime {
             .and_then(|p| p.alt_action(item))
     }
 
+    /// Whether the owning provider wants the launcher to stay open after
+    /// activating `item` (see [`Provider::keeps_open`]).
+    pub fn keeps_open(&self, item: &LauncherItem, alt: bool) -> bool {
+        self.providers
+            .iter()
+            .find(|p| p.name() == item.provider_name)
+            .is_some_and(|p| p.keeps_open(item, alt))
+    }
+
     /// Distinct provider categories in registration order, with
     /// `"All"` prepended (selecting "All" disables the per-category
     /// filter). UI renders one tab pill per entry.

@@ -41,6 +41,16 @@ pub fn loadfile(target: &str, mode: &str) -> std::io::Result<()> {
     send_command(socket_path(), &["loadfile", target, mode])
 }
 
+/// Load `target` with per-file `options` (`start=12.5,…`) — mpv ≥ 0.38's
+/// `loadfile <url> <flags> <index> <options>`; `-1` keeps the default
+/// insert position for the flag.
+pub fn loadfile_with(target: &str, mode: &str, options: &str) -> std::io::Result<()> {
+    if options.is_empty() {
+        return loadfile(target, mode);
+    }
+    send_command(socket_path(), &["loadfile", target, mode, "-1", options])
+}
+
 /// Ask mpv to quit on the default socket.
 pub fn quit() -> std::io::Result<()> {
     send_command(socket_path(), &["quit"])

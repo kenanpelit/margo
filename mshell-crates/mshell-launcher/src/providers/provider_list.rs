@@ -137,6 +137,12 @@ const ENTRIES: &[Entry] = &[
         icon: "package-x-generic-symbolic",
     },
     Entry {
+        prefix: "yt <query>",
+        example: "yt rust lang",
+        description: "YouTube — search, play/queue in mpv, Watch later, channels, history (`yt` alone = home)",
+        icon: "video-x-generic-symbolic",
+    },
+    Entry {
         prefix: "audio",
         example: "audio",
         description: "Switch audio default sink / source",

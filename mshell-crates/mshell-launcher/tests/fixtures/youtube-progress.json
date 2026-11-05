@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "videos": {
+    "5C_HPTJg5ek": {
+      "title": "Rust in 100 Seconds",
+      "channel": "Fireship",
+      "channel_id": "UCsBjURrPoezykLs9EqgamOA",
+      "duration": 149.0,
+      "position": 61.5,
+      "completed": false,
+      "last_played": 1762380000
+    },
+    "Quf05tmWjaQ": {
+      "title": "TypeScript Got Ported To Rust... And It's 3x Faster Than Go",
+      "channel": "Better Stack",
+      "channel_id": "UCkVfrGwV-iG9bSsgCbrNPxQ",
+      "duration": 320.0,
+      "position": 0.0,
+      "completed": true,
+      "last_played": 1762390000
+    },
+    "IT0187cHGfI": {
+      "title": "The biggest changes coming to Rust...",
+      "channel": "",
+      "channel_id": "",
+      "duration": null,
+      "position": 4.0,
+      "completed": false,
+      "last_played": 1762370000
+    }
+  }
+}

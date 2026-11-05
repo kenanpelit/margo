@@ -30,6 +30,7 @@ pub mod tools;
 pub mod webapp;
 pub mod websearch;
 pub mod wireplumber;
+pub mod youtube;
 
 pub use archpkgs::ArchLinuxPkgsProvider;
 pub use bluetooth::BluetoothProvider;
@@ -53,3 +54,4 @@ pub use tmux::TmuxProvider;
 pub use webapp::WebappProvider;
 pub use websearch::WebsearchProvider;
 pub use wireplumber::WireplumberProvider;
+pub use youtube::YoutubeProvider;

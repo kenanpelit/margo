@@ -224,6 +224,8 @@ mshellctl media list [--json]       # every player, MPRIS + MPD, with state
 mshellctl play start            # launch mpv (pseudo-gui) with an IPC socket
 mshellctl play toggle           # play / pause
 mshellctl play play [URL]       # play a file/URL (or the clipboard; ytdl auto)
+mshellctl play queue [URL]      # append to the playlist (same window; starts mpv if idle)
+mshellctl play forget ID|--all  # drop a YouTube video's history entry + resume point
 mshellctl play download [URL]   # yt-dlp → ~/Downloads
 mshellctl play snap             # cycle the floating mpv window across corners
 mshellctl play pin              # pin to all tags (sticky)
@@ -234,6 +236,14 @@ mshellctl play stop             # quit mpv
 mshellctl play wallpaper start <SRC> [--output N] [--mute] [--no-loop] [--scale fit|fill|stretch]
 mshellctl play wallpaper stop [--output N]
 ```
+
+YouTube videos started with `play` / `queue` resume where you stopped
+(unless the URL carries its own `t=`, or the video was watched to the end):
+a small tracker (`mshellctl play __track`, started alongside mpv) records
+the position every few seconds, on pause and when a video ends, into
+`~/.local/state/margo/youtube/progress.json` — the history the launcher's
+`yt` provider lists. `--title` / `--channel` / `--channel-id` /
+`--duration` attach metadata to that history entry.
 
 The embedded yt-dlp shim (anti-bot client fallback + cookie file + browser
 user-agent) is built in — no external `yt-dlp-mpv` script. Optional dep:

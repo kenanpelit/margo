@@ -188,9 +188,13 @@ and print it
 .RI ( hex ", " rgb ", " hsl ", " cmyk ).
 .TP
 .B play \fISUBCOMMAND\fR
-The mpv companion: start, toggle, play a URL / path / the clipboard,
-download with yt-dlp, window control, and the native video-wallpaper
-engine
+The mpv companion: start, toggle, play or queue a URL / path / the
+clipboard (YouTube videos resume where you stopped; history and positions
+in
+.IR ~/.local/state/margo/youtube/ ;
+.B play forget
+drops them), download with yt-dlp, window control, and the native
+video-wallpaper engine
 .RB ( "play wallpaper" ).
 .SS "System and diagnostics"
 .TP

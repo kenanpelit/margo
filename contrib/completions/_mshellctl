@@ -3248,9 +3248,32 @@ _arguments "${_arguments_options[@]}" : \
 ;;
 (play)
 _arguments "${_arguments_options[@]}" : \
+'--title=[Video title]:TITLE:_default' \
+'--channel=[Channel name]:CHANNEL:_default' \
+'--channel-id=[Channel id (UC…)]:CHANNEL_ID:_default' \
+'--duration=[Length in seconds]:DURATION:_default' \
 '-h[Print help]' \
 '--help[Print help]' \
 '::target -- What to play (omit to resume):_default' \
+&& ret=0
+;;
+(queue)
+_arguments "${_arguments_options[@]}" : \
+'--title=[Video title]:TITLE:_default' \
+'--channel=[Channel name]:CHANNEL:_default' \
+'--channel-id=[Channel id (UC…)]:CHANNEL_ID:_default' \
+'--duration=[Length in seconds]:DURATION:_default' \
+'-h[Print help]' \
+'--help[Print help]' \
+'::target -- What to queue (omit to use the clipboard):_default' \
+&& ret=0
+;;
+(forget)
+_arguments "${_arguments_options[@]}" : \
+'()--all[Forget every video (clear the history)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'::id -- The 11-character video id:_default' \
 && ret=0
 ;;
 (download)
@@ -3349,6 +3372,12 @@ esac
     ;;
 esac
 ;;
+(__track)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
 (__ytdlp)
 _arguments "${_arguments_options[@]}" : \
 '-h[Print help]' \
@@ -3377,6 +3406,14 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (play)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(queue)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(forget)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -3423,6 +3460,10 @@ _arguments "${_arguments_options[@]}" : \
         esac
     ;;
 esac
+;;
+(__track)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
 ;;
 (__ytdlp)
 _arguments "${_arguments_options[@]}" : \
@@ -4713,6 +4754,14 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(queue)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(forget)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (download)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -4756,6 +4805,10 @@ _arguments "${_arguments_options[@]}" : \
         esac
     ;;
 esac
+;;
+(__track)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
 ;;
 (__ytdlp)
 _arguments "${_arguments_options[@]}" : \
@@ -6536,16 +6589,24 @@ _mshellctl__subcmd__help__subcmd__play_commands() {
     local commands; commands=(
 'start:Start the mpv companion window' \
 'toggle:Toggle play/pause on the running mpv companion' \
-'play:Play a target (URL / path / clipboard; YouTube URLs auto-detected)' \
+'play:Play a target (URL / path / clipboard; YouTube URLs auto-detected). YouTube videos resume where you stopped (a \`t=\` in the URL wins)' \
+'queue:Append a target to the mpv companion'\''s playlist (starts mpv when it isn'\''t running) — one window, played in order' \
+'forget:Forget a YouTube video'\''s history entry and resume point' \
 'download:Download a YouTube URL (argument or clipboard) to ~/Downloads via yt-dlp' \
 'stop:Stop playback / close the window' \
 'snap:Cycle the floating window to the next screen corner' \
 'pin:Pin the window on top (toggle sticky)' \
 'focus:Focus the mpv window (hop monitor + tag + focus stack)' \
 'wallpaper:Video-wallpaper engine — background layer surface, EGL + libmpv' \
+'__track:Hidden\: the YouTube resume/history tracker \`play\` starts next to mpv (\`crate\:\:mpv\:\:track\`)' \
 '__ytdlp:Hidden\: mpv'\''s \`ytdl_hook\` invokes this as its \`ytdl_path\` (wired up by \`control\:\:ensure_ytdl_shim\`) — not meant to be run by hand' \
     )
     _describe -t commands 'mshellctl help play commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__play__subcmd____track_commands] )) ||
+_mshellctl__subcmd__help__subcmd__play__subcmd____track_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help play __track commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__help__subcmd__play__subcmd____ytdlp_commands] )) ||
 _mshellctl__subcmd__help__subcmd__play__subcmd____ytdlp_commands() {
@@ -6562,6 +6623,11 @@ _mshellctl__subcmd__help__subcmd__play__subcmd__focus_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help play focus commands' commands "$@"
 }
+(( $+functions[_mshellctl__subcmd__help__subcmd__play__subcmd__forget_commands] )) ||
+_mshellctl__subcmd__help__subcmd__play__subcmd__forget_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help play forget commands' commands "$@"
+}
 (( $+functions[_mshellctl__subcmd__help__subcmd__play__subcmd__pin_commands] )) ||
 _mshellctl__subcmd__help__subcmd__play__subcmd__pin_commands() {
     local commands; commands=()
@@ -6571,6 +6637,11 @@ _mshellctl__subcmd__help__subcmd__play__subcmd__pin_commands() {
 _mshellctl__subcmd__help__subcmd__play__subcmd__play_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help play play commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__play__subcmd__queue_commands] )) ||
+_mshellctl__subcmd__help__subcmd__play__subcmd__queue_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help play queue commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__help__subcmd__play__subcmd__snap_commands] )) ||
 _mshellctl__subcmd__help__subcmd__play__subcmd__snap_commands() {
@@ -8465,17 +8536,25 @@ _mshellctl__subcmd__play_commands() {
     local commands; commands=(
 'start:Start the mpv companion window' \
 'toggle:Toggle play/pause on the running mpv companion' \
-'play:Play a target (URL / path / clipboard; YouTube URLs auto-detected)' \
+'play:Play a target (URL / path / clipboard; YouTube URLs auto-detected). YouTube videos resume where you stopped (a \`t=\` in the URL wins)' \
+'queue:Append a target to the mpv companion'\''s playlist (starts mpv when it isn'\''t running) — one window, played in order' \
+'forget:Forget a YouTube video'\''s history entry and resume point' \
 'download:Download a YouTube URL (argument or clipboard) to ~/Downloads via yt-dlp' \
 'stop:Stop playback / close the window' \
 'snap:Cycle the floating window to the next screen corner' \
 'pin:Pin the window on top (toggle sticky)' \
 'focus:Focus the mpv window (hop monitor + tag + focus stack)' \
 'wallpaper:Video-wallpaper engine — background layer surface, EGL + libmpv' \
+'__track:Hidden\: the YouTube resume/history tracker \`play\` starts next to mpv (\`crate\:\:mpv\:\:track\`)' \
 '__ytdlp:Hidden\: mpv'\''s \`ytdl_hook\` invokes this as its \`ytdl_path\` (wired up by \`control\:\:ensure_ytdl_shim\`) — not meant to be run by hand' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'mshellctl play commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__play__subcmd____track_commands] )) ||
+_mshellctl__subcmd__play__subcmd____track_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl play __track commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__play__subcmd____ytdlp_commands] )) ||
 _mshellctl__subcmd__play__subcmd____ytdlp_commands() {
@@ -8492,22 +8571,35 @@ _mshellctl__subcmd__play__subcmd__focus_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl play focus commands' commands "$@"
 }
+(( $+functions[_mshellctl__subcmd__play__subcmd__forget_commands] )) ||
+_mshellctl__subcmd__play__subcmd__forget_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl play forget commands' commands "$@"
+}
 (( $+functions[_mshellctl__subcmd__play__subcmd__help_commands] )) ||
 _mshellctl__subcmd__play__subcmd__help_commands() {
     local commands; commands=(
 'start:Start the mpv companion window' \
 'toggle:Toggle play/pause on the running mpv companion' \
-'play:Play a target (URL / path / clipboard; YouTube URLs auto-detected)' \
+'play:Play a target (URL / path / clipboard; YouTube URLs auto-detected). YouTube videos resume where you stopped (a \`t=\` in the URL wins)' \
+'queue:Append a target to the mpv companion'\''s playlist (starts mpv when it isn'\''t running) — one window, played in order' \
+'forget:Forget a YouTube video'\''s history entry and resume point' \
 'download:Download a YouTube URL (argument or clipboard) to ~/Downloads via yt-dlp' \
 'stop:Stop playback / close the window' \
 'snap:Cycle the floating window to the next screen corner' \
 'pin:Pin the window on top (toggle sticky)' \
 'focus:Focus the mpv window (hop monitor + tag + focus stack)' \
 'wallpaper:Video-wallpaper engine — background layer surface, EGL + libmpv' \
+'__track:Hidden\: the YouTube resume/history tracker \`play\` starts next to mpv (\`crate\:\:mpv\:\:track\`)' \
 '__ytdlp:Hidden\: mpv'\''s \`ytdl_hook\` invokes this as its \`ytdl_path\` (wired up by \`control\:\:ensure_ytdl_shim\`) — not meant to be run by hand' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'mshellctl play help commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__play__subcmd__help__subcmd____track_commands] )) ||
+_mshellctl__subcmd__play__subcmd__help__subcmd____track_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl play help __track commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__play__subcmd__help__subcmd____ytdlp_commands] )) ||
 _mshellctl__subcmd__play__subcmd__help__subcmd____ytdlp_commands() {
@@ -8524,6 +8616,11 @@ _mshellctl__subcmd__play__subcmd__help__subcmd__focus_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl play help focus commands' commands "$@"
 }
+(( $+functions[_mshellctl__subcmd__play__subcmd__help__subcmd__forget_commands] )) ||
+_mshellctl__subcmd__play__subcmd__help__subcmd__forget_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl play help forget commands' commands "$@"
+}
 (( $+functions[_mshellctl__subcmd__play__subcmd__help__subcmd__help_commands] )) ||
 _mshellctl__subcmd__play__subcmd__help__subcmd__help_commands() {
     local commands; commands=()
@@ -8538,6 +8635,11 @@ _mshellctl__subcmd__play__subcmd__help__subcmd__pin_commands() {
 _mshellctl__subcmd__play__subcmd__help__subcmd__play_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl play help play commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__play__subcmd__help__subcmd__queue_commands] )) ||
+_mshellctl__subcmd__play__subcmd__help__subcmd__queue_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl play help queue commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__play__subcmd__help__subcmd__snap_commands] )) ||
 _mshellctl__subcmd__play__subcmd__help__subcmd__snap_commands() {
@@ -8586,6 +8688,11 @@ _mshellctl__subcmd__play__subcmd__pin_commands() {
 _mshellctl__subcmd__play__subcmd__play_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl play play commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__play__subcmd__queue_commands] )) ||
+_mshellctl__subcmd__play__subcmd__queue_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl play queue commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__play__subcmd__snap_commands] )) ||
 _mshellctl__subcmd__play__subcmd__snap_commands() {

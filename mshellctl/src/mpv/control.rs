@@ -15,7 +15,8 @@ use std::time::Duration;
 use super::geometry::{Corner, Rect, nearest_corner};
 use super::ipc as mpv_ipc;
 use super::margo_client as margo;
-use super::ytdl;
+use super::youtube::{self, Hints, ProgressStore};
+use super::{track, ytdl};
 
 const APP_ID: &str = "mpv";
 
@@ -109,8 +110,10 @@ fn ensure_ytdl_shim() -> Option<String> {
     Some(path.to_string_lossy().into_owned())
 }
 
-/// Launch mpv (pseudo-gui + IPC socket), optionally loading `source`.
-fn spawn_mpv(source: Option<&str>) -> Result<()> {
+/// Launch mpv (pseudo-gui + IPC socket), optionally loading `source`
+/// (from `start` seconds — a per-file option, so later queue entries
+/// still start at 0).
+fn spawn_mpv(source: Option<&str>, start: Option<f64>) -> Result<()> {
     if !margo_fs::path::on_path("mpv") {
         bail!("mpv bulunamadı");
     }
@@ -139,7 +142,14 @@ fn spawn_mpv(source: Option<&str>) -> Result<()> {
     let mut cmd = Command::new(program);
     cmd.args(lead).args(&args);
     if let Some(src) = source {
-        cmd.arg(src);
+        match start {
+            Some(secs) => {
+                cmd.args(["--{", &format!("--start={secs:.1}"), src, "--}"]);
+            }
+            None => {
+                cmd.arg(src);
+            }
+        }
     }
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -155,28 +165,97 @@ pub fn start() -> Result<()> {
         notify("MPV zaten çalışıyor");
         return Ok(());
     }
-    spawn_mpv(None)?;
+    spawn_mpv(None, None)?;
     notify(&format!("MPV başlatıldı ({}x{})", default_w(), default_h()));
     Ok(())
 }
 
-pub fn play(arg: Option<&str>) -> Result<()> {
+/// How a source enters the companion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoadMode {
+    /// Replace what plays now.
+    Replace,
+    /// Append to the playlist (start playing when idle) — one window.
+    Queue,
+}
+
+/// What to hand mpv for `src`: the target and its per-file start.
+/// YouTube videos resume from their saved position unless the URL has
+/// its own timestamp or the video was watched to the end.
+fn prepare(src: &str, hints: &Hints) -> (String, Option<f64>, Option<String>) {
+    if !ytdl::is_youtube_url(src) {
+        return (src.to_string(), None, None);
+    }
+    let target = format!("ytdl://{src}");
+    let Some(id) = youtube::video_id(src) else {
+        return (target, None, None); // playlist / channel URL
+    };
+    let store = ProgressStore::default_location();
+    let start = if youtube::has_timestamp(src) {
+        None
+    } else {
+        store.load().videos.get(&id).and_then(youtube::resume_start)
+    };
+    if let Err(err) = store.touch(&id, hints) {
+        tracing::warn!(%err, "youtube: recording history failed");
+    }
+    (target, start, Some(id))
+}
+
+/// `m:ss` / `h:mm:ss`.
+fn clock(secs: f64) -> String {
+    let s = secs.max(0.0) as u64;
+    if s >= 3600 {
+        format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60)
+    } else {
+        format!("{}:{:02}", s / 60, s % 60)
+    }
+}
+
+/// Play (`Replace`) or queue `arg`; YouTube videos get resume + history
+/// and the position tracker.
+pub fn load(arg: Option<&str>, mode: LoadMode, hints: &Hints) -> Result<()> {
     let src = resolve_source(arg);
     if src.is_empty() {
         bail!("Oynatılacak kaynak yok (argüman/pano boş)");
     }
-    let target = if ytdl::is_youtube_url(&src) {
-        format!("ytdl://{src}")
-    } else {
-        src.clone()
-    };
+    let (target, start, yt_id) = prepare(&src, hints);
+    let resumed = start.map(|s| format!(" — kaldığı yerden {}", clock(s)));
     if mpv_running() && mpv_ipc::socket_ready() {
-        mpv_ipc::loadfile(&target, "replace")?;
-        notify("Yüklendi (replace)");
+        let options = start.map(|s| format!("start={s:.1}")).unwrap_or_default();
+        match mode {
+            LoadMode::Replace => {
+                mpv_ipc::loadfile_with(&target, "replace", &options)?;
+                // A paused window would load the new video paused.
+                let _ = mpv_ipc::send_command(mpv_ipc::socket_path(), &["set", "pause", "no"]);
+                notify(&format!(
+                    "Yüklendi (replace){}",
+                    resumed.unwrap_or_default()
+                ));
+            }
+            LoadMode::Queue => {
+                mpv_ipc::loadfile_with(&target, "append-play", &options)?;
+                notify("Sıraya eklendi");
+            }
+        }
     } else {
-        spawn_mpv(Some(&target))?;
-        notify("Oynatılıyor");
+        spawn_mpv(Some(&target), start)?;
+        notify(&format!("Oynatılıyor{}", resumed.unwrap_or_default()));
     }
+    if yt_id.is_some() {
+        track::ensure_running();
+    }
+    Ok(())
+}
+
+/// Drop a video's history + resume point (`None` = all of them).
+pub fn forget(id: Option<&str>) -> Result<()> {
+    if let Some(id) = id
+        && !youtube::valid_video_id(id)
+    {
+        bail!("geçersiz video kimliği: {id}");
+    }
+    ProgressStore::default_location().forget(id)?;
     Ok(())
 }
 
