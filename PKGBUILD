@@ -124,6 +124,8 @@ optdepends=(
   "satty: alternative annotation editor for mscreenshot"
   "wf-recorder: screen recording via wlr-screencopy"
   "gpu-screen-recorder: hardware-encoded screen recording backend"
+  "ffmpeg: webcam picture-in-picture in screen recordings"
+  "v4l-utils: webcam overlay camera / mode detection (v4l2-ctl)"
   "tesseract: OCR of a screenshot region (mscreenshot / mshell screenshot menu)"
   "tesseract-data-eng: English language data for the screenshot OCR"
   "zbar: QR-code decoding of a screenshot region (zbarimg)"

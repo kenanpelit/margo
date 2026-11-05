@@ -13,3 +13,14 @@
 .screen-recording-bar-widget-image {
   color: var(--error);
 }
+
+// Webcam picture-in-picture bubble (mshell-screenshot/src/webcam.rs). It is
+// recorded into the clip, so it stays plain: the camera image clipped to the
+// card radius, no chrome, no accent. Click-through (empty input region).
+.screen-record-webcam-window {
+  background: transparent;
+}
+
+.screen-record-webcam {
+  border-radius: var(--radius-lg);
+}

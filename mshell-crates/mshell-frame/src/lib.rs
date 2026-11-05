@@ -43,12 +43,13 @@ pub fn screen_record(
     area: mshell_screenshot::CaptureArea,
     audio: Option<String>,
     backend: Option<mshell_screenshot::record::RecordBackend>,
+    webcam: Option<mshell_screenshot::webcam::WebcamSize>,
 ) {
     use crate::menus::menu_widgets::screen_record::screen_record_menu_widget as r;
     match action {
         "stop" => r::record_stop(),
-        "toggle" => r::record_toggle(area, audio, backend),
-        _ => r::record_start(area, audio, backend), // "start"
+        "toggle" => r::record_toggle(area, audio, backend, webcam),
+        _ => r::record_start(area, audio, backend, webcam), // "start"
     }
 }
 

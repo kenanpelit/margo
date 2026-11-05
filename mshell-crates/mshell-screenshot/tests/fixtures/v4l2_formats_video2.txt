@@ -1,0 +1,7 @@
+ioctl: VIDIOC_ENUM_FMT
+	Type: Video Capture
+
+	[0]: 'GREY' (8-bit Greyscale)
+		Size: Discrete 640x360
+			Interval: Discrete 0.067s (15.000 fps)
+			Interval: Discrete 0.033s (30.000 fps)

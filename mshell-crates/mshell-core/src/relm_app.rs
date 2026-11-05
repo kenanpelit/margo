@@ -757,7 +757,13 @@ impl Component for Shell {
                 let backend = parts
                     .next()
                     .and_then(mshell_screenshot::record::RecordBackend::parse);
-                mshell_frame::screen_record(&action, area, audio, backend);
+                // Optional 5th field: webcam size (`-` / absent = the menu's
+                // current choice).
+                let webcam = parts
+                    .next()
+                    .filter(|t| *t != "-")
+                    .and_then(mshell_screenshot::webcam::WebcamSize::parse);
+                mshell_frame::screen_record(&action, area, audio, backend, webcam);
             }
             ShellInput::ToggleNotifications(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {

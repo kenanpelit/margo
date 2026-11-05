@@ -143,6 +143,18 @@ private PipeWire null sink plus one loopback per source with `pactl`,
 records its monitor and unloads the modules when the clip ends (leftovers
 from a crash are swept at the next mixed recording).
 
+### Webcam overlay
+
+`mshellctl screenrecord start <area> --webcam [small|medium|large]` (or the
+screen-record menu's **Webcam** row, shown when a camera exists) puts a
+click-through camera bubble inside the bottom-right of the recorded area; the
+recorder captures it with the screen, so it is in the clip with no second
+encode. The recorder starts once the first camera frame shows (≤ 2.5 s); a
+camera that can't start never blocks the recording (it records without and
+says why). Needs `ffmpeg`; `v4l2-ctl` (v4l-utils) picks a colour capture node
+and a 30 fps mode. The saved-recording notification's **View** opens the clip
+in the default player.
+
 ### Region tools
 
 The screenshot menu's **Extract from area** row and the matching commands

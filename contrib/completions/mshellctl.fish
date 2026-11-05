@@ -624,11 +624,19 @@ complete -c mshellctl -n "__fish_mshellctl_using_subcommand screenrecord; and no
 complete -c mshellctl -n "__fish_mshellctl_using_subcommand screenrecord; and __fish_seen_subcommand_from start" -l audio -d 'Audio: a PipeWire source name, `desktop`, `mic`, `both` (desktop + microphone mixed), or several sources joined with `|`. Omit for silent' -r
 complete -c mshellctl -n "__fish_mshellctl_using_subcommand screenrecord; and __fish_seen_subcommand_from start" -l backend -d 'Recorder: `wf` (wf-recorder, CPU x264) or `gsr` (gpu-screen-recorder, VAAPI/NVENC). Omit to use the menu\'s choice' -r -f -a "wf\t''
 gsr\t''"
+complete -c mshellctl -n "__fish_mshellctl_using_subcommand screenrecord; and __fish_seen_subcommand_from start" -l webcam -d 'Webcam picture-in-picture: a camera bubble in the recorded area\'s bottom-right corner, baked into the clip (needs ffmpeg; v4l2-ctl picks the camera mode). `--webcam` alone = medium. Omit to use the menu\'s choice' -r -f -a "off\t''
+small\t''
+medium\t''
+large\t''"
 complete -c mshellctl -n "__fish_mshellctl_using_subcommand screenrecord; and __fish_seen_subcommand_from start" -s h -l help -d 'Print help'
 complete -c mshellctl -n "__fish_mshellctl_using_subcommand screenrecord; and __fish_seen_subcommand_from stop" -s h -l help -d 'Print help'
 complete -c mshellctl -n "__fish_mshellctl_using_subcommand screenrecord; and __fish_seen_subcommand_from toggle" -l audio -d 'Audio: a PipeWire source name, `desktop`, `mic`, `both` (desktop + microphone mixed), or several sources joined with `|`. Omit for silent' -r
 complete -c mshellctl -n "__fish_mshellctl_using_subcommand screenrecord; and __fish_seen_subcommand_from toggle" -l backend -d 'Recorder: `wf` (wf-recorder, CPU x264) or `gsr` (gpu-screen-recorder, VAAPI/NVENC). Omit to use the menu\'s choice' -r -f -a "wf\t''
 gsr\t''"
+complete -c mshellctl -n "__fish_mshellctl_using_subcommand screenrecord; and __fish_seen_subcommand_from toggle" -l webcam -d 'Webcam picture-in-picture: a camera bubble in the recorded area\'s bottom-right corner, baked into the clip (needs ffmpeg; v4l2-ctl picks the camera mode). `--webcam` alone = medium. Omit to use the menu\'s choice' -r -f -a "off\t''
+small\t''
+medium\t''
+large\t''"
 complete -c mshellctl -n "__fish_mshellctl_using_subcommand screenrecord; and __fish_seen_subcommand_from toggle" -s h -l help -d 'Print help'
 complete -c mshellctl -n "__fish_mshellctl_using_subcommand screenrecord; and __fish_seen_subcommand_from help" -f -a "start" -d 'Start recording (no-op if one is already running)'
 complete -c mshellctl -n "__fish_mshellctl_using_subcommand screenrecord; and __fish_seen_subcommand_from help" -f -a "stop" -d 'Stop the active recording'

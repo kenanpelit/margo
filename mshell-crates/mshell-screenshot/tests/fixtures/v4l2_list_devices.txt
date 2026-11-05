@@ -1,0 +1,7 @@
+Integrated RGB Camera: Integrat (usb-0000:00:14.0-7):
+	/dev/video0
+	/dev/video1
+	/dev/video2
+	/dev/video3
+	/dev/media0
+	/dev/media1

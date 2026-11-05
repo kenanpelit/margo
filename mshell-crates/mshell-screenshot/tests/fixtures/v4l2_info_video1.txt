@@ -1,0 +1,30 @@
+Driver Info:
+	Driver name      : uvcvideo
+	Card type        : Integrated RGB Camera: Integrat
+	Bus info         : usb-0000:00:14.0-7
+	Driver version   : 7.3.1
+	Capabilities     : 0x84a00001
+		Video Capture
+		Metadata Capture
+		Streaming
+		Extended Pix Format
+		Device Capabilities
+	Device Caps      : 0x04a00000
+		Metadata Capture
+		Streaming
+		Extended Pix Format
+Media Driver Info:
+	Driver name      : uvcvideo
+	Model            : Integrated RGB Camera: Integrat
+	Serial           : 01.00.00
+	Bus info         : usb-0000:00:14.0-7
+	Media version    : 7.3.1
+	Hardware revision: 0x00001017 (4119)
+	Driver version   : 7.3.1
+Interface Info:
+	ID               : 0x03000005
+	Type             : V4L Video
+Entity Info:
+	ID               : 0x00000004 (4)
+	Name             : Integrated RGB Camera: Integrat
+	Function         : V4L2 I/O

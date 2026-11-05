@@ -2495,6 +2495,7 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 '--audio=[Audio\: a PipeWire source name, \`desktop\`, \`mic\`, \`both\` (desktop + microphone mixed), or several sources joined with \`|\`. Omit for silent]:AUDIO:_default' \
 '--backend=[Recorder\: \`wf\` (wf-recorder, CPU x264) or \`gsr\` (gpu-screen-recorder, VAAPI/NVENC). Omit to use the menu'\''s choice]:BACKEND:(wf gsr)' \
+'--webcam=[Webcam picture-in-picture\: a camera bubble in the recorded area'\''s bottom-right corner, baked into the clip (needs ffmpeg; v4l2-ctl picks the camera mode). \`--webcam\` alone = medium. Omit to use the menu'\''s choice]::WEBCAM:(off small medium large)' \
 '-h[Print help]' \
 '--help[Print help]' \
 '::area -- What to record. Region prompts the in-shell selector; output prompts a monitor pick; full grabs the whole layout:(region window output full)' \
@@ -2510,6 +2511,7 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 '--audio=[Audio\: a PipeWire source name, \`desktop\`, \`mic\`, \`both\` (desktop + microphone mixed), or several sources joined with \`|\`. Omit for silent]:AUDIO:_default' \
 '--backend=[Recorder\: \`wf\` (wf-recorder, CPU x264) or \`gsr\` (gpu-screen-recorder, VAAPI/NVENC). Omit to use the menu'\''s choice]:BACKEND:(wf gsr)' \
+'--webcam=[Webcam picture-in-picture\: a camera bubble in the recorded area'\''s bottom-right corner, baked into the clip (needs ffmpeg; v4l2-ctl picks the camera mode). \`--webcam\` alone = medium. Omit to use the menu'\''s choice]::WEBCAM:(off small medium large)' \
 '-h[Print help]' \
 '--help[Print help]' \
 '::area -- What to record. Region prompts the in-shell selector; output prompts a monitor pick; full grabs the whole layout:(region window output full)' \

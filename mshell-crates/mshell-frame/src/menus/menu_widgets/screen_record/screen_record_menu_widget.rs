@@ -14,12 +14,17 @@ use crate::menus::menu_widgets::screen_record::backend_option::{
     BackendOption, BackendOptionsList, backend_icon_name,
 };
 use crate::menus::menu_widgets::screen_record::recording_service::{
-    RecordingState, RecordingStateStoreFields, effective_backend, gsr_installed, preferred_backend,
-    recording_state, set_preferred_backend,
+    RecordingState, RecordingStateStoreFields, camera_present, effective_backend, gsr_installed,
+    preferred_backend, preferred_webcam, recording_state, set_preferred_backend,
+    set_preferred_webcam,
+};
+use crate::menus::menu_widgets::screen_record::webcam_option::{
+    WebcamOption, WebcamOptionsList, webcam_icon_name,
 };
 use mshell_common::scoped_effects::EffectScope;
 use mshell_common::watch;
 use mshell_screenshot::record::{RecordBackend, RecordHandle, RecordResult};
+use mshell_screenshot::webcam::WebcamSize;
 use mshell_screenshot::{CaptureArea, ScreenRecordRequest};
 use mshell_services::audio_service;
 use mshell_utils::notifications::show_file_saved_notification;
@@ -38,6 +43,9 @@ pub(crate) struct ScreenRecordMenuWidgetModel {
     backend_row: Controller<RevealerRowModel<RevealerRowLabelModel, BackendOptionsList>>,
     /// gpu-screen-recorder on PATH; the backend row is hidden without it.
     gsr_available: bool,
+    webcam_row: Controller<RevealerRowModel<RevealerRowLabelModel, WebcamOptionsList>>,
+    /// A V4L2 camera exists; the webcam row is hidden without one.
+    camera_available: bool,
     recording_handle: Option<RecordHandle>,
     _effects: EffectScope,
 }
@@ -46,6 +54,7 @@ pub(crate) struct ScreenRecordMenuWidgetModel {
 pub(crate) enum ScreenRecordMenuWidgetInput {
     AudioOptionSelected(AudioOption),
     BackendSelected(BackendOption),
+    WebcamSelected(WebcamOption),
     AllClicked,
     MonitorClicked,
     WindowClicked,
@@ -103,6 +112,9 @@ impl Component for ScreenRecordMenuWidgetModel {
             model.audio_row.widget().clone() {},
             model.backend_row.widget().clone() {
                 set_visible: model.gsr_available,
+            },
+            model.webcam_row.widget().clone() {
+                set_visible: model.camera_available,
             },
 
             gtk::Box {
@@ -300,6 +312,33 @@ impl Component for ScreenRecordMenuWidgetModel {
             })
             .detach();
 
+        let webcam = preferred_webcam();
+        let webcam_content = RevealerRowLabelModel::builder()
+            .launch(RevealerRowLabelInit {
+                label: webcam.label().to_string(),
+            })
+            .detach();
+        let webcam_options = WebcamOptionsList::builder()
+            .launch(
+                WebcamSize::ALL
+                    .iter()
+                    .map(|w| WebcamOption { value: *w })
+                    .collect(),
+            )
+            .forward(sender.input_sender(), |msg| match msg {
+                OptionsListOutput::Selected(opt) => {
+                    ScreenRecordMenuWidgetInput::WebcamSelected(opt)
+                }
+            });
+        let webcam_row = RevealerRowModel::<RevealerRowLabelModel, WebcamOptionsList>::builder()
+            .launch(RevealerRowInit {
+                icon_name: webcam_icon_name(webcam).into(),
+                action_button_sensitive: false,
+                content: webcam_content,
+                revealed_content: webcam_options,
+            })
+            .detach();
+
         let mut effects = EffectScope::new();
 
         let recording = recording_state();
@@ -320,6 +359,8 @@ impl Component for ScreenRecordMenuWidgetModel {
             },
             backend_row,
             gsr_available: gsr_installed(),
+            webcam_row,
+            camera_available: camera_present(),
             recording_handle,
             _effects: effects,
         };
@@ -401,6 +442,17 @@ impl Component for ScreenRecordMenuWidgetModel {
                     ));
                 self.backend_row.emit(RevealerRowInput::SetRevealed(false));
             }
+            ScreenRecordMenuWidgetInput::WebcamSelected(opt) => {
+                set_preferred_webcam(opt.value);
+                self.webcam_row
+                    .model()
+                    .content
+                    .emit(SetLabel(opt.value.label().to_string()));
+                self.webcam_row.emit(RevealerRowInput::UpdateActionIconName(
+                    webcam_icon_name(opt.value).to_string(),
+                ));
+                self.webcam_row.emit(RevealerRowInput::SetRevealed(false));
+            }
             ScreenRecordMenuWidgetInput::AllClicked => self.start_record(CaptureArea::All, sender),
             ScreenRecordMenuWidgetInput::WindowClicked => {
                 self.start_record(CaptureArea::SelectWindow, sender)
@@ -467,7 +519,7 @@ impl ScreenRecordMenuWidgetModel {
             return;
         }
         let _ = sender.output(ScreenRecordMenuWidgetOutput::CloseMenu);
-        record_start(area, self.selected_audio_option.spec(), None);
+        record_start(area, self.selected_audio_option.spec(), None, None);
     }
 }
 
@@ -513,12 +565,13 @@ pub(crate) fn is_recording() -> bool {
     recording_state().clone().handle().get_untracked().is_some()
 }
 
-/// Start a clip. `backend` = an explicit choice (`mshellctl screenrecord
-/// --backend`), `None` = the menu's current choice.
+/// Start a clip. `backend` / `webcam` = an explicit choice (`mshellctl
+/// screenrecord --backend / --webcam`), `None` = the menu's current choice.
 pub(crate) fn record_start(
     area: CaptureArea,
     audio: Option<String>,
     backend: Option<RecordBackend>,
+    webcam: Option<WebcamSize>,
 ) {
     if is_recording() {
         return;
@@ -529,6 +582,7 @@ pub(crate) fn record_start(
             area,
             audio,
             backend,
+            webcam: webcam.unwrap_or_else(preferred_webcam),
         },
         Duration::ZERO,
         |handle_result| match handle_result {
@@ -558,10 +612,11 @@ pub(crate) fn record_toggle(
     area: CaptureArea,
     audio: Option<String>,
     backend: Option<RecordBackend>,
+    webcam: Option<WebcamSize>,
 ) {
     if is_recording() {
         record_stop();
     } else {
-        record_start(area, audio, backend);
+        record_start(area, audio, backend, webcam);
     }
 }

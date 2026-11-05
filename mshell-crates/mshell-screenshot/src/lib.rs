@@ -5,6 +5,7 @@ pub mod pin;
 pub mod record;
 mod selectors;
 mod utils;
+pub mod webcam;
 
 pub use capture::{CaptureBackend, ScreenshotResult};
 pub use common::OutputInfo;
@@ -95,6 +96,8 @@ pub struct ScreenRecordRequest {
     /// records silently. See [`record::parse_audio`].
     pub audio: Option<String>,
     pub backend: RecordBackend,
+    /// Webcam picture-in-picture bubble ([`webcam`]); `Off` = none.
+    pub webcam: webcam::WebcamSize,
 }
 
 #[derive(Debug, Clone)]
@@ -180,15 +183,30 @@ pub fn record_screen<S, D>(
     S: FnOnce(anyhow::Result<RecordHandle>) + Send + 'static,
     D: FnOnce(anyhow::Result<RecordResult>) + Send + 'static,
 {
-    match request.area {
+    let outputs = match query_outputs() {
+        Ok(o) => o,
+        Err(e) => return on_started(Err(e.into())),
+    };
+    let ScreenRecordRequest {
+        area,
+        audio,
+        backend,
+        webcam,
+    } = request;
+    let launch = move |args: WfRecorderArgs,
+                       target: Option<webcam::Target>,
+                       outputs: Vec<OutputInfo>,
+                       on_started: S,
+                       on_done: D| {
+        launch_recording(
+            backend, audio, webcam, args, target, &outputs, on_started, on_done,
+        );
+    };
+    match area {
         // `RepeatRegion` has no meaning for recording (there's no
         // "repeat the last clip's region" use case) — it degrades to
         // a normal selection rather than failing to compile.
         CaptureArea::SelectRegion | CaptureArea::RepeatRegion => {
-            let outputs = match query_outputs() {
-                Ok(o) => o,
-                Err(e) => return on_started(Err(e.into())),
-            };
             let layout = outputs.clone();
             select_region(&outputs, move |region_result| match region_result {
                 // Recording cares only about the rect — Ctrl+S /
@@ -202,90 +220,151 @@ pub fn record_screen<S, D>(
                         width: region.width,
                         height: region.height,
                     };
-                    on_started(Ok(start_recording(
-                        request.backend,
-                        request.audio,
-                        args,
-                        on_done,
-                    )));
+                    let target = webcam::Target {
+                        output: region.output.clone(),
+                        x: region.x,
+                        y: region.y,
+                        width: region.width,
+                        height: region.height,
+                    };
+                    launch(args, Some(target), layout, on_started, on_done);
                 }
                 Err(e) => on_started(Err(e.into())),
             });
         }
         CaptureArea::SelectMonitor => {
-            let outputs = match query_outputs() {
-                Ok(o) => o,
-                Err(e) => return on_started(Err(e.into())),
-            };
+            let layout = outputs.clone();
             monitor_selector::select_monitor(
                 &outputs,
                 move |monitor_result| match monitor_result {
                     Ok(name) => {
+                        let target = output_target(&name, &layout);
                         let args = WfRecorderArgs::Monitor { name };
-                        on_started(Ok(start_recording(
-                            request.backend,
-                            request.audio,
-                            args,
-                            on_done,
-                        )));
+                        launch(args, target, layout, on_started, on_done);
                     }
                     Err(e) => on_started(Err(e.into())),
                 },
             );
         }
         CaptureArea::SelectWindow => {
-            let outputs = match query_outputs() {
-                Ok(o) => o,
-                Err(e) => return on_started(Err(e.into())),
-            };
+            let layout = outputs.clone();
             window_selector::select_window(&outputs, move |window_result| match window_result {
                 Ok(win) => {
+                    let target =
+                        layout
+                            .iter()
+                            .find(|o| o.name == win.output)
+                            .map(|o| webcam::Target {
+                                output: o.name.clone(),
+                                x: win.x - o.x,
+                                y: win.y - o.y,
+                                width: win.width,
+                                height: win.height,
+                            });
                     let args = WfRecorderArgs::Window {
                         x: win.x,
                         y: win.y,
                         width: win.width,
                         height: win.height,
                     };
-                    on_started(Ok(start_recording(
-                        request.backend,
-                        request.audio,
-                        args,
-                        on_done,
-                    )));
+                    launch(args, target, layout, on_started, on_done);
                 }
                 Err(e) => on_started(Err(e.into())),
             });
         }
         CaptureArea::All => {
-            let outputs = match query_outputs() {
-                Ok(o) => o,
-                Err(e) => return on_started(Err(e.into())),
-            };
             if outputs.len() > 1 {
+                let layout = outputs.clone();
                 monitor_selector::select_monitor(&outputs, move |monitor_result| {
                     match monitor_result {
                         Ok(name) => {
+                            let target = output_target(&name, &layout);
                             let args = WfRecorderArgs::Monitor { name };
-                            on_started(Ok(start_recording(
-                                request.backend,
-                                request.audio,
-                                args,
-                                on_done,
-                            )));
+                            launch(args, target, layout, on_started, on_done);
                         }
                         Err(e) => on_started(Err(e.into())),
                     }
                 });
             } else {
-                on_started(Ok(start_recording(
-                    request.backend,
-                    request.audio,
-                    WfRecorderArgs::All,
-                    on_done,
-                )));
+                let target = outputs
+                    .first()
+                    .and_then(|o| output_target(&o.name, &outputs));
+                launch(WfRecorderArgs::All, target, outputs, on_started, on_done);
             }
         }
     }
+}
+
+/// A whole output as the webcam's target area.
+fn output_target(name: &str, outputs: &[OutputInfo]) -> Option<webcam::Target> {
+    outputs
+        .iter()
+        .find(|o| o.name == name)
+        .map(|o| webcam::Target {
+            output: o.name.clone(),
+            x: 0,
+            y: 0,
+            width: o.width,
+            height: o.height,
+        })
+}
+
+/// Start the recorder — after the webcam bubble shows its first frame when
+/// one was asked for, so the clip opens with the camera already in place.
+/// A camera that can't start never blocks the recording: it records
+/// without, and says why.
+#[allow(clippy::too_many_arguments)]
+fn launch_recording<S, D>(
+    backend: RecordBackend,
+    audio: Option<String>,
+    webcam: webcam::WebcamSize,
+    args: WfRecorderArgs,
+    target: Option<webcam::Target>,
+    outputs: &[OutputInfo],
+    on_started: S,
+    on_done: D,
+) where
+    S: FnOnce(anyhow::Result<RecordHandle>) + 'static,
+    D: FnOnce(anyhow::Result<RecordResult>) + Send + 'static,
+{
+    let cam = match target.filter(|_| webcam != webcam::WebcamSize::Off) {
+        Some(t) => match webcam::start_bubble(&t, outputs, webcam) {
+            Ok(h) => Some(h),
+            Err(e) => {
+                webcam_unavailable(&e.to_string());
+                None
+            }
+        },
+        None => None,
+    };
+    let Some(cam) = cam else {
+        on_started(Ok(start_recording(backend, audio, args, on_done)));
+        return;
+    };
+    let stopper = cam.clone();
+    let on_done = move |r: anyhow::Result<RecordResult>| {
+        stopper.stop();
+        on_done(r);
+    };
+    let ready = cam.clone();
+    webcam::when_ready(&cam, Duration::from_millis(2_500), move || {
+        if let Some(why) = ready.failure() {
+            webcam_unavailable(&why);
+        }
+        on_started(Ok(start_recording(backend, audio, args, on_done)));
+    });
+}
+
+fn webcam_unavailable(why: &str) {
+    use mshell_process::desktop::{Notice, notify};
+    notify(
+        Notice::new(
+            "mshell",
+            "Recording without webcam",
+            format!("The webcam overlay could not start: {why}"),
+        )
+        .icon("camera-disabled-symbolic"),
+    );
 }
 
 pub fn take_screenshot<F>(request: ScreenshotRequest, delay: Duration, on_done: F)

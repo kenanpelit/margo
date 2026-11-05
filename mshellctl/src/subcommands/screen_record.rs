@@ -6,6 +6,7 @@
 //!
 //! ```text
 //! mshellctl screenrecord start|toggle [region|window|output|full] [--audio SRC] [--backend wf|gsr]
+//!                                     [--webcam off|small|medium|large]
 //! mshellctl screenrecord stop
 //! ```
 
@@ -37,6 +38,31 @@ pub struct RecordArgs {
     /// (gpu-screen-recorder, VAAPI/NVENC). Omit to use the menu's choice.
     #[arg(long, value_enum)]
     backend: Option<Backend>,
+    /// Webcam picture-in-picture: a camera bubble in the recorded area's
+    /// bottom-right corner, baked into the clip (needs ffmpeg; v4l2-ctl
+    /// picks the camera mode). `--webcam` alone = medium. Omit to use the
+    /// menu's choice.
+    #[arg(long, value_enum, num_args = 0..=1, default_missing_value = "medium")]
+    webcam: Option<Webcam>,
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug)]
+enum Webcam {
+    Off,
+    Small,
+    Medium,
+    Large,
+}
+
+impl Webcam {
+    fn token(self) -> &'static str {
+        match self {
+            Webcam::Off => "off",
+            Webcam::Small => "small",
+            Webcam::Medium => "medium",
+            Webcam::Large => "large",
+        }
+    }
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
@@ -67,7 +93,7 @@ impl Area {
 
 async fn send(action: &str, args: &RecordArgs) -> anyhow::Result<()> {
     let spec = format!(
-        "{action} {} {} {}",
+        "{action} {} {} {} {}",
         args.area.as_str(),
         args.audio
             .as_deref()
@@ -77,7 +103,8 @@ async fn send(action: &str, args: &RecordArgs) -> anyhow::Result<()> {
             Some(Backend::Wf) => "wf",
             Some(Backend::Gsr) => "gsr",
             None => "-",
-        }
+        },
+        args.webcam.map(Webcam::token).unwrap_or("-"),
     );
     shell().await?.screen_record(&spec).await?;
     Ok(())

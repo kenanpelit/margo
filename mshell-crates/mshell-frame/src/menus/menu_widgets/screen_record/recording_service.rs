@@ -1,4 +1,5 @@
 use mshell_screenshot::record::{RecordBackend, RecordHandle};
+use mshell_screenshot::webcam::WebcamSize;
 use reactive_stores::{ArcStore, KeyMap, PatchField, Store, StorePath};
 use std::sync::{Mutex, OnceLock};
 
@@ -42,6 +43,31 @@ pub fn set_preferred_backend(backend: RecordBackend) {
     *PREFERRED_BACKEND
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = backend;
+}
+
+/// Webcam bubble size picked in the screen-record menu; also used by
+/// `mshellctl screenrecord` without `--webcam`. Shell-lifetime, starts Off
+/// (today's behaviour: no camera).
+static PREFERRED_WEBCAM: Mutex<WebcamSize> = Mutex::new(WebcamSize::Off);
+
+pub fn preferred_webcam() -> WebcamSize {
+    *PREFERRED_WEBCAM
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+pub fn set_preferred_webcam(size: WebcamSize) {
+    *PREFERRED_WEBCAM
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = size;
+}
+
+/// Whether a V4L2 capture device exists (cheap sysfs look; the webcam row
+/// is hidden without one).
+pub fn camera_present() -> bool {
+    std::fs::read_dir("/sys/class/video4linux")
+        .map(|mut d| d.next().is_some())
+        .unwrap_or(false)
 }
 
 /// The backend a recording actually uses: an explicit request, else the

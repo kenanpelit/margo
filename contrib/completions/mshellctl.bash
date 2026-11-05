@@ -11768,7 +11768,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__screenrecord__subcmd__start)
-            opts="-h --audio --backend --help region window output full"
+            opts="-h --audio --backend --webcam --help region window output full"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -11780,6 +11780,10 @@ _mshellctl() {
                     ;;
                 --backend)
                     COMPREPLY=($(compgen -W "wf gsr" -- "${cur}"))
+                    return 0
+                    ;;
+                --webcam)
+                    COMPREPLY=($(compgen -W "off small medium large" -- "${cur}"))
                     return 0
                     ;;
                 *)
@@ -11804,7 +11808,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__screenrecord__subcmd__toggle)
-            opts="-h --audio --backend --help region window output full"
+            opts="-h --audio --backend --webcam --help region window output full"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -11816,6 +11820,10 @@ _mshellctl() {
                     ;;
                 --backend)
                     COMPREPLY=($(compgen -W "wf gsr" -- "${cur}"))
+                    return 0
+                    ;;
+                --webcam)
+                    COMPREPLY=($(compgen -W "off small medium large" -- "${cur}"))
                     return 0
                     ;;
                 *)
