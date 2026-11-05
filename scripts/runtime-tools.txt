@@ -65,6 +65,7 @@ cliphist                    cliphist                   mtm clip history
 ufw                         ufw                        firewall pill
 podman                      podman                     containers pill
 mullvad                     mullvad-vpn                mvpn
+mullvad-exclude             mullvad-vpn                mshellctl play: keep mpv streams off the tunnel
 nmcli                       networkmanager             network pill
 powerprofilesctl            power-profiles-daemon      power profiles, mpower
 # ── Not a packaging matter ─────────────────────────────────────────────────
@@ -73,6 +74,7 @@ bash                        -                          base
 true                        -                          base (tests)
 sleep                       -                          base (tests: a throwaway child process)
 dbus-daemon                 -                          dbus, a hard dependency (tests: an isolated session bus)
+mpv                         -                          a hard dependency (depends=, mshellctl links libmpv)
 date                        -                          base
 df                          -                          base
 uname                       -                          base
@@ -100,7 +102,6 @@ pacman                      -                          base
 bsdtar                      -                          base (libarchive, a pacman dependency)
 vercmp                      -                          base (pacman)
 makepkg                     -                          base (pacman)
-which                       -                          base-devel (needed to build this package)
 sudo                        -                          base-devel
 diff                        -                          base-devel (diffutils)
 diff3                       -                          base-devel (diffutils)
