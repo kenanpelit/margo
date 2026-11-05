@@ -98,15 +98,25 @@ jobs:
       # rather than in a user's `makepkg`. Without it cargo silently
       # regenerates the lock and CI goes green on a tree that cannot be
       # packaged.
+      #
+      # The `-p` lists come from scripts/build-groups.sh, the one list CI,
+      # `just check` and the Debian/MSRV jobs share; `--check` fails when the
+      # PKGBUILD's groups drift from it (install-parity.sh holds install.sh
+      # to the PKGBUILD).
+      - name: build groups match the PKGBUILD (gate)
+        run: |
+          ./scripts/build-groups.sh --check
+          ./scripts/test-build-groups.sh
+
       - name: cargo build (compositor group)
-        run: cargo build --locked -p margo -p start-margo -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mlogind -p mpower -p mdots -p mcal -p mtm
+        run: ./scripts/build-groups.sh run compositor cargo build --locked
 
       - name: cargo build (shell group)
-        run: cargo build --locked -p mshell -p mshellctl -p mshellshare -p mpicker -p mwizard -p mkeys -p mvpn -p mgreet -p margo-portal
+        run: ./scripts/build-groups.sh run shell cargo build --locked
 
       - name: cargo build (mtune)
         # Built on its own in the PKGBUILD too (its GStreamer/libadwaita stack).
-        run: cargo build --locked -p mtune
+        run: ./scripts/build-groups.sh run mtune cargo build --locked
 
       - name: shell completions drift (gate)
         # contrib/completions/ is clap output checked in for packagers;
@@ -318,10 +328,8 @@ jobs:
         with:
           key: debian
       - name: cargo check (install.sh build groups)
-        run: |
-          cargo check --locked -p margo -p start-margo -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mdots -p mlogind -p mpower -p mcal -p mtm
-          cargo check --locked -p mshell -p mshellctl -p mshellshare -p mpicker -p mwizard -p mkeys -p mvpn -p margo-portal -p mgreet
-          cargo check --locked -p mtune
+        # install.sh's groups = the PKGBUILD's (install-parity.sh) = these.
+        run: ./scripts/build-groups.sh each cargo check --locked
 
   # Unused dependencies. cargo-machete is a static scan (no build), so it runs
   # on the plain runner. Only workspace members are scanned — vendor/ holds
@@ -377,10 +385,7 @@ jobs:
         with:
           key: msrv
       - name: cargo check on the MSRV (same groups as the build)
-        run: |
-          cargo +"$MSRV" check --locked -p margo -p start-margo -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mlogind -p mpower -p mdots -p mcal -p mtm
-          cargo +"$MSRV" check --locked -p mshell -p mshellctl -p mshellshare -p mpicker -p mwizard -p mkeys -p mvpn -p mgreet -p margo-portal
-          cargo +"$MSRV" check --locked -p mtune
+        run: ./scripts/build-groups.sh each cargo +"$MSRV" check --locked
 
   # Supply-chain scan over the vendored + git-pinned + large dependency tree
   # (the audit's "no dependency-CVE scanning" gap). Runs on the plain Ubuntu

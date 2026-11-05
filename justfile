@@ -100,10 +100,16 @@ reload:
 # ratchet, the file-size gate, the design lint, the packaging parity and
 # completion-drift checks, the example-config check and the WASM plugin
 # host tests against the real guest fixtures (needs `rustup target add
-# wasm32-wasip2`). Not run here: the separate machete / MSRV / cargo-deny /
-# debian jobs.
+# wasm32-wasip2`). The package's build groups are each checked on their own
+# (`cargo check`, cheaper than CI's `cargo build`): a crate that only builds
+# because the workspace-wide feature union enables something for it fails
+# there, as it would in CI and makepkg. Not run here: the separate machete /
+# MSRV / cargo-deny / debian jobs.
 check:
     cargo fmt --all -- --check
+    ./scripts/build-groups.sh --check
+    ./scripts/test-build-groups.sh
+    ./scripts/build-groups.sh each cargo check --locked
     cargo clippy --workspace --all-targets --locked -- -D warnings
     cargo clippy --locked --all-targets -p mshell -p mshell-frame -p mshell-plugin-ui -p mshell-plugin-host --features mshell/wasm-plugins,mshell-plugin-ui/wasm -- -D warnings
     ./scripts/build-wasm-fixtures.sh
