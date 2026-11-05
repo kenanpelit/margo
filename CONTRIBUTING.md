@@ -79,6 +79,16 @@ layout algorithm in committed `.snap` files. Adding a new layout means
 adding new snapshot fixtures alongside it; see the module docs for the
 add-a-scenario walkthrough.
 
+New features bring a test for each decision they add (a parser, a state
+machine, a backoff schedule, a "which item wins" rule), not only for the
+pure helpers around them. Keep the decision out of the GTK / socket code
+so it can be tested: a reducer over a plain struct, or I/O that queues
+its writes (see `mshell-crates/mshell-frame/src/discord.rs`, whose `Session` queues
+requests that the socket loop flushes). Put larger test sets in a sibling
+`<module>_tests.rs` declared with `#[path = "<module>_tests.rs"]` then
+`#[cfg(test)] mod <module>_tests;` (that order, so
+`scripts/panic-ratchet.sh` recognises the file as test code).
+
 `render/hdr_metadata.rs` and `render/linear_composite.rs` contain CPU-
 side reference implementations of every transfer function so the GLSL
 math can be verified without a live GLES context.
