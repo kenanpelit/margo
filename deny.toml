@@ -28,7 +28,6 @@ yanked = "deny"
 # RUSTSEC-2026-0196 (cgmath) is gone from the tree, so it was dropped.
 ignore = [
     # --- Unmaintained crates, no security vuln, no safe upgrade path ---------
-    { id = "RUSTSEC-2025-0057", reason = "fxhash unmaintained, no vuln; only via fxprof-processed-profile behind wasmtime's `profiling` feature, which is compiled in but only runs when a profiler is configured (mshell never does)" },
     { id = "RUSTSEC-2024-0436", reason = "paste unmaintained proc-macro, no vuln; deep transitive and ubiquitous" },
     { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 unmaintained, no vuln; build-time proc-macro via reactive_stores_macro" },
     { id = "RUSTSEC-2026-0192", reason = "ttf-parser unmaintained, no vuln; via fontdue, no maintained drop-in yet" },

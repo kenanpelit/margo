@@ -144,14 +144,24 @@ base64 = "0.22"
 tracing = "0.1"
 # WASM plugin host (mplugins WASM tier). Heavy — only pulled when the
 # `mshell-plugin-host` crate's `wasm` feature is enabled.
-# wasmtime's defaults minus `cache` (the on-disk compiled-module cache,
-# which the host never configures, and which pulls in toml 0.8).
+# Only what the host uses (mshell-plugin-host runtime.rs: `Config::new()` +
+# component model + fuel, wasmtime_wasi::p2 sync linker): the runtime, the
+# cranelift JIT (parallel-compilation compiles a plugin's functions on
+# several threads), the component model, `async` (wasmtime-wasi requires
+# it) and `demangle` (readable Rust function names in a plugin trap's
+# backtrace). Left out from wasmtime's defaults: cache (on-disk module
+# cache, never configured), gc/gc-drc/gc-null, threads and stack-switching
+# (wasm proposals the wasm32-wasip2 guests don't use), wat (text-format
+# modules), profiling / coredump / debug-builtins / addr2line (profiler,
+# trap core dumps, gdb JIT and DWARF hooks the host never turns on), and
+# pooling-allocator (the host uses the default on-demand allocator).
 wasmtime = { version = "36.0.20", default-features = false, features = [
-    "async", "gc", "gc-drc", "gc-null", "wat", "profiling", "parallel-compilation",
-    "cranelift", "pooling-allocator", "demangle", "addr2line", "coredump",
-    "debug-builtins", "runtime", "component-model", "threads", "stack-switching", "std",
+    "async", "cranelift", "component-model", "demangle", "parallel-compilation",
+    "runtime", "std",
 ] }
-wasmtime-wasi = "36.0.20"
+# Without the default `preview1` (the wiggle-based WASI 0.1 shim): plugins are
+# components linked through wasmtime_wasi::p2 only.
+wasmtime-wasi = { version = "36.0.20", default-features = false }
 # Blocking HTTP for the plugin host's `http` capability (W3). Pure-Rust + rustls.
 ureq = "2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
