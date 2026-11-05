@@ -35,4 +35,4 @@ mdots/src/config/mod.rs 2757
 mdots/src/lua/mod.rs 2430
 mshell-crates/mshell-frame/src/menus/menu_widgets/control_center/tiles.rs 2106
 mtune/src/window.rs 2327
-margo/src/render/blur.rs 2199
+margo/src/render/blur.rs 666
