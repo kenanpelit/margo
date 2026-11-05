@@ -798,15 +798,11 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
             };
         }
         "wallpaper_fit" => {
-            cfg.wallpaper_fit = match val.trim().to_ascii_lowercase().as_str() {
-                "cover" => crate::types::WallpaperFit::Cover,
-                "contain" => crate::types::WallpaperFit::Contain,
-                "fill" => crate::types::WallpaperFit::Fill,
-                "center" => crate::types::WallpaperFit::Center,
-                other => {
-                    bail!("wallpaper_fit must be one of cover|contain|fill|center, got `{other}`")
-                }
-            };
+            use crate::types::WallpaperFit;
+            cfg.wallpaper_fit = WallpaperFit::from_name(val).ok_or_else(|| {
+                let names = WallpaperFit::names_joined();
+                anyhow::anyhow!("wallpaper_fit must be one of {names}, got `{}`", val.trim())
+            })?;
         }
 
         // colours

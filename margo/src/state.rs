@@ -622,6 +622,9 @@ pub struct MargoState {
     /// solid `rootcolor` clear in that case. Re-decoded by
     /// `reload_config` if the path changes.
     pub wallpaper: Option<crate::wallpaper::WallpaperState>,
+    /// Wallpapers set over IPC (`wallpaper_set`), drawn instead of
+    /// [`Self::wallpaper`] on the outputs they cover.
+    pub runtime_wallpaper: crate::wallpaper::runtime::RuntimeWallpapers,
     /// Optional image painted behind the scroller-overview cells (the
     /// `overview_backdrop_image` config knob). `None` → the solid
     /// `overview_backdrop_color` is used instead. Decoded at startup and
@@ -883,6 +886,7 @@ impl MargoState {
             last_present_at: std::collections::HashMap::new(),
             post_repaint_pending: false,
             wallpaper: crate::wallpaper::WallpaperState::load(config.wallpaper.as_deref()),
+            runtime_wallpaper: Default::default(),
             overview_backdrop: config
                 .overview_backdrop_image
                 .as_deref()

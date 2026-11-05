@@ -49,6 +49,9 @@ impl MargoState {
             // Layer-shell surfaces live in smithay's per-output layer maps,
             // not in the state snapshot.
             "layers" => Some(self.build_layers_payload()),
+            // The IPC-set wallpapers (`wallpaper_set`) and whether this
+            // backend draws them: a shell's feature probe.
+            "wallpaper" => Some(self.runtime_wallpaper_topic()),
             _ => None,
         }
     }
@@ -212,6 +215,7 @@ pub const TOPICS: &[&str] = &[
     "shortcuts",
     "perf",
     "layers",
+    "wallpaper",
 ];
 
 /// Whether `topic` is one of [`TOPICS`].

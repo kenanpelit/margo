@@ -1261,7 +1261,7 @@ const ENUM_KEYS: &[(&str, &[&str])] = &[
     ("overview_cycle_order", &["mru", "tag", "mixed"]),
     ("overview_style", &["grid", "scroller"]),
     ("twilight_mode", &["geo", "manual", "static", "schedule"]),
-    ("wallpaper_fit", &["cover", "contain", "fill", "center"]),
+    ("wallpaper_fit", crate::types::WallpaperFit::NAMES),
 ];
 
 /// Recognised top-level scalar option keys (`exec`, `exec-once`,

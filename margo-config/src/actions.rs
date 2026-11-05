@@ -1104,6 +1104,35 @@ pub const ACTIONS: &[Action] = &[
         summary: "Dump compositor state (clients, monitors, layouts) to the log.",
         detail: "",
     },
+    Action {
+        name: "wallpaper_set",
+        aliases: &[],
+        args: "<*|OUTPUT[,…]> [fit=…] [bg=#rrggbb[aa]|none] [fade=MS] [owner=TAG] <PATH>",
+        group: Group::System,
+        summary: "Draw an image as the compositor wallpaper on some or every output.",
+        detail: "Replaces the configured `wallpaper` there until `wallpaper_clear`. \
+                 PATH is absolute: a headed `.raw` is read before the reply, other \
+                 images decode in the background. fit is cover|contain|fill|center|\
+                 scale-down; bg paints around a contained image; fade crossfades \
+                 from the previous image. `get wallpaper` shows what is set.",
+    },
+    Action {
+        name: "wallpaper_update",
+        aliases: &[],
+        args: "<*|OUTPUT[,…]> [fit=…] [bg=#rrggbb[aa]|none]",
+        group: Group::System,
+        summary: "Change the fit or background of a runtime wallpaper.",
+        detail: "Fails when nothing was set there with `wallpaper_set`.",
+    },
+    Action {
+        name: "wallpaper_clear",
+        aliases: &[],
+        args: "[*|OUTPUT[,…]] [owner=TAG]",
+        group: Group::System,
+        summary: "Drop runtime wallpapers; the configured `wallpaper` shows again.",
+        detail: "No argument or `*` clears every entry; owner= only those set \
+                 with that owner.",
+    },
 ];
 
 /// Whether `name` is a canonical action name or one of its aliases —

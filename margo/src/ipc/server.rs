@@ -287,6 +287,11 @@ const FREE_TEXT_TAIL_ACTIONS: &[&str] = &[
     // an empty shortcut set and the portal's GlobalShortcuts backend
     // never fired anything.
     "global_shortcuts_bind",
+    // `wallpaper_* <outputs> [key=value…] <path>`: parsed by
+    // `wallpaper::runtime`, the path may contain spaces.
+    "wallpaper_set",
+    "wallpaper_update",
+    "wallpaper_clear",
 ];
 
 /// Map dispatch args onto margo's `Arg`, keyed off the action so the

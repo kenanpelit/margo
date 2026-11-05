@@ -453,6 +453,7 @@ fn on_loop_iteration(state: &mut MargoState) {
     if state.tick_scroller_overview(now) {
         state.request_scene_repaint();
     }
+    state.tick_runtime_wallpaper();
 
     // Config-error overlay timeout. The banner is armed by
     // `MargoState::reload_config` with a 10 s deadline; once the

@@ -39,6 +39,7 @@ file — both removed.
 | `mirror` | — | `active` (`{source,target}` or null) and `error` (why the last mirror request was refused, or null — for display; it is last-writer-wins across clients, and the requester gets the refusal in its own `dispatch` reply) — output mirroring. Each `outputs[]` entry also carries `mirroring` (true on the target, which then reads disabled in wlr-output-management). |
 | `config-errors` | — | `{"config_errors":[…]}` |
 | `layers` | — | `{"layers":[{"monitor","layer","name"},…]}` — every layer-shell surface (`layer` = background/bottom/top/overlay, `name` = its namespace). `get` only. |
+| `wallpaper` | — | `{"supported", "fits", "entries":[{"outputs","path","size","fit","bg","owner","serial","fading"},…], "pending", "error"}` — wallpapers set with `wallpaper_set` (see below). `supported` is false on a backend that draws no compositor wallpaper (nested winit), where `wallpaper_set` is refused. |
 
 Each `outputs[]` entry carries `scroller`: `null` unless the output is in
 the scroller layout, else `{"viewport_width", "columns":[{"id","app_id",
@@ -67,6 +68,32 @@ config stays), a mirror request it turned down, or an output action
 (`disable_output`, `enable_output`, `toggle_output`, `dpms … <name>`,
 `resetmfact <name>`) naming no output — or switching off the last output
 that is on. `mctl dispatch` exits non-zero on it.
+
+## Runtime wallpaper
+
+A shell can hand margo its wallpaper instead of painting it in a
+full-screen layer surface (a whole swapchain for a static image: four
+output-sized buffers under GTK's Vulkan renderer). margo draws it from one
+texture where the configured `wallpaper` would be, in screenshots and
+casts, and in every scroller-overview cell.
+
+```text
+dispatch wallpaper_set    <*|OUTPUT[,…]> [fit=<fit>] [bg=#rrggbb[aa]|none] [fade=<ms>] [owner=<tag>] <path>
+dispatch wallpaper_update <*|OUTPUT[,…]> [fit=<fit>] [bg=#rrggbb[aa]|none]
+dispatch wallpaper_clear  [*|OUTPUT[,…]] [owner=<tag>]
+```
+
+`*` is every output without an entry of its own. `<path>` is absolute; a
+headed `.raw` (`[u32 LE width][u32 LE height][RGBA]`) is read before the
+reply, so `{"ok":true}` means margo holds the pixels and the file can be
+deleted. Other formats decode in the background (`ok` = queued; watch
+`pending` / `error` in `get wallpaper`). `fit` is
+`cover|contain|fill|center|scale-down` (the `wallpaper_fit` names); `bg`
+fills the output under the image; `fade` crossfades from the previous
+image (GTK's ease-out cubic); `owner` scopes a later `wallpaper_clear`.
+A missing `fit` / `bg` / `owner` keeps the entry's previous one. mshell
+uses this (owner `mshell`) and keeps its own windows when the reply is not
+`ok` — an older margo answers `unknown action`.
 
 ## Examples
 

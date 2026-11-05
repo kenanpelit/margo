@@ -108,6 +108,49 @@ pub enum WallpaperFit {
     Fill,
     /// Native size, centred; pads with `rootcolor`.
     Center,
+    /// `Contain` for an image larger than the output, `Center` for one
+    /// that already fits: never scaled up. GTK's `ContentFit::ScaleDown`,
+    /// so mshell's wallpaper looks the same when margo draws it.
+    ScaleDown,
+}
+
+impl WallpaperFit {
+    /// Every fit's name, in [`Self::ALL`] order.
+    pub const NAMES: &[&str] = &["cover", "contain", "fill", "center", "scale-down"];
+
+    /// Every fit, in the order the names are documented.
+    pub const ALL: &[WallpaperFit] = &[
+        WallpaperFit::Cover,
+        WallpaperFit::Contain,
+        WallpaperFit::Fill,
+        WallpaperFit::Center,
+        WallpaperFit::ScaleDown,
+    ];
+
+    /// The config / IPC name (`wallpaper_fit = <name>`, `fit=<name>`).
+    pub fn name(self) -> &'static str {
+        match self {
+            WallpaperFit::Cover => "cover",
+            WallpaperFit::Contain => "contain",
+            WallpaperFit::Fill => "fill",
+            WallpaperFit::Center => "center",
+            WallpaperFit::ScaleDown => "scale-down",
+        }
+    }
+
+    /// The fit named `name` (case-insensitive, surrounding blanks ignored).
+    pub fn from_name(name: &str) -> Option<Self> {
+        let name = name.trim();
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|fit| fit.name().eq_ignore_ascii_case(name))
+    }
+
+    /// `cover|contain|fill|center|scale-down`, for error messages.
+    pub fn names_joined() -> String {
+        Self::NAMES.join("|")
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -950,11 +993,8 @@ pub struct Config {
     /// since layer surfaces draw above the background.
     pub wallpaper: Option<String>,
 
-    /// How the wallpaper image is fit into the output rectangle. Only
-    /// `Cover` is wired through the renderer right now; the other
-    /// variants are parsed so a config that picks them doesn't fail
-    /// validation, and will engage once the renderer lands fit-mode
-    /// support.
+    /// How the wallpaper image is fit into the output rectangle (see
+    /// [`WallpaperFit`]). Read on every frame, so a reload applies it.
     pub wallpaper_fit: WallpaperFit,
 
     // colours

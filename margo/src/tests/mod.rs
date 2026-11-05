@@ -89,6 +89,7 @@ mod theme;
 mod touch;
 mod twilight;
 mod virtual_pointer;
+mod wallpaper_runtime;
 mod window_rules;
 mod x11;
 mod xdg_activation;

@@ -117,6 +117,12 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
             }
         }
         "debug_dump" | "debug-dump" | "diagnose" => state.debug_dump(),
+        // Runtime compositor wallpaper (see `crate::wallpaper::runtime`): a
+        // shell hands margo its image instead of drawing it in a layer
+        // surface. `arg.v` is the whole tail.
+        "wallpaper_set" => return state.wallpaper_set(arg.v.as_deref().unwrap_or("")),
+        "wallpaper_update" => return state.wallpaper_update(arg.v.as_deref().unwrap_or("")),
+        "wallpaper_clear" => return state.wallpaper_clear(arg.v.as_deref().unwrap_or("")),
         // Cycle the keyboard to the next configured xkb layout. Driven
         // by a keybind or the shell's keyboard-layout pill (via mctl).
         "cyclekblayout" | "cycle_kb_layout" | "cycle-kb-layout" => state.cycle_keyboard_layout(),

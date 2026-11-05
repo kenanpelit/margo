@@ -62,17 +62,9 @@ pub(super) fn build_output_scene(
     // iterates element[0] = topmost, so trailing entries are drawn
     // first / occluded by everything above. Skip while session is
     // locked — mlock paints its own backdrop over the entire output.
-    if (!state.session_locked || state.lock_shows_desktop(&od.output))
-        && let Some(ref wp) = state.wallpaper
-        && let Some(output_geo) = state.space.output_geometry(&od.output)
-        && let Some(wp_elem) = wp.render_element(
-            renderer,
-            output_geo.size,
-            state.config.wallpaper_fit,
-            od.output.current_scale().fractional_scale(),
-        )
-    {
-        elements.push(MargoRenderElement::Wallpaper(wp_elem));
+    if !state.session_locked || state.lock_shows_desktop(&od.output) {
+        let wallpaper = crate::wallpaper::runtime::scene_elements(renderer, state, &od.output);
+        elements.extend(wallpaper.into_iter().map(Into::into));
     }
     elements
 }
@@ -162,17 +154,9 @@ fn own_capture_scene(
         state,
         RenderTarget::Screencast { include_cursor },
     );
-    if !state.session_locked
-        && let Some(ref wp) = state.wallpaper
-        && let Some(output_geo) = state.space.output_geometry(&od.output)
-        && let Some(wp_elem) = wp.render_element(
-            renderer,
-            output_geo.size,
-            state.config.wallpaper_fit,
-            od.output.current_scale().fractional_scale(),
-        )
-    {
-        elements.push(MargoRenderElement::Wallpaper(wp_elem));
+    if !state.session_locked {
+        let wallpaper = crate::wallpaper::runtime::scene_elements(renderer, state, &od.output);
+        elements.extend(wallpaper.into_iter().map(Into::into));
     }
     elements
 }
@@ -1617,6 +1601,16 @@ fn build_scroller_overview_elements(
                 elements.push(MargoRenderElement::NamespacedSurface(placed));
             }
         }
+        // The runtime wallpaper, standing in for a shell's background layer.
+        let wallpaper = crate::wallpaper::runtime::cell_elements(
+            renderer,
+            state,
+            &od.output,
+            cell_origin_phys,
+            cell_scale,
+            cell.key,
+        );
+        elements.extend(wallpaper.into_iter().map(Into::into));
     }
 
     // Backdrop behind every cell. An optional `overview_backdrop_image`
