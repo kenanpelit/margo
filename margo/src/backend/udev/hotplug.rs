@@ -54,6 +54,7 @@ pub(super) fn rescan_outputs(backend_data: &Rc<RefCell<BackendData>>, state: &mu
         primary_node: _,
         renderer_formats: _,
         session: _,
+        mirror_frame_pending: _,
     } = &mut *bd;
 
     // Withdraw lease offers for unplugged non-desktop connectors.

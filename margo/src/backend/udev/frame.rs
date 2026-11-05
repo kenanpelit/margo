@@ -415,10 +415,13 @@ pub(super) fn render_all_outputs(
     outputs: &mut HashMap<crtc::Handle, OutputDevice>,
     drm: &DrmDevice,
     state: &mut MargoState,
+    mirror_pending: &mut bool,
     reason: &'static str,
 ) {
     apply_pending_gamma(outputs, drm, state);
     apply_pending_dpms(outputs, state);
+    // Every output renders here, the mirror target included.
+    *mirror_pending = false;
 
     let per_output = state.per_output_frame_clock_enabled();
     let mut mirror = build_mirror_frame(renderer, outputs, state);
@@ -436,6 +439,32 @@ pub(super) fn render_all_outputs(
         render_output(renderer, od, state, reason, per_output, mirrored);
     }
     finish_repaint_batch(state);
+}
+
+/// What the per-output-clock path does with the active mirror's target in
+/// one repaint batch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MirrorStep {
+    /// Nothing new to show.
+    Idle,
+    /// Build the mirror frame and render the target now.
+    Render,
+    /// The target's previous flip is still in flight: remember that it owes
+    /// a frame and draw it when that flip lands.
+    Defer,
+}
+
+/// `source_due`: the source renders in this batch. `pending`: an earlier
+/// batch deferred the target. `target_in_flight`: the target's last flip
+/// hasn't landed yet.
+fn mirror_target_step(source_due: bool, pending: bool, target_in_flight: bool) -> MirrorStep {
+    if !source_due && !pending {
+        MirrorStep::Idle
+    } else if target_in_flight {
+        MirrorStep::Defer
+    } else {
+        MirrorStep::Render
+    }
 }
 
 /// The mirror frame, if `output` is the target it was built for.
@@ -456,24 +485,48 @@ fn take_mirror_frame(
 /// passes `per_output = true` so `render_output` uses the per-output
 /// vblank gate instead of the global `pending_vblanks` counter. Gamma
 /// ramps are applied the same way as the global path.
+///
+/// A mirror target has no frame clock (it is out of the layout): it
+/// follows its source, rendering in every batch where the source is due.
+/// When its previous flip is still in flight then, `mirror_pending` records
+/// that it owes a frame; the target's vblank wakes a batch (possibly with
+/// nothing due) that draws it from a fresh mirror frame.
 pub(super) fn render_due_outputs(
     renderer: &mut GlesRenderer,
     outputs: &mut HashMap<crtc::Handle, OutputDevice>,
     drm: &DrmDevice,
     state: &mut MargoState,
     due: &[Output],
+    mirror_pending: &mut bool,
     reason: &'static str,
 ) {
     apply_pending_gamma(outputs, drm, state);
     apply_pending_dpms(outputs, state);
-    // A mirror target has no frame clock (it is out of the layout): it
-    // follows its source, re-rendering whenever the source is due and the
-    // target's previous flip has landed.
-    let source_due = state
-        .mirror
-        .active()
-        .is_some_and(|m| due.iter().any(|o| o.name() == m.source));
-    let mut mirror = if source_due {
+    let step = match state.mirror.active() {
+        Some(m) => {
+            let source_due = due.iter().any(|o| o.name() == m.source);
+            let target_in_flight = outputs
+                .values()
+                .any(|od| od.output_name == m.target && od.flip_in_flight);
+            mirror_target_step(source_due, *mirror_pending, target_in_flight)
+        }
+        None => MirrorStep::Idle,
+    };
+    // `Idle` means nothing was owed either, so this also drops a stale
+    // flag once mirroring stops.
+    match step {
+        MirrorStep::Defer if !*mirror_pending => {
+            tracing::debug!(target: "margo::mirror", "target flip in flight: frame deferred");
+        }
+        MirrorStep::Render if *mirror_pending => {
+            tracing::debug!(target: "margo::mirror", "drawing the deferred mirror frame");
+        }
+        _ => {}
+    }
+    *mirror_pending = step == MirrorStep::Defer;
+    // Built only when the target can take it: a frame built for an
+    // in-flight target would be thrown away.
+    let mut mirror = if step == MirrorStep::Render {
         build_mirror_frame(renderer, outputs, state)
     } else {
         None
@@ -481,9 +534,7 @@ pub(super) fn render_due_outputs(
     for od in outputs.values_mut() {
         if due.contains(&od.output) {
             render_output(renderer, od, state, reason, true, None);
-        } else if !od.flip_in_flight
-            && let Some(elements) = take_mirror_frame(&mut mirror, &od.output)
-        {
+        } else if let Some(elements) = take_mirror_frame(&mut mirror, &od.output) {
             render_output(renderer, od, state, reason, false, Some(elements));
         }
     }
@@ -828,7 +879,90 @@ fn publish_output_perf(od: &OutputDevice, state: &mut MargoState) {
 
 #[cfg(test)]
 mod tests {
-    use super::{GammaStep, gamma_step};
+    use super::{GammaStep, MirrorStep, gamma_step, mirror_target_step};
+
+    /// A 60 Hz source mirrored to a 50 Hz projector (20 ms flips): the
+    /// source renders at t = 0 and again at t = 5 ms (the last frame of a
+    /// slide transition), while the target's first flip is still in flight.
+    /// When that flip lands the target must show the 5 ms frame, not keep
+    /// the 0 ms one until the source changes again.
+    #[test]
+    fn a_mirror_frame_skipped_mid_flip_is_drawn_when_the_flip_lands() {
+        #[derive(Clone, Copy)]
+        enum Ev {
+            SourceRenders(u32),
+            TargetVblank,
+        }
+        let timeline = [
+            (0, Ev::SourceRenders(0)),
+            (5, Ev::SourceRenders(1)),
+            (20, Ev::TargetVblank),
+            (40, Ev::TargetVblank),
+        ];
+        let mut source_version = 0;
+        let mut pending = false;
+        let mut in_flight = false;
+        let mut shown = None;
+        let batch = |source_due: bool,
+                     source_version: u32,
+                     pending: &mut bool,
+                     in_flight: &mut bool,
+                     shown: &mut Option<u32>| {
+            match mirror_target_step(source_due, *pending, *in_flight) {
+                MirrorStep::Render => {
+                    *shown = Some(source_version);
+                    *in_flight = true;
+                    *pending = false;
+                }
+                MirrorStep::Defer => *pending = true,
+                MirrorStep::Idle => {}
+            }
+        };
+        for (_t, ev) in timeline {
+            match ev {
+                Ev::SourceRenders(v) => {
+                    source_version = v;
+                    batch(
+                        true,
+                        source_version,
+                        &mut pending,
+                        &mut in_flight,
+                        &mut shown,
+                    );
+                }
+                Ev::TargetVblank => {
+                    in_flight = false;
+                    // The vblank handler wakes a batch only when the target
+                    // owes a frame; the source isn't due in it.
+                    if pending {
+                        batch(
+                            false,
+                            source_version,
+                            &mut pending,
+                            &mut in_flight,
+                            &mut shown,
+                        );
+                    }
+                }
+            }
+        }
+        assert_eq!(shown, Some(1));
+        assert!(!pending);
+    }
+
+    #[test]
+    fn mirror_target_steps() {
+        // Source due, target free: render.
+        assert_eq!(mirror_target_step(true, false, false), MirrorStep::Render);
+        // Target busy: never build a frame that would be thrown away.
+        assert_eq!(mirror_target_step(true, false, true), MirrorStep::Defer);
+        assert_eq!(mirror_target_step(false, true, true), MirrorStep::Defer);
+        // Owed frame, target free (its flip just landed): render alone.
+        assert_eq!(mirror_target_step(false, true, false), MirrorStep::Render);
+        // Nothing new.
+        assert_eq!(mirror_target_step(false, false, false), MirrorStep::Idle);
+        assert_eq!(mirror_target_step(false, false, true), MirrorStep::Idle);
+    }
 
     #[test]
     fn a_ramp_for_an_idle_output_is_applied() {

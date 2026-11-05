@@ -336,6 +336,10 @@ pub(crate) struct BackendData {
     pub(super) renderer_formats: smithay::backend::allocator::format::FormatSet,
     /// libseat session handle, kept for `chvt` (Ctrl+Alt+F<n>) VT switches.
     pub(super) session: LibSeatSession,
+    /// Per-output clock: the mirror target skipped a source frame because
+    /// its own flip was in flight, and owes it. Its vblank wakes a repaint
+    /// that draws it (see `frame::render_due_outputs`).
+    pub(super) mirror_frame_pending: bool,
 }
 
 impl BackendData {
@@ -775,6 +779,7 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
         primary_node,
         renderer_formats: renderer_formats.clone(),
         session: session.clone(),
+        mirror_frame_pending: false,
     }));
 
     // ── wp_drm_lease_device_v1 ────────────────────────────────────────────────
@@ -857,8 +862,10 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                     )> = Vec::new();
                     let mut flipped_output: Option<Output> = None;
                     let mut gamma_waiting = false;
+                    let mut mirror_owed = false;
                     {
                         let mut bd = backend_data.borrow_mut();
+                        let mirror_pending = bd.mirror_frame_pending;
                         if let Some(od) = bd.outputs.get_mut(&crtc) {
                             // Advance the per-output VBlank counter
                             // BEFORE building the feedback tuples so
@@ -880,6 +887,9 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                                 .gamma
                                 .iter()
                                 .any(|(o, _)| *o == od.output);
+                            // The mirror target skipped a frame while this
+                            // flip was in flight: draw it now.
+                            mirror_owed = mirror_pending && state.mirror.is_target(&od.output_name);
                             let seq = od.vblank_seq;
                             for feedback in od.pending_presentation.drain(..) {
                                 to_flush.push((od.output.clone(), feedback, seq));
@@ -904,7 +914,7 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                     // the redraw scheduler ping itself for the next frame.
                     // Also bumps the per-output frame_callback_sequence
                     // + sends frame callbacks — see `state::note_vblank`.
-                    if gamma_waiting {
+                    if gamma_waiting || mirror_owed {
                         state.wake_repaint_backend();
                     }
                     if let Some(out) = flipped_output {
@@ -1175,9 +1185,17 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
             renderer,
             outputs,
             drm,
+            mirror_frame_pending,
             ..
         } = &mut *bd;
-        render_all_outputs(renderer, outputs, drm, state, "initial");
+        render_all_outputs(
+            renderer,
+            outputs,
+            drm,
+            state,
+            mirror_frame_pending,
+            "initial",
+        );
     }
 
     // Now that all outputs have been discovered and registered via
@@ -1964,15 +1982,26 @@ fn repaint_tick(backend_data: &Rc<RefCell<BackendData>>, state: &mut MargoState)
         // config reload that turns the flag back off.
         state.take_repaint_request();
         let due = state.take_due_outputs();
-        if !due.is_empty() {
-            let mut bd = backend_data.borrow_mut();
+        let mut bd = backend_data.borrow_mut();
+        // A mirror target that owes a frame renders even when no output
+        // with a clock is due (its own vblank woke us).
+        if !due.is_empty() || bd.mirror_frame_pending {
             let BackendData {
                 renderer,
                 outputs,
                 drm,
+                mirror_frame_pending,
                 ..
             } = &mut *bd;
-            render_due_outputs(renderer, outputs, drm, state, &due, "repaint-per-output");
+            render_due_outputs(
+                renderer,
+                outputs,
+                drm,
+                state,
+                &due,
+                mirror_frame_pending,
+                "repaint-per-output",
+            );
         }
     } else if state.take_repaint_request() || force_all_for_dpms {
         let mut bd = backend_data.borrow_mut();
@@ -1980,9 +2009,17 @@ fn repaint_tick(backend_data: &Rc<RefCell<BackendData>>, state: &mut MargoState)
             renderer,
             outputs,
             drm,
+            mirror_frame_pending,
             ..
         } = &mut *bd;
-        render_all_outputs(renderer, outputs, drm, state, "repaint");
+        render_all_outputs(
+            renderer,
+            outputs,
+            drm,
+            state,
+            mirror_frame_pending,
+            "repaint",
+        );
     }
     // ext-image-copy-capture: drain pending frames
     // queued by `ImageCopyCaptureHandler::frame()` and
