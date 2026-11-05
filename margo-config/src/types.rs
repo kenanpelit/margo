@@ -283,7 +283,7 @@ pub struct KeySymCode {
 // slot 1 (which is parsed as i32 → 0 → falls through to the
 // "no preset" path). The fix in all three CLI commands
 // (`Theme`, `SessionLoad`, `Run`) is: keep slots 1-3 EMPTY strings
-// and put the string payload in slot 4. See `mctl.rs::Command::Theme`
+// and put the string payload in slot 4. See `mctl/cli.rs::Command::Theme`
 // for the canonical example.
 //
 // Reading the typed value: in dispatch handlers, prefer
