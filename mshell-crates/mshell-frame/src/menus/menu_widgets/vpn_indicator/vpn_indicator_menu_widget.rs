@@ -13,11 +13,10 @@
 //! samples are turned into a per-second rate.
 
 use crate::bars::bar_widgets::vpn_indicator::{VpnInterface, gather_interfaces};
+use crate::menus::reveal_poll::RevealGate;
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 /// Sample cadence while the panel is open. Short enough that the
@@ -49,7 +48,7 @@ pub(crate) struct VpnIndicatorMenuWidgetModel {
     poll_started: bool,
     /// Shared with the sampler; gates the local read so it only runs
     /// while the panel is actually visible.
-    visible: Arc<AtomicBool>,
+    visible: RevealGate,
 }
 
 impl std::fmt::Debug for VpnIndicatorMenuWidgetModel {
@@ -148,7 +147,7 @@ impl Component for VpnIndicatorMenuWidgetModel {
             rows: Vec::new(),
             prev: HashMap::new(),
             poll_started: false,
-            visible: Arc::new(AtomicBool::new(false)),
+            visible: RevealGate::new(false),
         };
 
         let widgets = view_output!();
@@ -166,7 +165,7 @@ impl Component for VpnIndicatorMenuWidgetModel {
                 });
             }
             VpnIndicatorMenuWidgetInput::ParentRevealChanged(visible) => {
-                self.visible.store(visible, Ordering::Relaxed);
+                self.visible.set(visible);
                 if visible {
                     if !self.poll_started {
                         self.poll_started = true;
@@ -251,18 +250,19 @@ impl VpnIndicatorMenuWidgetModel {
     }
 }
 
-/// Spawn the perpetual sampler. Started lazily on first reveal; while
-/// the panel is hidden the loop only does a cheap timer wake — no read.
-fn start_sampling(sender: &ComponentSender<VpnIndicatorMenuWidgetModel>, visible: Arc<AtomicBool>) {
+/// Spawn the sampler. Started lazily on first reveal; while the panel is
+/// hidden it waits on the `visible` gate with no timer armed — no read.
+fn start_sampling(sender: &ComponentSender<VpnIndicatorMenuWidgetModel>, visible: RevealGate) {
     sender.command(move |out, shutdown| async move {
         let shutdown_fut = shutdown.wait();
         tokio::pin!(shutdown_fut);
         loop {
-            tokio::select! {
+            // No timer while hidden; the reveal handler refreshes on open.
+            let resumed = tokio::select! {
                 () = &mut shutdown_fut => break,
-                _ = tokio::time::sleep(SAMPLE_INTERVAL) => {}
-            }
-            if visible.load(Ordering::Relaxed) {
+                r = visible.tick(SAMPLE_INTERVAL) => r,
+            };
+            if !resumed {
                 let ifaces = gather_interfaces();
                 let _ = out.send(VpnIndicatorMenuWidgetCommandOutput::Refreshed(ifaces));
             }

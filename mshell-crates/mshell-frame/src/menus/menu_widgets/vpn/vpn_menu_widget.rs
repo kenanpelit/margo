@@ -7,7 +7,7 @@
 //! daemon are the source of truth, exactly like the bar pill + Settings page.
 //!
 //! Polling is lazy: the refresh loop only starts on the first reveal (and
-//! probes only while visible), so a menu the user never opens spawns no
+//! arms no timer while hidden), so a menu the user never opens spawns no
 //! `mvpn` processes — see [`VpnMenuWidgetInput::ParentRevealChanged`].
 
 use super::super::dns::dns_menu_widget::{
@@ -15,10 +15,9 @@ use super::super::dns::dns_menu_widget::{
 };
 use super::super::dns::state::{Mode, probe_dns_state};
 use super::throughput::{VpnThroughputInput, VpnThroughputModel};
+use crate::menus::reveal_poll::RevealGate;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, EditableExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 const REFRESH_INTERVAL: Duration = Duration::from_secs(15);
@@ -70,7 +69,7 @@ pub(crate) struct VpnMenuWidgetModel {
     fav_filter: String,
     /// Lazy-poll gates — see `ParentRevealChanged`.
     poll_started: bool,
-    visible: Arc<AtomicBool>,
+    visible: RevealGate,
     /// Embedded DNS section (Blocky / Default / presets), collapsed by
     /// default. Its own probe loop only runs while the section is expanded
     /// AND the menu is visible — see `forward_dns_reveal`.
@@ -588,7 +587,7 @@ impl Component for VpnMenuWidgetModel {
             country_filter: String::new(),
             fav_filter: String::new(),
             poll_started: false,
-            visible: Arc::new(AtomicBool::new(false)),
+            visible: RevealGate::new(false),
             dns,
             dns_expanded: false,
             menu_visible: false,
@@ -707,7 +706,7 @@ impl Component for VpnMenuWidgetModel {
             }
             VpnMenuWidgetInput::RefreshNow => reload(&sender),
             VpnMenuWidgetInput::ParentRevealChanged(visible) => {
-                self.visible.store(visible, Ordering::Relaxed);
+                self.visible.set(visible);
                 if visible {
                     if !self.poll_started {
                         self.poll_started = true;
@@ -1065,18 +1064,18 @@ fn reload(sender: &ComponentSender<VpnMenuWidgetModel>) {
     });
 }
 
-/// Perpetual poll loop, started lazily on first reveal; gated on `visible`
-/// so a hidden menu only does a cheap timer wake.
-fn start_polling(sender: &ComponentSender<VpnMenuWidgetModel>, visible: Arc<AtomicBool>) {
+/// Poll loop, started lazily on first reveal; it waits on the `visible`
+/// gate, so a hidden menu arms no timer (the reveal handler reloads).
+fn start_polling(sender: &ComponentSender<VpnMenuWidgetModel>, visible: RevealGate) {
     sender.command(move |out, shutdown| async move {
         let shutdown_fut = shutdown.wait();
         tokio::pin!(shutdown_fut);
         loop {
-            tokio::select! {
+            let resumed = tokio::select! {
                 () = &mut shutdown_fut => break,
-                _ = tokio::time::sleep(REFRESH_INTERVAL) => {}
-            }
-            if visible.load(Ordering::Relaxed) {
+                r = visible.tick(REFRESH_INTERVAL) => r,
+            };
+            if !resumed {
                 let _ = out.send(load().await);
             }
         }

@@ -15,6 +15,7 @@ use crate::bars::bar_widgets::network::format_speed;
 use crate::menus::menu_widgets::network::network_menu_widget::{
     draw_graph, peak_text, push_capped, set_idle,
 };
+use crate::menus::reveal_poll::RevealGate;
 use mshell_utils::mvpn::{
     counter_rate, list_interfaces, pick_tunnel_interface, read_iface_counters,
 };
@@ -22,14 +23,12 @@ use relm4::gtk::prelude::{BoxExt, DrawingAreaExt, DrawingAreaExtManual, Orientab
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 const INTERVAL: Duration = Duration::from_secs(2);
 
 pub(crate) struct VpnThroughputModel {
-    visible: Arc<AtomicBool>,
+    visible: RevealGate,
     started: bool,
     rx_hist: Rc<RefCell<Vec<f64>>>,
     tx_hist: Rc<RefCell<Vec<f64>>>,
@@ -152,7 +151,7 @@ impl Component for VpnThroughputModel {
 
     fn init(_: (), root: Self::Root, _sender: ComponentSender<Self>) -> ComponentParts<Self> {
         let model = VpnThroughputModel {
-            visible: Arc::new(AtomicBool::new(false)),
+            visible: RevealGate::new(false),
             started: false,
             rx_hist: Rc::new(RefCell::new(Vec::new())),
             tx_hist: Rc::new(RefCell::new(Vec::new())),
@@ -172,7 +171,7 @@ impl Component for VpnThroughputModel {
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match msg {
             VpnThroughputInput::ParentRevealChanged(v) => {
-                self.visible.store(v, Ordering::Relaxed);
+                self.visible.set(v);
                 if v && !self.started {
                     self.started = true;
                     start_sampler(&sender, self.visible.clone());
@@ -214,7 +213,7 @@ impl Component for VpnThroughputModel {
     }
 }
 
-fn start_sampler(sender: &ComponentSender<VpnThroughputModel>, visible: Arc<AtomicBool>) {
+fn start_sampler(sender: &ComponentSender<VpnThroughputModel>, visible: RevealGate) {
     sender.command(move |out, shutdown| async move {
         let shutdown_fut = shutdown.wait();
         tokio::pin!(shutdown_fut);
@@ -222,17 +221,18 @@ fn start_sampler(sender: &ComponentSender<VpnThroughputModel>, visible: Arc<Atom
         let mut prev: Option<(String, (u64, u64), Instant)> = None;
         let mut first = true;
         loop {
+            // No timer while hidden. A reveal samples at once, against a
+            // fresh baseline (not the whole hidden period).
             if !first {
-                tokio::select! {
+                let resumed = tokio::select! {
                     () = &mut shutdown_fut => break,
-                    _ = tokio::time::sleep(INTERVAL) => {}
+                    r = visible.tick(INTERVAL) => r,
+                };
+                if resumed {
+                    prev = None;
                 }
             }
             first = false;
-            if !visible.load(Ordering::Relaxed) {
-                prev = None;
-                continue;
-            }
             let iface = pick_tunnel_interface(&list_interfaces());
             let Some(name) = iface.clone() else {
                 prev = None;

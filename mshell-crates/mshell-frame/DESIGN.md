@@ -959,7 +959,9 @@ feels lighter than an impressive one.
   lengthen a hover for drama.
 - **Heavy work never blocks input.** Polling, decoding, and IPC run off
   the interaction path (the menu pollers' lazy/visible gating is the
-  pattern: a closed menu does nothing).
+  pattern: a closed menu does nothing — not even a timer wakeup:
+  `RevealPoll` for GTK-thread ticks, `RevealGate::tick` instead of
+  `sleep` in async poll loops, `SharedPoll` subscriptions for pills).
 
 **Measurable budget (treat as acceptance criteria, not vibes):**
 

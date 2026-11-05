@@ -6,11 +6,10 @@
 //! sessions are re-polled while the panel is open. With hundreds of
 //! hosts the rendered list is capped; the search narrows it.
 
+use crate::menus::reveal_poll::RevealGate;
 use crate::ssh::{self, SshHost};
 use relm4::gtk::prelude::{BoxExt, ButtonExt, EditableExt, EntryExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 /// Re-poll cadence for active sessions while the panel is open.
@@ -31,7 +30,7 @@ pub(crate) struct SshSessionsMenuWidgetModel {
     /// runs while the panel is visible (it polled every 10 s on every
     /// monitor, forever, regardless of visibility — despite the
     /// "while the panel is open" comment).
-    visible: Arc<AtomicBool>,
+    visible: RevealGate,
 }
 
 #[derive(Debug)]
@@ -129,7 +128,7 @@ impl Component for SshSessionsMenuWidgetModel {
             filter: String::new(),
             content: content.clone(),
             poll_started: false,
-            visible: Arc::new(AtomicBool::new(false)),
+            visible: RevealGate::new(false),
         };
         let widgets = view_output!();
 
@@ -160,7 +159,7 @@ impl Component for SshSessionsMenuWidgetModel {
                 );
             }
             SshSessionsMenuWidgetInput::ParentRevealChanged(visible) => {
-                self.visible.store(visible, Ordering::Relaxed);
+                self.visible.set(visible);
                 if visible && !self.poll_started {
                     self.poll_started = true;
                     start_polling(&sender, self.visible.clone());
@@ -192,11 +191,10 @@ impl Component for SshSessionsMenuWidgetModel {
     }
 }
 
-/// Spawn the active-session poll loop (lazily, on first reveal). The
-/// `pgrep` probe is gated on `visible`, so while the panel is hidden the
-/// loop just sleeps — no per-monitor subprocess every 10 s for a menu
-/// nobody is looking at.
-fn start_polling(sender: &ComponentSender<SshSessionsMenuWidgetModel>, visible: Arc<AtomicBool>) {
+/// Spawn the active-session poll loop (lazily, on first reveal). It waits
+/// on the `visible` gate, so while the panel is hidden it arms no timer
+/// and spawns no `pgrep`; a reveal re-probes at once.
+fn start_polling(sender: &ComponentSender<SshSessionsMenuWidgetModel>, visible: RevealGate) {
     sender.command(move |out, shutdown| async move {
         let shutdown_fut = shutdown.wait();
         tokio::pin!(shutdown_fut);
@@ -210,10 +208,7 @@ fn start_polling(sender: &ComponentSender<SshSessionsMenuWidgetModel>, visible: 
             first = false;
             tokio::select! {
                 () = &mut shutdown_fut => break,
-                _ = tokio::time::sleep(delay) => {}
-            }
-            if !visible.load(Ordering::Relaxed) {
-                continue;
+                _ = visible.tick(delay) => {}
             }
             let active = ssh::active_targets().await;
             let _ = out.send(SshSessionsMenuWidgetCommandOutput::Active(active));

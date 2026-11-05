@@ -11,10 +11,9 @@
 //! elsewhere), plus a manual Refresh button.
 
 use crate::bars::bar_widgets::ip::{FetchState, IpInfo, IpSnapshot, fetch_snapshot};
+use crate::menus::reveal_poll::RevealGate;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tracing::warn;
 
@@ -34,7 +33,7 @@ pub(crate) struct IpMenuWidgetModel {
     poll_started: bool,
     /// Shared with the refresh loop; gates the network fetch so it only
     /// runs while the panel is actually visible.
-    visible: Arc<AtomicBool>,
+    visible: RevealGate,
 }
 
 impl std::fmt::Debug for IpMenuWidgetModel {
@@ -207,7 +206,7 @@ impl Component for IpMenuWidgetModel {
             copy_button: copy_button_widget.clone(),
             open_button: open_button_widget.clone(),
             poll_started: false,
-            visible: Arc::new(AtomicBool::new(false)),
+            visible: RevealGate::new(false),
         };
 
         let widgets = view_output!();
@@ -225,7 +224,7 @@ impl Component for IpMenuWidgetModel {
                 });
             }
             IpMenuWidgetInput::ParentRevealChanged(visible) => {
-                self.visible.store(visible, Ordering::Relaxed);
+                self.visible.set(visible);
                 if visible {
                     if !self.poll_started {
                         self.poll_started = true;
@@ -294,19 +293,20 @@ impl Component for IpMenuWidgetModel {
     }
 }
 
-/// Spawn the perpetual refresh loop. Started lazily on first reveal.
-/// The fetch is gated on `visible`, so while the panel is hidden the
-/// loop only does a cheap timer wake — no network request.
-fn start_polling(sender: &ComponentSender<IpMenuWidgetModel>, visible: Arc<AtomicBool>) {
+/// Spawn the refresh loop. Started lazily on first reveal. It waits on
+/// the `visible` gate, so while the panel is hidden it arms no timer and
+/// makes no network request.
+fn start_polling(sender: &ComponentSender<IpMenuWidgetModel>, visible: RevealGate) {
     sender.command(move |out, shutdown| async move {
         let shutdown_fut = shutdown.wait();
         tokio::pin!(shutdown_fut);
         loop {
-            tokio::select! {
+            // No timer while hidden; the reveal handler refreshes on open.
+            let resumed = tokio::select! {
                 () = &mut shutdown_fut => break,
-                _ = tokio::time::sleep(REFRESH_INTERVAL) => {}
-            }
-            if visible.load(Ordering::Relaxed) {
+                r = visible.tick(REFRESH_INTERVAL) => r,
+            };
+            if !resumed {
                 let snap = fetch_snapshot().await;
                 let _ = out.send(IpMenuWidgetCommandOutput::Refreshed(snap));
             }

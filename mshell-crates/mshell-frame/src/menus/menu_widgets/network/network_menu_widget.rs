@@ -37,6 +37,7 @@ use crate::bars::bar_widgets::network::{
     LinkKind, NetworkState, SpeedSample, WifiNetwork, format_speed, read_net_totals,
     read_network_state, wifi_signal_icon,
 };
+use crate::menus::reveal_poll::RevealGate;
 use mshell_common::WatcherToken;
 use mshell_utils::hotspot::{self, HotspotClient, HotspotStatus};
 use mshell_utils::network::{
@@ -51,8 +52,6 @@ use relm4::gtk::prelude::{
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tracing::warn;
 
@@ -90,7 +89,7 @@ pub(crate) struct NetworkMenuWidgetModel {
     poll_started: bool,
     /// Shared with the sampler; gates the `/proc/net/dev` read so it
     /// only samples while the panel is visible.
-    visible: Arc<AtomicBool>,
+    visible: RevealGate,
     // ── Hotspot ──
     hotspot: HotspotStatus,
     /// A start/stop is in flight (nmcli can take seconds to bring up an AP).
@@ -500,7 +499,7 @@ impl Component for NetworkMenuWidgetModel {
             rx_hist,
             tx_hist,
             poll_started: false,
-            visible: Arc::new(AtomicBool::new(false)),
+            visible: RevealGate::new(false),
             hotspot: HotspotStatus::default(),
             hotspot_busy: false,
             hotspot_switch: hotspot_switch_widget.clone(),
@@ -554,7 +553,7 @@ impl Component for NetworkMenuWidgetModel {
                 }
             }
             NetworkMenuWidgetInput::ParentRevealChanged(visible) => {
-                self.visible.store(visible, Ordering::Relaxed);
+                self.visible.set(visible);
                 self.speed_test
                     .emit(SpeedTestInput::ParentRevealChanged(visible));
                 if visible && !self.poll_started {
@@ -642,31 +641,30 @@ impl Component for NetworkMenuWidgetModel {
 /// The top-level `spawn_network_watcher` only re-fires on
 /// hot-plug, so this picks up everything in between.
 /// Spawn the `/proc/net/dev` throughput sampler. Started lazily on
-/// first reveal; while the panel is hidden it drops its baseline and
-/// skips the read, so re-revealing warms up cleanly over one interval
-/// instead of emitting a bogus accumulated-bytes spike.
-fn start_speed_sampler(sender: &ComponentSender<NetworkMenuWidgetModel>, visible: Arc<AtomicBool>) {
+/// first reveal; while the panel is hidden it arms no timer, and a
+/// reveal re-reads its baseline, so re-revealing warms up cleanly over one
+/// interval instead of emitting a bogus accumulated-bytes spike.
+fn start_speed_sampler(sender: &ComponentSender<NetworkMenuWidgetModel>, visible: RevealGate) {
     sender.command(move |out, shutdown| async move {
         let shutdown_fut = shutdown.wait();
         tokio::pin!(shutdown_fut);
         // Read the baseline immediately (we only start when revealed) so
         // the first delta lands after one interval, not two.
-        let mut prev: Option<(u64, u64)> = if visible.load(Ordering::Relaxed) {
+        let mut prev: Option<(u64, u64)> = if visible.is_revealed() {
             Some(read_net_totals().await)
         } else {
             None
         };
         loop {
-            tokio::select! {
+            // No timer while hidden.
+            let resumed = tokio::select! {
                 () = &mut shutdown_fut => break,
-                _ = tokio::time::sleep(SPEED_INTERVAL) => {}
-            }
-            if !visible.load(Ordering::Relaxed) {
-                // Drop the baseline so the first sample after the next
-                // reveal measures a fresh 2 s window, not the whole
-                // hidden period.
+                r = visible.tick(SPEED_INTERVAL) => r,
+            };
+            if resumed {
+                // Drop the baseline so the first sample after the reveal
+                // measures a fresh 2 s window, not the whole hidden period.
                 prev = None;
-                continue;
             }
             let cur = read_net_totals().await;
             if let Some(p) = prev {
@@ -685,25 +683,20 @@ fn start_speed_sampler(sender: &ComponentSender<NetworkMenuWidgetModel>, visible
 
 /// Poll the hotspot state while the panel is visible: immediately on the
 /// first reveal, then every [`HOTSPOT_INTERVAL`].
-fn start_hotspot_poller(
-    sender: &ComponentSender<NetworkMenuWidgetModel>,
-    visible: Arc<AtomicBool>,
-) {
+fn start_hotspot_poller(sender: &ComponentSender<NetworkMenuWidgetModel>, visible: RevealGate) {
     sender.command(move |out, shutdown| async move {
         let shutdown_fut = shutdown.wait();
         tokio::pin!(shutdown_fut);
         let mut first = true;
         loop {
+            // No timer while hidden; a reveal re-probes at once.
             if !first {
                 tokio::select! {
                     () = &mut shutdown_fut => break,
-                    _ = tokio::time::sleep(HOTSPOT_INTERVAL) => {}
+                    _ = visible.tick(HOTSPOT_INTERVAL) => {}
                 }
             }
             first = false;
-            if !visible.load(Ordering::Relaxed) {
-                continue;
-            }
             let status = hotspot::probe(&hotspot::configured_interface()).await;
             let _ = out.send(NetworkMenuWidgetCommandOutput::Hotspot(status, false));
         }

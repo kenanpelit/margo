@@ -7,14 +7,13 @@
 //! Everything routes through `mctl twilight …` (see [`crate::twilight`])
 //! — the rich schedule-preset editor lives in Settings → Display.
 
+use crate::menus::reveal_poll::RevealGate;
 use crate::twilight::{self, TwilightStatus};
 use relm4::gtk::glib;
 use relm4::gtk::prelude::{
     BoxExt, ButtonExt, FlowBoxChildExt, OrientableExt, RangeExt, ScaleExt, WidgetExt,
 };
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 /// Poll cadence while the panel is open.
@@ -48,7 +47,7 @@ pub(crate) struct TwilightMenuWidgetModel {
     /// Shared with the poll loop: while `false` the loop skips the probe, so
     /// closing the panel pauses the subprocess churn without tearing the loop
     /// down. Flipped by `ParentRevealChanged`.
-    revealed: Arc<AtomicBool>,
+    revealed: RevealGate,
 }
 
 #[derive(Debug)]
@@ -249,7 +248,7 @@ impl Component for TwilightMenuWidgetModel {
             preset_buttons: Vec::new(),
             mode_buttons,
             poll_started: false,
-            revealed: Arc::new(AtomicBool::new(false)),
+            revealed: RevealGate::new(false),
         };
         let widgets = view_output!();
         model.sync_modes();
@@ -272,7 +271,7 @@ impl Component for TwilightMenuWidgetModel {
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             TwilightMenuWidgetInput::ParentRevealChanged(revealed) => {
-                self.revealed.store(revealed, Ordering::Relaxed);
+                self.revealed.set(revealed);
                 if revealed {
                     // First open: start the poll loop. The `first` 50 ms tick
                     // gives a near-instant readout.
@@ -357,9 +356,9 @@ impl Component for TwilightMenuWidgetModel {
 
 impl TwilightMenuWidgetModel {
     /// Start the `mctl twilight status` poll loop once (on first reveal).
-    /// The loop runs until the widget is dropped but skips the probe while
-    /// the panel is hidden (`revealed == false`), so it only spawns the
-    /// subprocess while the user is actually looking at it.
+    /// The loop runs until the widget is dropped but waits on the
+    /// `revealed` gate with no timer armed while the panel is hidden, so it
+    /// only spawns the subprocess while the user is actually looking at it.
     fn ensure_polling(&mut self, sender: &ComponentSender<Self>) {
         if self.poll_started {
             return;
@@ -377,12 +376,10 @@ impl TwilightMenuWidgetModel {
                     POLL
                 };
                 first = false;
+                // No timer while hidden; a reveal re-probes at once.
                 tokio::select! {
                     () = &mut shutdown_fut => break,
-                    _ = tokio::time::sleep(delay) => {}
-                }
-                if !revealed.load(Ordering::Relaxed) {
-                    continue;
+                    _ = revealed.tick(delay) => {}
                 }
                 if let Some(s) = twilight::probe().await {
                     let _ = out.send(TwilightMenuWidgetCommandOutput::Polled(s));

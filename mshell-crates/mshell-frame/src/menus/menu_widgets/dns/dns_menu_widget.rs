@@ -36,10 +36,9 @@
 //! pkexec's graphical agent when `sudo -n` isn't available.
 
 use super::state::{DnsState, Mode, probe_dns_state};
+use crate::menus::reveal_poll::RevealGate;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tracing::warn;
 
@@ -97,7 +96,7 @@ pub(crate) struct DnsMenuWidgetModel {
     action_busy: bool,
     /// Shared with the poll loop; gates the probes so they only run
     /// while the panel is visible.
-    visible: Arc<AtomicBool>,
+    visible: RevealGate,
     /// Embedded inside the VPN menu's DNS section: hide the VPN-redundant
     /// chrome (hero header + VPN status line) and the Mullvad / Toggle
     /// actions, keeping just Blocky / Default / presets.
@@ -330,7 +329,7 @@ impl Component for DnsMenuWidgetModel {
             preset_apply_buttons: preset_apply_buttons.clone(),
             poll_started: false,
             action_busy: false,
-            visible: Arc::new(AtomicBool::new(false)),
+            visible: RevealGate::new(false),
             embedded,
         };
 
@@ -365,7 +364,7 @@ impl Component for DnsMenuWidgetModel {
                 });
             }
             DnsMenuWidgetInput::ParentRevealChanged(visible) => {
-                self.visible.store(visible, Ordering::Relaxed);
+                self.visible.set(visible);
                 if visible {
                     if !self.poll_started {
                         self.poll_started = true;
@@ -402,19 +401,20 @@ impl Component for DnsMenuWidgetModel {
     }
 }
 
-/// Spawn the perpetual poll loop. Started lazily on first reveal; the
-/// probe is gated on `visible`, so while the panel is hidden the loop
-/// only does a cheap timer wake — no DNS / sudo / mullvad probe.
-fn start_polling(sender: &ComponentSender<DnsMenuWidgetModel>, visible: Arc<AtomicBool>) {
+/// Spawn the poll loop. Started lazily on first reveal; it waits on the
+/// `visible` gate, so while the panel is hidden it arms no timer and runs
+/// no DNS / sudo / mullvad probe.
+fn start_polling(sender: &ComponentSender<DnsMenuWidgetModel>, visible: RevealGate) {
     sender.command(move |out, shutdown| async move {
         let shutdown_fut = shutdown.wait();
         tokio::pin!(shutdown_fut);
         loop {
-            tokio::select! {
+            // No timer while hidden; the reveal handler refreshes on open.
+            let resumed = tokio::select! {
                 () = &mut shutdown_fut => break,
-                _ = tokio::time::sleep(REFRESH_INTERVAL) => {}
-            }
-            if visible.load(Ordering::Relaxed) {
+                r = visible.tick(REFRESH_INTERVAL) => r,
+            };
+            if !resumed {
                 let s = probe_dns_state().await;
                 let _ = out.send(DnsMenuWidgetCommandOutput::Refreshed(s));
             }

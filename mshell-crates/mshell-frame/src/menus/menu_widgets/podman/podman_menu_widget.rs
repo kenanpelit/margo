@@ -34,13 +34,12 @@
 //! user (§13.3 continuity).
 
 use crate::bars::bar_widgets::podman::{PodmanSummary, fetch_podman_summary};
+use crate::menus::reveal_poll::RevealGate;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tracing::warn;
 
@@ -106,7 +105,7 @@ pub(crate) struct PodmanMenuWidgetModel {
     poll_started: bool,
     /// Shared with the poll loop; gates the `podman` probe so it only
     /// runs while the panel is visible.
-    visible: Arc<AtomicBool>,
+    visible: RevealGate,
 }
 
 impl std::fmt::Debug for PodmanMenuWidgetModel {
@@ -279,7 +278,7 @@ impl Component for PodmanMenuWidgetModel {
             error_banner: error_banner_widget.clone(),
             expanded: Rc::new(RefCell::new(HashSet::new())),
             poll_started: false,
-            visible: Arc::new(AtomicBool::new(false)),
+            visible: RevealGate::new(false),
         };
 
         let widgets = view_output!();
@@ -318,7 +317,7 @@ impl Component for PodmanMenuWidgetModel {
             PodmanMenuWidgetInput::OpenShell(id) => open_shell(&id),
             PodmanMenuWidgetInput::OpenLogs(id) => open_logs(&id),
             PodmanMenuWidgetInput::ParentRevealChanged(visible) => {
-                self.visible.store(visible, Ordering::Relaxed);
+                self.visible.set(visible);
                 if visible {
                     if !self.poll_started {
                         self.poll_started = true;
@@ -353,19 +352,20 @@ impl Component for PodmanMenuWidgetModel {
     }
 }
 
-/// Spawn the perpetual poll loop. Started lazily on first reveal; the
-/// `podman` probe is gated on `visible`, so while the panel is hidden
-/// the loop only does a cheap timer wake — no subprocess spawn.
-fn start_polling(sender: &ComponentSender<PodmanMenuWidgetModel>, visible: Arc<AtomicBool>) {
+/// Spawn the poll loop. Started lazily on first reveal; it waits on the
+/// `visible` gate, so while the panel is hidden it arms no timer and
+/// spawns no `podman`.
+fn start_polling(sender: &ComponentSender<PodmanMenuWidgetModel>, visible: RevealGate) {
     sender.command(move |out, shutdown| async move {
         let shutdown_fut = shutdown.wait();
         tokio::pin!(shutdown_fut);
         loop {
-            tokio::select! {
+            // No timer while hidden; the reveal handler refreshes on open.
+            let resumed = tokio::select! {
                 () = &mut shutdown_fut => break,
-                _ = tokio::time::sleep(REFRESH_INTERVAL) => {}
-            }
-            if visible.load(Ordering::Relaxed) {
+                r = visible.tick(REFRESH_INTERVAL) => r,
+            };
+            if !resumed {
                 let s = fetch_panel_state().await;
                 let _ = out.send(PodmanMenuWidgetCommandOutput::Refreshed(s));
             }

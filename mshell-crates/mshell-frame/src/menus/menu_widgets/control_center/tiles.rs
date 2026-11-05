@@ -31,6 +31,7 @@
 use crate::bars::bar_widgets::podman::fetch_podman_summary;
 use crate::bars::bar_widgets::ufw::{Status as UfwStatus, fetch_ufw_status_only};
 use crate::menus::menu_widgets::control_center::tile::{TileWidget, build_expand_tile, build_tile};
+use crate::menus::reveal_poll::RevealGate;
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
@@ -59,8 +60,6 @@ use relm4::gtk::prelude::{
 };
 use relm4::{Component, ComponentParts, ComponentSender};
 use std::collections::HashSet;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use wayle_battery::types::DeviceState;
 use wayle_power_profiles::types::profile::PowerProfile;
@@ -127,10 +126,11 @@ pub(crate) struct ControlCenterTilesModel {
     denoise_busy: bool,
     // Lazy-start guard — watchers only start on first reveal
     watchers_started: bool,
-    // Shared with the subprocess pollers (twilight / ufw / podman): they
-    // skip probing while the panel is hidden so a closed control center
-    // doesn't spawn `mctl` / `systemctl` / `podman` every few seconds.
-    revealed: Arc<AtomicBool>,
+    // Shared with the pollers (twilight / ufw / podman / disk / valent):
+    // they wait on it with no timer armed while the panel is hidden, so a
+    // closed control center neither wakes nor spawns `mctl` / `systemctl`
+    // / `podman`.
+    revealed: RevealGate,
     // Edit mode — when true, all tiles visible + per-tile visibility toggles shown
     edit_mode: bool,
     // Current tile order — mirrors config; used to detect changes that need
@@ -904,7 +904,7 @@ impl Component for ControlCenterTilesModel {
             hotspot_busy: false,
             denoise: DenoiseStatus::default(),
             denoise_busy: false,
-            revealed: Arc::new(AtomicBool::new(false)),
+            revealed: RevealGate::new(false),
             watchers_started: false,
             edit_mode: false,
             tile_order: initial_tile_order.clone(),
@@ -990,7 +990,7 @@ impl Component for ControlCenterTilesModel {
     ) {
         match message {
             ControlCenterTilesInput::Reveal(true) => {
-                self.revealed.store(true, Ordering::Relaxed);
+                self.revealed.set(true);
                 if !self.watchers_started {
                     self.watchers_started = true;
 
@@ -1024,10 +1024,7 @@ impl Component for ControlCenterTilesModel {
                             first = false;
                             tokio::select! {
                                 () = &mut shutdown_fut => break,
-                                _ = tokio::time::sleep(delay) => {}
-                            }
-                            if !revealed.load(Ordering::Relaxed) {
-                                continue;
+                                () = tile_tick(&revealed, delay) => {}
                             }
                             if let Some(status) = twilight::probe().await {
                                 let subtitle = twilight_subtitle(&status);
@@ -1062,10 +1059,7 @@ impl Component for ControlCenterTilesModel {
                             first = false;
                             tokio::select! {
                                 () = &mut shutdown_fut => break,
-                                _ = tokio::time::sleep(delay) => {}
-                            }
-                            if !revealed.load(Ordering::Relaxed) {
-                                continue;
+                                () = tile_tick(&revealed, delay) => {}
                             }
                             let (ufw_sub, ufw_active) = read_ufw_tile_state().await;
                             let _ = out.send(ControlCenterTilesCommandOutput::UfwRefreshed(
@@ -1100,10 +1094,7 @@ impl Component for ControlCenterTilesModel {
                             first = false;
                             tokio::select! {
                                 () = &mut shutdown_fut => break,
-                                _ = tokio::time::sleep(delay) => {}
-                            }
-                            if !revealed.load(Ordering::Relaxed) {
-                                continue;
+                                () = tile_tick(&revealed, delay) => {}
                             }
                             let usage = read_disk_usage();
                             let _ = out.send(ControlCenterTilesCommandOutput::DiskRefreshed(usage));
@@ -1122,10 +1113,7 @@ impl Component for ControlCenterTilesModel {
                             first = false;
                             tokio::select! {
                                 () = &mut shutdown_fut => break,
-                                _ = tokio::time::sleep(delay) => {}
-                            }
-                            if !revealed.load(Ordering::Relaxed) {
-                                continue;
+                                () = tile_tick(&revealed, delay) => {}
                             }
                             let _ = out.send(ControlCenterTilesCommandOutput::SubtitlesRefreshed);
                         }
@@ -1148,10 +1136,7 @@ impl Component for ControlCenterTilesModel {
                             first = false;
                             tokio::select! {
                                 () = &mut shutdown_fut => break,
-                                _ = tokio::time::sleep(delay) => {}
-                            }
-                            if !revealed.load(Ordering::Relaxed) {
-                                continue;
+                                () = tile_tick(&revealed, delay) => {}
                             }
                             let report = valent::probe().await;
                             let (subtitle, connected) = valent_state_from_report(&report);
@@ -1186,7 +1171,7 @@ impl Component for ControlCenterTilesModel {
             }
 
             ControlCenterTilesInput::Reveal(false) => {
-                self.revealed.store(false, Ordering::Relaxed);
+                self.revealed.set(false);
             }
 
             ControlCenterTilesInput::RefreshSubtitles => {
@@ -1873,6 +1858,15 @@ fn build_edit_overlay(
 
 // ── Service-state probes ──────────────────────────────────────
 //
+/// Wait out `period` of revealed time (no timer while hidden). Reopening
+/// the panel re-probes after [`STARTUP_DELAY`], like the first open, so
+/// the probes don't race the reveal animation.
+async fn tile_tick(revealed: &RevealGate, period: Duration) {
+    if revealed.tick(period).await {
+        tokio::time::sleep(STARTUP_DELAY).await;
+    }
+}
+
 // The live system-state readers (battery, disk, twilight, UFW, podman,
 // Wi-Fi, Bluetooth, audio, VPN, Valent, airplane) live in `tile_probes.rs`.
 mod tile_probes;

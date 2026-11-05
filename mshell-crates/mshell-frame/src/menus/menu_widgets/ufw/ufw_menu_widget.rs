@@ -18,11 +18,10 @@
 use crate::bars::bar_widgets::ufw::{
     Status, UfwSummary, fetch_ufw_summary, fetch_ufw_summary_pkexec, status_word,
 };
+use crate::menus::reveal_poll::RevealGate;
 use relm4::gtk::glib;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, ListBoxRowExt, ObjectExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tracing::warn;
 
@@ -43,7 +42,7 @@ pub(crate) struct UfwMenuWidgetModel {
     poll_started: bool,
     /// Shared with the poll loop; gates the probe so it only runs while
     /// the panel is visible.
-    visible: Arc<AtomicBool>,
+    visible: RevealGate,
 }
 
 impl std::fmt::Debug for UfwMenuWidgetModel {
@@ -296,7 +295,7 @@ impl Component for UfwMenuWidgetModel {
             logging_label: logging_label_widget.clone(),
             rule_list: rule_list_widget.clone(),
             poll_started: false,
-            visible: Arc::new(AtomicBool::new(false)),
+            visible: RevealGate::new(false),
         };
 
         let widgets = view_output!();
@@ -333,7 +332,7 @@ impl Component for UfwMenuWidgetModel {
                 });
             }
             UfwMenuWidgetInput::ParentRevealChanged(visible) => {
-                self.visible.store(visible, Ordering::Relaxed);
+                self.visible.set(visible);
                 if visible {
                     if !self.poll_started {
                         self.poll_started = true;
@@ -367,19 +366,20 @@ impl Component for UfwMenuWidgetModel {
     }
 }
 
-/// Spawn the perpetual unprivileged status poll. Started lazily on
-/// first reveal; the probe is gated on `visible`, so while the panel is
-/// hidden the loop only does a cheap timer wake.
-fn start_polling(sender: &ComponentSender<UfwMenuWidgetModel>, visible: Arc<AtomicBool>) {
+/// Spawn the unprivileged status poll. Started lazily on first reveal;
+/// it waits on the `visible` gate, so while the panel is hidden it arms
+/// no timer at all.
+fn start_polling(sender: &ComponentSender<UfwMenuWidgetModel>, visible: RevealGate) {
     sender.command(move |out, shutdown| async move {
         let shutdown_fut = shutdown.wait();
         tokio::pin!(shutdown_fut);
         loop {
-            tokio::select! {
+            // No timer while hidden; the reveal handler refreshes on open.
+            let resumed = tokio::select! {
                 () = &mut shutdown_fut => break,
-                _ = tokio::time::sleep(REFRESH_INTERVAL) => {}
-            }
-            if visible.load(Ordering::Relaxed) {
+                r = visible.tick(REFRESH_INTERVAL) => r,
+            };
+            if !resumed {
                 let s = fetch_ufw_summary().await;
                 let _ = out.send(UfwMenuWidgetCommandOutput::Refreshed(s));
             }

@@ -6,6 +6,7 @@
 //! inhibit lives in [`crate::keep_awake::KeepAwakeSession`].
 
 use crate::keep_awake::{KeepAwakeSession, format_remaining, lid_row_subtitle};
+use crate::menus::reveal_poll::RevealGate;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, IdleStoreFields};
 use mshell_idle::inhibitor::IdleInhibitor;
@@ -16,8 +17,6 @@ use relm4::gtk::prelude::{
     BoxExt, ButtonExt, FlowBoxChildExt, ObjectExt, OrientableExt, WidgetExt,
 };
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 /// Preset durations (minutes, label). `None` minutes (the ∞ tile) is
@@ -46,7 +45,7 @@ pub(crate) struct KeepAwakeMenuWidgetModel {
     /// (this menu is built eagerly per-monitor and embedded as a Control
     /// Center detail page) and paused while hidden.
     tick_started: bool,
-    revealed: Arc<AtomicBool>,
+    revealed: RevealGate,
 }
 
 #[derive(Debug)]
@@ -212,7 +211,7 @@ impl Component for KeepAwakeMenuWidgetModel {
             lid_switch_signal,
             lid_subtitle: lid_subtitle_widget.clone(),
             tick_started: false,
-            revealed: Arc::new(AtomicBool::new(false)),
+            revealed: RevealGate::new(false),
         };
         let widgets = view_output!();
 
@@ -235,7 +234,7 @@ impl Component for KeepAwakeMenuWidgetModel {
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             KeepAwakeMenuWidgetInput::ParentRevealChanged(revealed) => {
-                self.revealed.store(revealed, Ordering::Relaxed);
+                self.revealed.set(revealed);
                 if revealed {
                     self.ensure_polling(&sender);
                     // Resync the countdown immediately on open.
@@ -275,9 +274,8 @@ impl Component for KeepAwakeMenuWidgetModel {
 
 impl KeepAwakeMenuWidgetModel {
     /// Start the 1 s countdown heartbeat once (on first reveal). The loop
-    /// runs until the widget is dropped but only emits a tick while the
-    /// panel is revealed, so a closed (or off-screen, per-monitor) panel
-    /// doesn't refresh its countdown for nothing.
+    /// runs until the widget is dropped but ticks only while the panel is
+    /// revealed: a closed (or off-screen, per-monitor) panel arms no timer.
     fn ensure_polling(&mut self, sender: &ComponentSender<Self>) {
         if self.tick_started {
             return;
@@ -287,12 +285,12 @@ impl KeepAwakeMenuWidgetModel {
         sender.command(move |out, shutdown| async move {
             let shutdown_fut = shutdown.wait();
             tokio::pin!(shutdown_fut);
-            let mut tick = tokio::time::interval(Duration::from_secs(1));
             loop {
+                // No timer while hidden (the reveal handler resyncs).
                 tokio::select! {
                     () = &mut shutdown_fut => break,
-                    _ = tick.tick() => {
-                        if revealed.load(Ordering::Relaxed) {
+                    resumed = revealed.tick(Duration::from_secs(1)) => {
+                        if !resumed {
                             let _ = out.send(());
                         }
                     }

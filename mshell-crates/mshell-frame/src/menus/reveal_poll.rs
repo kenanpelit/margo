@@ -6,9 +6,9 @@
 //! the `glib` source itself and removes it on hide (DESIGN.md: a hidden
 //! menu does no work).
 //!
-//! [`RevealGate`] is the same rule for async subscriptions on the services
-//! runtime: [`RevealGate::stream_while_revealed`] holds a stream only
-//! while the menu is revealed.
+//! [`RevealGate`] is the same rule for poll loops that run as async
+//! commands on the services runtime: the loop awaits [`RevealGate::tick`]
+//! instead of `sleep`, so no timer is armed while the menu is hidden.
 
 use relm4::gtk::glib;
 use std::cell::RefCell;
@@ -104,6 +104,23 @@ impl RevealGate {
         *self.0.borrow()
     }
 
+    /// Wait `period` of revealed time, the gated replacement for
+    /// `sleep(period)` in a poll loop. While the menu is hidden no timer
+    /// is armed at all; a hide mid-wait drops the sleep. Returns `false`
+    /// after a plain `period`, `true` as soon as the menu is revealed
+    /// again after having been hidden (what the loop read is stale; it
+    /// can refresh now, or skip when the reveal handler already did).
+    pub(crate) async fn tick(&self, period: Duration) -> bool {
+        if self.is_revealed() {
+            tokio::select! {
+                () = tokio::time::sleep(period) => return false,
+                () = self.until_hidden() => {}
+            }
+        }
+        self.until_revealed().await;
+        true
+    }
+
     /// Resolves once the menu is revealed (at once when it already is).
     pub(crate) async fn until_revealed(&self) {
         // The sender lives in `self`, so the wait can't fail.
@@ -160,6 +177,45 @@ mod gate_tests {
         for _ in 0..10 {
             tokio::task::yield_now().await;
         }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn hidden_gate_arms_no_timer_and_resumes_on_reveal() {
+        let gate = RevealGate::new(true);
+        let ticks = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let resumes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let (g, t, r) = (gate.clone(), ticks.clone(), resumes.clone());
+        let task = tokio::spawn(async move {
+            loop {
+                if g.tick(Duration::from_secs(5)).await {
+                    r.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                } else {
+                    t.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                }
+            }
+        });
+        let load =
+            |a: &Arc<std::sync::atomic::AtomicUsize>| a.load(std::sync::atomic::Ordering::SeqCst);
+
+        tokio::time::sleep(Duration::from_secs(11)).await;
+        settle().await;
+        assert_eq!(load(&ticks), 2, "ticks every period while revealed");
+
+        gate.set(false);
+        settle().await;
+        // Hidden: the loop is parked on the flag with no timer pending.
+        tokio::time::sleep(Duration::from_secs(3600)).await;
+        settle().await;
+        assert_eq!(load(&ticks), 2, "no tick while hidden");
+        assert_eq!(load(&resumes), 0);
+
+        gate.set(true);
+        settle().await;
+        assert_eq!(load(&resumes), 1, "a reveal wakes the loop at once");
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        settle().await;
+        assert_eq!(load(&ticks), 3, "then the period resumes");
+        task.abort();
     }
 
     /// A stream that counts how many of it are alive.
