@@ -12,3 +12,4 @@ error states) from mullvad-cli's own strings.
 - `relay-get-multihop.txt` — `mullvad relay get` with multihop on, from the
   community `mullvad` plugin's own captures (same CLI version): turning
   multihop on here would change the live tunnel.
+- `status-connected.json` — `mullvad status --json` while connected; addresses replaced with documentation addresses, coordinates set to the relay city's.

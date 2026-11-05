@@ -9,7 +9,7 @@ mod ui;
 
 use clap::{Parser, Subcommand};
 use engine::{
-    actions, blocky, diag, favorites, multihop, notify, obf, relays, slot, status, timer,
+    actions, blocky, diag, favorites, multihop, notify, obf, realloc, relays, slot, status, timer,
 };
 
 #[derive(Parser, Debug)]
@@ -54,6 +54,10 @@ enum Cmd {
     Reconnect,
     /// Connect to a random relay (optionally in a country).
     Random { country: Option<String> },
+    /// Connect to the country you are in, or the nearest one with relays
+    /// (where you are is learned while disconnected and remembered).
+    #[command(name = "my-country")]
+    MyCountry,
     /// Connect to a Mullvad-owned relay (optionally in a country).
     Owned { country: Option<String> },
     /// Connect to a rented relay (optionally in a country).
@@ -256,6 +260,7 @@ fn main() {
             ),
             true,
         ),
+        Cmd::MyCountry => run_my_country(),
         Cmd::Quantum => actions::toggle_quantum(),
         // `fastest` leaves favorites untouched; `fastest-fav` records the
         // winner — same sweep otherwise (osc-mullvad's `add_to_favorites`).
@@ -741,11 +746,40 @@ fn run_fastest(country: &str, add_to_fav: bool) -> bool {
     }
 }
 
+/// `mvpn my-country`: connect to a random relay in the country you are in
+/// (or the nearest one with relays).
+fn run_my_country() -> bool {
+    let Some(real) = realloc::refresh() else {
+        eprintln!(
+            "mvpn my-country: where you are is not known yet; disconnect once so mvpn can see your real location"
+        );
+        return false;
+    };
+    match realloc::pick(&relays::locations(), &real) {
+        Some(cc) => {
+            println!("→ {cc} (you are in {})", real.country);
+            notify_after(actions::random(&cc, "", relays::Ownership::Any), true)
+        }
+        None => {
+            eprintln!(
+                "mvpn my-country: no country with relays near {}",
+                real.country
+            );
+            false
+        }
+    }
+}
+
 /// `mvpn status --follow`: one line per change, flushed at once (stdout is a
 /// pipe when mshell reads it). Returns `false` when the daemon stream ends.
 fn follow_status(json: bool) -> bool {
     use std::io::Write as _;
     status::follow(|st| {
+        // A tunnel that just went down shows the real location: remember it
+        // for `my-country` (one `mullvad status --json`, only on that change).
+        if st.state.starts_with("Disconnected") {
+            realloc::refresh();
+        }
         let mut out = std::io::stdout().lock();
         if json {
             writeln!(

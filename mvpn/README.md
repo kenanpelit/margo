@@ -15,6 +15,7 @@ mvpn de                    # random relay in a country
 mvpn us nyc                # random relay in a city
 mvpn locations             # relay locations as a JSON country → city tree
 mvpn random | owned [cc] | rented [cc]
+mvpn my-country            # the country you are in, or the nearest with relays
 mvpn protocol              # toggle WireGuard ↔ OpenVPN
 mvpn fastest [cc]          # ping a sample, connect to the lowest, save to favs
 mvpn fastest-fav-sweep europe [n]   # seed favorites across a country group
@@ -35,6 +36,8 @@ mvpn menu                  # open the GTK panel
 `obfuscation` is the daemon's `anti-censorship` on current Mullvad. Favorites
 live in `~/.mullvad/favorites.txt` (`relay|ping`, fastest-first) and the
 device-slot state in `~/.mullvad/slot.state` — both osc-mullvad-compatible.
+`my-country` remembers your last real (disconnected) country and coordinates
+in `~/.mullvad/real-location`, so it also works while connected.
 
 ## Bar pill
 

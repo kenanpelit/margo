@@ -129,6 +129,8 @@ pub(crate) enum VpnMenuWidgetInput {
     /// Bring the tunnel up/down (`mvpn toggle`) — wired to the hero button.
     Toggle,
     Random,
+    /// Connect to the country the user is in (`mvpn my-country`).
+    MyCountry,
     Fastest,
     AddCurrent,
     Connect(String),
@@ -349,6 +351,12 @@ impl Component for VpnMenuWidgetModel {
                     set_css_classes: &["ok-button-surface", "dns-action"],
                     set_label: "Random",
                     connect_clicked[sender] => move |_| sender.input(VpnMenuWidgetInput::Random),
+                },
+                gtk::Button {
+                    set_css_classes: &["ok-button-surface", "dns-action"],
+                    set_label: "My country",
+                    set_tooltip_text: Some("The country you are in, or the nearest one with servers"),
+                    connect_clicked[sender] => move |_| sender.input(VpnMenuWidgetInput::MyCountry),
                 },
                 gtk::Button {
                     set_css_classes: &["ok-button-surface", "dns-action"],
@@ -780,6 +788,7 @@ impl Component for VpnMenuWidgetModel {
             }
             VpnMenuWidgetInput::Toggle => act(&sender, vec!["toggle".into()]),
             VpnMenuWidgetInput::Random => act(&sender, vec!["random".into()]),
+            VpnMenuWidgetInput::MyCountry => act(&sender, vec!["my-country".into()]),
             VpnMenuWidgetInput::Fastest => act(&sender, vec!["fastest".into()]),
             VpnMenuWidgetInput::AddCurrent => act(&sender, vec!["fav".into(), "add".into()]),
             // Connect to this specific favourite relay (`mvpn fav connect <relay>`).

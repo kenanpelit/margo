@@ -100,6 +100,24 @@ pub fn run(program: &str, args: &[&str], input: Option<&str>) -> Output {
     }
 }
 
+/// Write `body` to `path` through a temp file in the same directory and
+/// a rename, so a crash never leaves a truncated file. (mvpn is MIT and
+/// stays free of the GPL `margo-fs`, hence its own small copy.)
+pub fn write_atomic(path: &std::path::Path, body: &str) -> std::io::Result<()> {
+    let dir = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    std::fs::create_dir_all(dir)?;
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "mvpn".into());
+    let tmp = dir.join(format!(".{name}.{}.tmp", std::process::id()));
+    let res = std::fs::write(&tmp, body).and_then(|()| std::fs::rename(&tmp, path));
+    if res.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    res
+}
+
 /// Run `mullvad <args>` → trimmed stdout.
 pub fn mullvad(args: &[&str]) -> String {
     out("mullvad", args)
@@ -117,4 +135,24 @@ pub fn sudo_n(args: &[&str]) -> bool {
     let mut full = vec!["-n"];
     full.extend_from_slice(args);
     ok("sudo", &full)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn atomic_write_replaces_the_file_and_leaves_no_temp() {
+        let dir = std::env::temp_dir().join(format!("mvpn-atomic-{}", std::process::id()));
+        let path = dir.join("sub").join("real-location");
+        write_atomic(&path, "one").expect("write");
+        write_atomic(&path, "two").expect("rewrite");
+        assert_eq!(std::fs::read_to_string(&path).expect("read"), "two");
+        let names: Vec<_> = std::fs::read_dir(dir.join("sub"))
+            .expect("dir")
+            .filter_map(|e| e.ok().map(|e| e.file_name()))
+            .collect();
+        assert_eq!(names.len(), 1, "{names:?}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }
