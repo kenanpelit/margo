@@ -52,18 +52,57 @@ gated_test_files=$(find . -name '*.rs' \
     -not -path './fuzz/*' \
     -not -path './mplugin-sdk/*' \
     -print0 | xargs -0 awk '
-      /#\[cfg\(test\)\]/ { pending = 1; next }
-      pending && /^[[:space:]]*(pub[[:space:]]+)?mod[[:space:]]+[A-Za-z0-9_]+[[:space:]]*;/ {
+      # `a/b/../c.rs` -> `a/c.rs`, so it matches the find(1) paths below.
+      function norm(p,    parts, n, i, k, out) {
+        n = split(p, parts, "/"); k = 0
+        for (i = 1; i <= n; i++) {
+          if (parts[i] == ".." && k > 1) k--
+          else if (parts[i] != "") out[++k] = parts[i]
+        }
+        p = out[1]; for (i = 2; i <= k; i++) p = p "/" out[i]
+        return p
+      }
+      # The attributes right above a `mod name;` line: remember a
+      # #[cfg(test)] and a #[path = "..."] in either order.
+      FNR == 1 { gated = 0; path = "" }
+      # `#[cfg(test)] mod name;` on one line.
+      /^[[:space:]]*#\[cfg\(test\)\][[:space:]]+(pub|mod)/ {
+        gated = 1
+        sub(/#\[cfg\(test\)\][[:space:]]+/, "")
+      }
+      /^[[:space:]]*#\[cfg\(test\)\][[:space:]]*$/ { gated = 1; next }
+      /^[[:space:]]*#\[path[[:space:]]*=[[:space:]]*"[^"]*"\][[:space:]]*$/ {
+        path = $0
+        sub(/^[^"]*"/, "", path)
+        sub(/".*$/, "", path)
+        next
+      }
+      /^[[:space:]]*#\[/ { next }
+      gated && /^[[:space:]]*(pub(\([a-z]+\))?[[:space:]]+)?mod[[:space:]]+[A-Za-z0-9_]+[[:space:]]*;/ {
         name = $0
-        sub(/^[[:space:]]*(pub[[:space:]]+)?mod[[:space:]]+/, "", name)
+        sub(/^[[:space:]]*(pub(\([a-z]+\))?[[:space:]]+)?mod[[:space:]]+/, "", name)
         sub(/[[:space:]]*;.*$/, "", name)
         dir = FILENAME
         sub(/\/[^\/]*$/, "", dir)
-        print dir "/" name ".rs"
-        pending = 0
-        next
+        base = FILENAME
+        sub(/^.*\//, "", base)
+        if (path != "") {
+          # #[path] is relative to the directory of the declaring file.
+          print norm(dir "/" path)
+        } else if (base == "mod.rs" || base == "lib.rs" || base == "main.rs" \
+                   || dir ~ /\/src\/bin$/) {
+          # A crate root or mod.rs: the module sits next to it.
+          print dir "/" name ".rs"
+          print dir "/" name "/mod.rs"
+        } else {
+          # foo.rs: its child modules live in foo/.
+          stem = base
+          sub(/\.rs$/, "", stem)
+          print dir "/" stem "/" name ".rs"
+          print dir "/" stem "/" name "/mod.rs"
+        }
       }
-      { pending = 0 }
+      { gated = 0; path = "" }
     ')
 
 rs_files=$(find . -name '*.rs' \

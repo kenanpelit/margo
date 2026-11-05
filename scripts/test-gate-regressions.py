@@ -106,6 +106,26 @@ class GateTests(unittest.TestCase):
                                 text=True, capture_output=True, stdin=subprocess.DEVNULL)
         self.assertNotEqual(result.returncode, 0)
 
+    def test_panic_excludes_path_attribute_test_modules(self):
+        for attrs in ('#[cfg(test)]\n#[path = "t_tests.rs"]\n',
+                      '#[path = "t_tests.rs"]\n#[cfg(test)]\n',
+                      '#[cfg(test)]\n#[allow(dead_code)]\n#[path = "t_tests.rs"]\n',
+                      '#[path = "t_tests.rs"]\n#[cfg(test)] '):
+            with self.subTest(attrs=attrs):
+                self.write('src/t.rs', 'fn f() {}\n' + attrs + 'mod t_tests;\n')
+                self.write('src/t_tests.rs', 'fn helper() { a.unwrap(); }\n')
+                result = self.gate('panic-ratchet.sh')
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_panic_resolves_test_modules_of_non_mod_files(self):
+        # `mod tests;` in src/foo.rs is src/foo/tests.rs, not src/tests.rs.
+        self.write('src/foo.rs', 'fn f() {}\n#[cfg(test)]\nmod tests;\n')
+        self.write('src/foo/tests.rs', 'fn helper() { a.unwrap(); }\n')
+        result = self.gate('panic-ratchet.sh')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.write('src/tests.rs', 'fn production() { a.unwrap(); }\n')
+        self.assertNotEqual(self.gate('panic-ratchet.sh').returncode, 0)
+
     def test_size_rejects_malformed_rules(self):
         for rule in ('demo.rs abc', 'demo.rs -1', 'demo.rs 2 extra',
                      'demo.rs 2\ndemo.rs 3'):
