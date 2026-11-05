@@ -28,6 +28,9 @@ mvpn auto-connect on|off
 mvpn slot whoami|list|revoke <dev>|recycle [--dry-run]|status|disconnect
 mvpn timer start <min> | stop | status   # auto-switch relays
 mvpn test                  # leak check (am.i.mullvad.net)
+mvpn health [--json]       # what is wrong (service, tunnel error, lockdown, account) + the fix
+mvpn service [start|enable|restart]   # mullvad-daemon.service via systemd's polkit prompt
+mvpn account login [--stdin]          # number from stdin / $MULLVAD_ACCOUNT_NUMBER / pass
 mvpn split                 # split-tunnel excluded processes
 mvpn ensure                # blocky DNS-guard fail-safe
 mvpn menu                  # open the GTK panel
@@ -57,6 +60,17 @@ switches, ping-sorted favorites, searchable country list, device + leak test.
 Esc closes. All `mullvad` calls run off the UI thread.
 
 ## Notes
+
+- `mvpn health` names one problem in a plain sentence with its fix: the
+  service is stopped (Start service, plus Start at boot when it is disabled),
+  the firewall failed because the kernel was updated without a reboot
+  (`/usr/lib/modules/$(uname -r)` is gone: reboot), other tunnel errors,
+  lockdown blocking while disconnected, logged out / revoked, expired.
+- `mvpn service` runs `systemctl start|enable --now|restart
+  mullvad-daemon.service` as you: systemd asks polkit, whose agent shows the
+  password prompt. No root code, no shell, three fixed verbs.
+- The account number is never printed, and reaches `mullvad account login`
+  on stdin, never in an argv.
 
 - Privileged steps (blocky `systemctl`, device-slot) use **non-interactive
   sudo** (`sudo -n`) and never a polkit prompt, so a focused panel can't hang.

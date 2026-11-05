@@ -9,7 +9,8 @@ mod ui;
 
 use clap::{Parser, Subcommand};
 use engine::{
-    actions, blocky, diag, favorites, multihop, notify, obf, realloc, relays, slot, status, timer,
+    actions, blocky, diag, favorites, health, multihop, notify, obf, realloc, relays, service,
+    slot, status, timer,
 };
 
 #[derive(Parser, Debug)]
@@ -115,6 +116,11 @@ enum Cmd {
         #[arg(value_parser = ["on", "off"])]
         state: String,
     },
+    /// The Mullvad account (the account number is never printed).
+    Account {
+        #[command(subcommand)]
+        action: AccountCmd,
+    },
     /// Device-slot management (multi-machine 5-device limit).
     Slot {
         #[command(subcommand)]
@@ -124,6 +130,20 @@ enum Cmd {
     Timer {
         #[command(subcommand)]
         action: TimerCmd,
+    },
+    /// What is wrong with Mullvad (service down, tunnel error, lockdown
+    /// blocking, logged out, expired, kernel updated without a reboot) and
+    /// how to fix it. Exit status 1 when something is wrong.
+    Health {
+        /// The facts as JSON (the VPN menu's error header reads this).
+        #[arg(long)]
+        json: bool,
+    },
+    /// The Mullvad system service: bare = show; `start`, `enable` (start
+    /// now and at boot) or `restart`, through systemd's own polkit prompt.
+    Service {
+        #[arg(value_parser = ["start", "enable", "restart"])]
+        action: Option<String>,
     },
     /// Leak test: confirm traffic exits through Mullvad.
     Test,
@@ -158,6 +178,18 @@ enum FavCmd {
     Connect { relay: Option<String> },
     /// Re-ping favorites (optionally in a country), drop dead ones, re-sort.
     Refresh { country: Option<String> },
+}
+
+#[derive(Subcommand, Debug)]
+enum AccountCmd {
+    /// Log in. The account number comes from stdin when it is not a
+    /// terminal (`--stdin` forces it), else `$MULLVAD_ACCOUNT_NUMBER` or
+    /// `pass show mullvad/account`; it reaches `mullvad` on stdin, never
+    /// in an argv.
+    Login {
+        #[arg(long)]
+        stdin: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -324,6 +356,7 @@ fn main() {
                 }
             }
         }
+        Cmd::Account { action } => run_account(action),
         Cmd::Slot { action } => run_slot(action),
         Cmd::Timer { action } => match action {
             TimerCmd::Start { minutes } => match timer::start(minutes) {
@@ -360,6 +393,65 @@ fn main() {
             }
         },
         Cmd::TimerRun { minutes } => timer::run(minutes),
+        Cmd::Health { json } => {
+            let h = health::gather();
+            let problem = health::diagnose(&h);
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string(&h).unwrap_or_else(|_| "{}".into())
+                );
+                true
+            } else {
+                match problem {
+                    Some(p) => {
+                        println!("✘ {}", p.message);
+                        for fix in &p.fixes {
+                            match fix.mvpn_args() {
+                                Some(args) => {
+                                    println!("  {}: mvpn {}", fix.label(), args.join(" "))
+                                }
+                                None => println!(
+                                    "  {}: {}",
+                                    fix.label(),
+                                    mvpn_proto::health::ACCOUNT_URL
+                                ),
+                            }
+                        }
+                        false
+                    }
+                    None => {
+                        println!("✔ Mullvad is working");
+                        true
+                    }
+                }
+            }
+        }
+        Cmd::Service { action: None } => {
+            let running =
+                !health::is_daemon_down(&engine::sys::run("mullvad", &["status"], None).text());
+            let boot = match service::boot_enabled() {
+                Some(true) => "enabled",
+                Some(false) => "disabled",
+                None => "unknown",
+            };
+            println!(
+                "{}: {} · at boot: {boot}",
+                service::UNIT,
+                if running { "running" } else { "stopped" }
+            );
+            running
+        }
+        Cmd::Service { action: Some(verb) } => {
+            match service::Action::parse(&verb).map(service::run) {
+                Some(Ok(())) => true,
+                Some(Err(e)) => {
+                    eprintln!("mvpn service {verb}: {e}");
+                    false
+                }
+                None => false,
+            }
+        }
         Cmd::Test => {
             let r = diag::leak_test();
             if !r.connected {
@@ -454,6 +546,43 @@ fn spawn_held_recycle(dry_run: bool) -> bool {
         cmd.arg("--dry-run");
     }
     cmd.spawn().is_ok()
+}
+
+fn run_account(action: AccountCmd) -> bool {
+    match action {
+        AccountCmd::Login { stdin } => {
+            use std::io::IsTerminal as _;
+            let number = if stdin || !std::io::stdin().is_terminal() {
+                let mut line = String::new();
+                let _ = std::io::stdin().read_line(&mut line);
+                Some(line.trim().to_string()).filter(|n| !n.is_empty())
+            } else {
+                None
+            }
+            .or_else(|| slot::account_number(PASS_ENTRY));
+            let Some(number) = number else {
+                eprintln!(
+                    "mvpn account login: no account number (pipe it in, set MULLVAD_ACCOUNT_NUMBER, or store it in pass as {PASS_ENTRY})"
+                );
+                return false;
+            };
+            if !number.chars().all(|c| c.is_ascii_digit() || c == ' ') {
+                eprintln!("mvpn account login: an account number has only digits");
+                return false;
+            }
+            let digits: String = number.chars().filter(char::is_ascii_digit).collect();
+            match slot::login_with("mullvad", &digits) {
+                Ok(()) => {
+                    println!("logged in as {}", slot::current_device());
+                    true
+                }
+                Err(e) => {
+                    eprintln!("mvpn account login: {e}");
+                    false
+                }
+            }
+        }
+    }
 }
 
 fn run_slot(action: SlotCmd) -> bool {

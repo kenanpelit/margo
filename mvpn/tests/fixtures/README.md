@@ -13,3 +13,5 @@ error states) from mullvad-cli's own strings.
   community `mullvad` plugin's own captures (same CLI version): turning
   multihop on here would change the live tunnel.
 - `status-connected.json` — `mullvad status --json` while connected; addresses replaced with documentation addresses, coordinates set to the relay city's.
+- `account-get.txt` — `mullvad account get`, the account number replaced by zeros.
+- `synthetic-daemon-down.txt` — what `mullvad` prints with the daemon stopped (from the community plugin; stopping the owner's daemon is off limits).

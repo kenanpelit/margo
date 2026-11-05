@@ -12,6 +12,8 @@ use std::time::Duration;
 /// `summary()` for the hero / Settings line.
 pub type VpnStatus = mvpn_proto::Status;
 
+/// `mvpn health --json` and its diagnosis (the VPN menu's error header).
+pub use mvpn_proto::health;
 /// `mvpn locations` — the relay list as a country → city tree.
 pub use mvpn_proto::locations;
 

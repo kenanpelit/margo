@@ -4,16 +4,19 @@
 //! holds no persistent state of its own (the daemon + files are the source of
 //! truth), so the CLI and GUI can both call straight in.
 
+pub mod account;
 pub mod actions;
 pub mod blocky;
 pub mod diag;
 pub mod favorites;
+pub mod health;
 pub mod latency;
 pub mod multihop;
 pub mod notify;
 pub mod obf;
 pub mod realloc;
 pub mod relays;
+pub mod service;
 pub mod slot;
 pub mod status;
 pub mod sys;

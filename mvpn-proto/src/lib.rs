@@ -4,6 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod health;
 pub mod locations;
 
 /// One tunnel status (`mvpn status --json`, one line per change with

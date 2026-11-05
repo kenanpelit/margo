@@ -19,8 +19,10 @@ use super::super::dns::dns_menu_widget::{
 use super::super::dns::state::{Mode, probe_dns_state};
 use super::locations::{self, LocationAction, LocationList};
 use super::multihop::{self, Entry};
+use super::problem::ProblemBanner;
 use super::throughput::{VpnThroughputInput, VpnThroughputModel};
 use crate::menus::reveal_poll::RevealGate;
+use mshell_utils::mvpn::health::{self, Fix, Problem};
 use relm4::gtk::prelude::{BoxExt, ButtonExt, EditableExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::time::Duration;
@@ -56,6 +58,9 @@ pub(crate) struct VpnMenuWidgetModel {
     favs: Vec<Fav>,
     /// Widget refs synced imperatively (avoids `#[watch] set_model` churn on
     /// the dropdown, and lets the favourites list rebuild in place).
+    /// Error header above the hero: the problem `mvpn health` finds, with
+    /// its fixes; hidden while all is well.
+    problem: ProblemBanner,
     /// Hero status card — the whole card gains `.connected` (accent tint) when
     /// the tunnel is up. `state_label` = CONNECTED / DISCONNECTED,
     /// `loc_label` = the human location, `relay_label` = relay · protocol
@@ -148,6 +153,8 @@ pub(crate) enum VpnMenuWidgetInput {
     /// the entry pickers list).
     SettingsExpanded(bool),
     RefreshNow,
+    /// A fix button in the error header.
+    Fix(Fix),
     /// Sent by the host menu on show/hide. The poll loop starts lazily on the
     /// first reveal and probes only while visible.
     ParentRevealChanged(bool),
@@ -176,6 +183,8 @@ pub(crate) enum VpnMenuWidgetCommandOutput {
     /// Mullvad's country → city tree — loaded lazily when the Locations
     /// section is first expanded.
     CountriesLoaded(Vec<Country>),
+    /// What `mvpn health` diagnosed (`None` = all well).
+    Health(Option<Problem>),
     /// A connection change from the shared VPN feed (no `mvpn` spawn).
     Status {
         status: String,
@@ -220,6 +229,10 @@ impl Component for VpnMenuWidgetModel {
             set_hexpand: false,
             set_orientation: gtk::Orientation::Vertical,
             set_spacing: 10,
+
+            // ── Error header (hidden while all is well) ─────────
+            #[local_ref]
+            problem_widget -> gtk::Box {},
 
             // ── Hero status card ────────────────────────────────
             // The whole card gains `.connected` (accent tint) when the tunnel
@@ -536,6 +549,8 @@ impl Component for VpnMenuWidgetModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        let problem = ProblemBanner::new();
+        let problem_widget = problem.widget().clone();
         // Hero status card refs — driven imperatively from `sync_view`.
         let hero_widget = gtk::Box::default();
         let state_label_widget = gtk::Label::new(Some("DISCONNECTED"));
@@ -683,6 +698,7 @@ impl Component for VpnMenuWidgetModel {
             quantum: false,
             obf: "auto".to_string(),
             favs: Vec::new(),
+            problem,
             hero: hero_widget.clone(),
             state_label: state_label_widget.clone(),
             loc_label: loc_label_widget.clone(),
@@ -869,6 +885,14 @@ impl Component for VpnMenuWidgetModel {
                 }
             }
             VpnMenuWidgetInput::RefreshNow => reload(&sender),
+            VpnMenuWidgetInput::Fix(fix) => match fix.mvpn_args() {
+                Some(args) => act(&sender, args.iter().map(|a| a.to_string()).collect()),
+                None => {
+                    if let Err(e) = mshell_process::desktop::open(health::ACCOUNT_URL) {
+                        tracing::warn!("vpn: opening the account page failed: {e}");
+                    }
+                }
+            },
             VpnMenuWidgetInput::ParentRevealChanged(visible) => {
                 self.visible.set(visible);
                 self.vpn_poll.set_active(visible);
@@ -900,6 +924,14 @@ impl Component for VpnMenuWidgetModel {
     ) {
         let snap = match message {
             VpnMenuWidgetCommandOutput::Loaded(snap) => *snap,
+            VpnMenuWidgetCommandOutput::Health(problem) => {
+                let s = sender.clone();
+                self.problem.show(
+                    problem,
+                    std::rc::Rc::new(move |f| s.input(VpnMenuWidgetInput::Fix(f))),
+                );
+                return;
+            }
             VpnMenuWidgetCommandOutput::CountriesLoaded(list) => {
                 self.countries = list;
                 self.countries_ready = true;
@@ -926,6 +958,11 @@ impl Component for VpnMenuWidgetModel {
                         &self.status_text,
                     )
                 {
+                    // A tunnel that changed state may have hit (or left) an
+                    // error: re-run the diagnosis.
+                    if status != self.status_text {
+                        check_health(&sender);
+                    }
                     self.apply_status(status, connected, relay);
                     rebuild_favs(
                         &self.fav_box,
@@ -1266,13 +1303,27 @@ fn act(sender: &ComponentSender<VpnMenuWidgetModel>, args: Vec<String>) {
             .status()
             .await;
         let _ = out.send(load().await);
+        let _ = out.send(VpnMenuWidgetCommandOutput::Health(load_health().await));
     });
 }
 
 fn reload(sender: &ComponentSender<VpnMenuWidgetModel>) {
     sender.command(|out, _shutdown| async move {
         let _ = out.send(load().await);
+        let _ = out.send(VpnMenuWidgetCommandOutput::Health(load_health().await));
     });
+}
+
+fn check_health(sender: &ComponentSender<VpnMenuWidgetModel>) {
+    sender.command(|out, _shutdown| async move {
+        let _ = out.send(VpnMenuWidgetCommandOutput::Health(load_health().await));
+    });
+}
+
+/// `mvpn health --json` → the problem to show. An `mvpn` too old for
+/// `health` (or none at all) shows nothing rather than a guess.
+async fn load_health() -> Option<Problem> {
+    health::parse(&capture(&["health", "--json"]).await).and_then(|h| health::diagnose(&h))
 }
 
 /// Poll loop, started lazily on first reveal; it waits on the `visible`
@@ -1288,6 +1339,7 @@ fn start_polling(sender: &ComponentSender<VpnMenuWidgetModel>, visible: RevealGa
             };
             if !resumed {
                 let _ = out.send(load().await);
+                let _ = out.send(VpnMenuWidgetCommandOutput::Health(load_health().await));
             }
         }
     });

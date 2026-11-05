@@ -219,3 +219,37 @@ row.active.ok-button-surface,
   -gtk-icon-size: var(--icon-sm);
   color: var(--on-surface-variant);
 }
+
+// ── Error header ────────────────────────────────────────────
+// What is wrong with Mullvad + its fixes, above the hero. Severity ladder
+// (DESIGN.md §2): danger = error-container (traffic blocked / tunnel
+// failed), warn = a --warning wash (service off, logged out), calm = a
+// plain dim card (Mullvad not installed). Hidden while all is well.
+.vpn-problem {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container);
+  color: var(--on-surface-variant);
+}
+.vpn-problem.warn {
+  background-color: unquote("color-mix(in srgb, var(--warning) 16%, var(--surface-container))");
+  color: var(--on-surface);
+}
+.vpn-problem.warn .vpn-problem-icon {
+  color: var(--warning);
+}
+.vpn-problem.danger {
+  background-color: var(--error-container);
+  color: var(--on-error-container);
+}
+.vpn-problem.danger .vpn-problem-icon,
+.vpn-problem.danger .vpn-problem-message {
+  color: var(--on-error-container);
+}
+.vpn-problem-icon {
+  -gtk-icon-size: var(--icon-sm);
+  margin-top: 1px;
+}
+.vpn-problem-message {
+  font-weight: 600;
+}

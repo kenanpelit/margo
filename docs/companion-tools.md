@@ -439,6 +439,9 @@ mvpn multihop [on|off] ;  mvpn entry any | <cc> [city]      # multihop + its ent
 mvpn slot <recycle|status|whoami|list|revoke|disconnect>     # multi-machine slots
 mvpn timer <start N|stop|status>       # auto-switch relay every N minutes
 mvpn test          ;  mvpn split       # leak test · split-tunnel processes
+mvpn health [--json]                   # what is wrong with Mullvad + the fix
+mvpn service [start|enable|restart]    # the system service, via systemd's polkit prompt
+mvpn account login                     # number on stdin / $MULLVAD_ACCOUNT_NUMBER / pass
 mvpn ensure                            # drive the blocky DNS guard from VPN state
 ```
 
@@ -452,6 +455,13 @@ mvpn ensure                            # drive the blocky DNS guard from VPN sta
   guard and DNS presets), right-click toggles the tunnel. Open it from a
   terminal with `mshellctl menu vpn`. Full relay management also lives in
   **Settings → VPN**.
+- **Says what is wrong.** The VPN menu opens with an error header when
+  something is: the service is stopped (**Start service** / **Start at
+  boot**), the firewall failed after a kernel update without a reboot
+  ("Reboot"), lockdown is blocking traffic (**Connect** / **Turn off
+  lockdown**), you are logged out (**Log in**), the account expired (**Open
+  account page**), or another tunnel error — one plain sentence each
+  (`mvpn health`). Service actions go through systemd's own polkit prompt.
 - **osc-mullvad compatible.** Reads the existing `favorites.txt` / `slot.state`
   unchanged and honours the `OSC_MULLVAD_*` env overrides.
 
