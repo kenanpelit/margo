@@ -9,6 +9,8 @@ use tracing::info;
 pub struct PolkitPromptModel {
     visible: bool,
     message: String,
+    /// Action id + the command root will run (`details.rs`), already inert.
+    details: String,
     icon_name: String,
     prompt_text: String,
     info_text: String,
@@ -22,6 +24,7 @@ pub struct PolkitPromptModel {
 pub enum PolkitPromptInput {
     Show {
         message: String,
+        details: String,
         icon_name: String,
         password_tx: tokio::sync::mpsc::Sender<PasswordAction>,
     },
@@ -87,6 +90,24 @@ impl Component for PolkitPromptModel {
                             set_wrap_mode: gtk::pango::WrapMode::WordChar,
                             #[watch]
                             set_label: &model.message,
+                        },
+
+                        // What root will run, as the requester sent it
+                        // (made inert in details.rs). Plain text, never
+                        // markup. Not selectable: a selectable label can take
+                        // the initial focus away from the password entry.
+                        gtk::Label {
+                            set_css_classes: &["label-small-variant", "polkit-details"],
+                            set_halign: gtk::Align::Start,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_max_width_chars: 50,
+                            set_wrap_mode: gtk::pango::WrapMode::WordChar,
+                            set_use_markup: false,
+                            #[watch]
+                            set_visible: !model.details.is_empty(),
+                            #[watch]
+                            set_label: &model.details,
                         },
 
                         gtk::Label {
@@ -185,6 +206,7 @@ impl Component for PolkitPromptModel {
         let model = Self {
             visible: false,
             message: String::new(),
+            details: String::new(),
             icon_name: String::new(),
             prompt_text: String::new(),
             info_text: String::new(),
@@ -214,12 +236,18 @@ impl Component for PolkitPromptModel {
         match input {
             PolkitPromptInput::Show {
                 message,
+                details,
                 icon_name,
                 password_tx,
             } => {
                 info!("show");
                 self.message = message;
+                self.details = details;
                 self.icon_name = icon_name;
+                // Each request starts masked and without the previous
+                // request's error, even if its user toggled the eye icon.
+                self.password_visible = false;
+                self.error_text.clear();
                 self.info_text.clear();
                 self.prompt_text.clear();
                 self.entry_buffer.set_text("");
@@ -276,5 +304,28 @@ impl Component for PolkitPromptModel {
                 self.password_visible = !self.password_visible;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_new_prompt_does_not_inherit_errors_or_visible_passwords() {
+        let source = include_str!("prompt.rs");
+        let show = source
+            .split("info!(\"show\");")
+            .nth(1)
+            .unwrap()
+            .split("PolkitPromptInput::PromptReady")
+            .next()
+            .unwrap();
+        assert!(
+            show.contains("self.error_text.clear()"),
+            "stale errors survive Show"
+        );
+        assert!(
+            show.contains("self.password_visible = false"),
+            "visible entry survives Show"
+        );
     }
 }

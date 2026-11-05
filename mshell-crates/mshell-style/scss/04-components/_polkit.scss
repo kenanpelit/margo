@@ -2,3 +2,8 @@
   -gtk-icon-size: 48px;
   color: var(--on-surface)
 }
+// The command root will run (polkit details): monospace so quoting and
+// escapes read exactly, dim like any secondary line.
+.polkit-details {
+  font-family: var(--font-family-monospace);
+}

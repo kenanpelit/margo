@@ -6,6 +6,7 @@ use zbus::{Connection, fdo, interface};
 
 use crate::helper::{HelperEvent, PolkitAgentHelper};
 use crate::prompt::PolkitPromptInput;
+use crate::requests::Requests;
 
 const AGENT_OBJECT_PATH: &str = "/com/mshell/PolkitAgent";
 
@@ -28,6 +29,8 @@ impl std::fmt::Debug for PasswordAction {
 
 pub struct PolkitAgentObject {
     prompt_sender: relm4::ComponentSender<crate::prompt::PolkitPromptModel>,
+    /// One dialog at a time + cancel by cookie (see `requests.rs`).
+    requests: Requests,
 }
 
 #[interface(name = "org.freedesktop.PolicyKit1.AuthenticationAgent")]
@@ -38,7 +41,7 @@ impl PolkitAgentObject {
         action_id: &str,
         message: &str,
         icon_name: &str,
-        _details: HashMap<String, String>,
+        details: HashMap<String, String>,
         cookie: &str,
         identities: Vec<(String, HashMap<String, OwnedValue>)>,
     ) -> fdo::Result<()> {
@@ -50,6 +53,43 @@ impl PolkitAgentObject {
 
         debug!("[polkit] authenticating user: {username}");
 
+        let details = crate::details::dialog_details(action_id, &details);
+        let auth = self.authenticate(message, &details, icon_name, &username, cookie);
+        match self
+            .requests
+            .run(cookie, auth, || {
+                // Hide before releasing the dialog lock, not afterwards: a
+                // queued request may already be showing by then.
+                self.prompt_sender.input(PolkitPromptInput::Hide);
+            })
+            .await
+        {
+            Ok(result) => result,
+            Err(_) => {
+                info!("[polkit] request for {action_id} cancelled");
+                Err(fdo::Error::Failed("cancelled by polkit".into()))
+            }
+        }
+    }
+
+    async fn cancel_authentication(&self, cookie: &str) -> fdo::Result<()> {
+        if !self.requests.cancel(cookie) {
+            debug!("[polkit] CancelAuthentication for a request no longer in flight");
+        }
+        Ok(())
+    }
+}
+
+impl PolkitAgentObject {
+    /// The password exchange for one request; runs while it owns the dialog.
+    async fn authenticate(
+        &self,
+        message: &str,
+        details: &str,
+        icon_name: &str,
+        username: &str,
+        cookie: &str,
+    ) -> fdo::Result<()> {
         // We may need multiple attempts (wrong password → retry)
         let max_attempts = 3;
 
@@ -57,10 +97,9 @@ impl PolkitAgentObject {
             debug!("[polkit] attempt {attempt}/{max_attempts}");
 
             // Spawn the helper process
-            let (mut helper, mut helper_rx) =
-                PolkitAgentHelper::connect(&username, cookie)
-                    .await
-                    .map_err(|e| fdo::Error::Failed(format!("failed to connect to helper: {e}")))?;
+            let (mut helper, mut helper_rx) = PolkitAgentHelper::connect(username, cookie)
+                .await
+                .map_err(|e| fdo::Error::Failed(format!("failed to connect to helper: {e}")))?;
 
             debug!("[polkit] helper spawned");
             // Channel for the UI to send password/cancel back to us
@@ -68,6 +107,7 @@ impl PolkitAgentObject {
 
             self.prompt_sender.input(PolkitPromptInput::Show {
                 message: message.to_string(),
+                details: details.to_string(),
                 icon_name: icon_name.to_string(),
                 password_tx: password_tx.clone(),
             });
@@ -140,12 +180,6 @@ impl PolkitAgentObject {
         self.prompt_sender.input(PolkitPromptInput::Hide);
         Err(fdo::Error::Failed("authentication failed".into()))
     }
-
-    async fn cancel_authentication(&self, _cookie: &str) -> fdo::Result<()> {
-        info!("[polkit] CancelAuthentication");
-        self.prompt_sender.input(PolkitPromptInput::Hide);
-        Ok(())
-    }
 }
 
 fn pick_username(identities: &[(String, HashMap<String, OwnedValue>)]) -> Option<String> {
@@ -180,7 +214,10 @@ pub async fn register_polkit_agent(
 ) -> anyhow::Result<Connection> {
     let connection = Connection::system().await?;
 
-    let agent = PolkitAgentObject { prompt_sender };
+    let agent = PolkitAgentObject {
+        prompt_sender,
+        requests: Requests::default(),
+    };
 
     // Export the agent object
     connection
