@@ -218,7 +218,7 @@ fn start_sampler(sender: &ComponentSender<VpnThroughputModel>, visible: RevealGa
         let shutdown_fut = shutdown.wait();
         tokio::pin!(shutdown_fut);
         // (iface, counters, when) of the previous sample.
-        let mut prev: Option<(String, (u64, u64), Instant)> = None;
+        let mut prev: Option<Sample> = None;
         let mut first = true;
         loop {
             // No timer while hidden. A reveal samples at once, against a
@@ -245,19 +245,53 @@ fn start_sampler(sender: &ComponentSender<VpnThroughputModel>, visible: RevealGa
                 continue;
             };
             let now = Instant::now();
-            let (rx, tx) = match &prev {
-                Some((p_name, p, at)) if *p_name == name => {
-                    let secs = now.duration_since(*at).as_secs_f64();
-                    (
-                        counter_rate(p.0, cur.0, secs),
-                        counter_rate(p.1, cur.1, secs),
-                    )
-                }
-                // First sample (or the tunnel changed): no delta yet.
-                _ => (0, 0),
-            };
+            let (rx, tx) = tunnel_rates(prev.as_ref(), &name, cur, now);
             prev = Some((name, cur, now));
             let _ = out.send(VpnThroughputCommandOutput::Sample(iface, rx, tx));
         }
     });
+}
+
+/// (iface, (rx, tx) byte counters, when) of one sample.
+type Sample = (String, (u64, u64), Instant);
+
+/// Rx/tx bytes per second since `prev`. The first sample, or one on a
+/// different tunnel interface, has no delta yet and reads 0.
+fn tunnel_rates(prev: Option<&Sample>, name: &str, cur: (u64, u64), now: Instant) -> (u64, u64) {
+    match prev {
+        Some((p_name, p, at)) if p_name == name => {
+            let secs = now.duration_since(*at).as_secs_f64();
+            (
+                counter_rate(p.0, cur.0, secs),
+                counter_rate(p.1, cur.1, secs),
+            )
+        }
+        _ => (0, 0),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rates_need_a_baseline_on_the_same_interface() {
+        let t0 = Instant::now();
+        let t2 = t0 + Duration::from_secs(2);
+        assert_eq!(tunnel_rates(None, "wg0", (5_000, 1_000), t0), (0, 0));
+        let prev = ("wg0".to_string(), (1_000, 500), t0);
+        assert_eq!(
+            tunnel_rates(Some(&prev), "wg0", (5_000, 1_500), t2),
+            (2_000, 500)
+        );
+        // Reconnected on another interface: its counters are unrelated.
+        assert_eq!(
+            tunnel_rates(Some(&prev), "wg0-mullvad", (9_000_000, 9_000), t2),
+            (0, 0)
+        );
+        // Same name, recreated interface: counters restarted from 0.
+        assert_eq!(tunnel_rates(Some(&prev), "wg0", (10, 10), t2), (0, 0));
+        // Two samples in the same instant never divide by zero.
+        assert_eq!(tunnel_rates(Some(&prev), "wg0", (9_000, 900), t0), (0, 0));
+    }
 }
