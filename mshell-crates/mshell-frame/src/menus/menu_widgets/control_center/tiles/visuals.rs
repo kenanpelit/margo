@@ -16,7 +16,11 @@ pub(super) fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTi
     // enabled tiles show, and the Battery tile additionally needs a battery.
     for id in TileId::all() {
         let enabled = (id.config().visible)();
-        let available = id != TileId::Battery || model.battery.present;
+        let available = match id {
+            TileId::Battery => model.battery.present,
+            TileId::ThinkpadLed => model.led.available,
+            _ => true,
+        };
         w.update_visibility(id, model.edit_mode, enabled, available);
     }
 
@@ -140,6 +144,13 @@ pub(super) fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTi
     denoise
         .button
         .set_sensitive(model.denoise.available() && !model.denoise_busy);
+
+    // ThinkPad lid logo LED — active (accent) while lit.
+    let led = w.tile(TileId::ThinkpadLed);
+    led.set_active(model.led.on);
+    led.set_subtitle(&model.led.subtitle());
+    led.button
+        .set_sensitive(model.led.available && !model.led.busy);
 
     // Disk
     w.tile(TileId::Disk).set_subtitle(&model.disk.format());

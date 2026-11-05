@@ -281,6 +281,38 @@ pub fn logind_dropin(body: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 
+/// The LED class directory `led-set` writes under.
+pub const LEDS: &str = "/sys/class/leds";
+/// The only LEDs `led-set` touches: thinkpad_acpi's (`tpacpi::lid_logo_dot`,
+/// `tpacpi::power`, …), never a keyboard or disk-activity LED.
+pub const LED_PREFIX: &str = "tpacpi::";
+
+/// A thinkpad_acpi LED name: `tpacpi::` plus 1–32 of `[a-z0-9_]`.
+pub fn led_name(arg: &OsStr) -> Result<String, Error> {
+    let b = arg.as_bytes();
+    match b.strip_prefix(LED_PREFIX.as_bytes()) {
+        Some(n)
+            if !n.is_empty()
+                && n.len() <= 32
+                && n.iter()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'_') =>
+        {
+            Ok(String::from_utf8_lossy(b).into_owned())
+        }
+        _ => Err(invalid("LED (must be tpacpi::<name>)", arg)),
+    }
+}
+
+/// An LED brightness: a plain decimal 0–255 (root then checks it against
+/// the LED's own `max_brightness`).
+pub fn led_value(arg: &OsStr) -> Result<u8, Error> {
+    let b = arg.as_bytes();
+    digits(b)
+        .then(|| std::str::from_utf8(b).ok()?.parse::<u8>().ok())
+        .flatten()
+        .ok_or_else(|| invalid("LED brightness (0-255)", arg))
+}
+
 /// What `boot-next` sets: one `Boot####` entry for the next boot only,
 /// or `none` to clear a pending `BootNext`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -560,6 +592,37 @@ mod tests {
         );
         assert!(logind_dropin(big.as_bytes()).is_err());
         assert!(logind_dropin(b"[Login]\nHandlePowerKey=ign\xffore\n").is_err());
+    }
+
+    #[test]
+    fn leds_are_thinkpad_acpi_only() {
+        assert_eq!(
+            led_name(os("tpacpi::lid_logo_dot")).unwrap(),
+            "tpacpi::lid_logo_dot"
+        );
+        assert!(led_name(os("tpacpi::power")).is_ok());
+        for bad in [
+            "tpacpi::",
+            "tpacpi::../../../etc/shadow",
+            "tpacpi::lid_logo_dot/brightness",
+            "tpacpi::Lid",
+            "tpacpi::a b",
+            "input3::capslock",
+            "platform::micmute",
+            "phy0-led",
+            "/sys/class/leds/tpacpi::power",
+            "tpacpi:power",
+            "",
+        ] {
+            assert!(led_name(os(bad)).is_err(), "{bad:?} accepted");
+        }
+        let long = format!("tpacpi::{}", "a".repeat(33));
+        assert!(led_name(os(&long)).is_err());
+        assert_eq!(led_value(os("0")).unwrap(), 0);
+        assert_eq!(led_value(os("255")).unwrap(), 255);
+        for bad in ["256", "-1", "01", " 1", "1\n", "", "x", "1e2"] {
+            assert!(led_value(os(bad)).is_err(), "{bad:?} accepted");
+        }
     }
 
     #[test]

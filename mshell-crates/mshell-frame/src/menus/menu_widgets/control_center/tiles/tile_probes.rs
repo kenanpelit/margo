@@ -4,13 +4,51 @@
 //! shape the tile widgets render. Kept separate from the widget wiring so these I/O helpers are
 //! independently reviewable; their tests live here too.
 
-use super::{BatterySnapshot, DiskUsage};
 use crate::bars::bar_widgets::podman::{PodmanSummary, fetch_podman_summary};
 use crate::bars::bar_widgets::ufw::{Status as UfwStatus, fetch_ufw_status_only};
 use mshell_services::{
     audio_service, battery_service, bluetooth_service, line_power_service, network_service,
 };
 use std::time::Duration;
+use wayle_battery::types::DeviceState;
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct DiskUsage {
+    pub(super) used_bytes: u64,
+    pub(super) total_bytes: u64,
+}
+
+impl DiskUsage {
+    pub(super) fn format(&self) -> String {
+        let used = bytes_to_gib(self.used_bytes);
+        let total = bytes_to_gib(self.total_bytes);
+        let pct = if self.total_bytes > 0 {
+            (self.used_bytes as f64 / self.total_bytes as f64 * 100.0).round() as u64
+        } else {
+            0
+        };
+        format!("{used:.1}G / {total:.1}G ({pct}%)")
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct BatterySnapshot {
+    pub(super) present: bool,
+    pub(super) percent: u8,
+    pub(super) state: DeviceState,
+    pub(super) on_ac: bool,
+}
+
+impl Default for BatterySnapshot {
+    fn default() -> Self {
+        Self {
+            present: false,
+            percent: 0,
+            state: DeviceState::Unknown,
+            on_ac: false,
+        }
+    }
+}
 
 pub(super) fn read_battery() -> BatterySnapshot {
     let Some(service) = battery_service() else {

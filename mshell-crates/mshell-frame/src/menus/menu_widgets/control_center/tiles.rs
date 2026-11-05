@@ -35,6 +35,7 @@
 //! `tiles/tile_probes.rs` reads the live system state.
 
 mod grid;
+mod led;
 mod pollers;
 mod registry;
 // The live system-state readers (battery, disk, twilight, UFW, podman,
@@ -68,13 +69,12 @@ use relm4::{Component, ComponentParts, ComponentSender};
 use std::collections::HashSet;
 use std::time::Duration;
 use tile_probes::{
-    bytes_to_gib, read_airplane_state, read_audio_out_subtitle, read_battery, read_bt_state,
-    read_disk_usage, read_mic_subtitle, read_podman_tile_state, read_ufw_tile_state,
+    BatterySnapshot, DiskUsage, read_airplane_state, read_audio_out_subtitle, read_battery,
+    read_bt_state, read_disk_usage, read_mic_subtitle, read_podman_tile_state, read_ufw_tile_state,
     read_vpn_state, read_wifi_state, stop_podman_machines, toggle_mirror_and_probe,
     toggle_twilight_and_probe,
 };
 use visuals::apply_visuals;
-use wayle_battery::types::DeviceState;
 use wayle_power_profiles::types::profile::PowerProfile;
 
 // ── Model ─────────────────────────────────────────────────────────────────────
@@ -131,6 +131,8 @@ pub(crate) struct ControlCenterTilesModel {
     // Mic noise suppression (RNNoise filter-chain) + in-flight flag.
     denoise: DenoiseStatus,
     denoise_busy: bool,
+    // ThinkPad lid logo LED (tpacpi::lid_logo_dot) + its in-flight write.
+    led: led::LedState,
     // Lazy-start guard — watchers only start on first reveal
     watchers_started: bool,
     // Shared with the pollers (twilight / ufw / podman / disk / valent):
@@ -151,44 +153,6 @@ pub(crate) struct ControlCenterTilesModel {
     // Current wide tiles — mirrors config; tiles in this set span 2 columns.
     wide_tiles: HashSet<String>,
     _effects: EffectScope,
-}
-
-#[derive(Debug, Clone, Default)]
-pub(crate) struct DiskUsage {
-    used_bytes: u64,
-    total_bytes: u64,
-}
-
-impl DiskUsage {
-    fn format(&self) -> String {
-        let used = bytes_to_gib(self.used_bytes);
-        let total = bytes_to_gib(self.total_bytes);
-        let pct = if self.total_bytes > 0 {
-            (self.used_bytes as f64 / self.total_bytes as f64 * 100.0).round() as u64
-        } else {
-            0
-        };
-        format!("{used:.1}G / {total:.1}G ({pct}%)")
-    }
-}
-
-#[derive(Debug, Clone)]
-struct BatterySnapshot {
-    present: bool,
-    percent: u8,
-    state: DeviceState,
-    on_ac: bool,
-}
-
-impl Default for BatterySnapshot {
-    fn default() -> Self {
-        Self {
-            present: false,
-            percent: 0,
-            state: DeviceState::Unknown,
-            on_ac: false,
-        }
-    }
 }
 
 /// Which detail sub-page to open (emitted to the parent menu widget).
@@ -234,6 +198,8 @@ pub(crate) enum ControlCenterTilesInput {
     ToggleHotspot,
     /// Noise-suppression tile click → RNNoise virtual source on/off.
     ToggleDenoise,
+    /// ThinkPad LED tile click → lid logo LED on/off.
+    ToggleLed,
 
     /// Reactive dark-mode update from EffectScope.
     DarkModeChanged(MatugenMode),
@@ -282,6 +248,8 @@ pub(crate) enum ControlCenterTilesCommandOutput {
     HotspotRefreshed(HotspotStatus),
     /// Noise-suppression probe finished (poll or after a toggle).
     DenoiseRefreshed(DenoiseStatus),
+    /// ThinkPad LED re-read after a toggle (with its error, if any).
+    LedRefreshed(led::LedState),
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -411,6 +379,7 @@ impl Component for ControlCenterTilesModel {
             hotspot_busy: false,
             denoise: DenoiseStatus::default(),
             denoise_busy: false,
+            led: led::probe(),
             revealed: RevealGate::new(false),
             podman_poll: PODMAN_POLL.subscribe(),
             valent_poll: crate::valent::VALENT_POLL.subscribe(),
@@ -467,6 +436,9 @@ impl Component for ControlCenterTilesModel {
                 self.mic_subtitle = read_mic_subtitle();
                 (self.vpn_subtitle, self.vpn_connected) = read_vpn_state();
                 (self.airplane_mode, self.airplane_available) = read_airplane_state();
+                if !self.led.busy {
+                    self.led = led::probe();
+                }
             }
 
             ControlCenterTilesInput::Reveal(false) => {
@@ -625,6 +597,8 @@ impl Component for ControlCenterTilesModel {
                 });
             }
 
+            ControlCenterTilesInput::ToggleLed => led::toggle(self, &sender),
+
             ControlCenterTilesInput::DarkModeChanged(mode) => {
                 self.dark = mode;
             }
@@ -706,6 +680,7 @@ impl Component for ControlCenterTilesModel {
                 self.denoise = status;
                 self.denoise_busy = false;
             }
+            ControlCenterTilesCommandOutput::LedRefreshed(state) => self.led = state,
         }
 
         apply_visuals(self, widgets);

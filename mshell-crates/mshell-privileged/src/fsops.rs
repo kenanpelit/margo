@@ -572,6 +572,42 @@ pub fn charge_limit(root: &Sysroot, limit: u8) -> Result<(), Error> {
     first_err.map_or(Ok(()), Err)
 }
 
+/// A thinkpad_acpi LED's `max_brightness` (under [`crate::validate::LEDS`]).
+fn led_max(root: &Sysroot, dir: &Path) -> Result<u32, Error> {
+    let mut s = String::new();
+    File::open(root.phys(&dir.join("max_brightness")))
+        .and_then(|f| f.take(16).read_to_string(&mut s))
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                Error::Refused(format!("{} is not an LED on this machine", dir.display()))
+            } else {
+                Error::Io(format!("{}/max_brightness: {e}", dir.display()))
+            }
+        })?;
+    s.trim()
+        .parse()
+        .map_err(|_| Error::Io(format!("{}/max_brightness: not a number", dir.display())))
+}
+
+/// Set a thinkpad_acpi LED: `value` (at most the LED's `max_brightness`)
+/// to its `brightness`, opened like every sysfs control file (no symlink,
+/// no create, sysfs only on the real root). `name` passed
+/// [`crate::validate::led_name`]; the class entry itself is the kernel's
+/// link into `/sys/devices`, as for the power-supply class.
+pub fn led_set(root: &Sysroot, name: &str, value: u8) -> Result<(), Error> {
+    let dir = Path::new(crate::validate::LEDS).join(name);
+    let max = led_max(root, &dir)?;
+    if u32::from(value) > max {
+        return Err(Error::Invalid(format!(
+            "{name} takes a brightness of 0-{max}"
+        )));
+    }
+    let file = dir.join("brightness");
+    open_control(root, &file)?
+        .write_all(format!("{value}\n").as_bytes())
+        .map_err(|e| Error::Io(format!("{}: {e}", file.display())))
+}
+
 /// Write the logind drop-in ([`crate::validate::LOGIND_DROPIN`],
 /// `0644`, owned by root) with `body` (already validated), creating
 /// `logind.conf.d` (`0755`) when missing. The directory and the file

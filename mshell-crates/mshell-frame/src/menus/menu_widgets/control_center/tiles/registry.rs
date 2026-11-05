@@ -36,6 +36,7 @@ pub(crate) enum TileId {
     Mirror,
     MicDenoise,
     Hotspot,
+    ThinkpadLed,
 }
 
 /// What a primary (left) click on a tile does.
@@ -239,6 +240,15 @@ pub(crate) const TILES: &[TileSpec] = &[
         Input(|| In::ToggleHotspot),
         None,
     ),
+    // The lid logo's red dot; shown only on ThinkPads that have it.
+    spec(
+        TileId::ThinkpadLed,
+        "media-record-symbolic",
+        "Logo LED",
+        "…",
+        Input(|| In::ToggleLed),
+        None,
+    ),
 ];
 
 impl TileId {
@@ -323,6 +333,7 @@ mod tests {
                 "mirror",
                 "mic_denoise",
                 "hotspot",
+                "thinkpad_led",
             ]
         );
     }

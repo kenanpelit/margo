@@ -3,7 +3,8 @@
 //! Every privileged action the shell offers (pacnew review, rollback,
 //! the background upgrade, signalling another user's process, a SMART
 //! read, a ThinkPad fan level, the battery charge limit, the logind
-//! power-key/lid drop-in, the one-shot UEFI `BootNext`) is one fixed subcommand of this binary,
+//! power-key/lid drop-in, the one-shot UEFI `BootNext`, a ThinkPad LED)
+//! is one fixed subcommand of this binary,
 //! with its own polkit action (`org.margo.mshell.privileged.<sub>`,
 //! matched on `exec.path` + `exec.argv1`), so the password dialog says
 //! exactly what root is about to do instead of "run /bin/sh". There is
@@ -46,7 +47,7 @@ pub fn installed() -> bool {
 }
 
 /// Every subcommand, in policy order.
-pub const SUBCOMMANDS: [&str; 11] = [
+pub const SUBCOMMANDS: [&str; 12] = [
     "pacnew-install",
     "pacnew-merge",
     "pacnew-remove",
@@ -58,6 +59,7 @@ pub const SUBCOMMANDS: [&str; 11] = [
     "upgrade",
     "rollback",
     "boot-next",
+    "led-set",
 ];
 
 /// Why the helper refused or failed. The exit code tells the caller
@@ -127,6 +129,9 @@ pub enum Request {
     /// `efibootmgr --bootnext <entry>` for an entry efibootmgr lists, or
     /// `--delete-bootnext` (only when one is pending).
     BootNext { target: BootTarget },
+    /// Write `value` to `/sys/class/leds/<name>/brightness` for a
+    /// thinkpad_acpi LED (`tpacpi::…`), at most its `max_brightness`.
+    LedSet { name: String, value: u8 },
 }
 
 impl Request {
@@ -143,6 +148,7 @@ impl Request {
             Request::Upgrade => "upgrade",
             Request::Rollback { .. } => "rollback",
             Request::BootNext { .. } => "boot-next",
+            Request::LedSet { .. } => "led-set",
         }
     }
 
@@ -169,6 +175,7 @@ impl Request {
             Request::LogindDropin | Request::Upgrade => Vec::new(),
             Request::Rollback { package } => vec![p(package)],
             Request::BootNext { target } => vec![target.keyword().into()],
+            Request::LedSet { name, value } => vec![name.into(), value.to_string().into()],
         }
     }
 
@@ -264,6 +271,13 @@ impl Request {
                 arity(1)?;
                 Request::Rollback {
                     package: validate::package_file(a(0))?,
+                }
+            }
+            "led-set" => {
+                arity(2)?;
+                Request::LedSet {
+                    name: validate::led_name(a(0))?,
+                    value: validate::led_value(a(1))?,
                 }
             }
             "boot-next" => {
@@ -373,6 +387,10 @@ mod tests {
         round_trip(Request::BootNext {
             target: BootTarget::Clear,
         });
+        round_trip(Request::LedSet {
+            name: "tpacpi::lid_logo_dot".into(),
+            value: 255,
+        });
     }
 
     #[test]
@@ -427,6 +445,11 @@ mod tests {
         assert_eq!(p(&["boot-next"]).unwrap_err().code(), 2);
         assert_eq!(p(&["boot-next", "0001", "0002"]).unwrap_err().code(), 2);
         assert_eq!(p(&["boot-next", "-N"]).unwrap_err().code(), 2);
+        assert_eq!(p(&["led-set", "tpacpi::power"]).unwrap_err().code(), 2);
+        assert_eq!(
+            p(&["led-set", "input3::capslock", "1"]).unwrap_err().code(),
+            2
+        );
         assert!(Request::ChargeLimit { limit: 0 }.validated().is_err());
         let many: Vec<String> = (0..17).map(|i| format!("/dev/sd{i}")).collect();
         let mut v = vec!["smart-read"];

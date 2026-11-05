@@ -751,6 +751,76 @@ fn boot_next_without_efibootmgr_or_efi() {
     assert!(stderr(&o).contains("not supported"), "{}", stderr(&o));
 }
 
+/// A thinkpad_acpi LED in the fixture's `/sys/class/leds`.
+fn led(f: &Fixture, name: &str, brightness: &str, max: &str) {
+    let dir = format!("/sys/class/leds/{name}");
+    f.write(&format!("{dir}/brightness"), brightness);
+    f.write(&format!("{dir}/max_brightness"), max);
+}
+
+#[test]
+fn led_set_writes_the_brightness_of_a_thinkpad_led() {
+    skip_as_root!();
+    let f = Fixture::new();
+    led(&f, "tpacpi::lid_logo_dot", "0\n", "255\n");
+    led(&f, "tpacpi::thinklight", "0\n", "1\n");
+    let o = f.run(&["led-set", "tpacpi::lid_logo_dot", "255"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert_eq!(
+        f.read("/sys/class/leds/tpacpi::lid_logo_dot/brightness"),
+        "255\n"
+    );
+    let o = f.run(&["led-set", "tpacpi::lid_logo_dot", "0"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert_eq!(
+        f.read("/sys/class/leds/tpacpi::lid_logo_dot/brightness"),
+        "0\n"
+    );
+    // Above the LED's own maximum: refused, untouched.
+    let o = f.run(&["led-set", "tpacpi::thinklight", "2"]);
+    assert_eq!(code(&o), 2, "{}", stderr(&o));
+    assert!(stderr(&o).contains("0-1"), "{}", stderr(&o));
+    assert_eq!(
+        f.read("/sys/class/leds/tpacpi::thinklight/brightness"),
+        "0\n"
+    );
+}
+
+#[test]
+fn led_set_refuses_other_leds_hostile_names_and_planted_links() {
+    skip_as_root!();
+    let f = Fixture::new();
+    led(&f, "input3::capslock", "0\n", "1\n");
+    led(&f, "tpacpi::power", "0\n", "255\n");
+    for bad in [
+        &["led-set", "input3::capslock", "1"][..],
+        &["led-set", "tpacpi::../input3::capslock", "1"],
+        &["led-set", "tpacpi::power/../../input3::capslock", "1"],
+        &["led-set", "tpacpi::power", "256"],
+        &["led-set", "tpacpi::power", "-1"],
+        &["led-set", "tpacpi::power", "1\nheartbeat"],
+        &["led-set", "tpacpi::power"],
+        &["led-set", "tpacpi::power", "1", "extra"],
+    ] {
+        let o = f.run(bad);
+        assert_eq!(code(&o), 2, "{bad:?}: {}", stderr(&o));
+    }
+    assert_eq!(f.read("/sys/class/leds/input3::capslock/brightness"), "0\n");
+    assert_eq!(f.read("/sys/class/leds/tpacpi::power/brightness"), "0\n");
+    // No such LED: refused, nothing created.
+    let o = f.run(&["led-set", "tpacpi::lid_logo_dot", "1"]);
+    assert_eq!(code(&o), 3, "{}", stderr(&o));
+    assert!(!f.p("/sys/class/leds/tpacpi::lid_logo_dot").exists());
+    // A brightness file replaced by a symlink is not written through.
+    let g = Fixture::new();
+    let victim = g.write("/etc/sudoers", "root ALL\n");
+    g.write("/sys/class/leds/tpacpi::power/max_brightness", "255\n");
+    symlink(&victim, g.p("/sys/class/leds/tpacpi::power/brightness")).expect("symlink");
+    let o = g.run(&["led-set", "tpacpi::power", "1"]);
+    assert_eq!(code(&o), 3, "{}", stderr(&o));
+    assert_eq!(g.read("/etc/sudoers"), "root ALL\n");
+}
+
 #[test]
 fn the_policy_has_one_action_per_subcommand() {
     let policy = include_str!("../data/org.margo.mshell.privileged.policy");

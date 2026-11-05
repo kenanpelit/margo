@@ -60,6 +60,7 @@ cc_tiles! {
     mirror => "Mirror Display",
     mic_denoise => "Noise Suppression",
     hotspot => "Hotspot",
+    thinkpad_led => "ThinkPad Logo LED",
 }
 
 /// The registry row for a config id; `None` for an unknown id (e.g. a

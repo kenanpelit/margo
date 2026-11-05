@@ -523,6 +523,7 @@ mod tests {
                 "mirror",
                 "mic_denoise",
                 "hotspot",
+                "thinkpad_led",
             ]
         );
         let order = effective_order(&["mic_denoise".to_string(), "bogus".to_string()]);

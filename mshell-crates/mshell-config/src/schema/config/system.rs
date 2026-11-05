@@ -416,7 +416,7 @@ impl Default for AudioConfig {
 /// Control Center tile visibility and order.
 ///
 /// All tiles are shown by default (`true`) except the opt-in ones
-/// (`mirror`, `hotspot`, `mic_denoise`), which default to `false`. Set a tile to `false` via the
+/// (`mirror`, `hotspot`, `mic_denoise`, `thinkpad_led`), which default to `false`. Set a tile to `false` via the
 /// Control Center's edit mode (the pencil icon in the header) to hide it
 /// from the normal grid view. `tile_order` controls the order tiles appear in
 /// the grid (first entry = top-left, reading left-to-right). Tiles not present
@@ -448,6 +448,9 @@ pub struct ControlCenterConfig {
     pub hotspot: bool,
     /// Mic noise-suppression (RNNoise) toggle tile. Off by default.
     pub mic_denoise: bool,
+    /// ThinkPad lid logo LED (`tpacpi::lid_logo_dot`) on/off tile. Off by
+    /// default; hidden on machines without the LED.
+    pub thinkpad_led: bool,
     /// Display order of tiles in the grid. Each entry is a tile-id string
     /// (e.g. `"wifi"`, `"bluetooth"`, …). Unknown ids are skipped; ids
     /// not listed here are appended at the end in canonical order.
@@ -516,6 +519,7 @@ impl Default for ControlCenterConfig {
             mirror: false,
             hotspot: false,
             mic_denoise: false,
+            thinkpad_led: false,
             tile_order: default_cc_tile_order(),
             wide_tiles: Vec::new(),
             show_battery_chip: true,

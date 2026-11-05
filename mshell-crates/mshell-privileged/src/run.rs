@@ -190,6 +190,7 @@ pub fn execute(root: &Sysroot, req: Request, stdin: &mut dyn std::io::Read) -> R
             Err(exec(&pacman, &args))
         }
         Request::BootNext { target } => boot_next(root, *target),
+        Request::LedSet { name, value } => fsops::led_set(root, name, *value),
     }
 }
 
