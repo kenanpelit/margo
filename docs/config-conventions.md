@@ -1,7 +1,7 @@
 # Config conventions
 
 > **Binding spec — read before touching config.** This is the config-layer
-> counterpart to [`mshell-crates/mshell-frame/DESIGN.md`](../mshell-crates/mshell-frame/DESIGN.md)
+> counterpart to [`mshell-crates/mshell-frame/DESIGN.md`](https://github.com/kenanpelit/margo/blob/main/mshell-crates/mshell-frame/DESIGN.md)
 > (which governs UI). It covers *who owns which file*, *what is machine-written
 > vs hand-edited*, *where a new knob goes*, and *what must never be merged*.
 > When a task touches config — adding a setting, a Settings page, a managed

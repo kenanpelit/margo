@@ -2,7 +2,7 @@
 
 The **Wayland compositor** — the core binary of the margo stack. A Rust +
 [Smithay](https://github.com/Smithay/smithay) port of [mango](https://github.com/mangowm/mango)
-(dwl/dwm lineage) with **tags instead of workspaces**, a 14-layout tiling
+(dwl/dwm lineage) with **tags instead of workspaces**, an 11-layout tiling
 catalogue, spring/bezier animations, and a complete first-party desktop built
 around it.
 

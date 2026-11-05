@@ -2,7 +2,7 @@ site_name: margo
 site_description: >-
   A modern Wayland tiling compositor — Rust + Smithay, with a
   tag-based workflow. Daily-driver-grade. dwm/dwl-style tags,
-  12-layout catalogue, niri-grade animations, embedded Rhai
+  11-layout catalogue, niri-grade animations, embedded Rhai
   scripting, HDR scaffolding, in-compositor screencast portal.
 site_url: https://kenanpelit.github.io/margo/
 repo_url: https://github.com/kenanpelit/margo
@@ -17,9 +17,24 @@ docs_dir: docs
 # docs/README.md is the contributor-facing "what's in this folder"
 # index that GitHub auto-renders when someone browses /docs/. The
 # site has its own index.md as the landing page, so README.md is
-# excluded from the build.
+# excluded from the build, as are the agent/working notes (agents/,
+# superpowers/ plans and specs) which are not user documentation.
 exclude_docs: |
   README.md
+  agents/
+  superpowers/
+
+# docs.yml builds with --strict, so every warning fails the build: a broken
+# link or anchor, and a page that is neither in the nav nor excluded above.
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+  links:
+    not_found: warn
+    anchors: warn
+    absolute_links: info
+    unrecognized_links: info
 
 theme:
   name: material
@@ -62,9 +77,13 @@ nav:
   - Configuration:
       - Overview: configuration.md
       - Full reference: config-reference.md
+      - Config conventions: config-conventions.md
   - Dock (mdock): mdock.md
-  - Companion tools: companion-tools.md
+  - Companion tools:
+      - Overview: companion-tools.md
+      - mdots: mdots.md
   - Scripting: scripting.md
+  - IPC protocol: ipc.md
   - Manual checklist: manual-checklist.md
   - Design notes:
       - HDR + colour management: hdr-design.md
@@ -72,9 +91,16 @@ nav:
       - Scripting engine: scripting-design.md
       - Cross-distro installer: install-script.md
       - Wayland protocol comparison: protocol-comparison.md
+      - Wayland protocol matrix: protocol-matrix.md
+      - WASM plugins: mplugins-wasm-design.md
+      - Community plugins review: community-plugins-review.md
+      - Code-quality roadmap: code-quality-roadmap.md
   - Roadmap: roadmap.md
   - 1.0 readiness: 1.0-readiness.md
-  - Changelog: changelog.md
+  - Changelog:
+      - Changelog: changelog.md
+      - v1.0.1 release notes: release-notes/v1.0.1.md
+      - v1.0.0 release notes: release-notes/v1.0.0.md
   - Contributing: contributing.md
 
 markdown_extensions:

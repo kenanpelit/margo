@@ -50,13 +50,12 @@ jobs:
           cp CONTRIBUTING.md docs/contributing.md
 
       - name: Build site
-        # Not --strict: road_map.md is source-of-truth at the repo root
-        # and uses repo-root-relative links (e.g. `docs/protocol-
-        # comparison.md`) that render correctly on GitHub but resolve
-        # differently once copied into docs/ for mkdocs. Strict mode
-        # turns those intentional dual-context links into hard errors.
-        # The site still builds; warnings are logged, not fatal.
-        run: mkdocs build
+        # --strict: a broken link or anchor, or a docs page missing from the
+        # nav, fails the build (mkdocs.yml `validation:`). The root files
+        # copied in above (road_map.md, CHANGELOG.md, CONTRIBUTING.md) render
+        # both on GitHub and here, so they link to other repo files with
+        # absolute GitHub URLs, not repo-root-relative paths.
+        run: mkdocs build --strict
 
       - name: Configure Pages
         uses: actions/configure-pages@v6

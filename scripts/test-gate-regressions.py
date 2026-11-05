@@ -77,6 +77,35 @@ class GateTests(unittest.TestCase):
         self.write('demo.rs', '#[cfg(test)] fn helper() {}\nfn f() { a.unwrap(); }\n')
         self.assertNotEqual(self.gate('panic-ratchet.sh').returncode, 0)
 
+    def docs_drift(self, widgets_md):
+        self.write('mshell-crates/mshell-config/src/schema/bar_widgets.rs',
+                   'pub enum BarWidget {\n    Clock,\n    /// doc\n    Translate,\n'
+                   '    Custom(String),\n    Spacer(u32),\n}\n')
+        self.write('docs/widgets.md', widgets_md)
+        return subprocess.run(['python3', 'scripts/docs-drift.py'], cwd=self.root,
+                              text=True, capture_output=True, stdin=subprocess.DEVNULL)
+
+    def test_docs_drift_flags_an_undocumented_widget(self):
+        result = self.docs_drift('| `Clock` |\n| `!Custom <name>` |\n| `!Spacer <px>` |\n')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Translate', result.stdout + result.stderr)
+
+    def test_docs_drift_flags_a_tuple_widget_without_bang(self):
+        result = self.docs_drift('| `Clock` |\n| `Translate` |\n| `!Spacer <px>` |\n')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Custom', result.stdout + result.stderr)
+
+    def test_docs_drift_passes_when_every_widget_is_listed(self):
+        result = self.docs_drift('| `Clock` |\n| `Translate` |\n| `!Custom <name>` |\n'
+                                 '| `!Spacer <px>` |\n')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_docs_drift_fails_when_the_enum_is_missing(self):
+        self.write('docs/widgets.md', '')
+        result = subprocess.run(['python3', 'scripts/docs-drift.py'], cwd=self.root,
+                                text=True, capture_output=True, stdin=subprocess.DEVNULL)
+        self.assertNotEqual(result.returncode, 0)
+
     def test_size_rejects_malformed_rules(self):
         for rule in ('demo.rs abc', 'demo.rs -1', 'demo.rs 2 extra',
                      'demo.rs 2\ndemo.rs 3'):

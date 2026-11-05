@@ -66,6 +66,7 @@ parameter and use YAML tag syntax:
 | `Dns` | DNS | Standalone DNS / Blocky panel (separate from the combined VPN pill). Polls DNS/VPN/Blocky state; click opens the DNS menu. |
 | `Ip` | Public IP | Public IP from ipinfo.io (polled). Click opens a detail panel (city, ASN, …). |
 | `Bluetooth` | Bluetooth | Adapter state icon; tints when a paired device is connected (a "hooked up to my headphones" cue). Opens the Bluetooth panel. |
+| `Valent` | Valent Connect | The main paired phone's connection state + battery level, from [Valent](https://valent.andyholmes.ca/) (KDE Connect protocol). Left-click opens the Valent Connect menu (phone status, actions, [screen mirroring](#phone-screen-mirroring-valent-menu)); right-click refreshes device discovery. |
 
 ## Media
 
@@ -114,6 +115,7 @@ parameter and use YAML tag syntax:
 | `AlarmClock` | Alarm Clock | Alarm-bell pill that opens the Alarm Clock menu (alarms + stopwatch). Shows a running stopwatch inline and pulses while a tone rings. |
 | `Countdown` | Countdown | Shows the soonest enabled Alarm Clock countdown (hourglass glyph + remaining time). Click opens the Alarm Clock menu on its Countdown tab. Hidden when no enabled, parseable target remains. |
 | `Ai` | AI | Opens the native streaming-chat menu. Provider / model / key live in Settings → AI. |
+| `Translate` | Translate | Opens the Translate menu: translate the selection or clipboard (Google Translate by default, optional DeepL). For a keybind without the menu use `mshellctl translate selection`. |
 | `Keybinds` | Keyboard Shortcuts | Opens a searchable cheatsheet of every shortcut, parsed live from `config.conf`. |
 | `Ufw` | UFW Firewall | UFW status (privilege-free poll); click opens the firewall panel. |
 

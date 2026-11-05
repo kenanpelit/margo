@@ -1,18 +1,20 @@
 # Code-quality roadmap
 
 A grounded review of margo (compositor + mshell shell) as a codebase, with
-prioritised improvement work. Snapshot metrics (2026-11-02, v4.5.0): ~347k
-LOC Rust, 59 workspace crates, 1630 test fns, 260 `unsafe` sites,
-panic-ratchet baseline 446 (non-test `unwrap`/`expect`/`panic`). These figures
+prioritised improvement work. Snapshot metrics (2026-11-05, v4.9.2): ~422k
+LOC Rust, 62 workspace crates, 2882 test fns, 343 `unsafe` sites,
+panic-ratchet baseline 408 (non-test `unwrap`/`expect`/`panic`/`unreachable`/
+`todo`/`unimplemented` calls). These figures
 come from [`scripts/metrics.sh`](https://github.com/kenanpelit/margo/blob/main/scripts/metrics.sh),
 which is the canonical live source — run it for the current numbers rather than
 trusting this line, since the snapshot drifts between refreshes. (Earlier
 snapshots for trend: 2026-06-12 v1.0.3 was ~180k LOC / 53 crates / 765 tests;
 2026-07-12 v1.1.8 was ~298k LOC / 1173 tests / baseline 320 — its "62 crates"
-counted every `Cargo.toml`, including excluded fixtures and vendored crates.)
+counted every `Cargo.toml`, including excluded fixtures and vendored crates;
+2026-11-02 v4.5.0 was ~347k LOC / 59 crates / 1630 tests / baseline 446.)
 
 > **Update (1.0.6 internals pass, 2026-06-13):** the unwrap ratchet is now
-> a CI hard gate (`scripts/panic-ratchet.sh`, baseline 334 — can only drop);
+> a CI hard gate (`scripts/panic-ratchet.sh`, baseline 334 at the time — can only drop);
 > `state.rs` was split back **under the <3k bar (4045 → 2441)** into
 > `state/{window_rules,focus_methods,dpms,arrange}.rs`; profile **config
 > versioning + stepped migration** shipped (`mshell-config/src/migration.rs`).
@@ -110,14 +112,16 @@ files, and overlapping feature mechanisms.**
   panic kills the whole desktop; in mshell it kills the bar. Sweep hot paths
   (render, input, IPC handlers, config/file I/O) toward `Result` + graceful
   degrade. **CI-ratcheted** via `scripts/panic-ratchet.sh` +
-  `scripts/panic-baseline.txt` (baseline **446** on 4.5.0; it went 321 → 457 →
-  468 → 446 because raises were allowed with only a commit-message note). A
+  `scripts/panic-baseline.txt` (baseline **408** on 4.9.2; it went 321 → 457 →
+  468 → 446 because raises were allowed with only a commit-message note, and
+  the ratchet has counted individual calls, not lines, since 4.9.2). A
   raise now needs a `PANIC-BASELINE-RAISE: <reason>` trailer on the commit that
   makes it, enforced in CI by `scripts/panic-baseline-guard.sh`; lowering it
   needs nothing.
   The ratchet now also counts `unreachable!`/`todo!`/`unimplemented!` and skips
   test code by brace depth (so a mid-file `#[cfg(test)]` no longer hides the
-  production code after it). The screencast pod-parsing path (`pw_utils.rs`,
+  production code after it); design-lint's L10–L12 share that skip
+  (`scripts/lib/skip-cfg-test.awk`). The screencast pod-parsing path (`pw_utils.rs`,
   `mutter_screen_cast.rs`) was swept to `stop_cast()`/warn instead of panicking
   the compositor on malformed PipeWire input.
 - [ ] **Plugin host must not block the GTK main loop, and must bound plugin

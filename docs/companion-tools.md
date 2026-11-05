@@ -16,6 +16,14 @@ Margo ships several binaries that share its workspace:
 | **`mlogind`** | login / display manager (matugen-themed) — TUI or GTK4 greeter |
 | **`mgreet`** | GTK4 multi-monitor login greeter for `mlogind` (the default host) |
 | **`mdots`** | declarative Arch package + dotfiles manager (pacman/AUR/Flatpak/Nix, Lua modules, SOPS/age secrets) |
+| **`mpicker`** | native screen colour picker (frozen overlay + zoom lens) |
+| **`mlock`** | lock screen (PAM + `ext-session-lock-v1`) |
+| **`start-margo`** | TTY launcher for a margo session |
+| **`mtm`** | tmux session / layout / buffer / clipboard manager |
+| **`mvisual`** | GTK4 layout previewer — every layout side by side, per-tag pinning rehearsal |
+| **`mwizard`** | opens the in-shell setup wizard (compatibility shim) |
+| **`margo-portal`** | margo's own xdg-desktop-portal backend (ScreenCast, Screenshot, GlobalShortcuts) |
+| **`mshellshare`** | window/monitor picker helper for portal screen sharing |
 
 Run any of them with `--help` for the full command surface.
 
@@ -452,6 +460,39 @@ with the systemd watchdog + restart backoff so a hung compositor is recovered
 rather than left frozen. This is what a display manager (or `exec start-margo`
 from a TTY) runs — not `margo` directly.
 
+## `mtm`
+
+A native tmux manager (Rust port of `tm.sh`): `mtm session …`
+(create / list / kill / attach / layout / term), `mtm buffer` (pick a tmux
+buffer with fzf and copy it), `mtm clip` (clipboard history via cliphist or
+clipse), `mtm plugin` (TPM plugins), `mtm speed` (a category-aware fzf command
+launcher with pins and recency) and `mtm config` (config backup / restore).
+Bare `mtm` attaches to the default session; any other word is taken as a
+session name to create or attach to.
+
+## `mvisual`
+
+An interactive GTK4 design tool for the layouts: every layout renders side by
+side at the current parameters, a tag rail rehearses per-tag layout pinning,
+and every tweak (window count, `mfact`, `nmaster`, gaps, focus, scroller
+proportion) re-runs the same `margo-layouts` arithmetic the compositor uses.
+
+## `mwizard`
+
+A thin shim kept for old keybinds and autostart entries: it asks the running
+shell to open the in-shell setup wizard over D-Bus, exactly like
+`mshellctl wizard`. Legacy flags such as `--force` are accepted and ignored.
+
+## `margo-portal` and `mshellshare`
+
+`margo-portal` is margo's own xdg-desktop-portal backend. It serves
+**ScreenCast** (share a window or a monitor — capture is margo's own PipeWire
+path), **Screenshot** and **GlobalShortcuts**, is D-Bus-activated on the first
+portal call, and is selected in `margo-portals.conf`. `mshellshare` is the
+picker helper behind screen sharing: it asks the shell (`com.mshell.Shell`)
+for the window/monitor choice and prints it for the portal. Neither is run by
+hand. Design notes: [Built-in portal](portal-design.md).
+
 ## Shell completions
 
 Bash, zsh, and fish completions ship under `/usr/share/{bash-completion,zsh,fish}/...` and pull dispatch action names from `mctl actions --names` at completion time. They auto-load — no rc-file work needed.
@@ -464,5 +505,5 @@ Full user guide: **[mdots](mdots.md)**
 
 ## See also
 
-- The full per-action reference is generated from source: `mctl actions --verbose` always reflects what margo actually accepts.
+- The full per-action reference is generated from the action catalogue: [Configuration → Dispatch actions](configuration.md#dispatch-actions) and `mctl actions --verbose` both list everything margo accepts.
 - `mctl rules --verbose` is the right tool for "why didn't my windowrule fire?" — runs offline against the same rule engine.

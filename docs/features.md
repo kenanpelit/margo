@@ -9,7 +9,7 @@ is the map; each section links to the detailed guide.
 The [Smithay](https://github.com/Smithay/smithay)-based tiling compositor, in
 the dwl/mango tradition — **tags instead of workspaces**, driven by `mctl`.
 
-- **10 tiling layouts** — tile, scroller (PaperWM-style, the default), grid,
+- **9 tiling layouts** — tile, scroller (PaperWM-style, the default), grid,
   monocle, deck, dwindle, and more; each tag remembers its own. Set with
   `setlayout <name>`, cycle with `switch_layout`. See
   [Configuration → Layouts](configuration.md#layouts).

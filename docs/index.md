@@ -30,7 +30,7 @@ hide:
 </blockquote>
 
 **margo** is a Wayland compositor in the dwl/dwm tradition — Rust + [Smithay],
-tags instead of workspaces, a 12-layout tiling catalogue. But margo ships
+tags instead of workspaces, an 11-layout tiling catalogue. But margo ships
 something the others don't: **[mshell](#the-shell-mshell)**, a complete GTK4
 desktop shell — bars, 50-plus widgets, an app launcher, a dashboard,
 quick-settings, notifications, OSD, a lock screen, and a settings app — all

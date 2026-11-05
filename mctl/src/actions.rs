@@ -30,20 +30,45 @@ pub const MARKDOWN_END: &str = "<!-- END dispatch-actions -->";
 
 /// One markdown table cell: whitespace and newlines folded, `|` escaped,
 /// and a `<` outside a code span written as `&lt;` so the renderer shows
-/// `<vt>` instead of swallowing it as an HTML tag.
+/// `<vt>` instead of swallowing it as an HTML tag. A code span holding a
+/// `|` is written as HTML `<code>` with `&#124;`: Python-Markdown (the
+/// mkdocs site) would show an escaped `\|` inside a code span literally.
 fn cell(text: &str) -> String {
     let folded = text.split_whitespace().collect::<Vec<_>>().join(" ");
     let mut out = String::with_capacity(folded.len());
-    let mut in_code = false;
-    for c in folded.chars() {
-        match c {
-            '`' => {
-                in_code = !in_code;
-                out.push(c);
+    // Odd pieces of a split on '`' are code spans (an unclosed trailing
+    // backtick leaves the rest as plain text).
+    let pieces: Vec<&str> = folded.split('`').collect();
+    let closed = pieces.len() % 2 == 1;
+    for (i, piece) in pieces.iter().enumerate() {
+        let is_code = i % 2 == 1 && (closed || i + 1 < pieces.len());
+        if is_code && piece.contains('|') {
+            out.push_str("<code>");
+            for c in piece.chars() {
+                match c {
+                    '&' => out.push_str("&amp;"),
+                    '<' => out.push_str("&lt;"),
+                    '>' => out.push_str("&gt;"),
+                    '|' => out.push_str("&#124;"),
+                    _ => out.push(c),
+                }
             }
-            '|' => out.push_str("\\|"),
-            '<' if !in_code => out.push_str("&lt;"),
-            _ => out.push(c),
+            out.push_str("</code>");
+        } else if is_code {
+            out.push('`');
+            out.push_str(piece);
+            out.push('`');
+        } else {
+            if i % 2 == 1 {
+                out.push('`');
+            }
+            for c in piece.chars() {
+                match c {
+                    '|' => out.push_str("\\|"),
+                    '<' => out.push_str("&lt;"),
+                    _ => out.push(c),
+                }
+            }
         }
     }
     out
@@ -124,6 +149,17 @@ mod tests {
     #[test]
     fn cells_escape_pipes_and_fold_newlines() {
         assert_eq!(cell("a|b\n   c"), "a\\|b c");
+    }
+
+    #[test]
+    fn code_with_a_pipe_becomes_html_code() {
+        // Python-Markdown (mkdocs) shows a `\|` inside a code span in a
+        // table literally; an HTML <code> with &#124; renders as `|` on
+        // both mkdocs and GitHub.
+        assert_eq!(
+            cell("`<prev|next>` or `a&b`"),
+            "<code>&lt;prev&#124;next&gt;</code> or `a&b`"
+        );
     }
 
     #[test]
