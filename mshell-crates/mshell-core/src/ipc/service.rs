@@ -605,6 +605,19 @@ impl IPCService {
     async fn session_shutdown(&self) -> fdo::Result<()> {
         self.send(IPCCommand::SessionAction(SessionAction::Shutdown))
     }
+    /// Reboot into one UEFI entry (its `0003` number or exact label) for
+    /// the next boot only. The entry is resolved against `efibootmgr`'s
+    /// listing here, so an unknown name fails the call; the polkit prompt
+    /// and the reboot then run in the shell.
+    async fn session_reboot_into(&self, entry: String) -> fdo::Result<()> {
+        let list = mshell_utils::boot_next::read_list()
+            .await
+            .map_err(|e| fdo::Error::Failed(e.message()))?;
+        let num = mshell_utils::boot_next::efiboot::resolve(&list, &entry)
+            .map_err(fdo::Error::InvalidArgs)?
+            .num;
+        self.send(IPCCommand::SessionRebootInto(num))
+    }
     async fn close_all_menus(&self) -> fdo::Result<()> {
         self.send(IPCCommand::CloseAllMenus)
     }

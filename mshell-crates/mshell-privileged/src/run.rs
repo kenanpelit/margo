@@ -32,6 +32,12 @@ const SMARTCTL: [&str; 3] = [
     "/usr/sbin/smartctl",
     "/run/current-system/sw/bin/smartctl",
 ];
+/// Root-owned places efibootmgr is installed.
+const EFIBOOTMGR: [&str; 3] = [
+    "/usr/bin/efibootmgr",
+    "/usr/sbin/efibootmgr",
+    "/run/current-system/sw/bin/efibootmgr",
+];
 /// pacman's non-interactive flags, shared by upgrade and rollback.
 const QUIET: [&str; 4] = ["--noconfirm", "--noprogressbar", "--color", "never"];
 
@@ -99,6 +105,55 @@ fn smart_read(root: &Sysroot, devices: &[String]) -> Result<(), Error> {
     Ok(())
 }
 
+/// The efibootmgr argv (after the binary) that applies `target` to the
+/// current `list`; `None` when there is nothing to do (clearing with no
+/// `BootNext` pending). An entry the listing doesn't have is refused.
+pub fn boot_next_args(
+    list: &crate::efiboot::BootList,
+    target: validate::BootTarget,
+) -> Result<Option<Vec<OsString>>, Error> {
+    use validate::BootTarget;
+    match target {
+        BootTarget::Entry(n) => {
+            if list.entry(n).is_none() {
+                return Err(Error::Refused(format!(
+                    "Boot{n:04X} is not a boot entry on this machine"
+                )));
+            }
+            Ok(Some(vec![
+                "--quiet".into(),
+                "--bootnext".into(),
+                target.keyword().into(),
+            ]))
+        }
+        BootTarget::Clear if list.next.is_none() => Ok(None),
+        BootTarget::Clear => Ok(Some(vec!["--quiet".into(), "--delete-bootnext".into()])),
+    }
+}
+
+/// `boot-next`: read efibootmgr's listing as root, check the target
+/// against it, then exec efibootmgr with the fixed argv.
+fn boot_next(root: &Sysroot, target: validate::BootTarget) -> Result<(), Error> {
+    let efi = program(root, &EFIBOOTMGR, "efibootmgr")?;
+    let out = std::process::Command::new(&efi)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map_err(|e| Error::Io(format!("{}: {e}", efi.display())))?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let msg = err.lines().map(str::trim).find(|l| !l.is_empty());
+        return Err(Error::Io(format!(
+            "efibootmgr could not read the boot entries{}",
+            msg.map(|m| format!(": {m}")).unwrap_or_default()
+        )));
+    }
+    let list = crate::efiboot::parse(&String::from_utf8_lossy(&out.stdout));
+    match boot_next_args(&list, target)? {
+        Some(args) => Err(exec(&efi, &args)),
+        None => Ok(()),
+    }
+}
+
 /// Run one request. `stdin` feeds `pacnew-merge` and `logind-dropin`.
 pub fn execute(root: &Sysroot, req: Request, stdin: &mut dyn std::io::Read) -> Result<(), Error> {
     match &req {
@@ -134,6 +189,7 @@ pub fn execute(root: &Sysroot, req: Request, stdin: &mut dyn std::io::Read) -> R
             let args = pacman_args(&req, Some(&phys)).unwrap_or_default();
             Err(exec(&pacman, &args))
         }
+        Request::BootNext { target } => boot_next(root, *target),
     }
 }
 
@@ -193,6 +249,29 @@ mod tests {
                 None
             ),
             None
+        );
+    }
+
+    #[test]
+    fn boot_next_argv_is_fixed_and_checked_against_the_listing() {
+        use validate::BootTarget;
+        let list = crate::efiboot::parse("BootCurrent: 0001\nBoot0001* a\tHD()\nBoot001F* b\n");
+        assert_eq!(
+            boot_next_args(&list, BootTarget::Entry(0x1F))
+                .unwrap()
+                .unwrap(),
+            ["--quiet", "--bootnext", "001F"]
+        );
+        let e = boot_next_args(&list, BootTarget::Entry(2)).unwrap_err();
+        assert_eq!(e.code(), 3);
+        assert!(e.message().contains("Boot0002"), "{}", e.message());
+        assert_eq!(boot_next_args(&list, BootTarget::Clear).unwrap(), None);
+        let pending = crate::efiboot::parse("BootNext: 001F\nBoot001F* b\n");
+        assert_eq!(
+            boot_next_args(&pending, BootTarget::Clear)
+                .unwrap()
+                .unwrap(),
+            ["--quiet", "--delete-bootnext"]
         );
     }
 

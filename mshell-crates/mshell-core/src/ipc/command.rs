@@ -23,6 +23,9 @@ pub(super) enum IPCCommand {
     NotificationsReadPopups,
     Session,
     SessionAction(SessionAction),
+    /// `mshellctl session reboot-into <entry>`: set `BootNext` to this
+    /// (already resolved) entry through the root helper, then reboot.
+    SessionRebootInto(u16),
     Screenshot,
     /// Headless capture: `"<area> <target> <delay>"` (see
     /// `mshellctl screenshot`).

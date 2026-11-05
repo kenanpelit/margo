@@ -4,6 +4,7 @@ pub mod audio;
 pub mod audio_prefs;
 pub mod battery;
 pub mod bluetooth;
+pub mod boot_next;
 pub mod brightness;
 pub mod bt_audio;
 pub mod clear_box;

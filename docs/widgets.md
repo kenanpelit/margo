@@ -292,6 +292,30 @@ a dropped link, binds `127.0.0.1` only and never starts on its own. It uses
 (connect once from the Hosts tab first); the shell never asks for or stores
 a password. Needs `openssh` and systemd user services.
 
+## Reboot into… (session menu)
+
+Turn on **Settings → Session → Reboot into… → Show “Reboot into…”**
+(`session.reboot_into`) and the session menu gets a **Reboot into…** row
+under its buttons. It opens the machine's UEFI boot entries (from
+`efibootmgr`), marks the one this boot started from (*this boot*) and a
+pending one-shot entry (*next boot*, ticked). Click an entry to boot it
+**once** — another installed system, the firmware updater — and reboot:
+the polkit prompt names the action (`mshell-privileged boot-next`, which
+re-reads the entries as root and only sets one that is listed); the boot
+order is not changed. **Clear next boot** drops a pending entry without
+rebooting. The reboot is the menu's own Reboot, so `session.reboot_command`
+and margo's clean window shutdown still apply.
+
+By default the list offers the entries that boot a loader from a disk;
+**Every firmware entry** (`session.reboot_into_all`) adds the firmware's
+device shortcuts (USB HDD, network boot, …). Entries whose label contains a
+word from **Hide entries containing** (`session.reboot_into_hidden`; network
+boot, shells, setup and diagnostics apps by default) are left out.
+
+From a script or keybind: `mshellctl session boot-entries` lists the
+entries, `mshellctl session reboot-into <0003|label>` reboots into one.
+Needs `efibootmgr`.
+
 ## Phone screen mirroring (Valent menu)
 
 The Valent menu ends with a **Screen mirroring** card: every adb device

@@ -47,3 +47,68 @@
     color: var(--on-primary);
   }
 }
+
+// "Reboot into…" (session.reboot_into): a header row that reveals the UEFI
+// boot entries in one compact boxed-list (§5). The entry pending as
+// BootNext is the selected row (surface-container-high + check, §16).
+.session-reboot-into-header {
+  padding: var(--row-padding);
+  min-height: var(--row-min-height-compact);
+  border-radius: var(--list-radius);
+}
+
+.session-reboot-into-title {
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
+.session-reboot-into-meta {
+  font-size: var(--font-xs);
+  color: var(--outline);
+}
+
+// The boxed-list card owns the row chrome; the row's main button is flat
+// with the canonical 14% primary wash (same shape as the GitHub rows).
+.ok-boxed-list > .session-reboot-into-row {
+  padding: 0;
+
+  &.selected {
+    background-color: var(--surface-container-high);
+  }
+}
+
+.session-reboot-into-row-main {
+  all: unset;
+  padding: var(--space-2) var(--space-3);
+  transition: background-color var(--motion-fast) var(--ease-standard);
+
+  &:hover {
+    background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+  }
+
+  &:focus-visible {
+    box-shadow: inset 0 0 0 2px var(--primary);
+  }
+
+  &:disabled {
+    opacity: 0.38;
+  }
+}
+
+.session-reboot-into-row-title {
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
+.session-reboot-into-row-subtitle {
+  font-size: var(--font-xs);
+  color: var(--on-surface-variant);
+}
+
+.session-reboot-into-check {
+  color: var(--primary);
+}
+
+.session-status.danger {
+  color: var(--error);
+}

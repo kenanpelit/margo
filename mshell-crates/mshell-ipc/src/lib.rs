@@ -128,6 +128,7 @@ pub trait Shell {
     fn session_suspend(&self) -> zbus::Result<()>;
     fn session_reboot(&self) -> zbus::Result<()>;
     fn session_shutdown(&self) -> zbus::Result<()>;
+    fn session_reboot_into(&self, entry: &str) -> zbus::Result<()>;
     fn close_all_menus(&self) -> zbus::Result<()>;
     fn volume_up(&self) -> zbus::Result<()>;
     fn volume_down(&self) -> zbus::Result<()>;

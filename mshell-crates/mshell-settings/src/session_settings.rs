@@ -27,6 +27,10 @@ pub(crate) struct SessionSettingsModel {
     suspend_command: String,
     reboot_command: String,
     shutdown_command: String,
+    reboot_into: bool,
+    reboot_into_all: bool,
+    /// `session.reboot_into_hidden`, comma-separated for the entry.
+    reboot_into_hidden: String,
 }
 
 #[derive(Debug)]
@@ -40,6 +44,9 @@ pub(crate) enum SessionSettingsInput {
     SuspendChanged(String),
     RebootChanged(String),
     ShutdownChanged(String),
+    RebootIntoChanged(bool),
+    RebootIntoAllChanged(bool),
+    RebootIntoHiddenChanged(String),
 }
 
 #[derive(Debug)]
@@ -349,6 +356,127 @@ impl Component for SessionSettingsModel {
                     },
                 },
                 },
+
+                // ── Reboot into… ────────────────────────────────
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Reboot into…",
+                    set_halign: gtk::Align::Start,
+                    set_margin_top: 12,
+                },
+
+                gtk::Label {
+                    add_css_class: "label-small",
+                    set_label: "A list of the UEFI boot entries in the session menu: pick one and the next boot (only) starts it — another installed system, the firmware updater — then the machine reboots. Setting it asks for your password once (efibootmgr --bootnext through mshell-privileged). Needs efibootmgr; `mshellctl session reboot-into <entry>` works either way.",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                },
+
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/session/reboot_into",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Show “Reboot into…”",
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_label: "The boot-entry list under the session buttons.",
+                            },
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: model.reboot_into,
+                            connect_state_set[sender] => move |_, on| {
+                                sender.input(SessionSettingsInput::RebootIntoChanged(on));
+                                gtk::glib::Propagation::Proceed
+                            },
+                        },
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/session/reboot_into_all",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Every firmware entry",
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_label: "Off = only entries that boot a loader from a disk (installed systems, fwupd). On = also the firmware's device shortcuts (USB HDD, network boot, …).",
+                            },
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: model.reboot_into_all,
+                            connect_state_set[sender] => move |_, on| {
+                                sender.input(SessionSettingsInput::RebootIntoAllChanged(on));
+                                gtk::glib::Propagation::Proceed
+                            },
+                        },
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/session/reboot_into_hidden",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Hide entries containing",
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_label: "Comma-separated words, any case.",
+                            },
+                        },
+                        gtk::Entry {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 240,
+                            set_placeholder_text: Some("pxe, shell, setup"),
+                            set_text: &model.reboot_into_hidden,
+                            connect_changed[sender] => move |e| {
+                                sender.input(SessionSettingsInput::RebootIntoHiddenChanged(
+                                    e.text().to_string(),
+                                ));
+                            },
+                        },
+                    },
+                },
             }
         }
     }
@@ -363,8 +491,12 @@ impl Component for SessionSettingsModel {
         let position_refs: Vec<&str> = Position::all().iter().map(|p| p.display_name()).collect();
         let position_model = gtk::StringList::new(&position_refs);
 
+        let session = config_manager().config().get_untracked().session;
         let model = SessionSettingsModel {
             position_model,
+            reboot_into: session.reboot_into,
+            reboot_into_all: session.reboot_into_all,
+            reboot_into_hidden: session.reboot_into_hidden.join(", "),
             lock_command: config_manager()
                 .config()
                 .session()
@@ -434,6 +566,40 @@ impl Component for SessionSettingsModel {
             SessionSettingsInput::ShutdownChanged(v) => {
                 config_manager().update_config(|c| c.session.shutdown_command = v);
             }
+            SessionSettingsInput::RebootIntoChanged(on) => {
+                config_manager().update_config(|c| c.session.reboot_into = on);
+            }
+            SessionSettingsInput::RebootIntoAllChanged(on) => {
+                config_manager().update_config(|c| c.session.reboot_into_all = on);
+            }
+            SessionSettingsInput::RebootIntoHiddenChanged(v) => {
+                let words = split_keywords(&v);
+                config_manager().update_config(|c| c.session.reboot_into_hidden = words);
+            }
         }
+    }
+}
+
+/// The hidden-entry keywords as typed: comma-separated, trimmed, empty
+/// pieces dropped.
+fn split_keywords(text: &str) -> Vec<String> {
+    text.split(',')
+        .map(str::trim)
+        .filter(|w| !w.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_keywords;
+
+    #[test]
+    fn keywords_split_on_commas() {
+        assert_eq!(
+            split_keywords(" pxe, uefi shell ,,setup "),
+            ["pxe", "uefi shell", "setup"]
+        );
+        assert!(split_keywords(" , ").is_empty());
     }
 }

@@ -12,8 +12,16 @@
 //!     `Ctrl+K` step focus between the buttons.
 //!   * `Space` / `Enter` activates the focused button at once
 //!     (no countdown — a deliberate click is taken at its word).
+//!
+//! With `session.reboot_into` on, a "Reboot into…" section below the
+//! buttons lists the UEFI boot entries ([`super::reboot_into`]); the
+//! focus walk continues into it.
 
+use super::reboot_into::{self, RebootInto, RebootIntoAction};
+use mshell_config::config_manager::config_manager;
+use mshell_utils::boot_next::{BootList, BootTarget, ListError};
 use mshell_utils::session::{SessionAction, run_session_action};
+use reactive_graph::traits::GetUntracked;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, EventControllerExt, OrientableExt, WidgetExt};
 use relm4::gtk::{gdk, glib};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -44,6 +52,8 @@ pub(crate) struct SessionMenuWidgetModel {
     /// Bumped on every arm / cancel so stale countdown ticks
     /// from a previous run are ignored.
     generation: u64,
+    /// The "Reboot into…" section (hidden unless `session.reboot_into`).
+    reboot_into: RebootInto,
 }
 
 #[derive(Debug)]
@@ -63,6 +73,19 @@ pub(crate) enum SessionMenuWidgetInput {
     /// the layer-shell surface only gains keyboard focus once
     /// `sync_keyboard_mode`'s debounce has applied).
     ParentRevealChanged(bool),
+    /// A click in the "Reboot into…" section.
+    RebootInto(RebootIntoAction),
+}
+
+#[derive(Debug)]
+pub(crate) enum SessionMenuWidgetCommandOutput {
+    /// efibootmgr's listing (or why it couldn't be read).
+    BootList(Result<BootList, ListError>),
+    /// `BootNext` set (`reboot`: then reboot) or cleared.
+    BootNextDone {
+        result: Result<(), String>,
+        reboot: bool,
+    },
 }
 
 #[derive(Debug)]
@@ -74,7 +97,7 @@ pub(crate) struct SessionMenuWidgetInit {}
 
 #[relm4::component(pub(crate))]
 impl Component for SessionMenuWidgetModel {
-    type CommandOutput = ();
+    type CommandOutput = SessionMenuWidgetCommandOutput;
     type Input = SessionMenuWidgetInput;
     type Output = SessionMenuWidgetOutput;
     type Init = SessionMenuWidgetInit;
@@ -111,6 +134,9 @@ impl Component for SessionMenuWidgetModel {
                 set_spacing: 6,
                 set_homogeneous: true,
             },
+
+            #[local_ref]
+            reboot_into_root -> gtk::Box {},
 
             #[local_ref]
             status_label -> gtk::Label {
@@ -268,12 +294,19 @@ impl Component for SessionMenuWidgetModel {
             root.add_controller(key_controller);
         }
 
+        let reboot_into = {
+            let s = sender.clone();
+            RebootInto::new(move |a| s.input(SessionMenuWidgetInput::RebootInto(a)))
+        };
+        let reboot_into_root = reboot_into.root().clone();
+
         let model = SessionMenuWidgetModel {
             buttons,
             focused: 0,
             status: status_label.clone(),
             pending: None,
             generation: 0,
+            reboot_into,
         };
         let widgets = view_output!();
         ComponentParts { model, widgets }
@@ -319,20 +352,20 @@ impl Component for SessionMenuWidgetModel {
                     self.refresh_status();
                 }
             }
-            SessionMenuWidgetInput::FocusNext => {
-                if !self.buttons.is_empty() {
-                    self.focused = (self.focused + 1) % self.buttons.len();
-                    self.buttons[self.focused].grab_focus();
-                }
-            }
-            SessionMenuWidgetInput::FocusPrev => {
-                if !self.buttons.is_empty() {
-                    let len = self.buttons.len();
-                    self.focused = (self.focused + len - 1) % len;
-                    self.buttons[self.focused].grab_focus();
-                }
+            SessionMenuWidgetInput::FocusNext => self.walk_focus(1),
+            SessionMenuWidgetInput::FocusPrev => self.walk_focus(-1),
+            SessionMenuWidgetInput::RebootInto(action) => {
+                self.reboot_into_action(action, &sender);
             }
             SessionMenuWidgetInput::ParentRevealChanged(revealed) => {
+                self.reboot_into.reset(
+                    revealed
+                        && config_manager()
+                            .config()
+                            .get_untracked()
+                            .session
+                            .reboot_into,
+                );
                 if revealed {
                     // A fresh open — drop any stale countdown.
                     self.generation += 1;
@@ -366,9 +399,85 @@ impl Component for SessionMenuWidgetModel {
             }
         }
     }
+    fn update_cmd(
+        &mut self,
+        message: Self::CommandOutput,
+        sender: ComponentSender<Self>,
+        _root: &Self::Root,
+    ) {
+        match message {
+            SessionMenuWidgetCommandOutput::BootList(data) => {
+                let session = config_manager().config().get_untracked().session;
+                self.reboot_into
+                    .loaded(data, &session.reboot_into_hidden, session.reboot_into_all);
+            }
+            SessionMenuWidgetCommandOutput::BootNextDone { result, reboot } => match result {
+                // Authorized and set: the reboot is what was asked for, even
+                // if the menu closed while the dialog was up.
+                Ok(()) if reboot => {
+                    run_session_action(SessionAction::Reboot);
+                    let _ = sender.output(SessionMenuWidgetOutput::CloseMenu);
+                }
+                Ok(()) => self.read_boot_entries(&sender),
+                Err(e) => self.reboot_into.failed(&e),
+            },
+        }
+    }
 }
 
 impl SessionMenuWidgetModel {
+    /// Step keyboard focus through the session buttons, then the
+    /// "Reboot into…" header, entries and Clear (when shown).
+    fn walk_focus(&mut self, dir: i32) {
+        let mut chain: Vec<gtk::Widget> = self.buttons.iter().map(|b| b.clone().into()).collect();
+        chain.extend(self.reboot_into.focusables());
+        if chain.is_empty() {
+            return;
+        }
+        let len = chain.len() as i32;
+        let at = chain
+            .iter()
+            .position(|w| w.has_focus())
+            .unwrap_or(self.focused.min(chain.len() - 1)) as i32;
+        let next = (at + dir).rem_euclid(len) as usize;
+        self.focused = next;
+        chain[next].grab_focus();
+    }
+
+    fn reboot_into_action(&mut self, action: RebootIntoAction, sender: &ComponentSender<Self>) {
+        if self.reboot_into.is_busy() {
+            return;
+        }
+        // A click here is a deliberate choice: drop an armed countdown.
+        if self.pending.take().is_some() {
+            self.generation += 1;
+            self.refresh_status();
+        }
+        let (target, reboot) = match action {
+            RebootIntoAction::Toggle => {
+                if self.reboot_into.toggle() {
+                    self.read_boot_entries(sender);
+                }
+                return;
+            }
+            RebootIntoAction::Pick(num) => (BootTarget::Entry(num), true),
+            RebootIntoAction::Clear => (BootTarget::Clear, false),
+        };
+        self.reboot_into.waiting();
+        sender.oneshot_command(async move {
+            SessionMenuWidgetCommandOutput::BootNextDone {
+                result: reboot_into::apply(target).await,
+                reboot,
+            }
+        });
+    }
+
+    fn read_boot_entries(&self, sender: &ComponentSender<Self>) {
+        sender.oneshot_command(async {
+            SessionMenuWidgetCommandOutput::BootList(reboot_into::read().await)
+        });
+    }
+
     /// Repaint the status line from `pending`.
     fn refresh_status(&self) {
         match self.pending {

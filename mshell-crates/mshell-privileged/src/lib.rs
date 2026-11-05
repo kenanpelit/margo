@@ -3,7 +3,7 @@
 //! Every privileged action the shell offers (pacnew review, rollback,
 //! the background upgrade, signalling another user's process, a SMART
 //! read, a ThinkPad fan level, the battery charge limit, the logind
-//! power-key/lid drop-in) is one fixed subcommand of this binary,
+//! power-key/lid drop-in, the one-shot UEFI `BootNext`) is one fixed subcommand of this binary,
 //! with its own polkit action (`org.margo.mshell.privileged.<sub>`,
 //! matched on `exec.path` + `exec.argv1`), so the password dialog says
 //! exactly what root is about to do instead of "run /bin/sh". There is
@@ -14,6 +14,7 @@
 //! The shell builds its `pkexec` argv from [`Request`], so both sides
 //! share one definition of the vocabulary.
 
+pub mod efiboot;
 pub mod fsops;
 pub mod procsig;
 pub mod run;
@@ -21,7 +22,7 @@ pub mod validate;
 
 use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
-pub use validate::{FanLevel, Signal};
+pub use validate::{BootTarget, FanLevel, Signal};
 
 /// Where the packages install the helper. Nix builds point it at the
 /// store path with `MSHELL_PRIVILEGED_HELPER` at compile time; the
@@ -45,7 +46,7 @@ pub fn installed() -> bool {
 }
 
 /// Every subcommand, in policy order.
-pub const SUBCOMMANDS: [&str; 10] = [
+pub const SUBCOMMANDS: [&str; 11] = [
     "pacnew-install",
     "pacnew-merge",
     "pacnew-remove",
@@ -56,6 +57,7 @@ pub const SUBCOMMANDS: [&str; 10] = [
     "logind-dropin",
     "upgrade",
     "rollback",
+    "boot-next",
 ];
 
 /// Why the helper refused or failed. The exit code tells the caller
@@ -122,6 +124,9 @@ pub enum Request {
     Upgrade,
     /// `pacman -U --noconfirm <cached package>`.
     Rollback { package: PathBuf },
+    /// `efibootmgr --bootnext <entry>` for an entry efibootmgr lists, or
+    /// `--delete-bootnext` (only when one is pending).
+    BootNext { target: BootTarget },
 }
 
 impl Request {
@@ -137,6 +142,7 @@ impl Request {
             Request::LogindDropin => "logind-dropin",
             Request::Upgrade => "upgrade",
             Request::Rollback { .. } => "rollback",
+            Request::BootNext { .. } => "boot-next",
         }
     }
 
@@ -162,6 +168,7 @@ impl Request {
             Request::ChargeLimit { limit } => vec![limit.to_string().into()],
             Request::LogindDropin | Request::Upgrade => Vec::new(),
             Request::Rollback { package } => vec![p(package)],
+            Request::BootNext { target } => vec![target.keyword().into()],
         }
     }
 
@@ -259,6 +266,12 @@ impl Request {
                     package: validate::package_file(a(0))?,
                 }
             }
+            "boot-next" => {
+                arity(1)?;
+                Request::BootNext {
+                    target: BootTarget::parse(a(0))?,
+                }
+            }
             _ => {
                 return Err(Error::Usage(format!(
                     "unknown subcommand {:?} (one of: {})",
@@ -287,6 +300,22 @@ impl Request {
     pub fn validated(self) -> Result<Request, Error> {
         let argv = self.argv();
         Request::parse(&argv[1..])
+    }
+}
+
+/// What a finished `pkexec <helper> …` means for the user: `Ok` on 0,
+/// pkexec's own 126 (dialog dismissed) / 127 (not authorized), else the
+/// helper's last stderr line (its error message).
+pub fn outcome(code: Option<i32>, stderr: &str) -> Result<(), String> {
+    match code {
+        Some(0) => Ok(()),
+        Some(126) => Err("Authorization was cancelled".to_string()),
+        Some(127) => Err("Authorization failed".to_string()),
+        Some(c) => match stderr.lines().rev().map(str::trim).find(|l| !l.is_empty()) {
+            Some(msg) => Err(msg.to_string()),
+            None => Err(format!("Command failed (exit {c})")),
+        },
+        None => Err("Command was killed by a signal".to_string()),
     }
 }
 
@@ -337,6 +366,12 @@ mod tests {
         round_trip(Request::Upgrade);
         round_trip(Request::Rollback {
             package: "/var/cache/pacman/pkg/a-1-1-any.pkg.tar.zst".into(),
+        });
+        round_trip(Request::BootNext {
+            target: BootTarget::Entry(0x1F),
+        });
+        round_trip(Request::BootNext {
+            target: BootTarget::Clear,
         });
     }
 
@@ -389,6 +424,9 @@ mod tests {
         assert_eq!(p(&["kill", "5", "1"]).unwrap_err().code(), 2);
         assert_eq!(p(&["smart-read"]).unwrap_err().code(), 2);
         assert_eq!(p(&["charge-limit", "101"]).unwrap_err().code(), 2);
+        assert_eq!(p(&["boot-next"]).unwrap_err().code(), 2);
+        assert_eq!(p(&["boot-next", "0001", "0002"]).unwrap_err().code(), 2);
+        assert_eq!(p(&["boot-next", "-N"]).unwrap_err().code(), 2);
         assert!(Request::ChargeLimit { limit: 0 }.validated().is_err());
         let many: Vec<String> = (0..17).map(|i| format!("/dev/sd{i}")).collect();
         let mut v = vec!["smart-read"];
@@ -402,6 +440,25 @@ mod tests {
             .validated()
             .is_err()
         );
+    }
+
+    #[test]
+    fn outcomes_name_the_failure() {
+        assert_eq!(outcome(Some(0), "noise"), Ok(()));
+        assert_eq!(
+            outcome(Some(126), "").unwrap_err(),
+            "Authorization was cancelled"
+        );
+        assert_eq!(outcome(Some(127), "").unwrap_err(), "Authorization failed");
+        assert_eq!(
+            outcome(Some(3), "warning\nBoot0099 is not a boot entry\n\n").unwrap_err(),
+            "Boot0099 is not a boot entry"
+        );
+        assert_eq!(
+            outcome(Some(1), " \n").unwrap_err(),
+            "Command failed (exit 1)"
+        );
+        assert!(outcome(None, "").is_err());
     }
 
     #[test]

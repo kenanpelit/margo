@@ -281,6 +281,42 @@ pub fn logind_dropin(body: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 
+/// What `boot-next` sets: one `Boot####` entry for the next boot only,
+/// or `none` to clear a pending `BootNext`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BootTarget {
+    Entry(u16),
+    Clear,
+}
+
+impl BootTarget {
+    pub fn keyword(self) -> String {
+        match self {
+            BootTarget::Entry(n) => format!("{n:04X}"),
+            BootTarget::Clear => "none".to_string(),
+        }
+    }
+
+    /// Four upper-case hex digits (`0003`, `001F`: efibootmgr's own
+    /// spelling) or `none`; nothing else. Root still checks the entry is
+    /// in efibootmgr's listing before setting it.
+    pub fn parse(arg: &OsStr) -> Result<BootTarget, Error> {
+        let b = arg.as_bytes();
+        if b == b"none" {
+            return Ok(BootTarget::Clear);
+        }
+        let hex = b.len() == 4
+            && b.iter()
+                .all(|c| c.is_ascii_digit() || (b'A'..=b'F').contains(c));
+        std::str::from_utf8(b)
+            .ok()
+            .filter(|_| hex)
+            .and_then(crate::efiboot::parse_num)
+            .map(BootTarget::Entry)
+            .ok_or_else(|| invalid("boot entry (four hex digits like 0003, or none)", arg))
+    }
+}
+
 /// Package file extensions pacman writes to its cache.
 const PKG_EXTS: [&str; 9] = [
     ".pkg.tar",
@@ -524,6 +560,36 @@ mod tests {
         );
         assert!(logind_dropin(big.as_bytes()).is_err());
         assert!(logind_dropin(b"[Login]\nHandlePowerKey=ign\xffore\n").is_err());
+    }
+
+    #[test]
+    fn boot_targets_are_four_hex_digits_or_none() {
+        assert_eq!(BootTarget::parse(os("0003")).unwrap(), BootTarget::Entry(3));
+        assert_eq!(
+            BootTarget::parse(os("001F")).unwrap(),
+            BootTarget::Entry(0x1F)
+        );
+        assert_eq!(BootTarget::parse(os("none")).unwrap(), BootTarget::Clear);
+        assert_eq!(BootTarget::Entry(0x1F).keyword(), "001F");
+        assert_eq!(BootTarget::Clear.keyword(), "none");
+        for bad in [
+            "3",
+            "00003",
+            "001f",
+            "Boot0003",
+            "0x03",
+            "-n",
+            "--delete-bootnext",
+            "0003 ",
+            " 0003",
+            "0003\n",
+            "NONE",
+            "",
+            "00G3",
+            "0003,0001",
+        ] {
+            assert!(BootTarget::parse(os(bad)).is_err(), "{bad:?} accepted");
+        }
     }
 
     #[test]

@@ -661,6 +661,96 @@ fn upgrade_and_rollback_exec_pacman_with_a_fixed_argv() {
     );
 }
 
+/// A fake efibootmgr: no arguments prints the fixture listing (the one
+/// captured on the owner's machine, or `listing`), anything else echoes
+/// its argv one per line.
+fn fake_efibootmgr(f: &Fixture, listing: &str) {
+    f.write("/usr/bin/efibootmgr.listing", listing);
+    let script = format!(
+        "#!/bin/sh\nif [ $# -eq 0 ]; then cat '{}'; exit 0; fi\nfor a do printf '%s\\n' \"$a\"; done\n",
+        f.p("/usr/bin/efibootmgr.listing").display()
+    );
+    let p = f.write("/usr/bin/efibootmgr", &script);
+    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+}
+
+const OWNER_EFI: &str = include_str!("data/efibootmgr.txt");
+
+#[test]
+fn boot_next_sets_only_a_listed_entry() {
+    skip_as_root!();
+    let f = Fixture::new();
+    fake_efibootmgr(&f, OWNER_EFI);
+    let o = f.run(&["boot-next", "0003"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert_eq!(
+        String::from_utf8_lossy(&o.stdout),
+        "--quiet\n--bootnext\n0003\n"
+    );
+    // A well-formed number the firmware doesn't have is refused as root.
+    let o = f.run(&["boot-next", "0099"]);
+    assert_eq!(code(&o), 3, "{}", stderr(&o));
+    assert!(o.stdout.is_empty(), "efibootmgr not run to set it");
+    assert!(stderr(&o).contains("Boot0099"), "{}", stderr(&o));
+    // Hostile or malformed arguments never reach efibootmgr.
+    for bad in [
+        &["boot-next", "3"][..],
+        &["boot-next", "001f"],
+        &["boot-next", "--delete-bootorder"],
+        &["boot-next", "-o"],
+        &["boot-next", "0003", "--bootorder"],
+        &["boot-next", "0003;reboot"],
+        &["boot-next", ""],
+        &["boot-next"],
+    ] {
+        let o = f.run(bad);
+        assert_eq!(code(&o), 2, "{bad:?}: {}", stderr(&o));
+        assert!(o.stdout.is_empty(), "{bad:?}");
+    }
+}
+
+#[test]
+fn boot_next_clears_only_a_pending_entry() {
+    skip_as_root!();
+    let f = Fixture::new();
+    fake_efibootmgr(&f, OWNER_EFI);
+    // Nothing pending: success without running efibootmgr -N (which would
+    // fail with ENOENT).
+    let o = f.run(&["boot-next", "none"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert!(o.stdout.is_empty());
+    let pending = OWNER_EFI.replace("Timeout:", "BootNext: 0003\nTimeout:");
+    fake_efibootmgr(&f, &pending);
+    let o = f.run(&["boot-next", "none"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert_eq!(
+        String::from_utf8_lossy(&o.stdout),
+        "--quiet\n--delete-bootnext\n"
+    );
+}
+
+#[test]
+fn boot_next_without_efibootmgr_or_efi() {
+    skip_as_root!();
+    let f = Fixture::new();
+    let o = f.run(&["boot-next", "0001"]);
+    assert_eq!(code(&o), 1);
+    assert!(
+        stderr(&o).contains("efibootmgr is not installed"),
+        "{}",
+        stderr(&o)
+    );
+    // Legacy BIOS boot: efibootmgr fails to read the variables.
+    let p = f.write(
+        "/usr/bin/efibootmgr",
+        "#!/bin/sh\necho 'EFI variables are not supported on this system.' >&2\nexit 2\n",
+    );
+    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    let o = f.run(&["boot-next", "0001"]);
+    assert_eq!(code(&o), 1);
+    assert!(stderr(&o).contains("not supported"), "{}", stderr(&o));
+}
+
 #[test]
 fn the_policy_has_one_action_per_subcommand() {
     let policy = include_str!("../data/org.margo.mshell.privileged.policy");

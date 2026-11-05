@@ -1,0 +1,33 @@
+BootCurrent: 0001
+Timeout: 0 seconds
+BootOrder: 0001,0003,001F,0020,0021,001E,0022,001D,0023,0024,0025,0026,0002
+Boot0001* cachyos-nvme1	HD(1,GPT,a04a15e9-c6d2-4888-afdd-115e3e28ebf5,0x800,0x400000)/\EFI\cachyos-nvme1\grubx64.efi
+Boot0002* Linux-Firmware-Updater	HD(1,GPT,a04a15e9-c6d2-4888-afdd-115e3e28ebf5,0x800,0x400000)/\EFI\cachyos\fwupdx64.efi
+Boot0003* cachyos-nvme0	HD(1,GPT,a04a15e9-c6d2-4888-afdd-115e3e28ebf5,0x800,0x400000)/\EFI\cachyos\grubx64.efi
+Boot0010  Setup	FvFile(721c8b66-426c-4e86-8e99-3457c46ab0b9)
+Boot0011  Boot Menu	FvFile(126a762d-5758-4fca-8531-201a7f57f850)
+Boot0012  Diagnostic Splash Screen	FvFile(a7d8d9a6-6ab0-4aeb-ad9d-163e59a7a380)
+Boot0013  Lenovo Diagnostics	FvFile(3f7e615b-0d45-4f80-88dc-26b234958560)
+Boot0014  ThinkShield Passwordless Power-On Device Manager	FvFile(08448b41-7f83-49be-82a7-0e84790ab133)
+Boot0015  Wi-Fi Configuration	FvFile(d3aaff0f-cb22-4792-896c-802c2e9383ba)2d004100700070000000
+Boot0016  Reinstall Windows from Cloud	FvFile(3edbaac4-5017-4870-8cc4-721f9ef1974f)2d004100700070000000
+Boot0017  Intel(R) MEBx	FvFile(29a70110-7762-4211-ae88-fab19b7665be)
+Boot0018  Startup Interrupt Menu	FvFile(f46ee6f4-4785-43a3-923d-7f786c3c8479)
+Boot0019  Rescue and Recovery	FvFile(665d3f60-ad3e-4cad-8e26-db46eee9f1b5)
+Boot001A  Regulatory Information	FvFile(478c92a0-2622-42b7-a65d-5894169e4d24)
+Boot001B  Asset Information	FvFile(da465b87-a26f-4c12-b78a-0361428fa026)
+Boot001C  Lenovo Memory Self Repair	FvFile(4ddd67e7-bdf5-4473-8ab0-02821c084338)
+Boot001D* USB CD	VenMsg(bc7838d2-0f82-4d60-8316-c068ee79d25b,86701296aa5a7848b66cd49dd3ba6a55)
+Boot001E* USB FDD	VenMsg(bc7838d2-0f82-4d60-8316-c068ee79d25b,6ff015a28830b543a8b8641009461e49)
+Boot001F* NVMe0	VenMsg(bc7838d2-0f82-4d60-8316-c068ee79d25b,001c199932d94c4eae9aa0b6e98eb8a400)
+Boot0020* NVMe1	VenMsg(bc7838d2-0f82-4d60-8316-c068ee79d25b,001c199932d94c4eae9aa0b6e98eb8a401)
+Boot0021* USB HDD	VenMsg(bc7838d2-0f82-4d60-8316-c068ee79d25b,33e821aaaf33bc4789bd419f88c50803)
+Boot0022* PXE BOOT	VenMsg(bc7838d2-0f82-4d60-8316-c068ee79d25b,78a84aaf2b2afc4ea79cf5cc8f3d3803)
+Boot0023* LENOVO CLOUD	VenMsg(bc7838d2-0f82-4d60-8316-c068ee79d25b,ad38ccbbf7edf04d959cf42aa74d3650)/Uri(https://download.lenovo.com/pccbbs/cdeploy/efi/boot.efi)
+Boot0024* ON-PREMISE	VenMsg(bc7838d2-0f82-4d60-8316-c068ee79d25b,ad38ccbbf7edf04d959cf42aa74d3650)/Uri()
+Boot0025  Other CD	VenMsg(bc7838d2-0f82-4d60-8316-c068ee79d25b,aea2090adfde214e8b3a5e471856a35400)
+Boot0026  Other HDD	VenMsg(bc7838d2-0f82-4d60-8316-c068ee79d25b,ca88c2349e7ae947beeb43038a5aeae700)
+Boot0027* IDER BOOT CDROM	PciRoot(0x0)/Pci(0x14,0x0)/USB(11,1)
+Boot0028* IDER BOOT Floppy	PciRoot(0x0)/Pci(0x14,0x0)/USB(11,0)
+Boot0029* ATA HDD	VenMsg(bc7838d2-0f82-4d60-8316-c068ee79d25b,91af625956449f41a7b91f4f892ab0f6)
+Boot002A* ATAPI CD	VenMsg(bc7838d2-0f82-4d60-8316-c068ee79d25b,aea2090adfde214e8b3a5e471856a354)

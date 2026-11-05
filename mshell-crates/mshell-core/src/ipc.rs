@@ -331,9 +331,8 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::Mdash => {
                     app_sender.emit(ShellInput::ToggleMdashMenu(active_monitor().await));
                 }
-                IPCCommand::SessionAction(action) => {
-                    app_sender.emit(ShellInput::RunSessionAction(action));
-                }
+                IPCCommand::SessionAction(a) => app_sender.emit(ShellInput::RunSessionAction(a)),
+                IPCCommand::SessionRebootInto(n) => app_sender.emit(ShellInput::RebootInto(n)),
                 IPCCommand::PluginMenu(key) => {
                     app_sender.emit(ShellInput::TogglePluginMenu(active_monitor().await, key));
                 }

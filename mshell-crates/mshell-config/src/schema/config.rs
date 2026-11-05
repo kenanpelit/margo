@@ -22,6 +22,7 @@ mod dock;
 mod launcher;
 mod menus;
 mod notifications;
+mod session;
 mod system;
 mod theme;
 mod time;
@@ -32,6 +33,7 @@ pub use dock::*;
 pub use launcher::*;
 pub use menus::*;
 pub use notifications::*;
+pub use session::*;
 pub use system::*;
 pub use theme::*;
 pub use time::*;
@@ -411,24 +413,6 @@ impl Default for Idle {
             inhibit_lid_switch: false,
         }
     }
-}
-
-/// Session actions (the power menu). Each field is the command
-/// run for that action; an empty string falls back to the
-/// built-in default: Logout / Reboot / Shutdown go through margo's
-/// `session_end` (every window is closed gracefully first, then
-/// systemd), Suspend runs `systemctl suspend`, Lock the in-process
-/// lock. Set a command to route the button through your own script
-/// instead. Non-empty commands run via `sh -c`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
-#[serde(default)]
-#[derive(Default)]
-pub struct Session {
-    pub lock_command: String,
-    pub logout_command: String,
-    pub suspend_command: String,
-    pub reboot_command: String,
-    pub shutdown_command: String,
 }
 
 /// A user-bookmarked weather location: a display name + the query used

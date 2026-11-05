@@ -116,6 +116,14 @@ step through its wallpapers only.
 .B session \fISUBCOMMAND\fR
 Session and power actions:
 .IR menu " | " lock " | " logout " | " suspend " | " reboot " | " shutdown .
+.B session boot\-entries
+lists the UEFI boot entries (efibootmgr);
+.B session reboot\-into \fIENTRY\fR
+sets the one-shot BootNext to
+.I ENTRY
+(its number, e.g.
+.IR 0003 ,
+or its exact label) through a polkit prompt, then reboots.
 .TP
 .B lock \fR[\fBactivate\fR | \fBcheck\fR]
 Lock the session. Bare

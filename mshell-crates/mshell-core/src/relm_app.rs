@@ -244,6 +244,9 @@ pub(crate) enum ShellInput {
     OpenSettingsAtSection(Option<String>, String),
     ToggleMdashMenu(Option<String>),
     RunSessionAction(mshell_utils::session::SessionAction),
+    /// `mshellctl session reboot-into`: set `BootNext` to this (resolved)
+    /// UEFI entry through the root helper, then run the session Reboot.
+    RebootInto(u16),
     CloseAllMenus,
     ToggleScreenshareMenu(Option<String>, tokio::sync::oneshot::Sender<String>, String),
     QueueFrameRedraw,
@@ -1090,6 +1093,30 @@ impl Component for Shell {
             }
             ShellInput::RunSessionAction(action) => {
                 mshell_utils::session::run_session_action(action);
+            }
+            ShellInput::RebootInto(num) => {
+                // pkexec runs on tokio while the polkit dialog is up; the
+                // reboot is sent back to this (GTK) thread.
+                let input = sender.input_sender().clone();
+                relm4::gtk::glib::spawn_future_local(async move {
+                    use mshell_osd::toast::{ToastEvent, ToastSeverity, push_toast};
+                    use mshell_utils::boot_next::{BootTarget, set};
+                    let res = mshell_services::tokio_rt()
+                        .spawn(set(BootTarget::Entry(num)))
+                        .await
+                        .unwrap_or_else(|e| Err(format!("pkexec task failed: {e}")));
+                    match res {
+                        Ok(()) => input.emit(ShellInput::RunSessionAction(
+                            mshell_utils::session::SessionAction::Reboot,
+                        )),
+                        Err(e) => push_toast(ToastEvent {
+                            icon: "system-reboot-symbolic".to_string(),
+                            title: "Reboot into… failed".to_string(),
+                            body: Some(e),
+                            severity: ToastSeverity::Danger,
+                        }),
+                    }
+                });
             }
             ShellInput::CloseAllMenus => {
                 self.window_groups.iter().for_each(|(_, wg)| {

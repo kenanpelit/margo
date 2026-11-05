@@ -154,6 +154,7 @@ optdepends=(
   "curl: used by the nip public-IP widget (already pulled by base)"
   "udisks2: removable-drive pill (mount / unmount / eject)"
   "smartmontools: drive health in the CPU dashboard"
+  "efibootmgr: session menu Reboot into… (UEFI BootNext)"
   "cava: audio visualizer pill"
   "wireplumber: wpctl for the launcher audio provider"
   "noise-suppression-for-voice: microphone noise suppression (RNNoise LADSPA plugin)"

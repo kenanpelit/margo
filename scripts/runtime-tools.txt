@@ -56,6 +56,7 @@ wtype                       wtype                      launcher typing (pass, ca
 playerctl                   playerctl                  media keys on the lock screen, launcher media provider
 qalc                        libqalculate               calculator units / currency / percent
 smartctl                    smartmontools              drive health in the CPU dashboard
+efibootmgr                  efibootmgr                 session menu "Reboot into…" (UEFI BootNext); mdots boot facts
 iw                          iw                         Wi-Fi hotspot
 wlr-randr                   wlr-randr                  mlayout monitor apply / capture
 wpctl                       wireplumber                launcher audio provider
@@ -159,5 +160,4 @@ tpm2_getcap                 -                          mdots security facts, pro
 nft                         -                          mdots security facts, probed
 iptables                    -                          mdots security facts, probed
 firewall-cmd                -                          mdots security facts, probed
-efibootmgr                  -                          mdots boot facts, probed
 jack_control                -                          mdots audio facts, probed

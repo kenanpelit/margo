@@ -19,6 +19,7 @@ mshell-common.workspace = true
 mshell-config.workspace = true
 mshell-idle.workspace = true
 mshell-image.workspace = true
+mshell-privileged.workspace = true
 mshell-process.workspace = true
 mshell-services.workspace = true
 mshell-session.workspace = true
