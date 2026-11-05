@@ -49,9 +49,11 @@ impl MargoState {
         self.wake_repaint_backend();
     }
 
-    /// Whether DPMS acts on `mon`: an output in the layout.
+    /// Whether DPMS acts on `mon`: an output in the layout, or the active
+    /// mirror target — out of the layout but lit with the mirror, so
+    /// "screen off" must darken it too.
     fn dpms_reachable(&self, mon: &MargoMonitor) -> bool {
-        mon.enabled
+        mon.enabled || self.mirror.is_target(&mon.name)
     }
 
     /// Whether any panel DPMS can wake is switched off. An output that

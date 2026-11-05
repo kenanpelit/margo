@@ -106,3 +106,30 @@ fn switching_off_a_dark_output_does_not_leave_input_swallowed() {
     fx.server.state.dpms_off_at = None;
     assert!(!fx.server.state.wake_dpms_on_input());
 }
+
+#[test]
+fn a_mirror_target_follows_dpms() {
+    // Mirroring the laptop onto a projector, then "screen off" (a bind,
+    // `mctl dispatch dpms off`, an idle daemon): the projector used to
+    // stay lit showing the desktop, since the target is out of the layout.
+    let mut fx = two_outputs();
+    fx.server
+        .state
+        .start_mirror(Some("eDP-1"), Some("DP-3"))
+        .unwrap();
+    fx.server.state.request_dpms(Some(false), None);
+    assert_eq!(last_request(&fx, "DP-3"), Some(false));
+    assert!(!power_on(&mut fx, "DP-3"));
+    assert!(!power_on(&mut fx, "eDP-1"));
+
+    fx.server.state.dpms_off_at = None;
+    assert!(fx.server.state.wake_dpms_on_input());
+    assert_eq!(last_request(&fx, "DP-3"), Some(true));
+    assert!(power_on(&mut fx, "DP-3"));
+
+    // Addressed by name (wlr-output-power on the target's wl_output).
+    fx.server.state.request_dpms(Some(false), Some("DP-3"));
+    assert_eq!(last_request(&fx, "DP-3"), Some(false));
+    assert!(!power_on(&mut fx, "DP-3"));
+    assert!(power_on(&mut fx, "eDP-1"));
+}
