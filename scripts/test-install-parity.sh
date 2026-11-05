@@ -36,4 +36,10 @@ check "a path new in the PKGBUILD fails" 1 "$(run)"
 fresh; sed -i 's/ mpower mtm mshellshare/ mpower mshellshare/' "$tmp/justfile"
 check "a binary missing from the justfile fails" 1 "$(run)"
 
+fresh; sed -i 's#^\(  cargo build .*\) --features mshell/wasm-plugins#\1#' "$tmp/install.sh"
+check "a build group missing the PKGBUILD's --features fails" 1 "$(run)"
+
+fresh; sed -i '0,/cargo build --locked/s//cargo build/' "$tmp/install.sh"
+check "an install.sh cargo build without --locked fails" 1 "$(run)"
+
 exit "$fail"

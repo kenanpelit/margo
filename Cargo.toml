@@ -371,7 +371,8 @@ strip = "none"
 # `--features mshell/wasm-plugins`, and with it dist fails to link
 # ("rust-lld: relocation refers to a symbol in a discarded section:
 # wasmtime_fiber_switch_36_0_20"; wasmtime 36's fiber asm under fat LTO), so
-# the PKGBUILD can't move to dist until that is solved.
+# the PKGBUILD can't move to dist until that is solved, and install.sh builds
+# its shell group with dist set back to thin LTO (`--config`).
 [profile.dist]
 inherits = "release"
 lto = "fat"

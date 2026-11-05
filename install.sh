@@ -260,25 +260,34 @@ ensure_rust() {
   log "rust: rustup has no default toolchain; margo builds with the pin. Run 'rustup default stable' if you want one."
 }
 
-# Two separate cargo invocations, matching the PKGBUILD split, so the
-# tokio/zbus shell stack doesn't contaminate the compositor build via
-# feature unification.
+# Three cargo invocations, the PKGBUILD's build groups with the same
+# features, so the tokio/zbus shell stack doesn't contaminate the
+# compositor build via feature unification. `--locked` builds exactly
+# Cargo.lock, like the PKGBUILD (`--frozen`) and CI.
 debian_build() {
   cd "$REPO_ROOT"
   # Ship with the `dist` profile (fat LTO + single codegen unit) — the
   # installer is not the dev inner loop, so the longer compile buys a
   # faster, smaller installed binary. `just` / CI stay on `release`.
   log "building compositor group (dist)"
-  cargo build --profile dist -p margo -p start-margo \
+  cargo build --locked --profile dist -p margo -p start-margo \
     -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mdots \
     -p mlogind -p mpower -p mcal -p mtm
-  log "building shell group (dist)"
-  cargo build --profile dist -p mshell -p mshellctl -p mshellshare \
+  # The shell group gets the PKGBUILD's `--features mshell/wasm-plugins`
+  # (the sandboxed WASM plugin panels, e.g. the assistant chat). wasmtime's
+  # fiber asm does not link under fat LTO (Cargo.toml [profile.dist]), so
+  # this one invocation sets dist back to release's thin LTO + default 16
+  # codegen units — the settings the PKGBUILD links this group with. The
+  # binaries still land in target/dist with the other groups.
+  log "building shell group (dist with thin LTO, WASM plugins on)"
+  cargo build --locked --profile dist --features mshell/wasm-plugins \
+    --config 'profile.dist.lto="thin"' --config 'profile.dist.codegen-units=16' \
+    -p mshell -p mshellctl -p mshellshare \
     -p mpicker -p mwizard -p mkeys -p mvpn -p margo-portal -p mgreet
   # mtune on its own — its async-io zbus stack must not feature-unify with
   # the shell group's tokio (matches the PKGBUILD's isolated invocation).
   log "building mtune (dist)"
-  cargo build --profile dist -p mtune
+  cargo build --locked --profile dist -p mtune
 }
 
 # install_file <mode> <src> <dst> — install one file and record <dst>

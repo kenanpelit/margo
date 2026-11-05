@@ -97,13 +97,15 @@ source `$HOME/.cargo/env`, and install the pin.
 
 ### 3. Build
 
-Two separate `cargo build --release` invocations, matching the PKGBUILD
-split exactly (so feature unification does not contaminate the
-compositor build):
-
-The same `-p` groups as the PKGBUILD's `build()` (compositor group, shell
-group, mtune alone), with `--profile dist`. `scripts/install-parity.sh`
-(a CI gate) fails when the groups, the `/usr/bin` binaries, or any
+The same three `cargo build` groups as the PKGBUILD's `build()`
+(compositor group, shell group, mtune alone — separate invocations so
+feature unification does not contaminate the compositor build), with the
+same `--features` (the shell group's `mshell/wasm-plugins`, the WASM
+plugin panels), `--locked`, and `--profile dist`. The shell group sets
+dist back to thin LTO with `--config` for its one invocation: wasmtime's
+fiber asm does not link under fat LTO (see `[profile.dist]` in
+Cargo.toml). `scripts/install-parity.sh` (a CI gate) fails when the
+groups, their features, `--locked`, the `/usr/bin` binaries, or any
 installed path differ between the two.
 
 (Built from the **local working tree** on Debian — unlike the Arch

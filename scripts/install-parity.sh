@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # install.sh's Debian path must ship what the PKGBUILD ships. The two are
 # kept by hand, so this gate diffs them:
-#   1. the cargo build groups (`-p` sets per invocation),
+#   1. the cargo build groups (`-p` sets and `--features` per invocation;
+#      install.sh's builds must also be `--locked`),
 #   2. the binaries installed to /usr/bin (and the no-manifest uninstall list),
 #   3. every installed destination path (units, wants links, assets, docs),
 #   4. that the justfile (`just all`) installs every packaged binary.
@@ -27,10 +28,14 @@ body() {
         grep -v '^[[:space:]]*#' | sed -e ':a' -e '/\\$/N' -e 's/\\\n/ /' -e 'ta'
 }
 
-# groups — one line per `cargo build`, its sorted -p list.
+# groups — one line per `cargo build`: its sorted -p list, then its sorted
+# --features (a group built without the PKGBUILD's features ships a
+# different program under the same name).
 groups() {
     grep -E '^[[:space:]]*cargo build' | while read -r cmd; do
         grep -oE -- '-p [A-Za-z0-9_-]+' <<<"$cmd" | awk '{print $2}' | sort | tr '\n' ' '
+        grep -oE -- '--features[= ][^ ]+' <<<"$cmd" | sed -E 's/^--features[= ]//' | tr ',' '\n' |
+            sort | sed 's/^/+/' | tr '\n' ' '
         echo
     done | sort
 }
@@ -62,6 +67,15 @@ pk_groups="$(body "$pkgbuild" build | groups)"
 is_groups="$(body "$installsh" debian_build | groups)"
 report "cargo build groups" "$(comm -23 <(echo "$pk_groups") <(echo "$is_groups"))" \
     "$(comm -13 <(echo "$pk_groups") <(echo "$is_groups"))"
+
+# Every install.sh build is pinned to Cargo.lock, as the PKGBUILD's are.
+unlocked="$(body "$installsh" debian_build | grep -E '^[[:space:]]*cargo build' |
+    grep -vE -- '--locked|--frozen' || true)"
+if [ -n "$unlocked" ]; then
+    echo "install-parity: install.sh cargo builds without --locked"
+    sed 's/^[[:space:]]*/  /' <<<"$unlocked"
+    fail=1
+fi
 
 # 2. binaries
 pk_bins="$(body "$pkgbuild" package | bins)"
