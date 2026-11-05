@@ -383,6 +383,163 @@ pub(crate) async fn fetch() -> GithubSnapshot {
     GithubSnapshot { notifications, prs }
 }
 
+// ── Contribution calendar ──────────────────────────────────────────────
+
+/// How often the calendar is re-fetched (it changes slowly; the plugin's
+/// default is 30 minutes).
+pub(crate) const CONTRIB_POLL_SECS: u64 = 30 * 60;
+
+/// The viewer's last-year contribution calendar.
+pub(crate) const CONTRIB_QUERY: &str = "query { viewer { login contributionsCollection { contributionCalendar { totalContributions weeks { contributionDays { date contributionCount contributionLevel } } } } } }";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ContribDay {
+    pub(crate) date: chrono::NaiveDate,
+    pub(crate) count: u32,
+    /// GitHub's quartile bucket, 0 (none) ..= 4.
+    pub(crate) level: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ContribCalendar {
+    pub(crate) login: String,
+    pub(crate) total: u32,
+    /// Sunday-first weeks, oldest first (the last one may be partial).
+    pub(crate) weeks: Vec<Vec<ContribDay>>,
+}
+
+/// The pill / card figures for `today` (the user's local date).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct ContribStats {
+    pub(crate) today: u32,
+    pub(crate) current_streak: u32,
+    pub(crate) best_streak: u32,
+    pub(crate) total: u32,
+}
+
+fn contrib_level(s: Option<&str>) -> u8 {
+    match s {
+        Some("FIRST_QUARTILE") => 1,
+        Some("SECOND_QUARTILE") => 2,
+        Some("THIRD_QUARTILE") => 3,
+        Some("FOURTH_QUARTILE") => 4,
+        _ => 0,
+    }
+}
+
+/// Parse the `gh api graphql` response for [`CONTRIB_QUERY`]. Days with
+/// an unparsable date are dropped; a response without a calendar is an
+/// error (GitHub reports permission problems that way).
+pub(crate) fn parse_contributions(body: &str) -> Result<ContribCalendar, GhError> {
+    let v: Value = serde_json::from_str(body).map_err(|e| GhError::Failed(e.to_string()))?;
+    if let Some(msg) = v.pointer("/errors/0/message").and_then(Value::as_str) {
+        return Err(GhError::Failed(msg.to_string()));
+    }
+    let cal = v
+        .pointer("/data/viewer/contributionsCollection/contributionCalendar")
+        .ok_or_else(|| GhError::Failed("no contribution calendar in the response".into()))?;
+    let weeks = cal
+        .get("weeks")
+        .and_then(Value::as_array)
+        .ok_or_else(|| GhError::Failed("invalid contribution calendar".into()))?
+        .iter()
+        .map(|w| {
+            w.get("contributionDays")
+                .and_then(Value::as_array)
+                .map(|days| {
+                    days.iter()
+                        .filter_map(|d| {
+                            let date = d.get("date").and_then(Value::as_str)?;
+                            Some(ContribDay {
+                                date: chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()?,
+                                count: d
+                                    .get("contributionCount")
+                                    .and_then(Value::as_u64)
+                                    .map_or(0, |c| c.min(u64::from(u32::MAX)) as u32),
+                                level: contrib_level(
+                                    d.get("contributionLevel").and_then(Value::as_str),
+                                ),
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+        })
+        .filter(|w: &Vec<ContribDay>| !w.is_empty())
+        .collect();
+    Ok(ContribCalendar {
+        login: v
+            .pointer("/data/viewer/login")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        total: cal
+            .get("totalContributions")
+            .and_then(Value::as_u64)
+            .map_or(0, |c| c.min(u64::from(u32::MAX)) as u32),
+        weeks,
+    })
+}
+
+impl ContribCalendar {
+    pub(crate) fn days(&self) -> impl Iterator<Item = &ContribDay> {
+        self.weeks.iter().flatten()
+    }
+
+    /// Today's count, the current and best streak (consecutive days with at
+    /// least one contribution) and the year total. Days after `today` are
+    /// ignored, and an empty *today* doesn't break the streak yet — it
+    /// still counts the run that ended yesterday until the day is over.
+    pub(crate) fn stats(&self, today: chrono::NaiveDate) -> ContribStats {
+        let days: Vec<&ContribDay> = self.days().filter(|d| d.date <= today).collect();
+        let mut best = 0;
+        let mut run = 0;
+        let mut prev: Option<chrono::NaiveDate> = None;
+        for d in &days {
+            let contiguous = prev.is_none_or(|p| p.succ_opt() == Some(d.date));
+            if d.count > 0 {
+                run = if contiguous { run + 1 } else { 1 };
+                best = best.max(run);
+            } else {
+                run = 0;
+            }
+            prev = Some(d.date);
+        }
+        let today_count = days
+            .last()
+            .filter(|d| d.date == today)
+            .map_or(0, |d| d.count);
+        let mut current = 0;
+        let mut expect = if today_count > 0 {
+            Some(today)
+        } else {
+            today.pred_opt()
+        };
+        for d in days.iter().rev() {
+            if Some(d.date) > expect {
+                continue; // today, already accounted for
+            }
+            if Some(d.date) != expect || d.count == 0 {
+                break;
+            }
+            current += 1;
+            expect = d.date.pred_opt();
+        }
+        ContribStats {
+            today: today_count,
+            current_streak: current,
+            best_streak: best,
+            total: self.total,
+        }
+    }
+}
+
+/// Fetch the viewer's contribution calendar.
+pub(crate) async fn fetch_contributions() -> Result<ContribCalendar, GhError> {
+    let body = gh(&["api", "graphql", "-f", &format!("query={CONTRIB_QUERY}")]).await?;
+    parse_contributions(&body)
+}
+
 /// Mark one thread read. `id` must be the digits-only thread id.
 pub(crate) async fn mark_read(id: &str) -> Result<(), GhError> {
     if id.is_empty() || !id.bytes().all(|b| b.is_ascii_digit()) {
@@ -529,6 +686,77 @@ mod tests {
             GhError::from_stderr("HTTP 502: Bad Gateway\nmore"),
             GhError::Failed("HTTP 502: Bad Gateway".into())
         );
+    }
+
+    /// A real `gh api graphql` CONTRIB_QUERY response from this machine,
+    /// trimmed to its last three weeks (2026-10-18 … 2026-11-06, the last
+    /// week partial) plus the year total.
+    const CONTRIB: &str = r#"{"data":{"viewer":{"login":"kenanpelit","contributionsCollection":{"contributionCalendar":{"totalContributions":8086,"weeks":[
+      {"contributionDays":[{"date":"2026-10-18","contributionCount":0,"contributionLevel":"NONE"},{"date":"2026-10-19","contributionCount":0,"contributionLevel":"NONE"},{"date":"2026-10-20","contributionCount":0,"contributionLevel":"NONE"},{"date":"2026-10-21","contributionCount":2,"contributionLevel":"FIRST_QUARTILE"},{"date":"2026-10-22","contributionCount":2,"contributionLevel":"FIRST_QUARTILE"},{"date":"2026-10-23","contributionCount":0,"contributionLevel":"NONE"},{"date":"2026-10-24","contributionCount":0,"contributionLevel":"NONE"}]},
+      {"contributionDays":[{"date":"2026-10-25","contributionCount":7,"contributionLevel":"FIRST_QUARTILE"},{"date":"2026-10-26","contributionCount":0,"contributionLevel":"NONE"},{"date":"2026-10-27","contributionCount":2,"contributionLevel":"FIRST_QUARTILE"},{"date":"2026-10-28","contributionCount":6,"contributionLevel":"FIRST_QUARTILE"},{"date":"2026-10-29","contributionCount":0,"contributionLevel":"NONE"},{"date":"2026-10-30","contributionCount":0,"contributionLevel":"NONE"},{"date":"2026-10-31","contributionCount":0,"contributionLevel":"NONE"}]},
+      {"contributionDays":[{"date":"2026-11-01","contributionCount":0,"contributionLevel":"NONE"},{"date":"2026-11-02","contributionCount":119,"contributionLevel":"FOURTH_QUARTILE"},{"date":"2026-11-03","contributionCount":47,"contributionLevel":"SECOND_QUARTILE"},{"date":"2026-11-04","contributionCount":178,"contributionLevel":"FOURTH_QUARTILE"},{"date":"2026-11-05","contributionCount":170,"contributionLevel":"FOURTH_QUARTILE"},{"date":"2026-11-06","contributionCount":0,"contributionLevel":"NONE"}]}
+    ]}}}}}"#;
+
+    fn ymd(y: i32, m: u32, d: u32) -> chrono::NaiveDate {
+        chrono::NaiveDate::from_ymd_opt(y, m, d).unwrap()
+    }
+
+    #[test]
+    fn contributions_parse_with_levels() {
+        let cal = parse_contributions(CONTRIB).unwrap();
+        assert_eq!(cal.login, "kenanpelit");
+        assert_eq!(cal.total, 8086);
+        assert_eq!(cal.weeks.len(), 3);
+        assert_eq!(cal.weeks[2].len(), 6, "the current week is partial");
+        let nov4 = cal.days().find(|d| d.date == ymd(2026, 11, 4)).unwrap();
+        assert_eq!((nov4.count, nov4.level), (178, 4));
+        assert!(matches!(
+            parse_contributions(r#"{"errors":[{"message":"Bad credentials"}]}"#),
+            Err(GhError::Failed(m)) if m == "Bad credentials"
+        ));
+        assert!(parse_contributions(r#"{"data":{"viewer":{"login":"x"}}}"#).is_err());
+    }
+
+    #[test]
+    fn streaks_keep_yesterday_until_today_ends() {
+        let cal = parse_contributions(CONTRIB).unwrap();
+        // Today (Nov 6) is still empty: the Nov 2–5 run counts.
+        let s = cal.stats(ymd(2026, 11, 6));
+        assert_eq!(
+            s,
+            ContribStats {
+                today: 0,
+                current_streak: 4,
+                best_streak: 4,
+                total: 8086
+            }
+        );
+        // On Nov 5 itself the streak includes today.
+        let s = cal.stats(ymd(2026, 11, 5));
+        assert_eq!((s.today, s.current_streak), (170, 4));
+        // Nov 1 was empty: looking from Nov 2 the streak is just today.
+        assert_eq!(cal.stats(ymd(2026, 11, 2)).current_streak, 1);
+        // From Oct 29 (empty) back to Oct 28: the Oct 27–28 run.
+        let s = cal.stats(ymd(2026, 10, 29));
+        assert_eq!((s.current_streak, s.best_streak), (2, 2));
+        // A future date past the calendar: no current streak.
+        assert_eq!(cal.stats(ymd(2026, 12, 25)).current_streak, 0);
+    }
+
+    #[test]
+    fn a_gap_in_the_data_breaks_a_streak() {
+        let day = |d, c| ContribDay {
+            date: ymd(2026, 1, d),
+            count: c,
+            level: 1,
+        };
+        let cal = ContribCalendar {
+            login: String::new(),
+            total: 3,
+            weeks: vec![vec![day(1, 1), day(2, 1)], vec![day(5, 1)]],
+        };
+        let s = cal.stats(ymd(2026, 1, 5));
+        assert_eq!((s.current_streak, s.best_streak), (1, 2));
     }
 
     #[test]

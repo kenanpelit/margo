@@ -1,13 +1,22 @@
-//! GitHub bar pill — unread notification count via the `gh` CLI.
+//! GitHub bar pill — unread notification count (or a contribution
+//! figure) via the `gh` CLI.
 //!
 //! The GitHub mark with the shared read/unread corner dot (DESIGN.md §5
 //! "Read / unread markers", the `.notif-dot` the notifications bell uses)
-//! and the unread count beside it. The data comes from the shared
-//! [`GITHUB_POLL`], polled every two minutes while a pill or the menu is
-//! mapped. Click opens `MenuType::Github`; right-click re-polls.
+//! and a count beside it: unread notifications by default, or — per
+//! Settings → Widgets → GitHub → *Pill shows* — today's contributions, the
+//! current streak or the year total. The data comes from the shared
+//! [`GITHUB_POLL`] (every two minutes) and [`CONTRIB_POLL`] (every 30
+//! minutes, only while a contribution metric or the Activity tab is
+//! shown), active while a pill or the menu is mapped. Click opens
+//! `MenuType::Github`; right-click re-polls.
 
-use crate::github::{self, GithubSnapshot};
+use crate::github::{self, ContribCalendar, GhError, GithubSnapshot};
+use mshell_common::scoped_effects::EffectScope;
+use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{ConfigStoreFields, GithubConfigStoreFields, GithubPillMetric};
 use mshell_utils::shared_poll::{PollSubscription, SharedPoll};
+use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::rc::Rc;
@@ -21,15 +30,33 @@ pub(crate) static GITHUB_POLL: LazyLock<SharedPoll<GithubSnapshot>> = LazyLock::
     )
 });
 
+pub(crate) type ContribResult = Result<ContribCalendar, GhError>;
+
+/// The contribution calendar, shared by the pill and the menu's Activity
+/// tab.
+pub(crate) static CONTRIB_POLL: LazyLock<SharedPoll<ContribResult>> = LazyLock::new(|| {
+    SharedPoll::new(
+        || Duration::from_secs(github::CONTRIB_POLL_SECS),
+        || Box::pin(github::fetch_contributions()),
+    )
+});
+
 pub(crate) struct GithubModel {
     snapshot: Option<GithubSnapshot>,
+    contrib: Option<ContribResult>,
+    metric: GithubPillMetric,
+    mapped: Rc<std::cell::Cell<bool>>,
     _poll: Rc<PollSubscription<GithubSnapshot>>,
+    contrib_poll: PollSubscription<ContribResult>,
+    _effects: EffectScope,
 }
 
 #[derive(Debug)]
 pub(crate) enum GithubInput {
     Clicked,
     Refresh,
+    MetricChanged,
+    Mapped(bool),
 }
 
 #[derive(Debug)]
@@ -42,6 +69,7 @@ pub(crate) struct GithubInit {}
 #[derive(Debug)]
 pub(crate) enum GithubCommandOutput {
     Snapshot(GithubSnapshot),
+    Contrib(ContribResult),
 }
 
 #[relm4::component(pub)]
@@ -105,12 +133,41 @@ impl Component for GithubModel {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let poll = Rc::new(GITHUB_POLL.subscribe());
+        let mapped = Rc::new(std::cell::Cell::new(false));
         {
-            let p = poll.clone();
-            root.connect_map(move |_| p.set_active(true));
-            let p = poll.clone();
-            root.connect_unmap(move |_| p.set_active(false));
+            let (p, s) = (poll.clone(), sender.clone());
+            root.connect_map(move |_| {
+                p.set_active(true);
+                s.input(GithubInput::Mapped(true));
+            });
+            let (p, s) = (poll.clone(), sender.clone());
+            root.connect_unmap(move |_| {
+                p.set_active(false);
+                s.input(GithubInput::Mapped(false));
+            });
         }
+        let contrib_poll = CONTRIB_POLL.subscribe();
+        let mut crx = contrib_poll.receiver();
+        sender.command(|out, shutdown| async move {
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            loop {
+                let c = crx.borrow_and_update().clone();
+                if let Some(c) = c {
+                    let _ = out.send(GithubCommandOutput::Contrib(c));
+                }
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    changed = crx.changed() => if changed.is_err() { break },
+                }
+            }
+        });
+        let mut effects = EffectScope::new();
+        let s = sender.clone();
+        effects.push(move |_| {
+            let _ = config_manager().config().github().pill_metric().get();
+            s.input(GithubInput::MetricChanged);
+        });
         let mut rx = poll.receiver();
         sender.command(|out, shutdown| async move {
             let shutdown_fut = shutdown.wait();
@@ -137,19 +194,52 @@ impl Component for GithubModel {
 
         let model = GithubModel {
             snapshot: None,
+            contrib: None,
+            metric: config_manager()
+                .config()
+                .github()
+                .pill_metric()
+                .get_untracked(),
+            mapped,
             _poll: poll,
+            contrib_poll,
+            _effects: effects,
         };
         let widgets = view_output!();
-        apply_visual(&widgets, &root, None);
+        model.apply_visual(&widgets, &root);
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
+    fn update_with_view(
+        &mut self,
+        widgets: &mut Self::Widgets,
+        message: Self::Input,
+        sender: ComponentSender<Self>,
+        root: &Self::Root,
+    ) {
         match message {
             GithubInput::Clicked => {
                 let _ = sender.output(GithubOutput::Clicked);
             }
-            GithubInput::Refresh => GITHUB_POLL.refresh_now(),
+            GithubInput::Refresh => {
+                GITHUB_POLL.refresh_now();
+                if self.metric.uses_contributions() {
+                    CONTRIB_POLL.refresh_now();
+                }
+            }
+            GithubInput::MetricChanged => {
+                self.metric = config_manager()
+                    .config()
+                    .github()
+                    .pill_metric()
+                    .get_untracked();
+                self.sync_contrib_poll();
+                self.apply_visual(widgets, root);
+            }
+            GithubInput::Mapped(on) => {
+                self.mapped.set(on);
+                self.sync_contrib_poll();
+            }
         }
     }
 
@@ -163,28 +253,85 @@ impl Component for GithubModel {
         match message {
             GithubCommandOutput::Snapshot(s) => {
                 if self.snapshot.as_ref() != Some(&s) {
-                    apply_visual(widgets, root, Some(&s));
                     self.snapshot = Some(s);
+                    self.apply_visual(widgets, root);
+                }
+            }
+            GithubCommandOutput::Contrib(c) => {
+                if self.contrib.as_ref() != Some(&c) {
+                    self.contrib = Some(c);
+                    self.apply_visual(widgets, root);
                 }
             }
         }
     }
 }
 
-fn apply_visual(widgets: &GithubModelWidgets, root: &gtk::Box, s: Option<&GithubSnapshot>) {
-    let unread = s.map_or(0, GithubSnapshot::unread);
-    widgets.dot.set_visible(unread > 0);
-    widgets.count.set_visible(unread > 0);
-    widgets.count.set_label(&unread.to_string());
-    root.remove_css_class("active");
-    root.remove_css_class("error");
-    if unread > 0 {
-        root.add_css_class("active");
+impl GithubModel {
+    /// The calendar is only fetched while a contribution metric is shown.
+    fn sync_contrib_poll(&self) {
+        self.contrib_poll
+            .set_active(self.mapped.get() && self.metric.uses_contributions());
     }
-    if matches!(s.map(|s| &s.notifications), Some(Err(_))) {
-        root.add_css_class("error");
+
+    fn apply_visual(&self, widgets: &GithubModelWidgets, root: &gtk::Box) {
+        let s = self.snapshot.as_ref();
+        let today = chrono::Local::now().date_naive();
+        let value = pill_value(self.metric, s, self.contrib.as_ref(), today);
+        let unread_metric = self.metric == GithubPillMetric::Unread;
+        let shown = value.filter(|v| *v > 0 || !unread_metric);
+        widgets.dot.set_visible(unread_metric && shown.is_some());
+        widgets.count.set_visible(shown.is_some());
+        widgets
+            .count
+            .set_label(&shown.map(|v| v.to_string()).unwrap_or_default());
+        root.remove_css_class("active");
+        root.remove_css_class("error");
+        if shown.is_some_and(|v| v > 0) {
+            root.add_css_class("active");
+        }
+        let failed = if self.metric.uses_contributions() {
+            matches!(self.contrib, Some(Err(_)))
+        } else {
+            matches!(s.map(|s| &s.notifications), Some(Err(_)))
+        };
+        if failed {
+            root.add_css_class("error");
+        }
+        let mut text = tooltip(s);
+        if let Some(Ok(cal)) = &self.contrib {
+            let st = cal.stats(today);
+            text = text.replacen(
+                "\nClick:",
+                &format!(
+                    "\nContributions: {} today · {}-day streak · {} this year\nClick:",
+                    st.today, st.current_streak, st.total
+                ),
+                1,
+            );
+        }
+        root.set_tooltip_text(Some(&text));
     }
-    root.set_tooltip_text(Some(&tooltip(s)));
+}
+
+/// The number the pill shows for `metric`, `None` while its data hasn't
+/// arrived (or failed).
+pub(crate) fn pill_value(
+    metric: GithubPillMetric,
+    snap: Option<&GithubSnapshot>,
+    contrib: Option<&ContribResult>,
+    today: chrono::NaiveDate,
+) -> Option<u32> {
+    let stats = || match contrib {
+        Some(Ok(cal)) => Some(cal.stats(today)),
+        _ => None,
+    };
+    match metric {
+        GithubPillMetric::Unread => snap.map(|s| s.unread() as u32),
+        GithubPillMetric::ContribToday => stats().map(|s| s.today),
+        GithubPillMetric::ContribStreak => stats().map(|s| s.current_streak),
+        GithubPillMetric::ContribTotal => stats().map(|s| s.total),
+    }
 }
 
 pub(crate) fn tooltip(s: Option<&GithubSnapshot>) -> String {
@@ -234,5 +381,42 @@ mod tests {
             prs: Ok(vec![]),
         };
         assert!(tooltip(Some(&s)).starts_with("GitHub: no unread"));
+    }
+
+    #[test]
+    fn pill_value_follows_the_metric() {
+        let day = chrono::NaiveDate::from_ymd_opt(2026, 11, 5).unwrap();
+        let cal = ContribCalendar {
+            login: "me".into(),
+            total: 900,
+            weeks: vec![vec![
+                github::ContribDay {
+                    date: day.pred_opt().unwrap(),
+                    count: 3,
+                    level: 1,
+                },
+                github::ContribDay {
+                    date: day,
+                    count: 7,
+                    level: 2,
+                },
+            ]],
+        };
+        let contrib = Ok(cal);
+        let snap = GithubSnapshot {
+            notifications: Ok(vec![]),
+            prs: Ok(vec![]),
+        };
+        let v = |m| pill_value(m, Some(&snap), Some(&contrib), day);
+        assert_eq!(v(GithubPillMetric::Unread), Some(0));
+        assert_eq!(v(GithubPillMetric::ContribToday), Some(7));
+        assert_eq!(v(GithubPillMetric::ContribStreak), Some(2));
+        assert_eq!(v(GithubPillMetric::ContribTotal), Some(900));
+        let failed: ContribResult = Err(GhError::LoggedOut);
+        assert_eq!(
+            pill_value(GithubPillMetric::ContribToday, None, Some(&failed), day),
+            None
+        );
+        assert_eq!(pill_value(GithubPillMetric::Unread, None, None, day), None);
     }
 }

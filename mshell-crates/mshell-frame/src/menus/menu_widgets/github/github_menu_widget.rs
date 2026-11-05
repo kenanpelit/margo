@@ -1,18 +1,23 @@
 //! GitHub menu — the panel for `MenuType::Github`.
 //!
-//! Two tabs on a §12 segmented control:
+//! Three tabs on a §12 segmented control:
 //! - **Inbox**: unread notification threads, newest first. Clicking a row
 //!   opens it in the browser and marks it read; the trailing check marks
 //!   it read without opening; the header's check marks everything read.
 //! - **My PRs**: the user's open pull requests with their CI rollup and
 //!   review decision as chips; clicking opens the PR.
+//! - **Activity**: the contribution heat-map for the last year with
+//!   today / current streak / best streak / year total
+//!   ([`super::activity`]); the calendar ([`CONTRIB_POLL`]) is fetched
+//!   only while this tab is shown.
 //!
 //! Reads the shared [`GITHUB_POLL`] (the pill's poll), active only while
 //! the menu is revealed. The tabs and rows are built once and updated in
 //! place on each poll (rows keyed by thread id / PR URL, see
 //! [`KeyedList`]), so keyboard focus and the scroll position survive it.
 
-use crate::bars::bar_widgets::github::GITHUB_POLL;
+use super::activity::ActivityView;
+use crate::bars::bar_widgets::github::{CONTRIB_POLL, ContribResult, GITHUB_POLL};
 use crate::common_widgets::segmented::{Segmented, SegmentedStyle};
 use crate::github::{self, CiState, GhError, GithubSnapshot, Notification, PullRequest, Review};
 use crate::menus::menu_widgets::agents::agents_menu_widget::open_url;
@@ -30,6 +35,7 @@ use std::rc::Rc;
 enum Tab {
     Inbox,
     Prs,
+    Activity,
 }
 
 pub(crate) struct GithubMenuWidgetModel {
@@ -49,6 +55,11 @@ pub(crate) struct GithubMenuWidgetModel {
     prs_box: gtk::Box,
     prs: KeyedList<PrRow>,
     poll: PollSubscription<GithubSnapshot>,
+    contrib: Option<ContribResult>,
+    contrib_poll: PollSubscription<ContribResult>,
+    activity: ActivityView,
+    revealed: bool,
+    footer: gtk::Button,
 }
 
 #[derive(Debug)]
@@ -59,6 +70,8 @@ pub(crate) enum GithubMenuWidgetInput {
     MarkRead(String),
     MarkAllRead,
     ParentRevealChanged(bool),
+    /// The footer: the inbox, or the profile on the Activity tab.
+    OpenFooter,
 }
 
 #[derive(Debug)]
@@ -69,6 +82,7 @@ pub(crate) struct GithubMenuWidgetInit {}
 #[derive(Debug)]
 pub(crate) enum GithubMenuWidgetCommandOutput {
     Snapshot(GithubSnapshot),
+    Contrib(ContribResult),
     ActionDone(Result<(), GhError>),
 }
 
@@ -110,13 +124,12 @@ impl Component for GithubMenuWidgetModel {
                 set_orientation: gtk::Orientation::Horizontal,
                 set_halign: gtk::Align::End,
                 set_margin_top: 6,
-                gtk::Button {
+                #[local_ref]
+                footer -> gtk::Button {
                     set_css_classes: &["ok-button-surface", "ok-button-cell"],
                     set_label: "Open on GitHub",
                     connect_clicked[sender] => move |_| {
-                        sender.input(GithubMenuWidgetInput::Open(
-                            "https://github.com/notifications".into(),
-                        ));
+                        sender.input(GithubMenuWidgetInput::OpenFooter);
                     },
                 },
             },
@@ -145,11 +158,34 @@ impl Component for GithubMenuWidgetModel {
             }
         });
 
+        let contrib_poll = CONTRIB_POLL.subscribe();
+        contrib_poll.set_active(false);
+        let mut crx = contrib_poll.receiver();
+        sender.command(|out, shutdown| async move {
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            loop {
+                let c = crx.borrow_and_update().clone();
+                if let Some(c) = c {
+                    let _ = out.send(GithubMenuWidgetCommandOutput::Contrib(c));
+                }
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    changed = crx.changed() => if changed.is_err() { break },
+                }
+            }
+        });
+
         let content = gtk::Box::new(gtk::Orientation::Vertical, 8);
         let s = sender.clone();
-        let tabs = Segmented::new(&["Inbox", "My PRs"], 0, SegmentedStyle::Capsule, move |i| {
-            s.input(GithubMenuWidgetInput::SelectTab(i as u8));
-        });
+        let tabs = Segmented::new(
+            &["Inbox", "My PRs", "Activity"],
+            0,
+            SegmentedStyle::Capsule,
+            move |i| {
+                s.input(GithubMenuWidgetInput::SelectTab(i as u8));
+            },
+        );
         let tabs_root = tabs.root().clone();
         let (s_mark, s_refresh) = (sender.clone(), sender.clone());
         let header = PanelHeader::new("github-symbolic", MenuWidget::Github.display_name())
@@ -170,14 +206,17 @@ impl Component for GithubMenuWidgetModel {
         error.set_wrap(true);
         let inbox_box = boxed_list();
         let prs_box = boxed_list();
+        let activity = ActivityView::new();
         for w in [
             hint.upcast_ref::<gtk::Widget>(),
             error.upcast_ref(),
             inbox_box.upcast_ref(),
             prs_box.upcast_ref(),
+            activity.root.upcast_ref(),
         ] {
             content.append(w);
         }
+        let footer = gtk::Button::new();
         let mut model = GithubMenuWidgetModel {
             tab: Tab::Inbox,
             snapshot: None,
@@ -191,6 +230,11 @@ impl Component for GithubMenuWidgetModel {
             prs: KeyedList::new(prs_box.clone()),
             prs_box,
             poll,
+            contrib: None,
+            contrib_poll,
+            activity,
+            revealed: false,
+            footer: footer.clone(),
         };
         let widgets = view_output!();
         crate::menus::list_fit::mark_menu_list(&widgets.fill_list, 520);
@@ -201,9 +245,31 @@ impl Component for GithubMenuWidgetModel {
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             GithubMenuWidgetInput::SelectTab(i) => {
-                self.tab = if i == 0 { Tab::Inbox } else { Tab::Prs };
+                self.tab = match i {
+                    0 => Tab::Inbox,
+                    1 => Tab::Prs,
+                    _ => Tab::Activity,
+                };
+                self.sync_contrib_poll();
             }
-            GithubMenuWidgetInput::Refresh => GITHUB_POLL.refresh_now(),
+            GithubMenuWidgetInput::Refresh => {
+                GITHUB_POLL.refresh_now();
+                if self.tab == Tab::Activity {
+                    CONTRIB_POLL.refresh_now();
+                }
+            }
+            GithubMenuWidgetInput::OpenFooter => {
+                let url = match (&self.tab, &self.contrib) {
+                    (Tab::Activity, Some(Ok(cal))) if !cal.login.is_empty() => {
+                        format!("https://github.com/{}", cal.login)
+                    }
+                    _ => "https://github.com/notifications".to_string(),
+                };
+                if github::is_github_url(&url) {
+                    open_url(&url);
+                }
+                return;
+            }
             GithubMenuWidgetInput::Open(url) => {
                 if github::is_github_url(&url) {
                     open_url(&url);
@@ -226,6 +292,8 @@ impl Component for GithubMenuWidgetModel {
             }
             GithubMenuWidgetInput::ParentRevealChanged(visible) => {
                 self.poll.set_active(visible);
+                self.revealed = visible;
+                self.sync_contrib_poll();
                 return;
             }
         }
@@ -248,6 +316,10 @@ impl Component for GithubMenuWidgetModel {
                 self.snapshot = Some(s);
                 self.render(&sender);
             }
+            GithubMenuWidgetCommandOutput::Contrib(c) => {
+                self.contrib = Some(c);
+                self.render(&sender);
+            }
             GithubMenuWidgetCommandOutput::ActionDone(res) => {
                 if let Err(e) = res {
                     tracing::warn!(error = %e.message(), "github: mark read failed");
@@ -261,6 +333,11 @@ impl Component for GithubMenuWidgetModel {
 }
 
 impl GithubMenuWidgetModel {
+    fn sync_contrib_poll(&self) {
+        self.contrib_poll
+            .set_active(self.revealed && self.tab == Tab::Activity);
+    }
+
     fn unread(&self) -> Vec<Notification> {
         match self.snapshot.as_ref().map(|s| &s.notifications) {
             Some(Ok(list)) => list
@@ -285,15 +362,33 @@ impl GithubMenuWidgetModel {
         // The §12 segmented control: one capsule, the active segment filled.
         self.tabs.set_label(0, &format!("Inbox · {}", unread.len()));
         self.tabs.set_label(1, &format!("My PRs · {pr_count}"));
-        self.tabs
-            .set_active(if self.tab == Tab::Inbox { 0 } else { 1 });
+        self.tabs.set_active(match self.tab {
+            Tab::Inbox => 0,
+            Tab::Prs => 1,
+            Tab::Activity => 2,
+        });
+        self.footer.set_label(if self.tab == Tab::Activity {
+            "Open profile"
+        } else {
+            "Open on GitHub"
+        });
 
         let now = chrono::Utc::now().timestamp_millis();
         // What the page shows: a hint, an error, or one of the lists.
         let mut hint = None;
         let mut error = None;
-        let (mut show_inbox, mut show_prs) = (false, false);
+        let (mut show_inbox, mut show_prs, mut show_activity) = (false, false, false);
         match &self.snapshot {
+            // The calendar has its own poll: don't wait on the inbox.
+            _ if self.tab == Tab::Activity => match &self.contrib {
+                None => hint = Some("Loading the contribution calendar…"),
+                Some(Err(e)) => error = Some(e.message()),
+                Some(Ok(cal)) => {
+                    let today = chrono::Local::now().date_naive();
+                    self.activity.set_calendar(cal, cal.stats(today));
+                    show_activity = true;
+                }
+            },
             None => hint = Some("Loading…"),
             Some(s) => match self.tab {
                 Tab::Inbox => match &s.notifications {
@@ -309,6 +404,7 @@ impl GithubMenuWidgetModel {
                         show_inbox = true;
                     }
                 },
+                Tab::Activity => {}
                 Tab::Prs => match &s.prs {
                     Err(e) => error = Some(e.message()),
                     Ok(prs) if prs.is_empty() => hint = Some("No open pull requests"),
@@ -327,6 +423,7 @@ impl GithubMenuWidgetModel {
         self.error.set_visible(error.is_some());
         self.inbox_box.set_visible(show_inbox);
         self.prs_box.set_visible(show_prs);
+        self.activity.root.set_visible(show_activity);
     }
 }
 

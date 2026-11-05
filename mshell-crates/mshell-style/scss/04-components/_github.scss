@@ -66,3 +66,38 @@
     color: var(--on-error-container);
   }
 }
+
+// ── Activity: stats + contribution heat-map ──────────────────
+.github-stat {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container-high);
+}
+.github-stat-value {
+  font-size: var(--font-lg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface);
+}
+.github-stat-caption {
+  font-size: var(--font-2xs);
+  color: var(--on-surface-variant);
+}
+.github-heatmap-month,
+.github-heatmap-day {
+  font-size: var(--font-2xs);
+  color: var(--outline);
+  margin-right: var(--space-1);
+}
+// GitHub's quartiles as steps of the accent (theme-tracked, never hex).
+.github-heatmap-cell {
+  min-width: 10px;
+  min-height: 10px;
+  border-radius: 2px;
+  background-color: var(--surface-container-high);
+
+  &.l1 { background-color: unquote("color-mix(in srgb, var(--primary) 30%, var(--surface-container-high))"); }
+  &.l2 { background-color: unquote("color-mix(in srgb, var(--primary) 55%, var(--surface-container-high))"); }
+  &.l3 { background-color: unquote("color-mix(in srgb, var(--primary) 78%, var(--surface-container-high))"); }
+  &.l4 { background-color: var(--primary); }
+}

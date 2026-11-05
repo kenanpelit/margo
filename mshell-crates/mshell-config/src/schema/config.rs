@@ -84,6 +84,8 @@ pub struct Config {
     pub eyecare: EyeCare,
     /// Notes Hub Markdown folder + AI/git options.
     pub notes: NotesConfig,
+    /// GitHub pill metric (+ PR search rules).
+    pub github: GithubConfig,
 }
 
 /// Transient state-change toasts — a small opaque corner card that auto-

@@ -241,11 +241,17 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
             label: "AI Agents",
             icon: "ai-agents-symbolic",
         },
-        WidgetEntry::Menu {
+        WidgetEntry::MenuWith {
             kind: MenuKind::Github,
             stack_name: "github",
             label: "GitHub",
             icon: "github-symbolic",
+            extra: || {
+                let c = crate::github_settings::GithubSettingsModel::builder()
+                    .launch(crate::github_settings::GithubSettingsInit {})
+                    .detach();
+                (c.widget().clone(), Box::new(c))
+            },
         },
         WidgetEntry::Menu {
             kind: MenuKind::HostMonitor,
