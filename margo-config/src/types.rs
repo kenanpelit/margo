@@ -1056,6 +1056,15 @@ pub struct Config {
     pub numlock_on: bool,
     pub capslock: bool,
     pub disable_trackpad: bool,
+    /// `internal_keyboard = <name>`: the built-in keyboard the
+    /// `internal_keyboard` action turns off — its libinput device name
+    /// (window-rule style regex) or exact `eventN` sysname. Empty (the
+    /// default): the keyboard on the i8042 (PS/2) bus, where laptop
+    /// keyboards live.
+    pub internal_keyboard: String,
+    /// Turn the internal keyboard off by itself when an external keyboard
+    /// is plugged in. Off by default.
+    pub internal_keyboard_auto: bool,
     pub tap_to_click: bool,
     pub tap_and_drag: bool,
     pub drag_lock: bool,
@@ -1436,6 +1445,8 @@ impl Default for Config {
             numlock_on: false,
             capslock: false,
             disable_trackpad: false,
+            internal_keyboard: String::new(),
+            internal_keyboard_auto: false,
             tap_to_click: true,
             tap_and_drag: true,
             drag_lock: true,

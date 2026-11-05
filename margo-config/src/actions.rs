@@ -1114,6 +1114,19 @@ pub const ACTIONS: &[Action] = &[
                  keyboard-layout pill.",
     },
     Action {
+        name: "internal_keyboard",
+        aliases: &["internalkeyboard", "toggle_internal_keyboard"],
+        args: "[on|off|toggle]",
+        group: Group::System,
+        summary: "Turn the built-in keyboard off / on (default: toggle).",
+        detail: "For typing on an external keyboard over a laptop's own. The \
+                 device is `internal_keyboard = <name>` (default: the i8042 \
+                 keyboard). Turning it off is refused while it is the only \
+                 keyboard, and unplugging the last other keyboard turns it back \
+                 on. `internal_keyboard_auto = 1` turns it off when an external \
+                 keyboard is plugged in. TTY consoles are not affected.",
+    },
+    Action {
         name: "force_unlock",
         aliases: &["force-unlock"],
         args: "",

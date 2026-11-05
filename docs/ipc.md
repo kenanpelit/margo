@@ -53,6 +53,11 @@ Each `clients[]` entry carries `scratchpad` (in the scratchpad set),
 scratchpad and for a minimized window; a minimized (non-scratchpad) window
 also has `minimized_order` > 0, larger = minimized later.
 
+The top-level `internal_keyboard` object is the built-in keyboard toggle:
+`name` (the matched device, `null` when none is found), `disabled`,
+`external` (another typing keyboard is connected) and `auto`
+(`internal_keyboard_auto`).
+
 Error frames are `{"error":"<message>"}`. Unknown verb/topic returns an
 error frame; the connection stays open.
 

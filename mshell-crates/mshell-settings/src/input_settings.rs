@@ -202,6 +202,7 @@ pub(crate) struct InputSettingsModel {
     repeat_rate: i32,
     repeat_delay: i32,
     numlock_on: bool,
+    internal_keyboard_auto: bool,
     // Touchpad
     tap_to_click: bool,
     tap_and_drag: bool,
@@ -271,6 +272,7 @@ pub(crate) enum InputSettingsInput {
     SetRepeatRate(i32),
     SetRepeatDelay(i32),
     SetNumlock(bool),
+    SetInternalKeyboardAuto(bool),
     SetTapToClick(bool),
     SetTapAndDrag(bool),
     SetDragLock(bool),
@@ -499,6 +501,20 @@ impl Component for InputSettingsModel {
                             connect_active_notify[sender] => move |s| {
                                 sender.input(InputSettingsInput::SetNumlock(s.is_active()));
                             } @numlock_handler,
+                        },
+                    },
+
+                    #[template]
+                    Row {
+                        set_widget_name: "setting:conf:internal_keyboard_auto",
+                        #[template_child] title { set_label: "Turn off the built-in keyboard with an external one" },
+                        #[template_child] desc { set_label: "When a keyboard is plugged in, switch the laptop's own keyboard off; it comes back when the last external one is unplugged. Toggle by hand with the Control Center's Internal Keyboard tile." },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: model.internal_keyboard_auto,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(InputSettingsInput::SetInternalKeyboardAuto(s.is_active()));
+                            },
                         },
                     },
                 },
@@ -1024,6 +1040,7 @@ impl Component for InputSettingsModel {
             repeat_rate: cfg.repeat_rate,
             repeat_delay: cfg.repeat_delay,
             numlock_on: cfg.numlock_on,
+            internal_keyboard_auto: cfg.internal_keyboard_auto,
             tap_to_click: cfg.tap_to_click,
             tap_and_drag: cfg.tap_and_drag,
             drag_lock: cfg.drag_lock,
@@ -1126,6 +1143,10 @@ impl Component for InputSettingsModel {
             InputSettingsInput::SetRepeatDelay(v) => {
                 self.repeat_delay = v;
                 apply("repeat_delay", v.to_string());
+            }
+            InputSettingsInput::SetInternalKeyboardAuto(v) => {
+                self.internal_keyboard_auto = v;
+                apply("internal_keyboard_auto", bit(v));
             }
             InputSettingsInput::SetNumlock(v) => {
                 self.numlock_on = v;

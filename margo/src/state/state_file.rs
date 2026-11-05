@@ -419,6 +419,10 @@ impl MargoState {
             },
             "outputs": outputs,
             "clients": clients,
+            // The built-in keyboard toggle: `name` (null when none is
+            // found), `disabled`, `external` (another keyboard connected),
+            // `auto` — the Control Center tile and the shell's toast.
+            "internal_keyboard": self.internal_keyboard_json(),
             "layouts": layout_names,
             // The user's `circle_layout` order, verbatim (empty when the
             // knob is unset). `layouts` above stays in canonical

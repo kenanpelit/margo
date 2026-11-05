@@ -43,6 +43,7 @@ pub(super) const BOOL_KEYS: &[&str] = &[
     "hot_corner_disable_on_fullscreen",
     "idle_inhibit_when_fullscreen",
     "idleinhibit_ignore_visible",
+    "internal_keyboard_auto",
     "layer_animations",
     "layer_shadows",
     "left_handed",

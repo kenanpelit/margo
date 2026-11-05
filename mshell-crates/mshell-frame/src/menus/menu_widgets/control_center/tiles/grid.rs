@@ -13,6 +13,8 @@ use relm4::gtk::prelude::{
 };
 use std::collections::HashSet;
 
+mod internal_keyboard;
+
 /// A tile button, the `gtk::Overlay` wrapping it in the grid, and the
 /// edit-mode CheckButton in the overlay's corner.
 pub(crate) struct TileSlot {
@@ -63,7 +65,8 @@ impl ControlCenterTilesWidgets {
                     check,
                 }
             })
-            .collect();
+            .collect::<Vec<TileSlot>>();
+        internal_keyboard::wire(&slots[TileId::InternalKeyboard as usize].tile);
         Self { slots }
     }
 

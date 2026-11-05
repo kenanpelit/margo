@@ -38,6 +38,7 @@ pub(crate) enum TileId {
     Hotspot,
     ThinkpadLed,
     CustomShortcut,
+    InternalKeyboard,
 }
 
 /// What a primary (left) click on a tile does.
@@ -259,6 +260,15 @@ pub(crate) const TILES: &[TileSpec] = &[
         Input(|| In::ClickCustom),
         None,
     ),
+    // Click wiring + live state: `grid/internal_keyboard.rs`.
+    spec(
+        TileId::InternalKeyboard,
+        "input-keyboard-symbolic",
+        "Internal Keyboard",
+        "On",
+        PrimaryClick::None,
+        None,
+    ),
 ];
 
 impl TileId {
@@ -345,6 +355,7 @@ mod tests {
                 "hotspot",
                 "thinkpad_led",
                 "custom_shortcut",
+                "internal_keyboard",
             ]
         );
     }

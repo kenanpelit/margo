@@ -58,6 +58,8 @@ pub struct ToastProducerModel {
     prev_layout: Option<String>,
     /// Last seen margo keymode (`None` = not yet baselined).
     prev_keymode: Option<String>,
+    /// Last seen built-in keyboard off-state (`None` = not yet baselined).
+    prev_internal_kb: Option<bool>,
     prev_out_dev: Option<String>,
     prev_in_dev: Option<String>,
     prev_caps: Option<bool>,
@@ -109,6 +111,8 @@ pub enum ToastProducerCmd {
     Layout(String),
     /// margo's keymode (`None` on a margo that doesn't report it).
     Keymode(Option<String>),
+    /// margo's built-in keyboard toggle (`None` on an older margo).
+    InternalKeyboard(Option<mshell_margo_client::state_json::RawInternalKeyboard>),
     OutputDevice,
     InputDevice,
     Vpn(bool),
@@ -276,6 +280,22 @@ impl Component for ToastProducerModel {
             }
         });
 
+        // Built-in keyboard — margo's `internal_keyboard` toggle.
+        sender.command(|out, shutdown| async move {
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            let mut stream = margo_service().internal_keyboard.watch();
+            loop {
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    next = stream.next() => match next {
+                        Some(s) => { let _ = out.send(ToastProducerCmd::InternalKeyboard(s)); }
+                        None => break,
+                    },
+                }
+            }
+        });
+
         // VPN — the shared `mvpn` poll (one loop with the VPN pills),
         // counted as a subscriber only while VPN toasts are enabled, so the
         // subprocess never runs for the toast when the toggle is off.
@@ -360,6 +380,7 @@ impl Component for ToastProducerModel {
             prev_online: None,
             prev_layout: None,
             prev_keymode: None,
+            prev_internal_kb: None,
             prev_out_dev: None,
             prev_in_dev: None,
             prev_caps: None,
@@ -418,6 +439,7 @@ impl Component for ToastProducerModel {
             ToastProducerCmd::Battery => self.on_battery(),
             ToastProducerCmd::Layout(name) => self.on_layout(name),
             ToastProducerCmd::Keymode(mode) => self.on_keymode(mode),
+            ToastProducerCmd::InternalKeyboard(s) => self.on_internal_keyboard(s),
             ToastProducerCmd::OutputDevice => self.on_audio_device(true),
             ToastProducerCmd::InputDevice => self.on_audio_device(false),
             ToastProducerCmd::Vpn(connected) => self.on_vpn(connected),
@@ -606,6 +628,40 @@ impl ToastProducerModel {
                 icon: "input-keyboard-symbolic".to_string(),
                 title: "Keymode".to_string(),
                 body: Some(mode),
+                severity: ToastSeverity::Calm,
+            });
+        }
+    }
+
+    /// Toast the built-in keyboard going off / on (the plugin's OSD). The
+    /// first value only baselines; every toggle is user-driven (the tile,
+    /// a bind) or a hotplug the user should know about, so it follows the
+    /// master toast switch only.
+    fn on_internal_keyboard(
+        &mut self,
+        state: Option<mshell_margo_client::state_json::RawInternalKeyboard>,
+    ) {
+        let changed = mshell_margo_client::indicators::internal_keyboard_change(
+            self.prev_internal_kb,
+            state.as_ref(),
+        );
+        if let Some(s) = &state {
+            self.prev_internal_kb = Some(s.disabled);
+        }
+        if let Some(disabled) = changed
+            && toasts_cfg().enabled
+        {
+            push_toast(ToastEvent {
+                icon: "input-keyboard-symbolic".to_string(),
+                title: "Built-in keyboard".to_string(),
+                body: Some(
+                    if disabled {
+                        "Off — the other keyboard types now"
+                    } else {
+                        "On"
+                    }
+                    .to_string(),
+                ),
                 severity: ToastSeverity::Calm,
             });
         }

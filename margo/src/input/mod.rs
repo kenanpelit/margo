@@ -24,6 +24,14 @@ pub struct KeyboardState {
     /// key it never saw pressed (mango `6a73450b`: Alt+Space's Space
     /// release leaking into Chrome).
     pub swallowed_keys: std::collections::HashSet<u32>,
+    /// The built-in keyboard is turned off (`internal_keyboard` action /
+    /// `internal_keyboard_auto`); see `libinput_config::internal_keyboard`.
+    pub internal_keyboard_off: bool,
+    /// A settle check after a device addition is pending.
+    pub internal_keyboard_settle_armed: bool,
+    /// Probed once per libinput device when it is added (name, sysname,
+    /// bus, has letter keys) — the internal-keyboard toggle's view.
+    pub keyboard_infos: Vec<crate::libinput_config::internal_keyboard::KeyboardInfo>,
 }
 
 impl KeyboardState {

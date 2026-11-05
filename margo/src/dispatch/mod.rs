@@ -727,6 +727,16 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
             state.restore_last_minimized();
         }
         "restore_all" | "restoreall" | "restore-all" => state.restore_all_minimized(),
+        // The built-in keyboard: `on` / `off` / `toggle` (default) in `v`.
+        "internal_keyboard" | "internalkeyboard" | "toggle_internal_keyboard" => {
+            use crate::libinput_config::internal_keyboard::Request;
+            match Request::parse(arg.v.as_deref()) {
+                Some(req) => state.internal_keyboard_request(req),
+                None => {
+                    tracing::warn!(arg = ?arg.v, "internal_keyboard: expected on, off or toggle")
+                }
+            }
+        }
         "restore_window" | "restorewindow" | "restore-window" => {
             if arg.i > 0 {
                 state.restore_minimized_id(arg.i as u64);

@@ -61,7 +61,7 @@ pub(super) const PAGE_KEYWORDS: &[(&str, &str)] = &[
     ),
     (
         "input",
-        "keyboard mouse touchpad layout xkb repeat sensitivity natural scroll cursor",
+        "keyboard mouse touchpad layout xkb repeat sensitivity natural scroll cursor internal built-in laptop",
     ),
     ("animations", "animation motion transition speed easing"),
     (
@@ -83,7 +83,7 @@ pub(super) const PAGE_KEYWORDS: &[(&str, &str)] = &[
     ),
     (
         "behavior",
-        "focus sloppy warp cursor drag tile swap snap hot corner overview scroll axis scratchpad minimize restore tearing sync syncobj xwayland inhibit",
+        "focus sloppy warp cursor drag tile swap snap hot corner overview scroll axis scratchpad minimize restore session login relaunch tearing sync syncobj xwayland inhibit",
     ),
     (
         "window_rules",

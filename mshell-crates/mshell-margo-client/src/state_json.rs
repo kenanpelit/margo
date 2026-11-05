@@ -60,6 +60,28 @@ pub struct StateJson {
     /// with older margo builds that don't emit the field.
     #[serde(default)]
     pub config_errors: Vec<RawConfigDiagnostic>,
+    /// The built-in keyboard toggle (`internal_keyboard` action). `None`
+    /// on margo builds that don't emit the field.
+    #[serde(default)]
+    pub internal_keyboard: Option<RawInternalKeyboard>,
+}
+
+/// margo's `internal_keyboard` object.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct RawInternalKeyboard {
+    /// The matched built-in keyboard's device name; `None` when margo
+    /// found none.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Turned off now.
+    #[serde(default)]
+    pub disabled: bool,
+    /// Another typing keyboard is connected (turning it off is allowed).
+    #[serde(default)]
+    pub external: bool,
+    /// `internal_keyboard_auto` is on.
+    #[serde(default)]
+    pub auto: bool,
 }
 
 /// margo's `lock_keys` object.

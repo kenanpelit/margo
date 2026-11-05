@@ -23,6 +23,18 @@ pub fn keymode_change<'a>(prev: Option<&str>, cur: &'a str) -> Option<&'a str> {
     (prev.trim() != cur_t && !cur_t.is_empty()).then_some(cur_t)
 }
 
+/// What a built-in keyboard change should announce: the new `disabled`
+/// value, or `None` when nothing changed or `prev` is the first
+/// observation (a baseline, so the shell starting with it off doesn't
+/// toast). `cur = None` (an older margo) never announces.
+pub fn internal_keyboard_change(
+    prev: Option<bool>,
+    cur: Option<&crate::state_json::RawInternalKeyboard>,
+) -> Option<bool> {
+    let (prev, cur) = (prev?, cur?.disabled);
+    (prev != cur).then_some(cur)
+}
+
 /// Where a scroller column sits relative to the viewport. A column counts
 /// as on-screen while its centre is inside the viewport, so one peeking in
 /// by a few pixels at an edge still reads as hidden.
@@ -302,6 +314,28 @@ mod tests {
     }
 
     #[test]
+    fn internal_keyboard_change_baselines_then_reports_flips() {
+        let state = |disabled| crate::state_json::RawInternalKeyboard {
+            disabled,
+            ..Default::default()
+        };
+        assert_eq!(internal_keyboard_change(None, Some(&state(true))), None);
+        assert_eq!(
+            internal_keyboard_change(Some(false), Some(&state(true))),
+            Some(true)
+        );
+        assert_eq!(
+            internal_keyboard_change(Some(true), Some(&state(false))),
+            Some(false)
+        );
+        assert_eq!(
+            internal_keyboard_change(Some(true), Some(&state(true))),
+            None
+        );
+        assert_eq!(internal_keyboard_change(Some(true), None), None);
+    }
+
+    #[test]
     fn keymode_change_baselines_then_reports_real_changes() {
         assert_eq!(
             keymode_change(None, "resize"),
@@ -443,6 +477,7 @@ mod tests {
             lock_keys: None,
             keymode: None,
             config_errors: Vec::new(),
+            internal_keyboard: None,
         };
         let wins = active_tag_windows(&state);
         let ids: Vec<u64> = wins.iter().map(|w| w.id).collect();

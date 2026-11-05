@@ -8,6 +8,22 @@ use smithay::reexports::input::{
 };
 use tracing::{debug, warn};
 
+pub mod internal_keyboard;
+
+/// [`apply_to_device`], then a send-events override (the internal
+/// keyboard's `DISABLED`, see [`internal_keyboard::mode_override`]).
+pub fn apply_device(device: &mut Device, config: &Config, mode: Option<SendEventsMode>) {
+    apply_to_device(device, config);
+    if let Some(mode) = mode {
+        log_config_result(
+            &device.name(),
+            device.sysname(),
+            "send_events_mode (internal keyboard)",
+            device.config_send_events_set_mode(mode),
+        );
+    }
+}
+
 pub fn apply_to_device(device: &mut Device, config: &Config) {
     let name = device.name().into_owned();
     let sysname = device.sysname().to_string();

@@ -223,6 +223,11 @@ fn apply(service: &MargoService, state: &StateJson) {
     if service.lock_keys.get() != state.lock_keys {
         service.lock_keys.set(state.lock_keys);
     }
+    if service.internal_keyboard.get() != state.internal_keyboard {
+        service
+            .internal_keyboard
+            .set(state.internal_keyboard.clone());
+    }
     if service.keymode.get() != state.keymode {
         service.keymode.set(state.keymode.clone());
     }
@@ -991,6 +996,7 @@ mod tests {
             lock_keys: None,
             keymode: None,
             config_errors: Vec::new(),
+            internal_keyboard: None,
         }
     }
 
@@ -1116,6 +1122,7 @@ mod apply_tests {
             session_locked: Reactive::new(None),
             lock_keys: Reactive::new(None),
             keymode: Reactive::new(None),
+            internal_keyboard: Reactive::new(None),
             scroller: Reactive::new(None),
             scratchpads: Reactive::new(Vec::new()),
             minimized: Reactive::new(Vec::new()),
@@ -1199,6 +1206,7 @@ mod apply_tests {
             lock_keys: None,
             keymode: None,
             config_errors: Vec::new(),
+            internal_keyboard: None,
         }
     }
 
@@ -1613,6 +1621,26 @@ mod apply_tests {
         )
         .expect("frame parses");
         assert_eq!(parsed.keymode.as_deref(), Some("default"));
+    }
+
+    #[test]
+    fn internal_keyboard_is_mirrored_and_unknown_on_older_margo() {
+        let svc = service();
+        let mut f = frame();
+        apply(&svc, &f);
+        assert_eq!(svc.internal_keyboard.get(), None, "older margo: unknown");
+        // A frame captured from margo with the built-in keyboard off.
+        let parsed: StateJson = serde_json::from_str(
+            r#"{"active_output":"","layouts":[],"outputs":[],"clients":[],"tag_count":9,
+                "internal_keyboard":{"name":"AT Translated Set 2 keyboard",
+                "disabled":true,"external":true,"auto":false}}"#,
+        )
+        .expect("frame parses");
+        f.internal_keyboard = parsed.internal_keyboard;
+        apply(&svc, &f);
+        let ikb = svc.internal_keyboard.get().expect("mirrored");
+        assert!(ikb.disabled && ikb.external && !ikb.auto);
+        assert_eq!(ikb.name.as_deref(), Some("AT Translated Set 2 keyboard"));
     }
 
     #[test]

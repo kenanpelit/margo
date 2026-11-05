@@ -951,18 +951,8 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
             LibinputInputBackend::new(libinput),
             |mut event, _, state: &mut MargoState| {
                 match &mut event {
-                    InputEvent::DeviceAdded { device } => {
-                        crate::libinput_config::apply_to_device(device, &state.config);
-                        state.libinput_devices.retain(|known| known != device);
-                        state.libinput_devices.push(device.clone());
-                        // A newly plugged keyboard starts with its LEDs off.
-                        if let Some(keyboard) = state.seat.get_keyboard() {
-                            state.sync_keyboard_leds(keyboard.led_state());
-                        }
-                    }
-                    InputEvent::DeviceRemoved { device } => {
-                        state.libinput_devices.retain(|known| known != device);
-                    }
+                    InputEvent::DeviceAdded { device } => state.libinput_device_added(device),
+                    InputEvent::DeviceRemoved { device } => state.libinput_device_removed(device),
                     _ => {}
                 }
                 handle_input(state, event);

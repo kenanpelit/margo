@@ -335,8 +335,12 @@ impl MargoState {
                 .color_management
                 .set_enabled::<Self>(&display_handle, new_config.color_management);
         }
+        let internal_keyboard_auto_was = self.config.internal_keyboard_auto;
         self.config = new_config;
         self.title_rules_exist = config_has_title_rules(&self.config);
+        // The device loop above re-enabled every keyboard; re-assert the
+        // built-in keyboard's off-state against the new pattern / auto.
+        self.internal_keyboard_after_reload(internal_keyboard_auto_was);
         // A keymode the new config no longer declares has no binds left:
         // return to `default` instead of stranding the keyboard there (the
         // state push below updates the keymode pill).

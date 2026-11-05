@@ -499,6 +499,10 @@ pub struct MargoService {
     /// snapshot or when the running margo predates the field. The keymode
     /// pill and the keymode toast read this.
     pub keymode: Reactive<Option<String>>,
+    /// The built-in keyboard toggle's state. `None` until the first
+    /// snapshot or on a margo without it. The Control Center's Internal
+    /// Keyboard tile and its toast read this.
+    pub internal_keyboard: Reactive<Option<crate::state_json::RawInternalKeyboard>>,
     /// The focused output's scroller strip (columns + viewport), `None`
     /// outside the scroller layout or on a margo that predates the field.
     /// The scroller ribbon pill reads this.
@@ -564,6 +568,7 @@ impl MargoService {
             session_locked: Reactive::new(None),
             lock_keys: Reactive::new(None),
             keymode: Reactive::new(None),
+            internal_keyboard: Reactive::new(None),
             scroller: Reactive::new(None),
             scratchpads: Reactive::new(Vec::new()),
             minimized: Reactive::new(Vec::new()),

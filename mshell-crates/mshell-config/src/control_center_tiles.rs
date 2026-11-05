@@ -62,6 +62,7 @@ cc_tiles! {
     hotspot => "Hotspot",
     thinkpad_led => "ThinkPad Logo LED",
     custom_shortcut => "Custom Shortcut",
+    internal_keyboard => "Internal Keyboard",
 }
 
 /// The registry row for a config id; `None` for an unknown id (e.g. a

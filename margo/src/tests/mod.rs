@@ -54,6 +54,7 @@ mod globals;
 mod groups;
 mod hot_corner;
 mod idle;
+mod internal_keyboard;
 mod ipc;
 mod keymode;
 mod layer_shell;
