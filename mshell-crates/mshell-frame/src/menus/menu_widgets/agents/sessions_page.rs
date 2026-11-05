@@ -12,7 +12,7 @@ use crate::agents::local_stats::compact_count;
 use crate::agents::pricing::{self, Currency};
 use crate::agents::sessions::{self, LiveSession, SavedSession, SessionStatus};
 use relm4::gtk;
-use relm4::gtk::prelude::{BoxExt, ButtonExt, Cast, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, Cast, EditableExt, WidgetExt};
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -27,8 +27,14 @@ pub(crate) enum SessionAction {
         /// The account's config dir; empty = the default account.
         config_dir: PathBuf,
     },
-    /// Open a URL (a Remote Control session on claude.ai).
-    OpenUrl(String),
+    /// Start a new session in `cwd` under the account at `config_dir`.
+    New {
+        cwd: String,
+        config_dir: PathBuf,
+    },
+    /// Open a URL or file in its default app (a Remote Control session on
+    /// claude.ai, a CLAUDE.md).
+    Open(String),
 }
 
 /// The page's widgets, built once. A refresh shows or hides the fixed
@@ -44,12 +50,74 @@ pub(crate) struct SessionsPage {
     recent_title: gtk::Label,
     recent_box: gtk::Box,
     recent: KeyedList<SavedRow>,
+    /// Full-text search over every prompt typed.
+    search: gtk::SearchEntry,
+    query: String,
+    match_title: gtk::Label,
+    match_box: gtk::Box,
+    matches: KeyedList<SavedRow>,
+    no_match: gtk::Label,
+    /// "New session in…": recent projects, shown on demand.
+    show_new: bool,
+    new_title: gtk::Label,
+    new_box: gtk::Box,
+    new_rows: KeyedList<NewRow>,
+    multi: bool,
     on_action: Rc<dyn Fn(SessionAction)>,
+}
+
+/// Most projects offered for a new session.
+const NEW_PROJECTS: usize = 8;
+
+/// Projects to start a new session in: recent saved sessions' projects,
+/// then running sessions' folders, each `(config dir, project)` once.
+pub(crate) fn recent_projects(snap: &SessionsSnapshot, limit: usize) -> Vec<NewItem> {
+    let mut out: Vec<NewItem> = Vec::new();
+    let saved = snap
+        .saved
+        .iter()
+        .map(|s| (&s.config_dir, &s.project, &s.account));
+    let live = snap
+        .live
+        .iter()
+        .map(|s| (&s.config_dir, &s.cwd, &s.account));
+    for (dir, project, account) in saved.chain(live) {
+        if project.is_empty()
+            || out
+                .iter()
+                .any(|n| n.config_dir == *dir && n.project == *project)
+        {
+            continue;
+        }
+        out.push(NewItem {
+            config_dir: dir.clone(),
+            project: project.clone(),
+            account: account.clone(),
+            multi: snap.multi_account(),
+        });
+        if out.len() == limit {
+            break;
+        }
+    }
+    out
 }
 
 impl SessionsPage {
     /// Build the page into `container` (which it then owns).
-    pub(crate) fn new(container: &gtk::Box, on_action: impl Fn(SessionAction) + 'static) -> Self {
+    pub(crate) fn new(
+        container: &gtk::Box,
+        on_action: impl Fn(SessionAction) + 'static,
+        on_search: impl Fn(String) + 'static,
+    ) -> Self {
+        let search = gtk::SearchEntry::new();
+        search.set_placeholder_text(Some("Search every prompt you typed…"));
+        search.add_css_class("agents-search");
+        search.connect_search_changed(move |e| on_search(e.text().trim().to_string()));
+        container.append(&search);
+        let new_title = section("New session in…");
+        let new_box = boxed_list();
+        container.append(&new_title);
+        container.append(&new_box);
         let notice = small("", &["label-small", "dim-label"]);
         let loading = small("Loading…", &["label-small", "dim-label"]);
         let unavailable = small(
@@ -80,6 +148,12 @@ impl SessionsPage {
         let recent_box = boxed_list();
         container.append(&recent_title);
         container.append(&recent_box);
+        let match_title = section("Matching prompts");
+        let match_box = boxed_list();
+        let no_match = small("No prompt matches", &["label-small", "dim-label"]);
+        container.append(&match_title);
+        container.append(&match_box);
+        container.append(&no_match);
         let page = SessionsPage {
             notice,
             loading,
@@ -89,10 +163,61 @@ impl SessionsPage {
             recent_title,
             recent: KeyedList::new(recent_box.clone()),
             recent_box,
+            search,
+            query: String::new(),
+            matches: KeyedList::new(match_box.clone()),
+            match_title,
+            match_box,
+            no_match,
+            show_new: false,
+            new_rows: KeyedList::new(new_box.clone()),
+            new_title,
+            new_box,
+            multi: false,
             on_action: Rc::new(on_action),
         };
         page.show_loading_only();
+        page.show_matches(false);
+        page.new_title.set_visible(false);
+        page.new_box.set_visible(false);
         page
+    }
+
+    fn show_matches(&self, on: bool) {
+        self.match_title.set_visible(on && !self.matches.is_empty());
+        self.match_box.set_visible(on && !self.matches.is_empty());
+        self.no_match.set_visible(on && self.matches.is_empty());
+    }
+
+    /// Show the hits of a full-text search for `query` (the entry may
+    /// have moved on; stale results are dropped).
+    pub(crate) fn set_matches(&mut self, query: &str, hits: &[SavedSession], now_ms: i64) {
+        if query != self.search.text().trim() {
+            return;
+        }
+        self.query = query.to_string();
+        let items: Vec<(SavedSession, i64, bool)> = hits
+            .iter()
+            .cloned()
+            .map(|s| (s, now_ms, self.multi))
+            .collect();
+        let on_action = self.on_action.clone();
+        self.matches
+            .sync(&items, |item| SavedRow::new(item, on_action.clone()));
+        let searching = !self.query.is_empty();
+        self.show_matches(searching);
+        self.recent_title
+            .set_visible(!searching && !self.recent.is_empty());
+        self.recent_box
+            .set_visible(!searching && !self.recent.is_empty());
+    }
+
+    /// Show or hide "New session in…".
+    pub(crate) fn toggle_new(&mut self) {
+        self.show_new = !self.show_new;
+        let on = self.show_new && !self.new_rows.is_empty();
+        self.new_title.set_visible(on);
+        self.new_box.set_visible(on);
     }
 
     fn show_loading_only(&self) {
@@ -153,8 +278,19 @@ impl SessionsPage {
         let on_action = self.on_action.clone();
         self.recent
             .sync(&items, |item| SavedRow::new(item, on_action.clone()));
-        self.recent_title.set_visible(!self.recent.is_empty());
-        self.recent_box.set_visible(!self.recent.is_empty());
+        let searching = !self.query.is_empty();
+        self.recent_title
+            .set_visible(!searching && !self.recent.is_empty());
+        self.recent_box
+            .set_visible(!searching && !self.recent.is_empty());
+        self.multi = multi;
+        let projects = recent_projects(snap, NEW_PROJECTS);
+        let on_action = self.on_action.clone();
+        self.new_rows
+            .sync(&projects, |item| NewRow::new(item, on_action.clone()));
+        let on = self.show_new && !self.new_rows.is_empty();
+        self.new_title.set_visible(on);
+        self.new_box.set_visible(on);
     }
 }
 
@@ -296,6 +432,9 @@ pub(crate) struct LiveRow {
     doing: gtk::Label,
     chips: gtk::Box,
     remote: gtk::Button,
+    /// Claude's last reply, folded under the row.
+    reply_btn: gtk::Button,
+    reply: gtk::Label,
     pid: Rc<Cell<u32>>,
     url: Rc<RefCell<String>>,
 }
@@ -343,8 +482,40 @@ impl LiveRow {
         let url = Rc::new(RefCell::new(String::new()));
         let u = url.clone();
         let act = on_action.clone();
-        remote.connect_clicked(move |_| act(SessionAction::OpenUrl(u.borrow().clone())));
+        remote.connect_clicked(move |_| act(SessionAction::Open(u.borrow().clone())));
         top.append(&remote);
+
+        let reply_btn = gtk::Button::from_icon_name("pan-down-symbolic");
+        reply_btn.set_css_classes(&["ok-button-flat", "agents-session-action"]);
+        reply_btn.set_valign(gtk::Align::Center);
+        mshell_common::a11y::name(&reply_btn, "Show Claude's last reply");
+        top.append(&reply_btn);
+        let reply = gtk::Label::new(None);
+        reply.set_css_classes(&["label-small", "agents-session-reply"]);
+        reply.set_halign(gtk::Align::Start);
+        reply.set_xalign(0.0);
+        reply.set_wrap(true);
+        reply.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+        reply.set_selectable(true);
+        let revealer = gtk::Revealer::new();
+        revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
+        revealer.set_child(Some(&reply));
+        root.append(&revealer);
+        reply_btn.connect_clicked(move |b| {
+            let open = !revealer.reveals_child();
+            revealer.set_reveal_child(open);
+            b.set_icon_name(if open {
+                "pan-up-symbolic"
+            } else {
+                "pan-down-symbolic"
+            });
+            let name = if open {
+                "Hide Claude's last reply"
+            } else {
+                "Show Claude's last reply"
+            };
+            mshell_common::a11y::name(b, name);
+        });
 
         let r = LiveRow {
             root,
@@ -354,6 +525,8 @@ impl LiveRow {
             doing,
             chips,
             remote,
+            reply_btn,
+            reply,
             pid,
             url,
         };
@@ -417,6 +590,77 @@ impl KeyedRow for LiveRow {
         let url = s.remote_url().unwrap_or_default();
         self.remote.set_visible(!url.is_empty());
         self.url.replace(url);
+        let reply = s.detail.as_ref().map_or("", |d| d.reply.as_str());
+        self.reply.set_label(reply);
+        self.reply_btn.set_visible(!reply.is_empty());
+    }
+}
+
+/// A project to start a new session in.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct NewItem {
+    pub(crate) config_dir: PathBuf,
+    pub(crate) project: String,
+    pub(crate) account: String,
+    pub(crate) multi: bool,
+}
+
+/// "Start Claude in <project>"; click opens a terminal running `claude`.
+pub(crate) struct NewRow {
+    button: gtk::Button,
+    title: gtk::Label,
+    subtitle: gtk::Label,
+}
+
+impl NewRow {
+    fn new(item: &NewItem, on_action: Rc<dyn Fn(SessionAction)>) -> Self {
+        let button = gtk::Button::new();
+        button.set_css_classes(&["agents-session-row"]);
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+        let (block, title, subtitle) = text_block();
+        row.append(&block);
+        let add = gtk::Image::from_icon_name("list-add-symbolic");
+        add.set_valign(gtk::Align::Center);
+        add.add_css_class("agents-session-go");
+        row.append(&add);
+        button.set_child(Some(&row));
+        button.set_tooltip_text(Some("Start a new Claude Code session here"));
+        let (cwd, dir) = (item.project.clone(), item.config_dir.clone());
+        button.connect_clicked(move |_| {
+            on_action(SessionAction::New {
+                cwd: cwd.clone(),
+                config_dir: dir.clone(),
+            })
+        });
+        let r = NewRow {
+            button,
+            title,
+            subtitle,
+        };
+        r.update(item);
+        r
+    }
+}
+
+impl KeyedRow for NewRow {
+    type Item = NewItem;
+    type Key = (PathBuf, String);
+
+    fn key(item: &Self::Item) -> Self::Key {
+        (item.config_dir.clone(), item.project.clone())
+    }
+
+    fn widget(&self) -> gtk::Widget {
+        self.button.clone().upcast()
+    }
+
+    fn update(&self, item: &Self::Item) {
+        self.title.set_label(&sessions::tilde(&item.project));
+        self.subtitle.set_label(&if item.multi {
+            format!("New session · {}", item.account)
+        } else {
+            "New session".to_string()
+        });
     }
 }
 
@@ -520,6 +764,39 @@ mod tests {
         s.cost_usd = Some(1.234);
         s.context_fraction = Some(0.377);
         s
+    }
+
+    #[test]
+    fn new_session_projects_are_recent_and_unique() {
+        let saved = |p: &str, ms| SavedSession {
+            session_id: format!("s{ms}"),
+            project: p.into(),
+            last_prompt: String::new(),
+            last_ms: ms,
+            prompts: 1,
+            config_dir: PathBuf::from("/h/.claude"),
+            account: "default".into(),
+        };
+        let mut running = test_session(SessionStatus::Busy, 0);
+        running.cwd = "/r/live".into();
+        running.config_dir = PathBuf::from("/h/.claude");
+        let snap = SessionsSnapshot {
+            available: true,
+            live: vec![running],
+            saved: vec![
+                saved("/r/a", 30),
+                saved("/r/b", 20),
+                saved("/r/a", 10),
+                saved("", 5),
+            ],
+            accounts: vec!["default".into()],
+        };
+        let got: Vec<_> = recent_projects(&snap, 8)
+            .into_iter()
+            .map(|n| n.project)
+            .collect();
+        assert_eq!(got, ["/r/a", "/r/b", "/r/live"]);
+        assert_eq!(recent_projects(&snap, 1).len(), 1);
     }
 
     #[test]

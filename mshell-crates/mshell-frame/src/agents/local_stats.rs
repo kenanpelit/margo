@@ -96,7 +96,7 @@ impl PromptCounter {
 
 /// `/usage`, `/clear foo` are commands; `/home/x/file fix this` is a prompt
 /// that starts with a path.
-fn is_slash_command(display: &str) -> bool {
+pub(crate) fn is_slash_command(display: &str) -> bool {
     display
         .strip_prefix('/')
         .and_then(|rest| rest.split_whitespace().next())

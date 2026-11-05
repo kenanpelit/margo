@@ -9,10 +9,12 @@
 
 pub(crate) mod accounts;
 pub(crate) mod details;
+pub(crate) mod history;
 pub(crate) mod jsonl;
 pub(crate) mod launcher;
 pub(crate) mod limits;
 pub(crate) mod local_stats;
+pub(crate) mod memory;
 pub(crate) mod pricing;
 pub(crate) mod sessions;
 pub(crate) mod settings;
@@ -503,6 +505,126 @@ fn send_event(e: &watch::SessionEvent, cfg: &settings::AgentSettings) {
         _ => return,
     };
     notify(notice.icon("ai-agents-symbolic").category("im.received"));
+}
+
+// ── Usage history ──────────────────────────────────────────────────────
+
+/// Long-range usage changes slowly; a refresh reads only appended lines.
+const HISTORY_TICK: Duration = Duration::from_secs(5 * 60);
+/// The "where it goes" views cover this many days.
+pub(crate) const HISTORY_DAYS: i64 = 30;
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub(crate) struct HistorySnapshot {
+    /// Per project over the last [`HISTORY_DAYS`], most tokens first.
+    pub(crate) projects: Vec<(String, history::Totals)>,
+    /// Tokens per local hour of the day over the last [`HISTORY_DAYS`].
+    pub(crate) hours: Vec<u64>,
+}
+
+pub(crate) static HISTORY_POLL: LazyLock<SharedPoll<HistorySnapshot>> =
+    LazyLock::new(|| SharedPoll::new(|| HISTORY_TICK, || Box::pin(probe_history())));
+
+static HISTORY: LazyLock<Mutex<Option<history::UsageHistory>>> = LazyLock::new(Mutex::default);
+
+async fn probe_history() -> HistorySnapshot {
+    tokio::task::spawn_blocking(history_snapshot)
+        .await
+        .unwrap_or_default()
+}
+
+/// The `projects/` dirs of every account, each once (accounts may share
+/// one through a symlink).
+fn projects_dirs() -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    for a in accounts::accounts(now_ms()) {
+        let p = a.dir.join("projects");
+        let real = std::fs::canonicalize(&p).unwrap_or(p);
+        if real.is_dir() && !out.contains(&real) {
+            out.push(real);
+        }
+    }
+    out
+}
+
+fn history_snapshot() -> HistorySnapshot {
+    let Ok(mut guard) = HISTORY.lock() else {
+        return HistorySnapshot::default();
+    };
+    let h = guard.get_or_insert_with(history::load);
+    if h.refresh(&projects_dirs(), &history::local_day) {
+        history::save(h);
+    }
+    summarize(h, chrono::Local::now().date_naive())
+}
+
+/// The snapshot views of `h` on `today`.
+fn summarize(h: &history::UsageHistory, today: chrono::NaiveDate) -> HistorySnapshot {
+    let from = (today - chrono::Duration::days(HISTORY_DAYS - 1))
+        .format("%Y-%m-%d")
+        .to_string();
+    let mut hours = vec![0u64; 24];
+    for (_, d) in h.by_day().range(from.as_str()..) {
+        for (i, n) in d.hours.iter().enumerate().take(24) {
+            hours[i] += n;
+        }
+    }
+    HistorySnapshot {
+        projects: h.by_project(&from),
+        hours,
+    }
+}
+
+/// Saved sessions whose prompts match every word of `query`, across
+/// every account, newest first. Blocking (reads each `history.jsonl`).
+pub(crate) fn search_saved(query: &str, limit: usize) -> Vec<SavedSession> {
+    let mut out = Vec::new();
+    for a in accounts::accounts(now_ms()) {
+        let Ok(f) = std::fs::File::open(a.dir.join("history.jsonl")) else {
+            continue;
+        };
+        let hits = sessions::search_history(std::io::BufReader::new(f), query, limit);
+        out.extend(hits.into_iter().map(|mut s| {
+            s.config_dir = a.dir.clone();
+            s.account = a.label.clone();
+            s
+        }));
+    }
+    out.sort_by_key(|s| std::cmp::Reverse(s.last_ms));
+    out.truncate(limit);
+    out
+}
+
+/// Every CLAUDE.md of the accounts and of the projects that have
+/// sessions. Blocking.
+pub(crate) fn memory_files_now() -> Vec<memory::MemoryFile> {
+    let indexed = SESSIONS_STATE.lock().is_ok_and(|st| !st.saved.is_empty());
+    if !indexed {
+        // The project list comes from the history index; build it.
+        let _ = sessions_snapshot(false);
+    }
+    let accounts = accounts::accounts(now_ms());
+    let projects: Vec<String> = SESSIONS_STATE
+        .lock()
+        .map(|st| {
+            let mut v: Vec<(i64, String)> =
+                st.saved.values().flat_map(|c| c.index.projects()).collect();
+            v.sort_by_key(|(ms, _)| std::cmp::Reverse(*ms));
+            let mut seen = Vec::new();
+            for (_, p) in v {
+                if !seen.contains(&p) {
+                    seen.push(p);
+                }
+            }
+            seen
+        })
+        .unwrap_or_default();
+    memory::memory_files(&accounts, &projects, |p| {
+        std::fs::metadata(p)
+            .ok()
+            .filter(|m| m.is_file())
+            .map(|m| m.len())
+    })
 }
 
 #[path = "mod_tests.rs"]

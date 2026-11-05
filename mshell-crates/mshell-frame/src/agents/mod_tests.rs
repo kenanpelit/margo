@@ -183,3 +183,31 @@ fn headline_is_the_fullest_session_or_weekly_window() {
     snap.codex.as_mut().unwrap().usage = None;
     assert_eq!(snap.headline().unwrap().0.provider, Provider::Claude);
 }
+
+#[test]
+fn history_views_cover_the_last_thirty_days() {
+    use history::tests::{at, utc};
+    let dir = tempfile::tempdir().unwrap();
+    let p = dir.path().join("projects/-w");
+    std::fs::create_dir_all(&p).unwrap();
+    std::fs::write(
+        p.join("s.jsonl"),
+        format!(
+            "{}\n{}\n",
+            at("2026-09-01T10:00:00.000Z", "old"),
+            at("2026-10-30T21:00:00.000Z", "new")
+        ),
+    )
+    .unwrap();
+    let mut h = history::UsageHistory::default();
+    h.refresh(&[dir.path().join("projects")], &utc);
+    let today = chrono::NaiveDate::from_ymd_opt(2026, 10, 31).unwrap();
+    let snap = summarize(&h, today);
+    assert_eq!(snap.projects.len(), 1);
+    assert_eq!(
+        snap.projects[0].1.messages, 1,
+        "September is outside the window"
+    );
+    assert_eq!(snap.hours[21], snap.projects[0].1.tokens());
+    assert_eq!(snap.hours.iter().sum::<u64>(), snap.projects[0].1.tokens());
+}

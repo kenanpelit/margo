@@ -336,6 +336,16 @@ impl SavedIndex {
         changed
     }
 
+    /// Every project with a session, with its newest prompt time.
+    pub(crate) fn projects(&self) -> Vec<(i64, String)> {
+        let mut by: HashMap<&str, i64> = HashMap::new();
+        for s in self.by_id.values().filter(|s| !s.project.is_empty()) {
+            let e = by.entry(s.project.as_str()).or_insert(s.last_ms);
+            *e = (*e).max(s.last_ms);
+        }
+        by.into_iter().map(|(p, ms)| (ms, p.to_string())).collect()
+    }
+
     /// The `limit` most recent sessions, newest first, leaving out
     /// `exclude` (the running ones).
     pub(crate) fn top(&self, exclude: &[&str], limit: usize) -> Vec<SavedSession> {
@@ -360,6 +370,56 @@ pub(crate) fn saved_sessions(history: &str, exclude: &[&str], limit: usize) -> V
         index.add_line(line);
     }
     index.top(exclude, limit)
+}
+
+/// Sessions with a prompt holding every word of `query`
+/// (case-insensitive), read from a `history.jsonl` stream. Each session
+/// shows its newest matching prompt; `prompts` counts the matches.
+/// Newest first, at most `limit`. Slash commands (`/clear`) are not
+/// prompts and never match.
+pub(crate) fn search_history(
+    history: impl std::io::BufRead,
+    query: &str,
+    limit: usize,
+) -> Vec<SavedSession> {
+    let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+    if words.is_empty() {
+        return Vec::new();
+    }
+    let mut by_id: HashMap<String, SavedSession> = HashMap::new();
+    for line in history.lines().map_while(Result::ok) {
+        let Ok(v) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        let text = |k: &str| v.get(k).and_then(Value::as_str).unwrap_or("");
+        let (id, display, project) = (text("sessionId"), text("display").trim(), text("project"));
+        if id.is_empty() || display.is_empty() || super::local_stats::is_slash_command(display) {
+            continue;
+        }
+        let hay = display.to_lowercase();
+        if !words.iter().all(|w| hay.contains(w.as_str())) {
+            continue;
+        }
+        let ts = v.get("timestamp").and_then(Value::as_i64).unwrap_or(0);
+        let e = by_id.entry(id.to_string()).or_insert_with(|| SavedSession {
+            session_id: id.to_string(),
+            project: project.to_string(),
+            last_prompt: String::new(),
+            last_ms: 0,
+            prompts: 0,
+            config_dir: PathBuf::new(),
+            account: String::new(),
+        });
+        e.prompts += 1;
+        if ts >= e.last_ms {
+            e.last_ms = ts;
+            e.last_prompt = display.lines().next().unwrap_or("").to_string();
+        }
+    }
+    let mut v: Vec<SavedSession> = by_id.into_values().collect();
+    v.sort_by_key(|s| std::cmp::Reverse(s.last_ms));
+    v.truncate(limit);
+    v
 }
 
 /// `/home/kenan/x` → `~/x`.
@@ -746,6 +806,55 @@ mod tests {
         );
         assert!(!argv[2].contains("it's"));
         assert!(!argv[2].contains("claude-w"));
+    }
+
+    #[test]
+    fn full_text_search_over_every_prompt() {
+        let history = concat!(
+            r#"{"display":"fix the margo bar pill","timestamp":10,"project":"/r/margo","sessionId":"s1"}"#,
+            "\n",
+            r#"{"display":"unrelated","timestamp":20,"project":"/r/margo","sessionId":"s1"}"#,
+            "\n",
+            r#"{"display":"Bar colours\nsecond line","timestamp":30,"project":"/r/site","sessionId":"s2"}"#,
+            "\n",
+            r#"{"display":"the BAR again","timestamp":40,"project":"/r/margo","sessionId":"s1"}"#,
+            "\n",
+            r#"{"display":"/clear","timestamp":50,"project":"/r/bar","sessionId":"s3"}"#,
+            "\n",
+            "not json\n",
+        );
+        let v = search_history(history.as_bytes(), "bar", 10);
+        let got: Vec<_> = v
+            .iter()
+            .map(|s| (s.session_id.as_str(), s.last_prompt.as_str(), s.prompts))
+            .collect();
+        assert_eq!(got, [("s1", "the BAR again", 2), ("s2", "Bar colours", 1)]);
+        // Every word must match, in the prompt itself.
+        let v = search_history(history.as_bytes(), "bar colours", 10);
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0].session_id, "s2");
+        assert!(search_history(history.as_bytes(), "bar site", 10).is_empty());
+        assert!(search_history(history.as_bytes(), "  ", 10).is_empty());
+        assert_eq!(search_history(history.as_bytes(), "bar", 1).len(), 1);
+    }
+
+    #[test]
+    fn projects_with_their_newest_prompt() {
+        let history = concat!(
+            r#"{"display":"a","timestamp":10,"project":"/a","sessionId":"s1"}"#,
+            "\n",
+            r#"{"display":"b","timestamp":50,"project":"/a","sessionId":"s2"}"#,
+            "\n",
+            r#"{"display":"c","timestamp":20,"project":"/b","sessionId":"s3"}"#,
+            "\n",
+        );
+        let mut index = SavedIndex::default();
+        for line in history.lines() {
+            index.add_line(line);
+        }
+        let mut p = index.projects();
+        p.sort();
+        assert_eq!(p, [(20, "/b".to_string()), (50, "/a".to_string())]);
     }
 
     #[test]
