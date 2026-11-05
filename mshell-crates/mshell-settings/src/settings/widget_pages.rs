@@ -103,6 +103,14 @@ fn cpu_dashboard_parts() -> Vec<PagePart> {
     ]
 }
 
+/// Notes Hub: the Markdown folder / AI options above the menu geometry.
+fn notes_parts() -> Vec<PagePart> {
+    vec![
+        page_part!(crate::notes_settings::NotesSettingsModel => crate::notes_settings::NotesSettingsInit {}),
+        page_part!(WidgetMenuSettingsModel => WidgetMenuSettingsInit { kind: MenuKind::Notes }),
+    ]
+}
+
 /// Eye Care: the reminder's rules (a bar-only pill, no menu geometry).
 fn eyecare_parts() -> Vec<PagePart> {
     vec![
@@ -220,11 +228,12 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
             label: "Network Console",
             icon: "network-workgroup-symbolic",
         },
-        WidgetEntry::Menu {
-            kind: MenuKind::Notes,
+        // Notes Hub = the Markdown folder / AI options above the menu geometry.
+        WidgetEntry::Composite {
             stack_name: "notes",
             label: "Notes Hub",
             icon: "notes-symbolic",
+            parts: notes_parts,
         },
         WidgetEntry::Menu {
             kind: MenuKind::Agents,

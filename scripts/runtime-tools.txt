@@ -64,7 +64,7 @@ xdg-open                    xdg-utils                  opening URLs and files
 xdg-mime                    xdg-utils                  default-application lookup
 matugen                     matugen                    wallpaper colour themes
 pkexec                      polkit                     privileged actions (power, firewall, mshell-privileged)
-git                         git                        mdots repos, mtm plugins, launcher providers
+git                         git                        mdots repos, mtm plugins, launcher providers, Notes Hub git history
 curl                        curl                       public-IP widget, downloads
 fzf                         fzf                        mtm pickers
 tmux                        tmux                       mtm

@@ -168,3 +168,26 @@ $note-colours: (
 .notes-todo-details text {
   background-color: transparent;
 }
+
+// ── Files tab (Markdown folder) ──────────────────────────
+.notes-file-row {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background-color: transparent;
+  transition: background-color var(--motion-fast) var(--ease-standard);
+  @include state-layer();
+}
+.notes-file-row:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+// The AI result: a raised card under the list / editor.
+.notes-ai-pane {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container-high);
+}
+.notes-ai-text {
+  font-size: var(--font-sm);
+  color: var(--on-surface);
+}

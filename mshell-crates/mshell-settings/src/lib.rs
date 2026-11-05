@@ -78,6 +78,7 @@ mod monitors_arrange;
 mod monitors_settings;
 mod net;
 mod network_settings;
+mod notes_settings;
 mod notification_settings;
 mod notification_sound_rules;
 mod osd_settings;

@@ -13,6 +13,8 @@
 //!     - Todos: named pages, a show-completed filter, copy/export,
 //!       and reorderable rows with expandable details
 //!       ([`super::todos_tab`]).
+//!     - Files: Markdown notes in a folder with search, capture, an
+//!       editor, git history and AI actions ([`super::files_tab`]).
 //!
 //! Every menu (one per monitor) works on the one shared
 //! [`notes_store`]: an edit is applied to the shared document, which
@@ -20,6 +22,7 @@
 //! store's single writer (atomic write, last edit wins). A notes.json
 //! that fails to parse is never saved over.
 
+use super::files_tab::{FilesTabInit, FilesTabInput, FilesTabModel};
 use super::model::{
     CheckItem, ExportFormat, GENERAL_PAGE_ID, Note, NoteColor, NotesState, Todo, export_file_name,
     export_todos,
@@ -32,16 +35,17 @@ use crate::menus::menu_widgets::panel_header::PanelHeader;
 use mshell_config::toast::{ToastEvent, ToastSeverity, push_toast};
 use relm4::gtk::glib;
 use relm4::gtk::prelude::{BoxExt, OrientableExt, TextBufferExt, TextViewExt, WidgetExt};
-use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::time::Duration;
 
 pub(super) const SAVE_DEBOUNCE: Duration = Duration::from_millis(600);
 
 /// The tabs, in segmented-control order (stack child names).
-const TABS: [(&str, &str); 3] = [
+const TABS: [(&str, &str); 4] = [
     ("scratchpad", "Scratchpad"),
     ("notes", "Notes"),
     ("todos", "Todos"),
+    ("files", "Files"),
 ];
 
 /// What the inline page-name entry is for.
@@ -61,6 +65,8 @@ pub(crate) struct NotesMenuWidgetModel {
     /// The Notes tab shows the archive instead of the active notes.
     show_archive: bool,
     todos: TodosTab,
+    /// The Markdown-folder tab (its own component: file, git and AI work).
+    files: Controller<FilesTabModel>,
     /// Suppress the next save trigger from `scratchpad_view` so a
     /// programmatic `set_text` (after an external reload) doesn't
     /// pump back through the debounce path.
@@ -250,6 +256,7 @@ impl Component for NotesMenuWidgetModel {
         let notes_root = notes.root.clone();
         let todos = TodosTab::new(&sender);
         let todos_root = todos.root.clone();
+        let files = FilesTabModel::builder().launch(FilesTabInit {}).detach();
         let scratchpad_quiet = std::rc::Rc::new(std::cell::Cell::new(false));
 
         // Scratchpad debounce → PersistNow. Each keystroke
@@ -306,6 +313,7 @@ impl Component for NotesMenuWidgetModel {
             notes,
             show_archive: false,
             todos,
+            files,
             scratchpad_quiet,
         };
 
@@ -313,9 +321,11 @@ impl Component for NotesMenuWidgetModel {
         // ── Notes / Todos tabs (built by `NotesTab` / `TodosTab`) ──
         model.stack.add_named(&notes_root, Some("notes"));
         model.stack.add_named(&todos_root, Some("todos"));
+        model.stack.add_named(model.files.widget(), Some("files"));
         crate::menus::list_fit::mark_menu_list(&widgets.fill_list, 420);
         crate::menus::list_fit::mark_menu_list(&model.notes.scroller, 400);
         crate::menus::list_fit::mark_menu_list(&model.todos.scroller, 400);
+        crate::menus::list_fit::mark_menu_list(&model.files.model().scroller, 400);
         sync_view(&model, &sender);
 
         ComponentParts { model, widgets }
@@ -332,6 +342,9 @@ impl Component for NotesMenuWidgetModel {
                 if let Some((name, _)) = TABS.get(i) {
                     self.tabs.set_active(i);
                     self.stack.set_visible_child_name(name);
+                    if *name == "files" {
+                        self.files.emit(FilesTabInput::Shown);
+                    }
                 }
             }
             NotesMenuWidgetInput::PersistNow => {
