@@ -49,7 +49,7 @@ impl Component for KeyboardLayoutModel {
         #[root]
         #[name = "root"]
         gtk::Box {
-            add_css_class: "keyboard-layout-bar-widget",
+            set_css_classes: &["keyboard-layout-bar-widget", "ok-button-surface", "ok-bar-widget"],
             set_hexpand: model._orientation == Orientation::Vertical,
             set_vexpand: model._orientation == Orientation::Horizontal,
             set_halign: gtk::Align::Center,
@@ -59,7 +59,7 @@ impl Component for KeyboardLayoutModel {
             set_tooltip_text: Some(&tooltip(&model.layout)),
 
             gtk::Button {
-                set_css_classes: &["ok-button-surface", "ok-bar-widget"],
+                set_css_classes: &["ok-button-flat"],
                 set_hexpand: false,
                 set_vexpand: false,
                 connect_clicked[sender] => move |_| {

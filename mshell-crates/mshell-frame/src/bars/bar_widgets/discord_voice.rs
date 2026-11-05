@@ -46,7 +46,7 @@ impl Component for DiscordVoiceModel {
     view! {
         #[root]
         gtk::Box {
-            add_css_class: "discord-voice-bar-widget",
+            set_css_classes: &["discord-voice-bar-widget", "ok-button-surface", "ok-bar-widget"],
             #[watch]
             set_class_active: ("active", model.state.in_voice()),
             set_hexpand: model._orientation == Orientation::Vertical,
@@ -58,7 +58,7 @@ impl Component for DiscordVoiceModel {
             set_tooltip_text: Some(&tooltip(&model.state)),
 
             gtk::Button {
-                set_css_classes: &["ok-button-surface", "ok-bar-widget"],
+                set_css_classes: &["ok-button-flat"],
                 set_hexpand: false,
                 set_vexpand: false,
                 connect_clicked[sender] => move |_| {

@@ -50,7 +50,7 @@ impl Component for UsbModel {
         #[root]
         #[name = "root"]
         gtk::Box {
-            add_css_class: "usb-bar-widget",
+            set_css_classes: &["usb-bar-widget", "ok-button-surface", "ok-bar-widget"],
             #[watch]
             set_class_active: ("active", model.state.drives.iter().any(|d| d.any_mounted())),
             #[watch]
@@ -64,7 +64,7 @@ impl Component for UsbModel {
             set_tooltip_text: Some(&removable_drives::tooltip(&model.state.drives)),
 
             gtk::Button {
-                set_css_classes: &["ok-button-surface", "ok-bar-widget"],
+                set_css_classes: &["ok-button-flat"],
                 set_hexpand: false,
                 set_vexpand: false,
                 connect_clicked[sender] => move |_| {
