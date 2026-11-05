@@ -7,8 +7,16 @@
 //! the shared window collapses into nothing), the previous state comes back.
 //!
 //! Ownership: DND is only turned off again if *we* turned it on. If it was
-//! already on when sharing started, it stays on afterwards. Turning the
-//! feature off mid-share releases what we own.
+//! already on when sharing started, it stays on afterwards. If the user
+//! turns our DND off during the share, it becomes theirs: turning it on
+//! again by hand keeps it on after the share. Turning the feature off
+//! mid-share releases what we own.
+//!
+//! A shell restart mid-share needs no saved state: the DND flag lives in
+//! mshell's own notification service (not persisted), so it comes back off
+//! and the fresh machine takes ownership again when it sees the share.
+//! The driver also wakes on every DND change, so a quick off→on by the
+//! user between idle ticks is still seen.
 //!
 //! The decision lives in the pure [`AutoDnd`] state machine (unit-tested);
 //! [`ensure_started`] is the thin GTK-main-loop driver around it.
@@ -17,6 +25,7 @@ use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use futures::StreamExt;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, NotificationsStoreFields};
 use mshell_services::notification_service;
@@ -50,6 +59,9 @@ pub(crate) struct AutoDnd {
     session: bool,
     /// We turned DND on for this session and must turn it off at the end.
     owned: bool,
+    /// Our "DND on" has been seen since we set it, so a later "off" is the
+    /// user's doing (not a read that raced our own write).
+    seen_on: bool,
     /// Sharing stopped at this instant; release once the delay has passed.
     stopped_since: Option<Instant>,
 }
@@ -71,12 +83,23 @@ impl AutoDnd {
         if !enabled {
             return self.release(dnd_on);
         }
+        if self.owned {
+            // Ownership follows what the user does mid-session: once our
+            // DND was on, seeing it off means the user took over. Whatever
+            // they do with it afterwards (on again by hand) is theirs.
+            if dnd_on {
+                self.seen_on = true;
+            } else if self.seen_on {
+                self.owned = false;
+            }
+        }
         if sharing {
             self.stopped_since = None;
             if !self.session {
                 self.session = true;
                 if !dnd_on {
                     self.owned = true;
+                    self.seen_on = false;
                     return Step {
                         set_dnd: Some(true),
                         recheck_at: None,
@@ -123,6 +146,16 @@ fn enabled() -> bool {
 pub(crate) fn ensure_started() {
     if STARTED.swap(true, Ordering::SeqCst) {
         return;
+    }
+    // Wake the driver on every DND change too (ours or the user's), so the
+    // machine sees a user's off→on even between idle ticks.
+    if let Some(service) = notification_service() {
+        let mut changes = Box::pin(service.dnd.watch());
+        glib::spawn_future_local(async move {
+            while changes.next().await.is_some() {
+                WAKE.notify_one();
+            }
+        });
     }
     glib::spawn_future_local(async move {
         let mut machine = AutoDnd::default();
@@ -227,6 +260,38 @@ mod tests {
         // And at the end there's nothing to restore.
         m.step(true, false, false, DELAY, ms(t, 200));
         assert_eq!(m.step(true, false, false, DELAY, ms(t, 1300)).set_dnd, None);
+    }
+
+    /// The user turned our DND off and back on during the share: it is
+    /// theirs now, so the end of the share leaves it on.
+    #[test]
+    fn user_taking_over_dnd_mid_share_keeps_it_on_afterwards() {
+        let t = Instant::now();
+        let mut m = AutoDnd::default();
+        assert_eq!(m.step(true, true, false, DELAY, t).set_dnd, Some(true));
+        assert_eq!(m.step(true, true, true, DELAY, ms(t, 100)).set_dnd, None);
+        // User: DND off …
+        assert_eq!(m.step(true, true, false, DELAY, ms(t, 200)).set_dnd, None);
+        // … and on again by hand.
+        assert_eq!(m.step(true, true, true, DELAY, ms(t, 300)).set_dnd, None);
+        assert_eq!(m.step(true, false, true, DELAY, ms(t, 400)).set_dnd, None);
+        assert_eq!(m.step(true, false, true, DELAY, ms(t, 1400)).set_dnd, None);
+    }
+
+    /// A step that runs before our own "DND on" is visible must not read as
+    /// the user turning it off.
+    #[test]
+    fn ownership_survives_a_read_before_our_dnd_shows_up() {
+        let t = Instant::now();
+        let mut m = AutoDnd::default();
+        assert_eq!(m.step(true, true, false, DELAY, t).set_dnd, Some(true));
+        assert_eq!(m.step(true, true, false, DELAY, ms(t, 1)).set_dnd, None);
+        assert_eq!(m.step(true, true, true, DELAY, ms(t, 50)).set_dnd, None);
+        m.step(true, false, true, DELAY, ms(t, 100));
+        assert_eq!(
+            m.step(true, false, true, DELAY, ms(t, 1100)).set_dnd,
+            Some(false)
+        );
     }
 
     #[test]
