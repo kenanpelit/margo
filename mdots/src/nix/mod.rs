@@ -418,6 +418,25 @@ pub fn generate_flake_lock(paths: &ConfigPaths) -> Result<()> {
     Ok(())
 }
 
+/// `home-manager switch` arguments: `--flake <hm_dir>#<target>` with a flake
+/// target, else `-f <hm_dir>/home.nix`. The paths stay `OsStr`s, so a config
+/// dir that is not valid UTF-8 is passed through instead of panicking.
+fn home_manager_switch_args(hm_dir: &Path, flake_target: Option<&str>) -> Vec<std::ffi::OsString> {
+    match flake_target {
+        Some(target) => {
+            let mut flake = hm_dir.as_os_str().to_os_string();
+            flake.push("#");
+            flake.push(target);
+            vec!["switch".into(), "--flake".into(), flake]
+        }
+        None => vec![
+            "switch".into(),
+            "-f".into(),
+            hm_dir.join("home.nix").into_os_string(),
+        ],
+    }
+}
+
 /// Run home-manager switch
 pub fn home_manager_switch(paths: &ConfigPaths, config: &Config) -> Result<()> {
     let hm_dir = paths.home_manager_dir();
@@ -450,11 +469,7 @@ pub fn home_manager_switch(paths: &ConfigPaths, config: &Config) -> Result<()> {
         };
 
         Command::new(home_manager_command())
-            .args([
-                "switch",
-                "--flake",
-                &format!("{}#{}", hm_dir.to_str().unwrap(), flake_target),
-            ])
+            .args(home_manager_switch_args(&hm_dir, Some(&flake_target)))
             .stdin(std::process::Stdio::inherit())
             .stdout(std::process::Stdio::inherit())
             .stderr(std::process::Stdio::inherit())
@@ -462,7 +477,7 @@ pub fn home_manager_switch(paths: &ConfigPaths, config: &Config) -> Result<()> {
             .context("Failed to run home-manager switch")?
     } else {
         Command::new(home_manager_command())
-            .args(["switch", "-f", home_nix.to_str().unwrap()])
+            .args(home_manager_switch_args(&hm_dir, None))
             .stdin(std::process::Stdio::inherit())
             .stdout(std::process::Stdio::inherit())
             .stderr(std::process::Stdio::inherit())
@@ -663,4 +678,43 @@ pub fn migrate_existing_hm(paths: &ConfigPaths) -> Result<bool> {
     }
 
     Ok(true)
+}
+
+#[cfg(test)]
+mod switch_args_tests {
+    use super::home_manager_switch_args;
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::Path;
+
+    #[test]
+    fn switch_args_pass_paths_through_unchanged() {
+        let dir = Path::new("/home/u/.config/mdots/home-manager");
+        assert_eq!(
+            home_manager_switch_args(dir, Some("host")),
+            [
+                "switch",
+                "--flake",
+                "/home/u/.config/mdots/home-manager#host"
+            ]
+        );
+        assert_eq!(
+            home_manager_switch_args(dir, None),
+            [
+                "switch",
+                "-f",
+                "/home/u/.config/mdots/home-manager/home.nix"
+            ]
+        );
+    }
+
+    #[test]
+    fn switch_args_accept_a_non_utf8_config_dir() {
+        // A path that is not valid UTF-8 used to panic in `to_str().unwrap()`.
+        let dir = Path::new(OsStr::from_bytes(b"/home/u/caf\xe9/hm"));
+        let flake = home_manager_switch_args(dir, Some("host"));
+        assert_eq!(flake[2].as_bytes(), b"/home/u/caf\xe9/hm#host");
+        let file = home_manager_switch_args(dir, None);
+        assert_eq!(file[2].as_bytes(), b"/home/u/caf\xe9/hm/home.nix");
+    }
 }

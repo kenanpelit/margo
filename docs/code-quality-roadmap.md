@@ -3,7 +3,7 @@
 A grounded review of margo (compositor + mshell shell) as a codebase, with
 prioritised improvement work. Snapshot metrics (2026-11-05, v4.9.2): ~422k
 LOC Rust, 62 workspace crates, 2882 test fns, 343 `unsafe` sites,
-panic-ratchet baseline 408 (non-test `unwrap`/`expect`/`panic`/`unreachable`/
+panic-ratchet baseline 389 (non-test `unwrap`/`expect`/`panic`/`unreachable`/
 `todo`/`unimplemented` calls). These figures
 come from [`scripts/metrics.sh`](https://github.com/kenanpelit/margo/blob/main/scripts/metrics.sh),
 which is the canonical live source — run it for the current numbers rather than
@@ -112,7 +112,7 @@ files, and overlapping feature mechanisms.**
   panic kills the whole desktop; in mshell it kills the bar. Sweep hot paths
   (render, input, IPC handlers, config/file I/O) toward `Result` + graceful
   degrade. **CI-ratcheted** via `scripts/panic-ratchet.sh` +
-  `scripts/panic-baseline.txt` (baseline **408** on 4.9.2; it went 321 → 457 →
+  `scripts/panic-baseline.txt` (baseline **389** after 4.9.2; it went 321 → 457 →
   468 → 446 because raises were allowed with only a commit-message note, and
   the ratchet has counted individual calls, not lines, since 4.9.2). A
   raise now needs a `PANIC-BASELINE-RAISE: <reason>` trailer on the commit that

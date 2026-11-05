@@ -3,6 +3,7 @@
 
 use std::{
     collections::HashMap,
+    os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
     sync::Mutex,
 };
@@ -146,27 +147,7 @@ impl CoverCache {
             };
         }
 
-        // We use the album and artist to ensure we share the
-        // same cover data for every track in the album; if we
-        // don't have an album, we use the file name
-        let mut hasher = Sha256::new();
-        if let Some(album) = album {
-            hasher.update(&album);
-
-            if let Some(artist) = album_artist {
-                hasher.update(&artist);
-            } else if let Some(artist) = track_artist {
-                hasher.update(&artist);
-            }
-
-            if let Some(parent) = path.parent() {
-                hasher.update(parent.to_str().unwrap());
-            }
-        } else {
-            hasher.update(path.to_str().unwrap());
-        }
-
-        let uuid = format!("{:x}", hasher.finalize());
+        let uuid = cover_uuid(path, album, album_artist, track_artist);
 
         match self.lookup(&uuid) {
             Some(c) => {
@@ -223,5 +204,67 @@ impl CoverCache {
 
     pub fn clear(&mut self) {
         self.entries.clear();
+    }
+}
+
+/// The cache key for a track's cover. We use the album and artist to ensure
+/// we share the same cover data for every track in the album; if we don't
+/// have an album, we use the file name.
+fn cover_uuid(
+    path: &Path,
+    album: Option<String>,
+    album_artist: Option<String>,
+    track_artist: Option<String>,
+) -> String {
+    let mut hasher = Sha256::new();
+    if let Some(album) = album {
+        hasher.update(&album);
+
+        if let Some(artist) = album_artist {
+            hasher.update(&artist);
+        } else if let Some(artist) = track_artist {
+            hasher.update(&artist);
+        }
+
+        if let Some(parent) = path.parent() {
+            hasher.update(parent.as_os_str().as_bytes());
+        }
+    } else {
+        // The raw path bytes: the same key `to_str()` gave for a UTF-8 path,
+        // and no panic for a Latin-1 file name.
+        hasher.update(path.as_os_str().as_bytes());
+    }
+    format!("{:x}", hasher.finalize())
+}
+
+#[cfg(test)]
+mod cover_uuid_tests {
+    use super::cover_uuid;
+    use sha2::{Digest, Sha256};
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::Path;
+
+    #[test]
+    fn utf8_keys_are_unchanged() {
+        // Same key as before for UTF-8 paths, so existing caches stay valid.
+        let path = Path::new("/music/Album/01.flac");
+        let by_file = format!("{:x}", Sha256::digest("/music/Album/01.flac"));
+        assert_eq!(cover_uuid(path, None, None, None), by_file);
+        let by_album = format!("{:x}", Sha256::digest("AlbumArtist/music/Album"));
+        assert_eq!(
+            cover_uuid(path, Some("Album".into()), Some("Artist".into()), None),
+            by_album
+        );
+    }
+
+    #[test]
+    fn a_non_utf8_file_name_does_not_panic() {
+        // Latin-1 file names are common in old music libraries.
+        let path = Path::new(OsStr::from_bytes(b"/music/caf\xe9/01.flac"));
+        let by_file = cover_uuid(path, None, None, None);
+        let by_album = cover_uuid(path, Some("Album".into()), None, None);
+        assert_eq!(by_file.len(), 64);
+        assert_ne!(by_file, by_album);
     }
 }

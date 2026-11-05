@@ -1,4 +1,4 @@
-use tracing::info;
+use tracing::{info, warn};
 use wayland_client::{Connection, EventQueue, protocol::wl_keyboard::KeyState};
 use xkbcommon::xkb;
 
@@ -25,8 +25,13 @@ impl VirtualKeyboard {
     /// `layout::live_legends`), or `None` if it couldn't be read; `None`
     /// falls back to a bare "us" keymap and group 0 in
     /// `session::get_keymap_as_file`.
-    pub fn new(keymap: Option<xkb::Keymap>) -> Self {
-        let conn = Connection::connect_to_env().unwrap();
+    ///
+    /// Fails, instead of panicking, when there is no Wayland compositor to
+    /// talk to (run from a tty or an early systemd unit) or the first
+    /// round-trips break.
+    pub fn new(keymap: Option<xkb::Keymap>) -> Result<Self, String> {
+        let conn = Connection::connect_to_env()
+            .map_err(|e| format!("mkeys needs a Wayland session (no compositor reachable: {e})"))?;
         let display = conn.display();
 
         let mut event_queue = conn.new_event_queue();
@@ -44,20 +49,27 @@ impl VirtualKeyboard {
             keyboard: None,
             seat: None,
             keymap,
+            keymap_error: None,
         };
 
-        //bind seat and virtual keyboard manager
-        event_queue.roundtrip(&mut state).unwrap();
-        //create virtual keyboard by seat and manager
-        event_queue.roundtrip(&mut state).unwrap();
+        //bind seat and virtual keyboard manager, then create the virtual
+        //keyboard by seat and manager
+        for _ in 0..2 {
+            event_queue
+                .roundtrip(&mut state)
+                .map_err(|e| format!("lost the Wayland connection while starting: {e}"))?;
+        }
+        if let Some(e) = state.keymap_error.take() {
+            return Err(format!("could not hand the keymap to the compositor: {e}"));
+        }
 
-        Self {
+        Ok(Self {
             session_state: state,
             event_queue,
             modifiers: 0,
             locks: 0,
             group,
-        }
+        })
     }
 }
 
@@ -66,7 +78,7 @@ impl KeyboardHandle for VirtualKeyboard {
         if let Some(keyboard) = &self.session_state.keyboard {
             info!("Key Pressed: {:?}", key);
             keyboard.key(0, key.code().into(), KeyState::Pressed.into());
-            self.event_queue.roundtrip(&mut self.session_state).unwrap();
+            self.roundtrip();
         }
     }
 
@@ -74,7 +86,7 @@ impl KeyboardHandle for VirtualKeyboard {
         if let Some(keyboard) = &self.session_state.keyboard {
             info!("Key Released: {:?}", key);
             keyboard.key(0, key.code().into(), KeyState::Released.into());
-            self.event_queue.roundtrip(&mut self.session_state).unwrap();
+            self.roundtrip();
         }
     }
 
@@ -115,21 +127,30 @@ impl KeyboardHandle for VirtualKeyboard {
         // call (e.g. the close button and the IPC "quit" listener firing
         // within the same tick) is a safe no-op instead of resending a
         // destroy request on an already-destroyed proxy, which the
-        // roundtrip below would otherwise turn into a panic on the
-        // resulting protocol error.
+        // roundtrip below would otherwise turn into a protocol error that
+        // kills the connection.
         if let Some(keyboard) = self.session_state.keyboard.take() {
             info!("Destroying Virtual Keyboard.");
             keyboard.destroy();
-            self.event_queue.roundtrip(&mut self.session_state).unwrap();
+            self.roundtrip();
         }
     }
 }
 
 impl VirtualKeyboard {
+    /// Flush requests to the compositor. A broken connection (the
+    /// compositor went away) is logged, not a panic: the keyboard just
+    /// stops typing until it is restarted.
+    fn roundtrip(&mut self) {
+        if let Err(e) = self.event_queue.roundtrip(&mut self.session_state) {
+            warn!("mkeys: Wayland round-trip failed: {e}");
+        }
+    }
+
     fn update_state(&mut self) {
         if let Some(keyboard) = &self.session_state.keyboard {
             keyboard.modifiers(self.modifiers, 0, self.locks, self.group);
-            self.event_queue.roundtrip(&mut self.session_state).unwrap();
+            self.roundtrip();
         }
     }
 

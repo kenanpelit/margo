@@ -21,6 +21,9 @@ pub struct SessionState {
     /// and shared with `layout::live_legends` — `None` if it couldn't be read,
     /// in which case `get_keymap_as_file` falls back to a bare "us" keymap.
     pub keymap: Option<xkb::Keymap>,
+    /// Why the keymap could not be handed over (set from the seat event,
+    /// reported by `VirtualKeyboard::new`).
+    pub keymap_error: Option<String>,
 }
 
 impl Dispatch<wl_registry::WlRegistry, ()> for SessionState {
@@ -82,11 +85,14 @@ impl Dispatch<WlSeat, ()> for SessionState {
             && capabilities.contains(wl_seat::Capability::Keyboard)
             && let Some(keyboard_manager) = &state.keyboard_manager
         {
-            let keyboard = keyboard_manager.create_virtual_keyboard(seat, qh, ());
-
-            let (file, len) = get_keymap_as_file(state.keymap.as_ref());
-            keyboard.keymap(wl_keyboard::KeymapFormat::XkbV1.into(), file.as_fd(), len);
-            state.keyboard = Some(keyboard);
+            match get_keymap_as_file(state.keymap.as_ref()) {
+                Ok((file, len)) => {
+                    let keyboard = keyboard_manager.create_virtual_keyboard(seat, qh, ());
+                    keyboard.keymap(wl_keyboard::KeymapFormat::XkbV1.into(), file.as_fd(), len);
+                    state.keyboard = Some(keyboard);
+                }
+                Err(e) => state.keymap_error = Some(e),
+            }
         }
     }
 }
@@ -103,7 +109,7 @@ impl Dispatch<ZwpVirtualKeyboardV1, ()> for SessionState {
     }
 }
 
-pub fn get_keymap_as_file(keymap: Option<&xkb::Keymap>) -> (File, u32) {
+pub fn get_keymap_as_file(keymap: Option<&xkb::Keymap>) -> Result<(File, u32), String> {
     // Submit margo's REAL active keymap to the virtual keyboard manager.
     // This used to be a hardcoded "us" QWERTY keymap regardless of the
     // user's actual xkb config — Smithay's virtual-keyboard handling
@@ -128,18 +134,21 @@ pub fn get_keymap_as_file(keymap: Option<&xkb::Keymap>) -> (File, u32) {
                 None,
                 xkb::KEYMAP_COMPILE_NO_FLAGS,
             )
-            .expect("xkbcommon keymap panicked!");
+            .ok_or("xkbcommon cannot compile even a plain \"us\" keymap (is xkeyboard-config installed?)")?;
             &fallback_keymap
         }
     };
     let keymap = keymap.get_as_string(xkb::KEYMAP_FORMAT_TEXT_V1);
-    let keymap = CString::new(keymap).expect("Keymap should not contain interior nul bytes");
+    let keymap = CString::new(keymap).map_err(|e| format!("keymap text has a NUL byte: {e}"))?;
     let keymap = keymap.as_bytes_with_nul();
     let dir = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir);
-    let mut file = tempfile::tempfile_in(dir).expect("File could not be created!");
-    file.write_all(keymap).unwrap();
-    file.flush().unwrap();
-    (file, keymap.len() as u32)
+    let mut file = tempfile::tempfile_in(&dir)
+        .map_err(|e| format!("cannot create the keymap file in {}: {e}", dir.display()))?;
+    file.write_all(keymap)
+        .and_then(|()| file.flush())
+        .map_err(|e| format!("cannot write the keymap file: {e}"))?;
+    let len = u32::try_from(keymap.len()).map_err(|_| "keymap is larger than 4 GiB".to_string())?;
+    Ok((file, len))
 }

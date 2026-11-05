@@ -34,7 +34,9 @@ impl<N: IPCHandle + Send + 'static> AppService<N> {
         Self { ipc_handle }
     }
 
-    pub fn run(self) {
+    /// Run the keyboard until it is closed. Fails before any window
+    /// appears when there is no Wayland session to type into.
+    pub fn run(self) -> Result<(), String> {
         let config = Config::load();
         let layout_str = LayoutAssets::by_name(&config.layout);
         let mut layout = LayoutDefinition::from_toml(&layout_str)
@@ -53,7 +55,7 @@ impl<N: IPCHandle + Send + 'static> AppService<N> {
         crate::layout::live_legends::apply(&mut layout, keymap.as_ref());
         crate::layout::extra_rows::apply(&mut layout, &config);
 
-        let keyboard = VirtualKeyboard::new(keymap);
+        let keyboard = VirtualKeyboard::new(keymap)?;
 
         let app = RelmApp::new("org.margo.mkeys");
         relm4::set_global_css(&StyleAssets::get_default_style_file());
@@ -65,5 +67,6 @@ impl<N: IPCHandle + Send + 'static> AppService<N> {
             layout,
             config,
         ));
+        Ok(())
     }
 }

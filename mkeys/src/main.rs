@@ -30,7 +30,11 @@ fn main() {
                     std::process::exit(0);
                 })
                 .ok();
-                AppService::new(ipc).run();
+                if let Err(e) = AppService::new(ipc).run() {
+                    eprintln!("mkeys: {e}");
+                    Ipc::clean_up();
+                    std::process::exit(1);
+                }
             }
         }
     } else {

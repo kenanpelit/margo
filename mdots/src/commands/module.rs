@@ -476,8 +476,7 @@ pub fn disable(paths: &ConfigPaths, module_name: &str, json: bool) -> Result<()>
                 );
                 println!("Script: {}", hook_path.display());
 
-                let mut hook = std::process::Command::new("sudo");
-                hook.args(["bash", hook_path.to_str().unwrap()]);
+                let mut hook = sudo_bash(&hook_path);
                 let status = crate::process::status_inherited(&mut hook);
 
                 match status {
@@ -784,7 +783,6 @@ fn save_config(paths: &ConfigPaths, config: &crate::config::Config) -> Result<()
 
 pub fn run_hook(paths: &ConfigPaths, module_name: &str) -> Result<()> {
     use crate::config::load_module;
-    use std::process::Command;
 
     let config = load_config(paths)?;
     let module_manager = ModuleManager::new(paths.clone());
@@ -848,8 +846,7 @@ pub fn run_hook(paths: &ConfigPaths, module_name: &str) -> Result<()> {
     println!();
 
     // Execute the hook
-    let mut hook = Command::new("sudo");
-    hook.args(["bash", hook_path.to_str().unwrap()]);
+    let mut hook = sudo_bash(&hook_path);
     let status =
         crate::process::status_inherited(&mut hook).context("Failed to execute hook script")?;
 
@@ -1238,4 +1235,31 @@ fn open_file_in_editor(file_path: &std::path::Path, editor: &str) -> Result<()> 
     println!("{} File closed", "✓".green());
 
     Ok(())
+}
+
+/// `sudo bash <hook_path>` — the command a module hook runs as. The path is
+/// passed as an `OsStr`, so a module dir that is not valid UTF-8 works
+/// instead of panicking.
+fn sudo_bash(hook_path: &std::path::Path) -> std::process::Command {
+    let mut hook = std::process::Command::new("sudo");
+    hook.arg("bash").arg(hook_path);
+    hook
+}
+
+#[cfg(test)]
+mod hook_command_tests {
+    use super::sudo_bash;
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::Path;
+
+    #[test]
+    fn hook_runs_under_sudo_bash_with_the_path_unchanged() {
+        // A path that is not valid UTF-8 used to panic in `to_str().unwrap()`.
+        let path = Path::new(OsStr::from_bytes(b"/mods/caf\xe9/post-install.sh"));
+        let cmd = sudo_bash(path);
+        assert_eq!(cmd.get_program(), "sudo");
+        let args: Vec<&OsStr> = cmd.get_args().collect();
+        assert_eq!(args, [OsStr::new("bash"), path.as_os_str()]);
+    }
 }

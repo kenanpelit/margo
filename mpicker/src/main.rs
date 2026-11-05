@@ -162,7 +162,13 @@ fn open_overlays(
         windows: RefCell::new(Vec::new()),
     });
 
-    let gdk_display = gdk::Display::default().expect("no display");
+    // `enumerate_outputs` already needed the display, so this only fails if
+    // it went away in between; bail out (no overlay → exit 1) rather than
+    // panic.
+    let Some(gdk_display) = gdk::Display::default() else {
+        eprintln!("mpicker: the display went away");
+        return;
+    };
     let monitors = gdk_display.monitors();
 
     for out in outputs.iter() {
