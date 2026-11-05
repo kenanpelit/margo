@@ -833,6 +833,12 @@ track**, not N separate buttons.
 - Border: the capsule's `--outline-variant` hairline (above) is the
   *only* resting outline a panel carries — the segments themselves never
   get borders; inactive vs. active is fill + colour alone.
+- **Focus**: the segments are `all: unset` (no GTK chrome), which also
+  removes GTK's focus outline — the primitive restores it as the §12
+  inset 2px `--primary` ring on `:focus-visible` (§16: mandatory).
+- **Reuse it**: `common_widgets::segmented::Segmented` (or, in a
+  `view!` with `#[watch]`, `TRACK_CLASS` + `segment_classes`). Never a
+  per-menu copy of the track SCSS.
 
 ### Panel search (pill query surface)
 A panel's search reads as a calm query surface, not a utility input.
@@ -1243,7 +1249,7 @@ existing part. Reuse keeps the system coherent (§0) and is faster.
 |---|---|---|---|
 | **RevealerRow** | `common_widgets/revealer_row/` | status row that expands to details/devices (§5) | a plain non-expanding row (use a device row) |
 | **PanelHeader** | `menus/menu_widgets/.../panel_header` (§12) | spacious panel title + circular actions | a compact menu (no hero header) |
-| **Segmented control** | §12 pattern | 2–4 mutually exclusive views in a panel | many options (use a list/dropdown) |
+| **Segmented control** | `common_widgets/segmented.rs` + `03-primitives/_segmented.scss` (`.ok-segmented` / `.ok-segment`) | `Capsule`: 2–4 mutually exclusive views in a panel (clipboard, agents, GitHub, crashes); `ButtonRow`: a compact value picker (CPU sort / protocol / fan level) | many options (use a list/dropdown); never a per-menu `*-tabs` SCSS copy |
 | **Panel search** | §12 pill search | browse-and-filter panel | a compact menu (use `--radius-xl` search) |
 | **Reorder DnD** | `mshell-settings/src/reorder_dnd.rs` | any user-reorderable list (§5) | non-reorderable list |
 | **Device / list row** | §5 row pattern | selectable item in a list | expandable row (use RevealerRow) |

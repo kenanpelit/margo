@@ -145,18 +145,6 @@ pub(crate) fn row_body(title: &str, subtitle: &str, trailing: &[gtk::Widget]) ->
     b
 }
 
-/// Labelled text button in the house surface style; `danger` uses the
-/// error ladder (§2) for destructive confirms.
-pub(crate) fn text_button(label: &str, danger: bool) -> gtk::Button {
-    let b = gtk::Button::with_label(label);
-    b.set_css_classes(if danger {
-        &["ok-button-error", "label-small"]
-    } else {
-        &["ok-button-surface", "label-small"]
-    });
-    b
-}
-
 #[cfg(test)]
 mod tests {
     use super::replace_if_changed;

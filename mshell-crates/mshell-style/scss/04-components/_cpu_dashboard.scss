@@ -267,8 +267,9 @@
   background-color: transparent;
 }
 
-// Sort segmented row: equal-width surface buttons, the active column
-// carries `.selected` (same shape as the VPN network-mode row).
+// Sort / protocol / fan-level rows: `common_widgets::segmented`'s
+// ButtonRow look — equal-width surface buttons, the active one
+// `.selected` (same shape as the VPN network-mode row).
 .cpu-dashboard-sort-row > button {
   min-width: 0;
 }

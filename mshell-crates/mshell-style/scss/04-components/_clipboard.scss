@@ -56,39 +56,6 @@
   }
 }
 
-// ── Segmented tab strip: All · Text · Images · Files · ★ ─────────
-// One unified capsule track; active segment lifts to
-// --secondary-container (the soft-toggle tier). Mirrors the existing
-// design with token-only values and audio-dashboard hover wash.
-.clipboard-tabs {
-  background-color: var(--surface-container-low);
-  border: var(--border-width) solid var(--outline-variant);
-  border-radius: var(--radius-pill);
-  padding: var(--space-1);
-
-  .clipboard-tab {
-    all: unset;
-    padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-sm);
-    font-size: var(--font-2xs);
-    color: var(--on-surface-variant);
-    transition: background-color var(--motion-fast) var(--ease-standard),
-                color var(--motion-fast) var(--ease-standard);
-
-    &:hover {
-      background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
-    }
-
-    // Active segment: secondary-container fill (calm, not a --primary
-    // flood) + its on-colour. No font-weight bump so segment widths
-    // stay stable when switching tabs.
-    &.active {
-      background-color: var(--secondary-container);
-      color: var(--on-secondary-container);
-    }
-  }
-}
-
 // ── Search entry ──────────────────────────────────────────────────
 // Calm pill query surface — the DELIBERATE panel-scoped pill exception
 // (DESIGN.md §12; every other search is an --entry-radius Adwaita

@@ -81,37 +81,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-// ── §12 segmented control: Usage | Sessions (as the clipboard panel's) ──
-.agents-tabs {
-  background-color: var(--surface-container-low);
-  border: var(--border-width) solid var(--outline-variant);
-  border-radius: var(--radius-pill);
-  padding: var(--space-1);
-
-  .agents-tab {
-    all: unset;
-    padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-sm);
-    font-size: var(--font-2xs);
-    color: var(--on-surface-variant);
-    transition: background-color var(--motion-fast) var(--ease-standard),
-                color var(--motion-fast) var(--ease-standard);
-
-    label {
-      font-size: var(--font-2xs);
-    }
-
-    &:hover {
-      background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
-    }
-
-    &.active {
-      background-color: var(--secondary-container);
-      color: var(--on-secondary-container);
-    }
-  }
-}
-
 // ── Session lamps (bar pill + session rows) ───────────────────
 // Needs-you uses the error tint (it is waiting on you), working the
 // primary accent (§3 live state), idle the dim variant tier.

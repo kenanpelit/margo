@@ -112,15 +112,6 @@ impl ClipTab {
     }
 }
 
-/// CSS classes for a tab button — `active` when it's the selected tab.
-fn tab_classes(active: bool) -> &'static [&'static str] {
-    if active {
-        &["clipboard-tab", "active"]
-    } else {
-        &["clipboard-tab"]
-    }
-}
-
 /// Tab button label: base name + live count, e.g. `Text 12`. The ★
 /// favorites tab keeps just its glyph + count.
 fn tab_label(tab: ClipTab, counts: &[usize; 4]) -> String {
@@ -346,7 +337,7 @@ impl Component for ClipboardModel {
             // Type tabs — All · Text · Images · ★ (favorites),
             // each with a live count. Number keys 1–4 jump; Tab cycles.
             gtk::Box {
-                add_css_class: "clipboard-tabs",
+                add_css_class: crate::common_widgets::segmented::TRACK_CLASS,
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 4,
                 // Centre the tab pill in the panel regardless of width
@@ -355,7 +346,7 @@ impl Component for ClipboardModel {
 
                 gtk::Button {
                     #[watch]
-                    set_css_classes: tab_classes(model.active_tab == ClipTab::All),
+                    set_css_classes: crate::common_widgets::segmented::segment_classes(crate::common_widgets::segmented::SegmentedStyle::Capsule, model.active_tab == ClipTab::All),
                     #[watch]
                     set_label: &tab_label(ClipTab::All, &model.tab_counts),
                     connect_clicked[sender] => move |_| {
@@ -364,7 +355,7 @@ impl Component for ClipboardModel {
                 },
                 gtk::Button {
                     #[watch]
-                    set_css_classes: tab_classes(model.active_tab == ClipTab::Text),
+                    set_css_classes: crate::common_widgets::segmented::segment_classes(crate::common_widgets::segmented::SegmentedStyle::Capsule, model.active_tab == ClipTab::Text),
                     #[watch]
                     set_label: &tab_label(ClipTab::Text, &model.tab_counts),
                     connect_clicked[sender] => move |_| {
@@ -373,7 +364,7 @@ impl Component for ClipboardModel {
                 },
                 gtk::Button {
                     #[watch]
-                    set_css_classes: tab_classes(model.active_tab == ClipTab::Images),
+                    set_css_classes: crate::common_widgets::segmented::segment_classes(crate::common_widgets::segmented::SegmentedStyle::Capsule, model.active_tab == ClipTab::Images),
                     #[watch]
                     set_label: &tab_label(ClipTab::Images, &model.tab_counts),
                     connect_clicked[sender] => move |_| {
@@ -382,7 +373,7 @@ impl Component for ClipboardModel {
                 },
                 gtk::Button {
                     #[watch]
-                    set_css_classes: tab_classes(model.active_tab == ClipTab::Favorites),
+                    set_css_classes: crate::common_widgets::segmented::segment_classes(crate::common_widgets::segmented::SegmentedStyle::Capsule, model.active_tab == ClipTab::Favorites),
                     #[watch]
                     set_label: &tab_label(ClipTab::Favorites, &model.tab_counts),
                     connect_clicked[sender] => move |_| {

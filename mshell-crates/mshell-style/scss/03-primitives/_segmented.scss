@@ -1,0 +1,50 @@
+// ── §12 segmented control — the one capsule track ─────────────────
+// DESIGN.md §12 "Segmented control" / §18. Built by
+// `common_widgets::segmented` (Capsule style): `.ok-segmented` box,
+// `button.ok-segment` children, the active one `.active`.
+//
+// One unified capsule (not N buttons): --surface-container-low fill +
+// the --outline-variant hairline so it reads as one unit on palettes
+// where the tiers coincide, --space-1 inset. Active segment: the calm
+// --secondary-container soft-toggle tier. Inactive: transparent, dim
+// text, 14% primary hover wash. No font-weight change between states
+// (segment widths would reflow).
+//
+// `all: unset` strips GTK's button chrome — and with it GTK's focus
+// outline — so the keyboard focus ring is restored explicitly (§16:
+// focus ring is mandatory): the inset 2px --primary ring §12 uses for
+// the panel search and the selected content row.
+.ok-segmented {
+  background-color: var(--surface-container-low);
+  border: var(--border-width) solid var(--outline-variant);
+  border-radius: var(--radius-pill);
+  padding: var(--space-1);
+
+  > button.ok-segment {
+    all: unset;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-2xs);
+    color: var(--on-surface-variant);
+    transition: background-color var(--motion-fast) var(--ease-standard),
+                color var(--motion-fast) var(--ease-standard),
+                box-shadow var(--motion-fast) var(--ease-standard);
+
+    label {
+      font-size: var(--font-2xs);
+    }
+
+    &:hover {
+      background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+    }
+
+    &.active {
+      background-color: var(--secondary-container);
+      color: var(--on-secondary-container);
+    }
+
+    &:focus-visible {
+      box-shadow: inset 0 0 0 2px var(--primary);
+    }
+  }
+}

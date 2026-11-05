@@ -94,19 +94,18 @@ impl Component for CrashesMenuWidgetModel {
                 },
             },
 
-            // ── Segmented control (Crashes · Errors) ──
+            // ── §12 segmented control (Crashes · Errors) ──
             gtk::Box {
-                add_css_class: "crashes-tabs",
+                add_css_class: crate::common_widgets::segmented::TRACK_CLASS,
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 4,
                 set_homogeneous: true,
                 gtk::Button {
                     #[watch]
-                    set_css_classes: if model.tab == CrashesTab::Crashes {
-                        &["ok-button-surface", "selected"]
-                    } else {
-                        &["ok-button-surface"]
-                    },
+                    set_css_classes: crate::common_widgets::segmented::segment_classes(
+                        crate::common_widgets::segmented::SegmentedStyle::Capsule,
+                        model.tab == CrashesTab::Crashes,
+                    ),
                     set_hexpand: true,
                     set_label: "Crashes",
                     connect_clicked[sender] => move |_| {
@@ -115,11 +114,10 @@ impl Component for CrashesMenuWidgetModel {
                 },
                 gtk::Button {
                     #[watch]
-                    set_css_classes: if model.tab == CrashesTab::Errors {
-                        &["ok-button-surface", "selected"]
-                    } else {
-                        &["ok-button-surface"]
-                    },
+                    set_css_classes: crate::common_widgets::segmented::segment_classes(
+                        crate::common_widgets::segmented::SegmentedStyle::Capsule,
+                        model.tab == CrashesTab::Errors,
+                    ),
                     set_hexpand: true,
                     set_label: "Journal errors",
                     connect_clicked[sender] => move |_| {

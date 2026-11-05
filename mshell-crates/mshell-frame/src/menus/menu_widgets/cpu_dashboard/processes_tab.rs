@@ -11,6 +11,7 @@ use super::procs::{
     row_matches, send_signal, sort_rows,
 };
 use super::ui;
+use crate::common_widgets::segmented::{Segmented, SegmentedStyle};
 use crate::menus::reveal_poll::RevealPoll;
 use mshell_services::margo_service;
 use mshell_utils::units;
@@ -55,7 +56,9 @@ pub(crate) struct ProcessesTabModel {
     list: gtk::ListBox,
     /// The rows on screen, kept across polls (only changed rows rebuild).
     shown: KeyedRows<RowKey, LiveRow>,
-    sort_buttons: Vec<(ProcSort, gtk::Button)>,
+    /// The sort keys, in `sort_row` order.
+    sorts: Vec<ProcSort>,
+    sort_row: Segmented,
 }
 
 #[derive(Debug)]
@@ -110,9 +113,6 @@ impl Component for ProcessesTabModel {
                 #[local_ref]
                 sort_row -> gtk::Box {
                     add_css_class: "cpu-dashboard-sort-row",
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 4,
-                    set_homogeneous: true,
                     set_hexpand: true,
                 },
                 gtk::ToggleButton {
@@ -222,24 +222,27 @@ impl Component for ProcessesTabModel {
         poll.set_revealed(false);
 
         let list = gtk::ListBox::new();
-        let sort_row = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-        let mut sort_buttons = Vec::new();
-        for (sort, label, tip) in [
+        const SORTS: [(ProcSort, &str, &str); 4] = [
             (ProcSort::Cpu, "CPU", "Sort by CPU"),
             (ProcSort::Mem, "RAM", "Sort by memory"),
             (ProcSort::Swap, "Swap", "Sort by swap"),
             (ProcSort::Io, "Disk", "Sort by disk read + write rate"),
-        ] {
-            let b = ui::text_button(label, false);
+        ];
+        let sorts: Vec<ProcSort> = SORTS.iter().map(|(s, _, _)| *s).collect();
+        let labels: Vec<&str> = SORTS.iter().map(|(_, l, _)| *l).collect();
+        let active = sorts
+            .iter()
+            .position(|s| *s == ProcSort::default())
+            .unwrap_or(0);
+        let s = sender.clone();
+        let by_index = sorts.clone();
+        let sort_segments = Segmented::new(&labels, active, SegmentedStyle::ButtonRow, move |i| {
+            s.input(ProcessesTabInput::Sort(by_index[i]));
+        });
+        for (b, (_, _, tip)) in sort_segments.buttons().iter().zip(SORTS) {
             b.set_tooltip_text(Some(tip));
-            if sort == ProcSort::default() {
-                b.add_css_class("selected");
-            }
-            let s = sender.clone();
-            b.connect_clicked(move |_| s.input(ProcessesTabInput::Sort(sort)));
-            sort_row.append(&b);
-            sort_buttons.push((sort, b));
         }
+        let sort_row = sort_segments.root().clone();
 
         let mut model = ProcessesTabModel {
             poll,
@@ -255,7 +258,8 @@ impl Component for ProcessesTabModel {
             needs_admin: None,
             list: list.clone(),
             shown: KeyedRows::default(),
-            sort_buttons,
+            sorts,
+            sort_row: sort_segments,
         };
         let widgets = view_output!();
         crate::menus::list_fit::mark_menu_list(&widgets.fill_list, 380);
@@ -285,12 +289,8 @@ impl Component for ProcessesTabModel {
             }
             ProcessesTabInput::Sort(sort) => {
                 self.sort = sort;
-                for (s, b) in &self.sort_buttons {
-                    if *s == sort {
-                        b.add_css_class("selected");
-                    } else {
-                        b.remove_css_class("selected");
-                    }
+                if let Some(i) = self.sorts.iter().position(|s| *s == sort) {
+                    self.sort_row.set_active(i);
                 }
                 self.render(&sender);
             }

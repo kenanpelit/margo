@@ -6,6 +6,7 @@
 use super::ports::{Exposure, PortRow, ProtoFilter, parse_ss, port_matches, sort_ports};
 use super::procs::{KillResult, proc_start, send_signal};
 use super::ui;
+use crate::common_widgets::segmented::{Segmented, SegmentedStyle};
 use crate::menus::reveal_poll::RevealPoll;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, EditableExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -34,7 +35,9 @@ pub(crate) struct PortsTabModel {
     /// EPERM on the last attempt: offer pkexec (pid, start, signal).
     needs_admin: Option<(i32, u64, &'static str)>,
     groups: gtk::Box,
-    proto_buttons: Vec<(ProtoFilter, gtk::Button)>,
+    /// The protocol filters, in `proto_row` order.
+    protos: Vec<ProtoFilter>,
+    proto_row: Segmented,
 }
 
 #[derive(Debug)]
@@ -103,9 +106,6 @@ impl Component for PortsTabModel {
             #[local_ref]
             proto_row -> gtk::Box {
                 add_css_class: "cpu-dashboard-sort-row",
-                set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 4,
-                set_homogeneous: true,
             },
 
             gtk::Box {
@@ -193,22 +193,20 @@ impl Component for PortsTabModel {
         poll.set_revealed(false);
 
         let groups = gtk::Box::new(gtk::Orientation::Vertical, 8);
-        let proto_row = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-        let mut proto_buttons = Vec::new();
-        for (p, label) in [
-            (ProtoFilter::Tcp, "TCP"),
-            (ProtoFilter::Udp, "UDP"),
-            (ProtoFilter::All, "All"),
-        ] {
-            let b = ui::text_button(label, false);
-            if p == ProtoFilter::default() {
-                b.add_css_class("selected");
-            }
-            let s = sender.clone();
-            b.connect_clicked(move |_| s.input(PortsTabInput::Proto(p)));
-            proto_row.append(&b);
-            proto_buttons.push((p, b));
-        }
+        let protos = vec![ProtoFilter::Tcp, ProtoFilter::Udp, ProtoFilter::All];
+        let active = protos
+            .iter()
+            .position(|p| *p == ProtoFilter::default())
+            .unwrap_or(0);
+        let s = sender.clone();
+        let by_index = protos.clone();
+        let proto_segments = Segmented::new(
+            &["TCP", "UDP", "All"],
+            active,
+            SegmentedStyle::ButtonRow,
+            move |i| s.input(PortsTabInput::Proto(by_index[i])),
+        );
+        let proto_row = proto_segments.root().clone();
         let model = PortsTabModel {
             poll,
             in_flight: false,
@@ -219,7 +217,8 @@ impl Component for PortsTabModel {
             status: String::new(),
             needs_admin: None,
             groups: groups.clone(),
-            proto_buttons,
+            protos,
+            proto_row: proto_segments,
         };
         let widgets = view_output!();
         crate::menus::list_fit::mark_menu_list(&widgets.fill_list, 380);
@@ -243,12 +242,8 @@ impl Component for PortsTabModel {
             }
             PortsTabInput::Proto(p) => {
                 self.proto = p;
-                for (q, b) in &self.proto_buttons {
-                    if *q == p {
-                        b.add_css_class("selected");
-                    } else {
-                        b.remove_css_class("selected");
-                    }
+                if let Some(i) = self.protos.iter().position(|q| *q == p) {
+                    self.proto_row.set_active(i);
                 }
                 self.render(&sender);
             }

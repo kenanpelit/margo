@@ -13,6 +13,7 @@
 //! [`KeyedList`]), so keyboard focus and the scroll position survive it.
 
 use crate::bars::bar_widgets::github::GITHUB_POLL;
+use crate::common_widgets::segmented::{Segmented, SegmentedStyle};
 use crate::github::{self, CiState, GhError, GithubSnapshot, Notification, PullRequest, Review};
 use crate::menus::menu_widgets::agents::agents_menu_widget::open_url;
 use crate::menus::menu_widgets::agents::keyed_rows::{KeyedList, KeyedRow};
@@ -36,7 +37,7 @@ pub(crate) struct GithubMenuWidgetModel {
     /// so the row goes away at once.
     marked: HashSet<String>,
     /// Inbox | My PRs, built once.
-    tab_buttons: Vec<gtk::Button>,
+    tabs: Segmented,
     meta: gtk::Label,
     /// "Loading…" / "All caught up" / "No open pull requests".
     hint: gtk::Label,
@@ -125,12 +126,7 @@ impl Component for GithubMenuWidgetModel {
             },
 
             #[local_ref]
-            tabs -> gtk::Box {
-                add_css_class: "github-tabs",
-                set_orientation: gtk::Orientation::Horizontal,
-                set_homogeneous: true,
-                set_spacing: 4,
-            },
+            tabs_root -> gtk::Box {},
 
             #[name = "fill_list"]
             gtk::ScrolledWindow {
@@ -186,17 +182,12 @@ impl Component for GithubMenuWidgetModel {
         });
 
         let content = gtk::Box::new(gtk::Orientation::Vertical, 8);
-        let tabs = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        let s = sender.clone();
+        let tabs = Segmented::new(&["Inbox", "My PRs"], 0, SegmentedStyle::Capsule, move |i| {
+            s.input(GithubMenuWidgetInput::SelectTab(i as u8));
+        });
+        let tabs_root = tabs.root().clone();
         let meta = gtk::Label::new(None);
-        let tab_buttons = (0..2u8)
-            .map(|i| {
-                let b = gtk::Button::new();
-                let s = sender.clone();
-                b.connect_clicked(move |_| s.input(GithubMenuWidgetInput::SelectTab(i)));
-                tabs.append(&b);
-                b
-            })
-            .collect();
         let hint = hint("");
         let error = gtk::Label::new(None);
         error.set_css_classes(&["label-small-error"]);
@@ -217,7 +208,7 @@ impl Component for GithubMenuWidgetModel {
             tab: Tab::Inbox,
             snapshot: None,
             marked: HashSet::new(),
-            tab_buttons,
+            tabs,
             meta: meta.clone(),
             hint,
             error,
@@ -320,19 +311,10 @@ impl GithubMenuWidgetModel {
             n => format!("{n} unread"),
         });
         // The §12 segmented control: one capsule, the active segment filled.
-        let labels = [
-            format!("Inbox · {}", unread.len()),
-            format!("My PRs · {pr_count}"),
-        ];
-        let active = if self.tab == Tab::Inbox { 0 } else { 1 };
-        for (i, (b, text)) in self.tab_buttons.iter().zip(&labels).enumerate() {
-            b.set_label(text);
-            b.set_css_classes(if i == active {
-                &["github-tab", "active"]
-            } else {
-                &["github-tab"]
-            });
-        }
+        self.tabs.set_label(0, &format!("Inbox · {}", unread.len()));
+        self.tabs.set_label(1, &format!("My PRs · {pr_count}"));
+        self.tabs
+            .set_active(if self.tab == Tab::Inbox { 0 } else { 1 });
 
         let now = chrono::Utc::now().timestamp_millis();
         // What the page shows: a hint, an error, or one of the lists.

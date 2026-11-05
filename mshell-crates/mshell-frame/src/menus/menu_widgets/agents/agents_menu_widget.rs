@@ -20,6 +20,7 @@ use crate::agents::sessions;
 use crate::agents::{
     ProviderLimits, SESSIONS_POLL, SessionsSnapshot, USAGE_POLL, UsageSnapshot, request_refresh,
 };
+use crate::common_widgets::segmented::{Segmented, SegmentedStyle};
 use crate::menus::menu_widgets::agents::sessions_page::{SessionAction, SessionsPage};
 use mshell_utils::shared_poll::PollSubscription;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
@@ -30,7 +31,7 @@ pub(crate) struct AgentsMenuWidgetModel {
     /// Built once; updated in place so focus and scroll survive a poll.
     sessions_page: SessionsPage,
     /// Usage | Sessions, built once (the label and active state change).
-    tab_buttons: Vec<gtk::Button>,
+    tabs: Segmented,
     plan_label: gtk::Label,
     snapshot: Option<UsageSnapshot>,
     sessions: Option<SessionsSnapshot>,
@@ -113,12 +114,7 @@ impl Component for AgentsMenuWidgetModel {
             },
 
             #[local_ref]
-            tabs -> gtk::Box {
-                add_css_class: "agents-tabs",
-                set_orientation: gtk::Orientation::Horizontal,
-                set_homogeneous: true,
-                set_spacing: 4,
-            },
+            tabs_root -> gtk::Box {},
 
             #[name = "usage_scroll"]
             gtk::ScrolledWindow {
@@ -206,25 +202,25 @@ impl Component for AgentsMenuWidgetModel {
 
         let usage_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
         let sessions_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
-        let tabs = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        let s = sender.clone();
+        let tabs = Segmented::new(
+            &["Usage", "Sessions"],
+            0,
+            SegmentedStyle::Capsule,
+            move |i| {
+                s.input(AgentsMenuWidgetInput::SelectTab(i as u8));
+            },
+        );
+        let tabs_root = tabs.root().clone();
         let plan_label = gtk::Label::new(None);
         let s = sender.clone();
         let sessions_page = SessionsPage::new(&sessions_box, move |a| {
             s.input(AgentsMenuWidgetInput::Session(a));
         });
-        let tab_buttons = (0..2u8)
-            .map(|i| {
-                let b = gtk::Button::new();
-                let s = sender.clone();
-                b.connect_clicked(move |_| s.input(AgentsMenuWidgetInput::SelectTab(i)));
-                tabs.append(&b);
-                b
-            })
-            .collect();
         let mut model = AgentsMenuWidgetModel {
             usage_box: usage_box.clone(),
             sessions_page,
-            tab_buttons,
+            tabs,
             plan_label: plan_label.clone(),
             snapshot: None,
             sessions: None,
@@ -328,15 +324,8 @@ impl AgentsMenuWidgetModel {
     /// The §12 segmented control: Usage | Sessions (with a running count).
     fn update_tabs(&self) {
         let live = self.sessions.as_ref().map_or(0, |s| s.live.len());
-        let labels = ["Usage".to_string(), format!("Sessions · {live}")];
-        for (i, (b, text)) in self.tab_buttons.iter().zip(&labels).enumerate() {
-            b.set_label(text);
-            b.set_css_classes(if i as u8 == self.tab {
-                &["agents-tab", "active"]
-            } else {
-                &["agents-tab"]
-            });
-        }
+        self.tabs.set_label(1, &format!("Sessions · {live}"));
+        self.tabs.set_active(usize::from(self.tab));
     }
 }
 

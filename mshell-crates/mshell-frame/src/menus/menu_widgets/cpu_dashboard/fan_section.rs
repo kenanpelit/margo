@@ -5,9 +5,9 @@
 //! Never fails: every read / write error becomes a status line.
 
 use super::fan::{FAN_CONTROL_HINT, FAN_PATH, FanControl, FanLevel, FanState, pkexec_argv, probe};
-use super::ui;
+use crate::common_widgets::segmented::{Segmented, SegmentedStyle};
 use crate::menus::reveal_poll::RevealPoll;
-use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::time::Duration;
 
@@ -18,7 +18,9 @@ pub(crate) struct FanSectionModel {
     state: Option<FanState>,
     mode: FanControl,
     status: String,
-    level_buttons: Vec<(FanLevel, gtk::Button)>,
+    /// The levels, in `level_row` order.
+    levels: Vec<FanLevel>,
+    level_row: Segmented,
 }
 
 #[derive(Debug)]
@@ -62,9 +64,6 @@ impl Component for FanSectionModel {
             #[local_ref]
             level_row -> gtk::Box {
                 add_css_class: "cpu-dashboard-sort-row",
-                set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 4,
-                set_homogeneous: true,
                 #[watch]
                 set_visible: matches!(model.mode, FanControl::Direct | FanControl::Pkexec),
             },
@@ -98,26 +97,30 @@ impl Component for FanSectionModel {
         });
         poll.set_revealed(false);
         let (state, mode) = probe();
-        let level_row = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-        let mut level_buttons = Vec::new();
-        for level in FanLevel::all() {
-            let b = ui::text_button(&level.label(), false);
+        let levels = FanLevel::all();
+        let labels: Vec<String> = levels.iter().map(|l| l.label()).collect();
+        let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
+        let s = sender.clone();
+        let by_index = levels.clone();
+        let level_segments =
+            Segmented::new(&labels, usize::MAX, SegmentedStyle::ButtonRow, move |i| {
+                s.input(FanSectionInput::Set(by_index[i]));
+            });
+        for (b, level) in level_segments.buttons().iter().zip(&levels) {
             b.set_tooltip_text(Some(&match level {
                 FanLevel::Auto => "Firmware-controlled (default)".to_string(),
                 FanLevel::FullSpeed => "Full speed".to_string(),
                 FanLevel::Level(n) => format!("Fixed level {n}"),
             }));
-            let s = sender.clone();
-            b.connect_clicked(move |_| s.input(FanSectionInput::Set(level)));
-            level_row.append(&b);
-            level_buttons.push((level, b));
         }
+        let level_row = level_segments.root().clone();
         let model = FanSectionModel {
             poll,
             state,
             mode,
             status: String::new(),
-            level_buttons,
+            levels,
+            level_row: level_segments,
         };
         let widgets = view_output!();
         model.sync_buttons();
@@ -201,12 +204,7 @@ impl FanSectionModel {
     /// Highlight the active level (`.selected`, the segmented-row rule).
     fn sync_buttons(&self) {
         let level = self.state.as_ref().map(|s| s.level.as_str()).unwrap_or("");
-        for (l, b) in &self.level_buttons {
-            if l.matches(level) {
-                b.add_css_class("selected");
-            } else {
-                b.remove_css_class("selected");
-            }
-        }
+        let active = self.levels.iter().position(|l| l.matches(level));
+        self.level_row.set_active(active.unwrap_or(usize::MAX));
     }
 }

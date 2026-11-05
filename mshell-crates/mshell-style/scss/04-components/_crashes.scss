@@ -1,14 +1,9 @@
-// Crashes menu — panel header (§12), a segmented Crashes · Journal errors
-// switch (`.ok-button-surface.selected`, like the VPN mode row), and the
-// rows in one boxed-list card (§5). Tokens only (§1); severity per §2.
+// Crashes menu — panel header (§12), the §12 segmented Crashes · Journal
+// errors switch (`.ok-segmented`, the shared primitive), and the rows in
+// one boxed-list card (§5). Tokens only (§1); severity per §2.
 
 .crashes-menu-widget {
   padding: var(--space-1);
-}
-
-// Size-equal segments; the selected one is filled by the primitive.
-.crashes-tabs > button {
-  min-width: 0;
 }
 
 // Keep the list + scroller transparent so a short list doesn't paint a
