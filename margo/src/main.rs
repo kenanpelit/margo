@@ -464,6 +464,11 @@ fn on_loop_iteration(state: &mut MargoState) {
             state.request_repaint();
         }
     }
+
+    // Last: outputs due now (a vblank landed with damage behind it, or the
+    // tick above dirtied them) render here, after the animation tick,
+    // instead of one more loop iteration later via their present timers.
+    state.render_due_after_dispatch();
 }
 
 /// Advance every running animation one step and re-map / repaint what

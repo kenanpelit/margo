@@ -23,6 +23,10 @@
 //!    stamps `last_present`, clears the in-flight gate, and, if the
 //!    output is dirty again, arms a zero-delay timer so the next frame
 //!    is submitted in time for the next vblank.
+//! 5. At the end of that loop iteration (after the animation tick),
+//!    [`MargoState::render_due_after_dispatch`] renders every output that
+//!    is due now and cancels its zero-delay timer, so continuous motion
+//!    costs no extra loop iteration per frame.
 
 use std::time::{Duration, Instant};
 
@@ -320,6 +324,46 @@ impl MargoState {
             hook(self);
         } else if let Some(ping) = self.repaint_ping_handle() {
             ping.ping();
+        }
+    }
+
+    /// End of a loop iteration (after the animation tick): render every
+    /// output that is due right now through the repaint hook, instead of
+    /// leaving it to its zero-delay present timer. A vblank with damage
+    /// behind it (continuous motion) used to cost one more full loop
+    /// iteration per frame — epoll round trip, `flush_clients`, the IPC and
+    /// animation checks — before the timer rendered. The timers of the
+    /// outputs rendered here are cancelled; outputs still held back after an
+    /// empty render or by a retry backoff keep theirs. Rendering here, not
+    /// in the vblank handler, keeps the frame after this iteration's
+    /// animation tick, so animations are not shown one frame late.
+    pub fn render_due_after_dispatch(&mut self) {
+        if !self.per_output_frame_clock_enabled() {
+            return;
+        }
+        let Some(hook) = self.repaint_hook.clone() else {
+            return;
+        };
+        let now = Instant::now();
+        let mut any_due = false;
+        for monitor in self.monitors.iter().filter(|m| m.enabled) {
+            if self.render_retry_pending.contains_key(&monitor.name) {
+                continue;
+            }
+            let Some(clock) = self.per_output_clocks.get_mut(&monitor.name) else {
+                continue;
+            };
+            if !clock.is_due(now, Self::output_refresh_interval(&monitor.output)) {
+                continue;
+            }
+            any_due = true;
+            if let Some(token) = clock.timer_token.take() {
+                self.loop_handle.remove(token);
+                clock.timer_id = 0;
+            }
+        }
+        if any_due {
+            hook(self);
         }
     }
 
