@@ -139,12 +139,23 @@ mod tests {
 
     #[test]
     fn kernel_threads_and_the_helper_are_refused() {
-        // pid 2 is kthreadd on every Linux since 2.6.
-        let stat = std::fs::read_to_string("/proc/2/stat").expect("kthreadd");
-        let (start, _) = parse_stat(&stat).expect("parse");
+        // A fixture /proc, not the real one: inside a container's pid
+        // namespace (CI) there is no kthreadd at pid 2, nor any kernel thread.
+        let root = std::env::temp_dir().join(format!("mshell-procsig-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("2")).expect("fixture dir");
+        let start = 7u64;
+        let stat = |flags: u64| {
+            format!("2 (kthreadd) S 0 0 0 0 -1 {flags} 0 0 0 0 0 0 0 0 20 0 1 0 {start} 0 0\n")
+        };
+        std::fs::write(root.join("2/stat"), stat(PF_KTHREAD | 0x40)).expect("fixture stat");
+        assert_eq!(parse_stat(&stat(PF_KTHREAD)), Some((start, PF_KTHREAD)));
         assert!(
-            matches!(check(Path::new("/proc"), 2, start), Err(Error::Refused(m)) if m.contains("kernel thread"))
+            matches!(check(&root, 2, start), Err(Error::Refused(m)) if m.contains("kernel thread"))
         );
+        // The same task without PF_KTHREAD passes the check.
+        std::fs::write(root.join("2/stat"), stat(0x40)).expect("fixture stat");
+        assert_eq!(check(&root, 2, start), Ok(()));
+        let _ = std::fs::remove_dir_all(&root);
         let me = std::process::id() as i32;
         assert!(matches!(
             check(Path::new("/proc"), me, 0),

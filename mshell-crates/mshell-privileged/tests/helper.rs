@@ -528,13 +528,13 @@ fn kill_rechecks_the_start_time() {
         assert_eq!(code(&f.run(bad)), 2, "{bad:?}");
     }
     assert!(child.try_wait().expect("wait").is_none());
-    // kthreadd: a kernel thread is refused even with its true start time.
-    let kstat = std::fs::read_to_string("/proc/2/stat").expect("kthreadd");
-    let kstart = mshell_privileged::procsig::parse_stat(&kstat)
-        .expect("parse")
-        .0
-        .to_string();
-    assert_eq!(code(&f.run(&["kill", "2", &kstart, "KILL"])), 3);
+    // A kernel thread is refused even with its true start time. Use any one
+    // this /proc shows: a container's pid namespace (CI) has none, and the
+    // refusal itself is unit-tested against a fixture /proc in procsig.rs.
+    if let Some((kpid, kstart)) = visible_kernel_thread() {
+        let (kpid, kstart) = (kpid.to_string(), kstart.to_string());
+        assert_eq!(code(&f.run(&["kill", &kpid, &kstart, "KILL"])), 3);
+    }
 
     let o = f.run(&["kill", &p, &s, "TERM"]);
     assert_eq!(code(&o), 0, "{}", stderr(&o));
@@ -692,4 +692,15 @@ fn the_policy_has_one_action_per_subcommand() {
         policy.matches("<action id=").count(),
         mshell_privileged::SUBCOMMANDS.len()
     );
+}
+
+/// A kernel thread (PF_KTHREAD) visible in this /proc, with its start time.
+fn visible_kernel_thread() -> Option<(i32, u64)> {
+    const PF_KTHREAD: u64 = 0x0020_0000;
+    std::fs::read_dir("/proc").ok()?.flatten().find_map(|e| {
+        let pid: i32 = e.file_name().to_str()?.parse().ok()?;
+        let stat = std::fs::read_to_string(e.path().join("stat")).ok()?;
+        let (start, flags) = mshell_privileged::procsig::parse_stat(&stat)?;
+        (flags & PF_KTHREAD != 0).then_some((pid, start))
+    })
 }
