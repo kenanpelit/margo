@@ -113,11 +113,56 @@ cargo build --release --features a11y,profile-with-tracy
 ## Nix flake
 
 ```bash
-nix run github:kenanpelit/margo
+nix run github:kenanpelit/margo     # run the compositor
+nix build github:kenanpelit/margo   # the whole stack in ./result
 ```
 
-The flake exposes `packages.default`, a `devShells.default` with
-`rust-analyzer` + `clippy`, plus `nixosModules.margo` and `hmModules.margo`.
+The package builds the same three cargo groups as the PKGBUILD (one
+invocation would leak zbus's `tokio` feature into the compositor) and
+installs what the Arch package does, with `/usr` paths pointed at the
+Nix store.
+
+**NixOS.** The module installs the package, offers the *Margo (UWSM)*
+session to the display manager (and enables `programs.uwsm`), registers
+the `margo` portal next to the gtk one, starts `mshell` with the session
+(and `mpower` when power-profiles-daemon is enabled), and declares the
+`mlock` PAM service the lock screen authenticates with:
+
+```nix
+{
+  inputs.margo.url = "github:kenanpelit/margo";
+  outputs = { nixpkgs, margo, ... }: {
+    nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
+      modules = [
+        margo.nixosModules.margo
+        { programs.margo.enable = true; }
+        # programs.margo.shell.enable = false;   # bring your own bar
+      ];
+    };
+  };
+}
+```
+
+**Home Manager.** `margo.homeManagerModules.margo` writes
+`~/.config/margo/config.conf` from Nix and rejects it at build time when
+`mctl check-config` finds an error (`checkConfig = false` when it
+`source`s files that only exist in your home):
+
+```nix
+wayland.windowManager.margo = {
+  enable = true;
+  settings = {
+    border_radius = 6;
+    bind = [ "SUPER,Return,spawn,foot" "ALT,R,setkeymode,resize" ];
+    keymode.resize.bind = [ "NONE,Escape,setkeymode,default" ];
+  };
+};
+```
+
+The session entry, the portal and the PAM service are system-level: they
+come from the NixOS module (or your distribution's package), not from
+Home Manager. `nix flake check` evaluates a NixOS system with the module
+enabled.
 
 ## First run
 

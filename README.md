@@ -270,7 +270,7 @@ System dependencies: `wayland`, `libinput`, `libxkbcommon`, `seatd`, `mesa`, `li
 nix run github:kenanpelit/margo
 ```
 
-The flake exposes `packages.default`, a `devShells.default` with `rust-analyzer` + `clippy`, plus `nixosModules.margo` and `hmModules.margo`.
+The flake exposes `packages.default` (the whole stack, built in the PKGBUILD's three feature-isolated cargo groups), a `devShells.default` with `rust-analyzer` + `clippy`, `nixosModules.margo` (`programs.margo.enable`: the UWSM session entry, portal, mshell/mpower user services and the lock screen's PAM service) and `homeManagerModules.margo` (`wayland.windowManager.margo`: `~/.config/margo/config.conf` from Nix, checked with `mctl check-config`). See [docs/install.md](docs/install.md#nix-flake).
 
 ## Configure
 
