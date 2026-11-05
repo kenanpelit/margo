@@ -298,6 +298,17 @@ fn bing_market(locale: &str) -> String {
     if l.is_empty() { "en-us".to_string() } else { l }
 }
 
+/// File name of the `source` image for `date`. Bing's carries the market:
+/// each region has its own image of the day, and a region switch on the
+/// same day must not reuse the other region's download.
+fn daily_file_name(source: &str, market: &str, date: &str) -> String {
+    if source == "bing" {
+        format!("bing-{market}-{date}.jpg")
+    } else {
+        format!("{source}-{date}.jpg")
+    }
+}
+
 /// The caption sidecar of a daily image.
 fn caption_path(image: &Path) -> PathBuf {
     image.with_extension("json")
@@ -350,12 +361,13 @@ pub fn fetch_daily_wallpaper(source: &str, locale: &str) -> Result<PathBuf, Stri
         .and_then(|d| d.format("%Y-%m-%d").ok())
         .map(|s| s.to_string())
         .unwrap_or_else(|| "today".to_string());
-    let file = dir.join(format!("{source}-{date}.jpg"));
+    let market = bing_market(locale);
+    let file = dir.join(daily_file_name(source, &market, &date));
     let resolve = || {
         if source == "nasa" {
             resolve_nasa()
         } else {
-            resolve_bing(&bing_market(locale))
+            resolve_bing(&market)
         }
     };
 
@@ -599,6 +611,25 @@ mod tests {
         assert_eq!(daily_caption(&image), None, "nothing to show");
         fs::write(caption_path(&image), "not json").expect("write");
         assert_eq!(daily_caption(&image), None);
+    }
+
+    #[test]
+    fn each_bing_market_gets_its_own_daily_file() {
+        // Switching the Bing region the same day must fetch that region's
+        // image, not reuse the one already downloaded for another region.
+        assert_ne!(
+            daily_file_name("bing", "en-us", "2026-11-05"),
+            daily_file_name("bing", "de-de", "2026-11-05")
+        );
+        assert_eq!(
+            daily_file_name("bing", "de-de", "2026-11-05"),
+            "bing-de-de-2026-11-05.jpg"
+        );
+        // NASA has no market.
+        assert_eq!(
+            daily_file_name("nasa", "de-de", "2026-11-05"),
+            "nasa-2026-11-05.jpg"
+        );
     }
 
     #[test]
