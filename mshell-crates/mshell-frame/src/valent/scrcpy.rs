@@ -201,13 +201,15 @@ pub(crate) fn mirroring() -> Vec<String> {
 
 /// Open a scrcpy window for `serial`.
 pub(crate) fn start_mirror(serial: &str, screen_off: bool, extra: &str) -> Result<(), String> {
-    let child = std::process::Command::new("scrcpy")
-        .args(scrcpy_args(serial, screen_off, extra))
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|e| format!("scrcpy: {e}"))?;
+    // In its own scope, so the mirror window survives an mshell restart
+    // (systemd-run execs scrcpy in place: the Child is still scrcpy).
+    let child =
+        mshell_process::outliving_shell("scrcpy", scrcpy_args(serial, screen_off, extra), "scrcpy")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| format!("scrcpy: {e}"))?;
     if let Ok(mut map) = MIRRORS.lock() {
         map.insert(serial.to_string(), child);
     }

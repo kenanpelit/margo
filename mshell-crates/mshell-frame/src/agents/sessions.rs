@@ -501,8 +501,9 @@ pub(crate) fn resume(session_id: &str, cwd: &str) -> Result<(), String> {
         .iter()
         .find(|t| which(t).is_some())
         .ok_or("no terminal emulator found")?;
-    std::process::Command::new(term)
-        .args(resume_argv(term, &claude, cwd, session_id))
+    // In its own scope: the resumed session must not die with an mshell
+    // restart (a plain child is killed with mshell.service).
+    mshell_process::outliving_shell(term, resume_argv(term, &claude, cwd, session_id), "claude")
         .spawn_reaped()
         .map(|_| ())
         .map_err(|e| format!("{term}: {e}"))

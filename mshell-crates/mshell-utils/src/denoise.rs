@@ -20,6 +20,7 @@
 //! and `pipewire` binaries, and whether our source exists / is default.
 
 use serde::Deserialize;
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::process::Command;
@@ -357,10 +358,15 @@ pub async fn enable() -> Result<(), String> {
         std::fs::create_dir_all(state_dir()).map_err(|e| e.to_string())?;
         std::fs::write(conf_path(), filter_chain_conf(&mic, &plugin, 50))
             .map_err(|e| e.to_string())?;
-        let mut cmd = std::process::Command::new("pipewire");
-        cmd.arg("-c")
-            .arg(conf_path())
-            .stdin(std::process::Stdio::null())
+        // In its own scope, so the filter survives an mshell restart (a
+        // plain child dies with mshell.service; see mshell_process).
+        let conf = conf_path();
+        let mut cmd = mshell_process::outliving_shell(
+            "pipewire",
+            [OsStr::new("-c"), conf.as_os_str()],
+            "rnnoise",
+        );
+        cmd.stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null());
         let pid = mshell_process::SpawnReaped::spawn_reaped(&mut cmd)
