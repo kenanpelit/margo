@@ -69,7 +69,7 @@ jobs:
             gstreamer gst-plugins-base gst-plugins-base-libs gst-plugins-good \
             alsa-lib libpulse pipewire
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           # Full history: the panic ratchet walks the commits since the base
           # to check every baseline raise carries its reason trailer.
@@ -278,7 +278,7 @@ jobs:
             gstreamer gst-plugins-base gst-plugins-base-libs gst-plugins-good \
             alsa-lib libpulse pipewire
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Rust (rust-toolchain.toml pin) + wasm32-wasip2
         run: |
@@ -323,7 +323,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Install Nix
         run: |
           curl --fail --location --retry 3 https://nixos.org/nix/install -o "$RUNNER_TEMP/install-nix"
@@ -349,7 +349,7 @@ jobs:
     steps:
       - name: git (for checkout)
         run: apt-get update && apt-get install -y git
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: ./install.sh deps
         run: ./install.sh deps
       - name: pkg-config probes (libs the build links that `check` doesn't)
@@ -377,7 +377,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
         with:
           tool: cargo-machete
@@ -411,7 +411,7 @@ jobs:
             gtk4 gtk4-layer-shell libadwaita gdk-pixbuf2 graphene fontconfig freetype2 \
             gstreamer gst-plugins-base gst-plugins-base-libs gst-plugins-good \
             alsa-lib libpulse pipewire
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Install the MSRV toolchain
         run: |
           msrv=$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)
@@ -432,7 +432,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       # Hard gate — supply-chain hygiene WE control. A dependency with a
       # disallowed license, a banned crate, or an unknown registry/git source
       # fails the build; duplicate versions are reported as warnings only

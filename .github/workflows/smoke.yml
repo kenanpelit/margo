@@ -47,7 +47,7 @@ jobs:
             mesa libdrm seatd pixman libgudev systemd-libs \
             pcre2 pam cairo pango dbus pipewire
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Rust (rust-toolchain.toml pin)
         run: rustup toolchain install
