@@ -1513,7 +1513,10 @@ fn build_scroller_overview_elements(
         output_geo.size.h,
     );
     let loop_strip = state.config.scroller_overview_loop;
-    let cells = crate::state::overview_cells(output_rect, &tags, zoom, gap, pos, loop_strip);
+    let mut cells = crate::state::overview_cells(output_rect, &tags, zoom, gap, pos, loop_strip);
+    // Keys stay as they are, so a cell keeps its namespace while it
+    // scrolls in and out of view.
+    cells.retain(|cell| overview_cell_visible(cell.rect, output_rect, gap));
 
     // The output's wallpaper (background + bottom layer-shell surfaces),
     // drawn into every cell behind the windows — niri zooms these with
@@ -1638,6 +1641,22 @@ fn build_scroller_overview_elements(
     )));
 
     elements
+}
+
+/// Whether an overview cell at `cell` can show anything on `output`: its
+/// rect, grown by `margin` on every side, meets the output. Off-screen
+/// cells would still cost a full element build (every window of the tag
+/// plus the background layers) only for the damage tracker to cull them.
+fn overview_cell_visible(
+    cell: crate::layout::Rect,
+    output: crate::layout::Rect,
+    margin: i32,
+) -> bool {
+    let m = margin.max(0);
+    cell.x - m < output.x + output.width
+        && cell.x + cell.width + m > output.x
+        && cell.y - m < output.y + output.height
+        && cell.y + cell.height + m > output.y
 }
 
 /// Push render elements for windows in their close animation. Mirrors
@@ -2984,6 +3003,77 @@ mod mru_window_tests {
             );
             assert!(start + max <= total, "window must not run past `total`");
         }
+    }
+}
+
+#[cfg(test)]
+mod overview_cull_tests {
+    use super::overview_cell_visible;
+    use crate::layout::Rect;
+    use crate::state::overview_cells;
+
+    const OUT: Rect = Rect {
+        x: 0,
+        y: 0,
+        width: 2560,
+        height: 1440,
+    };
+
+    #[test]
+    fn only_the_cells_on_screen_are_built() {
+        // 9 occupied tags at zoom 0.3 (432 px cells, 40 px gap), the 5th
+        // centred: about three cells are on screen.
+        let tags: Vec<usize> = (1..=9).collect();
+        let cells = overview_cells(OUT, &tags, 0.3, 40, 4.0, false);
+        assert_eq!(cells.len(), 9);
+        let mut shown = cells.clone();
+        shown.retain(|c| overview_cell_visible(c.rect, OUT, 40));
+        assert!(shown.len() < cells.len());
+        for c in &cells {
+            // On screen, or within one gap of it.
+            let on_screen =
+                c.rect.y + c.rect.height + 40 > OUT.y && c.rect.y - 40 < OUT.y + OUT.height;
+            assert_eq!(
+                shown.iter().any(|s| s == c),
+                on_screen,
+                "cell for tag {} at y={}",
+                c.tag,
+                c.rect.y
+            );
+        }
+        // The centred tag and its neighbours, keys untouched.
+        assert!(shown.iter().any(|c| c.tag == 5 && c.key == 4));
+    }
+
+    #[test]
+    fn a_cell_peeking_in_by_less_than_the_margin_is_kept() {
+        let tags = [1, 2, 3];
+        // 720 px cells, 760 px stride: cell 1's top sits 20 px below the
+        // screen edge (inside one 40 px gap), cell 2 is far off.
+        let cells = overview_cells(OUT, &tags, 0.5, 40, 1.0 - 1100.0 / 760.0, false);
+        assert_eq!(cells[1].rect.y, 1460);
+        let mut shown = cells.clone();
+        shown.retain(|c| overview_cell_visible(c.rect, OUT, 40));
+        assert_eq!(shown, cells[..2]);
+    }
+
+    #[test]
+    fn the_wrap_around_window_is_cut_to_the_screen_too() {
+        let tags: Vec<usize> = (1..=9).collect();
+        let cells = overview_cells(OUT, &tags, 0.3, 40, 0.0, true);
+        let mut shown = cells.clone();
+        shown.retain(|c| overview_cell_visible(c.rect, OUT, 40));
+        assert!(
+            shown.len() < cells.len(),
+            "{} of {}",
+            shown.len(),
+            cells.len()
+        );
+        assert!(
+            shown
+                .iter()
+                .all(|c| c.rect.y + c.rect.height + 40 > 0 && c.rect.y - 40 < 1440)
+        );
     }
 }
 
