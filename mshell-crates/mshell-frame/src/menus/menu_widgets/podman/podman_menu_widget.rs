@@ -3,7 +3,7 @@
 //! Three sections stacked vertically:
 //!   1. **Header** — title + running counter chip + Refresh button.
 //!   2. **Tabs** — gtk::StackSwitcher over `Containers`, `Images`,
-//!      `Pods`.
+//!      `Pods`, `Host`.
 //!   3. **Footer** — (none; refresh lives in the header).
 //!
 //! ### Container rows — the expandable card (the house revealer-row
@@ -26,6 +26,14 @@
 //! Per-row actions (pods tab): Start / Stop / Remove.
 //! Per-row actions (images tab): Remove.
 //!
+//! **Port chips open the service.** A published TCP port chip is a button:
+//! click opens `http://localhost:<port>` (the published address when it is
+//! a specific one, `https` on 443 — `mshell_utils::local_url`) in the
+//! default browser, right-click copies the URL. UDP chips stay labels.
+//! The **Host** tab lists the user's own listening TCP services next to the
+//! containers (`host_services.rs`: one row per process, named after its
+//! systemd unit), with the same chips.
+//!
 //! `podman` is rootless on Arch's default config; no pkexec needed.
 //! Errors surface as a banner at the top. Auto-refresh every 60 s, plus
 //! an immediate re-poll after every action so the list mirrors live
@@ -33,6 +41,7 @@
 //! (or a post-action repoll) never collapses a row out from under the
 //! user (§13.3 continuity).
 
+use super::host_services::{HostPort, HostService, host_services, proc_unit};
 use crate::bars::bar_widgets::podman::{PodmanSummary, fetch_podman_summary};
 use crate::menus::reveal_poll::RevealGate;
 use relm4::gtk::prelude::*;
@@ -46,16 +55,32 @@ use tracing::warn;
 const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 const POST_ACTION_DELAY: Duration = Duration::from_millis(500);
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PodmanPanelState {
     pub(crate) summary: PodmanSummary,
     pub(crate) containers: Vec<ContainerRow>,
     pub(crate) images: Vec<ImageRow>,
     pub(crate) pods: Vec<PodRow>,
+    /// The Host tab: `Err` when `ss` is missing / failed.
+    pub(crate) host: Result<Vec<HostService>, String>,
+}
+
+impl Default for PodmanPanelState {
+    fn default() -> Self {
+        Self {
+            summary: PodmanSummary::default(),
+            containers: Vec::new(),
+            images: Vec::new(),
+            pods: Vec::new(),
+            host: Ok(Vec::new()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct PortMapping {
+    /// Published address (`""` / `0.0.0.0` = every interface).
+    pub(crate) host_ip: String,
     pub(crate) host_port: String,
     pub(crate) container_port: String,
     pub(crate) protocol: String,
@@ -96,7 +121,10 @@ pub(crate) struct PodmanMenuWidgetModel {
     containers_list: gtk::ListBox,
     images_list: gtk::ListBox,
     pods_list: gtk::ListBox,
+    host_list: gtk::ListBox,
     error_banner: gtk::Label,
+    /// Dim one-line feedback ("Copied …", an open failure).
+    status: gtk::Label,
     /// IDs of the currently-expanded container rows. Shared into each
     /// row's header closure so a toggle updates it directly, and read
     /// back by `sync_view` so a rebuild restores the expansion state.
@@ -125,6 +153,10 @@ pub(crate) enum PodmanMenuWidgetInput {
     OpenShell(String),
     /// Follow `podman logs -f` for the container in the user's terminal.
     OpenLogs(String),
+    /// Open a published / host port in the default browser.
+    OpenUrl(String),
+    /// Right-click on a port chip: copy its URL.
+    CopyUrl(String),
     /// Sent by the host menu on show/hide. The `podman ps`/`images`/`pods`
     /// poll is started lazily on first reveal, so a menu the user never
     /// opens spawns no podman subprocesses.
@@ -192,6 +224,14 @@ impl Component for PodmanMenuWidgetModel {
             },
 
             #[local_ref]
+            status_widget -> gtk::Label {
+                set_css_classes: &["label-small", "dim-label"],
+                set_xalign: 0.0,
+                set_wrap: true,
+                set_visible: false,
+            },
+
+            #[local_ref]
             error_banner_widget -> gtk::Label {
                 add_css_class: "podman-error-banner",
                 set_xalign: 0.0,
@@ -251,6 +291,19 @@ impl Component for PodmanMenuWidgetModel {
                         set_selection_mode: gtk::SelectionMode::None,
                     },
                 },
+                #[name = "fill_list3"]
+                add_titled[Some("host"), "Host"] = &gtk::ScrolledWindow {
+                    set_min_content_height: 0,
+                    set_max_content_height: 460,
+                    set_hscrollbar_policy: gtk::PolicyType::Never,
+                    set_propagate_natural_height: true,
+
+                    #[local_ref]
+                    host_list_widget -> gtk::ListBox {
+                        add_css_class: "podman-row-list",
+                        set_selection_mode: gtk::SelectionMode::None,
+                    },
+                },
             },
         }
     }
@@ -264,7 +317,9 @@ impl Component for PodmanMenuWidgetModel {
         let containers_list_widget = gtk::ListBox::new();
         let images_list_widget = gtk::ListBox::new();
         let pods_list_widget = gtk::ListBox::new();
+        let host_list_widget = gtk::ListBox::new();
         let error_banner_widget = gtk::Label::new(None);
+        let status_widget = gtk::Label::new(None);
 
         // The poll loop is started lazily on first reveal — see
         // `ParentRevealChanged` — so a menu the user never opens spawns
@@ -275,7 +330,9 @@ impl Component for PodmanMenuWidgetModel {
             containers_list: containers_list_widget.clone(),
             images_list: images_list_widget.clone(),
             pods_list: pods_list_widget.clone(),
+            host_list: host_list_widget.clone(),
             error_banner: error_banner_widget.clone(),
+            status: status_widget.clone(),
             expanded: Rc::new(RefCell::new(HashSet::new())),
             poll_started: false,
             visible: RevealGate::new(false),
@@ -285,6 +342,7 @@ impl Component for PodmanMenuWidgetModel {
         crate::menus::list_fit::mark_menu_list(&widgets.fill_list, 460);
         crate::menus::list_fit::mark_menu_list(&widgets.fill_list1, 460);
         crate::menus::list_fit::mark_menu_list(&widgets.fill_list2, 460);
+        crate::menus::list_fit::mark_menu_list(&widgets.fill_list3, 460);
         sync_view(&model, &sender);
 
         ComponentParts { model, widgets }
@@ -316,6 +374,18 @@ impl Component for PodmanMenuWidgetModel {
             }
             PodmanMenuWidgetInput::OpenShell(id) => open_shell(&id),
             PodmanMenuWidgetInput::OpenLogs(id) => open_logs(&id),
+            PodmanMenuWidgetInput::OpenUrl(url) => {
+                if let Err(e) = mshell_process::desktop::open(&url) {
+                    warn!(error = %e, url, "podman: could not open the URL");
+                    self.set_status(&format!("Could not open {url}: {e}"));
+                } else {
+                    self.set_status("");
+                }
+            }
+            PodmanMenuWidgetInput::CopyUrl(url) => {
+                self.status.clipboard().set_text(&url);
+                self.set_status(&format!("Copied {url}"));
+            }
             PodmanMenuWidgetInput::ParentRevealChanged(visible) => {
                 self.visible.set(visible);
                 if visible {
@@ -349,6 +419,13 @@ impl Component for PodmanMenuWidgetModel {
                 }
             }
         }
+    }
+}
+
+impl PodmanMenuWidgetModel {
+    fn set_status(&self, text: &str) {
+        self.status.set_label(text);
+        self.status.set_visible(!text.is_empty());
     }
 }
 
@@ -420,6 +497,20 @@ fn sync_view(model: &PodmanMenuWidgetModel, sender: &ComponentSender<PodmanMenuW
     } else {
         for p in &s.pods {
             model.pods_list.append(&make_pod_row(p, sender));
+        }
+    }
+
+    // ── Host services ───────────────────────────────────────────
+    clear_listbox(&model.host_list);
+    match &s.host {
+        Err(e) => model.host_list.append(&placeholder_row(e)),
+        Ok(list) if list.is_empty() => model
+            .host_list
+            .append(&placeholder_row("(no services of yours listening on TCP)")),
+        Ok(list) => {
+            for svc in list {
+                model.host_list.append(&make_host_row(svc, sender));
+            }
         }
     }
 }
@@ -547,7 +638,7 @@ fn make_container_row(
             .build();
         ports_box.add_css_class("podman-ports");
         for p in &c.ports {
-            ports_box.append(&port_chip(p));
+            ports_box.append(&port_chip(p, sender));
         }
         detail.append(&ports_box);
     }
@@ -661,18 +752,123 @@ fn make_container_row(
 }
 
 /// One published port mapping rendered as a pill chip: `3000 → 8080`
-/// (plus `/udp` when the protocol isn't TCP).
-fn port_chip(p: &PortMapping) -> gtk::Label {
-    let proto = if p.protocol.eq_ignore_ascii_case("tcp") || p.protocol.is_empty() {
+/// (plus `/udp` when the protocol isn't TCP). A TCP mapping is a button
+/// that opens the service ([`mapping_url`]); UDP stays a plain label.
+fn port_chip(p: &PortMapping, sender: &ComponentSender<PodmanMenuWidgetModel>) -> gtk::Widget {
+    let is_tcp = p.protocol.eq_ignore_ascii_case("tcp") || p.protocol.is_empty();
+    let proto = if is_tcp {
         String::new()
     } else {
         format!("/{}", p.protocol.to_lowercase())
     };
     let text = format!("{} → {}{}", p.host_port, p.container_port, proto);
-    let chip = gtk::Label::new(Some(&text));
-    chip.add_css_class("podman-port-chip");
+    match mapping_url(p) {
+        Some(url) => link_chip(&text, &url, sender).upcast(),
+        None => {
+            let chip = gtk::Label::new(Some(&text));
+            chip.add_css_class("podman-port-chip");
+            chip.set_valign(gtk::Align::Center);
+            chip.upcast()
+        }
+    }
+}
+
+/// A clickable port chip: click opens `url`, right-click copies it.
+fn link_chip(
+    text: &str,
+    url: &str,
+    sender: &ComponentSender<PodmanMenuWidgetModel>,
+) -> gtk::Button {
+    let chip = gtk::Button::with_label(text);
+    chip.set_css_classes(&["podman-port-chip"]);
     chip.set_valign(gtk::Align::Center);
+    chip.set_tooltip_text(Some(&format!(
+        "Open {url}\nClick: open in browser  ·  Right-click: copy URL"
+    )));
+    chip.update_property(&[gtk::accessible::Property::Label(&format!("Open {url}"))]);
+    let s = sender.clone();
+    let open = url.to_string();
+    chip.connect_clicked(move |_| s.input(PodmanMenuWidgetInput::OpenUrl(open.clone())));
+    let right = gtk::GestureClick::new();
+    right.set_button(gtk::gdk::BUTTON_SECONDARY);
+    let s = sender.clone();
+    let copy = url.to_string();
+    right.connect_released(move |g, _, _, _| {
+        g.set_state(gtk::EventSequenceState::Claimed);
+        s.input(PodmanMenuWidgetInput::CopyUrl(copy.clone()));
+    });
+    chip.add_controller(right);
     chip
+}
+
+/// The browser link of a published mapping: TCP only, host chosen from
+/// the published address by [`mshell_utils::local_url`].
+fn mapping_url(p: &PortMapping) -> Option<String> {
+    let is_tcp = p.protocol.eq_ignore_ascii_case("tcp") || p.protocol.is_empty();
+    if !is_tcp {
+        return None;
+    }
+    let port: u16 = p.host_port.parse().ok()?;
+    mshell_utils::local_url::url(&p.host_ip, port)
+}
+
+/// A Host-tab row: service name + unit/pid, then one chip per port.
+fn make_host_row(
+    svc: &HostService,
+    sender: &ComponentSender<PodmanMenuWidgetModel>,
+) -> gtk::ListBoxRow {
+    let row = gtk::ListBoxRow::new();
+    row.set_activatable(false);
+    row.set_selectable(false);
+    let outer = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(4)
+        .margin_top(6)
+        .margin_bottom(6)
+        .margin_start(8)
+        .margin_end(8)
+        .build();
+    let head = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(10)
+        .build();
+    let icon = gtk::Image::from_icon_name("server-symbolic");
+    icon.add_css_class("podman-status-icon");
+    icon.set_valign(gtk::Align::Center);
+    head.append(&icon);
+    let texts = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .hexpand(true)
+        .build();
+    let name = gtk::Label::new(Some(&svc.name));
+    name.add_css_class("label-medium-bold");
+    name.set_xalign(0.0);
+    name.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    texts.append(&name);
+    let detail = gtk::Label::new(Some(&svc.detail));
+    detail.add_css_class("label-small");
+    detail.add_css_class("dim-label");
+    detail.set_xalign(0.0);
+    detail.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    texts.append(&detail);
+    head.append(&texts);
+    outer.append(&head);
+    let chips = gtk::FlowBox::builder()
+        .selection_mode(gtk::SelectionMode::None)
+        .column_spacing(6)
+        .row_spacing(4)
+        .max_children_per_line(6)
+        .homogeneous(false)
+        .build();
+    chips.add_css_class("podman-ports");
+    for HostPort { port, url } in &svc.ports {
+        let chip = link_chip(&format!(":{port}"), url, sender);
+        chip.set_halign(gtk::Align::Start);
+        chips.insert(&chip, -1);
+    }
+    outer.append(&chips);
+    row.set_child(Some(&outer));
+    row
 }
 
 /// A full-width labelled action button for the expanded detail list.
@@ -923,6 +1119,7 @@ async fn fetch_panel_state() -> PodmanPanelState {
     let summary = fetch_podman_summary().await;
     let mut state = PodmanPanelState {
         summary: summary.clone(),
+        host: fetch_host_services().await,
         ..PodmanPanelState::default()
     };
     if summary.error.is_some() {
@@ -952,6 +1149,19 @@ async fn fetch_panel_state() -> PodmanPanelState {
     }
 
     state
+}
+
+/// The Host tab: the user's own TCP listeners (`ss -tlpnH`), grouped per
+/// process.
+async fn fetch_host_services() -> Result<Vec<HostService>, String> {
+    if !margo_fs::path::on_path("ss") {
+        return Err("ss is not installed (package iproute2)".to_string());
+    }
+    let out = run_capture("ss", &["-tlpnH"])
+        .await
+        .ok_or_else(|| "ss failed to list the listening sockets".to_string())?;
+    let rows = crate::menus::menu_widgets::cpu_dashboard::ports::parse_ss(&out);
+    Ok(host_services(&rows, proc_unit))
 }
 
 fn state_rank(state: &str) -> u8 {
@@ -986,6 +1196,11 @@ fn parse_ports(v: Option<&serde_json::Value>) -> Vec<PortMapping> {
             continue;
         }
         let mapping = PortMapping {
+            host_ip: p
+                .get("host_ip")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string(),
             host_port,
             container_port: port_field(p.get("container_port")),
             protocol: p
@@ -994,11 +1209,38 @@ fn parse_ports(v: Option<&serde_json::Value>) -> Vec<PortMapping> {
                 .unwrap_or("tcp")
                 .to_string(),
         };
-        if !out.contains(&mapping) {
-            out.push(mapping);
+        // `range: N` publishes N consecutive ports from host_port /
+        // container_port; each gets its own chip (capped).
+        let range = p.get("range").and_then(|r| r.as_u64()).unwrap_or(1).max(1);
+        for i in 0..range {
+            if out.len() >= MAX_PORT_CHIPS {
+                return out;
+            }
+            let m = offset_mapping(&mapping, i);
+            if !out.contains(&m) {
+                out.push(m);
+            }
         }
     }
     out
+}
+
+/// Most chips one container shows (a `-p 8000-9000:8000-9000` publish
+/// would otherwise flood the row).
+const MAX_PORT_CHIPS: usize = 64;
+
+/// The `i`-th mapping of a published range (`i = 0` is `m` itself).
+fn offset_mapping(m: &PortMapping, i: u64) -> PortMapping {
+    let shift = |p: &str| match p.parse::<u64>() {
+        Ok(n) if i > 0 => (n + i).to_string(),
+        _ => p.to_string(),
+    };
+    PortMapping {
+        host_ip: m.host_ip.clone(),
+        host_port: shift(&m.host_port),
+        container_port: shift(&m.container_port),
+        protocol: m.protocol.clone(),
+    }
 }
 
 fn parse_container_row(v: &serde_json::Value) -> ContainerRow {
@@ -1125,6 +1367,51 @@ mod tests {
         assert_eq!(row.ports[0].host_port, "3000");
         assert_eq!(row.ports[0].container_port, "8080");
         assert_eq!(row.ports[1].protocol, "udp");
+    }
+
+    #[test]
+    fn published_ranges_expand_and_keep_their_address() {
+        // `podman ps --format json` Ports shape (podman 4/5: one entry per
+        // contiguous range).
+        let v = serde_json::json!({
+            "Ports": [
+                { "host_ip": "127.0.0.1", "container_port": 80, "host_port": 8080, "range": 1, "protocol": "tcp" },
+                { "host_ip": "", "container_port": 9000, "host_port": 19000, "range": 3, "protocol": "tcp" }
+            ]
+        });
+        let ports = parse_ports(v.get("Ports"));
+        let hosts: Vec<&str> = ports.iter().map(|p| p.host_port.as_str()).collect();
+        assert_eq!(hosts, vec!["8080", "19000", "19001", "19002"]);
+        assert_eq!(ports[3].container_port, "9002");
+        assert_eq!(ports[0].host_ip, "127.0.0.1");
+        let big = serde_json::json!([
+            { "host_ip": "", "container_port": 1, "host_port": 1000, "range": 500, "protocol": "tcp" }
+        ]);
+        assert_eq!(parse_ports(Some(&big)).len(), MAX_PORT_CHIPS);
+    }
+
+    #[test]
+    fn tcp_chips_link_to_the_published_address() {
+        let m = |ip: &str, port: &str, proto: &str| PortMapping {
+            host_ip: ip.into(),
+            host_port: port.into(),
+            container_port: "80".into(),
+            protocol: proto.into(),
+        };
+        assert_eq!(
+            mapping_url(&m("", "8080", "tcp")).as_deref(),
+            Some("http://localhost:8080")
+        );
+        assert_eq!(
+            mapping_url(&m("0.0.0.0", "443", "tcp")).as_deref(),
+            Some("https://localhost:443")
+        );
+        assert_eq!(
+            mapping_url(&m("192.168.1.50", "3000", "tcp")).as_deref(),
+            Some("http://192.168.1.50:3000")
+        );
+        assert_eq!(mapping_url(&m("", "5353", "udp")), None);
+        assert_eq!(mapping_url(&m("", "x", "tcp")), None);
     }
 
     #[test]

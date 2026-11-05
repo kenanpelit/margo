@@ -140,6 +140,28 @@
   font-variant-numeric: tabular-nums;
 }
 
+// A published TCP port / host service chip is a button: click opens it in
+// the browser, right-click copies the URL. Same chip, plus the canonical
+// state layer and the §16 focus ring.
+button.podman-port-chip {
+  min-height: 0;
+  min-width: 0;
+  border: none;
+  box-shadow: none;
+  outline: none;
+  @include state-layer(var(--secondary-container));
+
+  &:focus-visible {
+    box-shadow: inset 0 0 0 2px var(--primary);
+  }
+}
+
+// Host-service chips wrap in a FlowBox; its children carry no chrome.
+.podman-ports flowboxchild {
+  padding: 0;
+  background: transparent;
+}
+
 .podman-actions {
   margin-top: var(--space-1);
 }
