@@ -8,15 +8,20 @@
 //!   review decision as chips; clicking opens the PR.
 //!
 //! Reads the shared [`GITHUB_POLL`] (the pill's poll), active only while
-//! the menu is revealed.
+//! the menu is revealed. The tabs and rows are built once and updated in
+//! place on each poll (rows keyed by thread id / PR URL, see
+//! [`KeyedList`]), so keyboard focus and the scroll position survive it.
 
 use crate::bars::bar_widgets::github::GITHUB_POLL;
 use crate::github::{self, CiState, GhError, GithubSnapshot, Notification, PullRequest, Review};
 use crate::menus::menu_widgets::agents::agents_menu_widget::open_url;
+use crate::menus::menu_widgets::agents::keyed_rows::{KeyedList, KeyedRow};
 use mshell_utils::shared_poll::PollSubscription;
-use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, Cast, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::cell::RefCell;
 use std::collections::HashSet;
+use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Tab {
@@ -30,9 +35,16 @@ pub(crate) struct GithubMenuWidgetModel {
     /// Threads marked read here whose refresh hasn't landed yet; hidden
     /// so the row goes away at once.
     marked: HashSet<String>,
-    content: gtk::Box,
-    tabs: gtk::Box,
+    /// Inbox | My PRs, built once.
+    tab_buttons: Vec<gtk::Button>,
     meta: gtk::Label,
+    /// "Loading…" / "All caught up" / "No open pull requests".
+    hint: gtk::Label,
+    error: gtk::Label,
+    inbox_box: gtk::Box,
+    inbox: KeyedList<NotificationRow>,
+    prs_box: gtk::Box,
+    prs: KeyedList<PrRow>,
     poll: PollSubscription<GithubSnapshot>,
 }
 
@@ -176,13 +188,43 @@ impl Component for GithubMenuWidgetModel {
         let content = gtk::Box::new(gtk::Orientation::Vertical, 8);
         let tabs = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         let meta = gtk::Label::new(None);
-        let model = GithubMenuWidgetModel {
+        let tab_buttons = (0..2u8)
+            .map(|i| {
+                let b = gtk::Button::new();
+                let s = sender.clone();
+                b.connect_clicked(move |_| s.input(GithubMenuWidgetInput::SelectTab(i)));
+                tabs.append(&b);
+                b
+            })
+            .collect();
+        let hint = hint("");
+        let error = gtk::Label::new(None);
+        error.set_css_classes(&["label-small-error"]);
+        error.set_halign(gtk::Align::Start);
+        error.set_xalign(0.0);
+        error.set_wrap(true);
+        let inbox_box = boxed_list();
+        let prs_box = boxed_list();
+        for w in [
+            hint.upcast_ref::<gtk::Widget>(),
+            error.upcast_ref(),
+            inbox_box.upcast_ref(),
+            prs_box.upcast_ref(),
+        ] {
+            content.append(w);
+        }
+        let mut model = GithubMenuWidgetModel {
             tab: Tab::Inbox,
             snapshot: None,
             marked: HashSet::new(),
-            content: content.clone(),
-            tabs: tabs.clone(),
+            tab_buttons,
             meta: meta.clone(),
+            hint,
+            error,
+            inbox: KeyedList::new(inbox_box.clone()),
+            inbox_box,
+            prs: KeyedList::new(prs_box.clone()),
+            prs_box,
             poll,
         };
         let widgets = view_output!();
@@ -256,17 +298,18 @@ impl Component for GithubMenuWidgetModel {
 }
 
 impl GithubMenuWidgetModel {
-    fn unread(&self) -> Vec<&Notification> {
+    fn unread(&self) -> Vec<Notification> {
         match self.snapshot.as_ref().map(|s| &s.notifications) {
             Some(Ok(list)) => list
                 .iter()
                 .filter(|n| n.unread && !self.marked.contains(&n.id))
+                .cloned()
                 .collect(),
             _ => Vec::new(),
         }
     }
 
-    fn render(&self, sender: &ComponentSender<Self>) {
+    fn render(&mut self, sender: &ComponentSender<Self>) {
         let unread = self.unread();
         let pr_count = match self.snapshot.as_ref().map(|s| &s.prs) {
             Some(Ok(p)) => p.len(),
@@ -276,67 +319,60 @@ impl GithubMenuWidgetModel {
             0 => String::new(),
             n => format!("{n} unread"),
         });
-        build_tabs(
-            &self.tabs,
-            &[
-                format!("Inbox · {}", unread.len()),
-                format!("My PRs · {pr_count}"),
-            ],
-            if self.tab == Tab::Inbox { 0 } else { 1 },
-            sender,
-        );
-        clear(&self.content);
-        let Some(s) = &self.snapshot else {
-            self.content.append(&hint("Loading…"));
-            return;
-        };
-        match self.tab {
-            Tab::Inbox => match &s.notifications {
-                Err(e) => self.content.append(&error(e)),
-                Ok(_) if unread.is_empty() => self
-                    .content
-                    .append(&hint("All caught up — no unread notifications")),
-                Ok(_) => {
-                    let list = boxed_list();
-                    for n in unread {
-                        list.append(&notification_row(n, sender));
+        // The §12 segmented control: one capsule, the active segment filled.
+        let labels = [
+            format!("Inbox · {}", unread.len()),
+            format!("My PRs · {pr_count}"),
+        ];
+        let active = if self.tab == Tab::Inbox { 0 } else { 1 };
+        for (i, (b, text)) in self.tab_buttons.iter().zip(&labels).enumerate() {
+            b.set_label(text);
+            b.set_css_classes(if i == active {
+                &["github-tab", "active"]
+            } else {
+                &["github-tab"]
+            });
+        }
+
+        let now = chrono::Utc::now().timestamp_millis();
+        // What the page shows: a hint, an error, or one of the lists.
+        let mut hint = None;
+        let mut error = None;
+        let (mut show_inbox, mut show_prs) = (false, false);
+        match &self.snapshot {
+            None => hint = Some("Loading…"),
+            Some(s) => match self.tab {
+                Tab::Inbox => match &s.notifications {
+                    Err(e) => error = Some(e.message()),
+                    Ok(_) if unread.is_empty() => {
+                        hint = Some("All caught up — no unread notifications");
                     }
-                    self.content.append(&list);
-                }
-            },
-            Tab::Prs => match &s.prs {
-                Err(e) => self.content.append(&error(e)),
-                Ok(prs) if prs.is_empty() => self.content.append(&hint("No open pull requests")),
-                Ok(prs) => {
-                    let list = boxed_list();
-                    for p in prs {
-                        list.append(&pr_row(p, sender));
+                    Ok(_) => {
+                        let items: Vec<(Notification, i64)> =
+                            unread.into_iter().map(|n| (n, now)).collect();
+                        self.inbox
+                            .sync(&items, |item| NotificationRow::new(item, sender));
+                        show_inbox = true;
                     }
-                    self.content.append(&list);
-                }
+                },
+                Tab::Prs => match &s.prs {
+                    Err(e) => error = Some(e.message()),
+                    Ok(prs) if prs.is_empty() => hint = Some("No open pull requests"),
+                    Ok(prs) => {
+                        let items: Vec<(PullRequest, i64)> =
+                            prs.iter().map(|p| (p.clone(), now)).collect();
+                        self.prs.sync(&items, |item| PrRow::new(item, sender));
+                        show_prs = true;
+                    }
+                },
             },
         }
-    }
-}
-
-/// The §12 segmented control: one capsule, the active segment filled.
-fn build_tabs(
-    container: &gtk::Box,
-    labels: &[String],
-    active: usize,
-    sender: &ComponentSender<GithubMenuWidgetModel>,
-) {
-    clear(container);
-    for (i, text) in labels.iter().enumerate() {
-        let b = gtk::Button::with_label(text);
-        b.set_css_classes(if i == active {
-            &["github-tab", "active"]
-        } else {
-            &["github-tab"]
-        });
-        let s = sender.clone();
-        b.connect_clicked(move |_| s.input(GithubMenuWidgetInput::SelectTab(i as u8)));
-        container.append(&b);
+        self.hint.set_label(hint.unwrap_or(""));
+        self.hint.set_visible(hint.is_some());
+        self.error.set_label(error.as_deref().unwrap_or(""));
+        self.error.set_visible(error.is_some());
+        self.inbox_box.set_visible(show_inbox);
+        self.prs_box.set_visible(show_prs);
     }
 }
 
@@ -353,15 +389,6 @@ fn hint(text: &str) -> gtk::Label {
     l
 }
 
-fn error(e: &GhError) -> gtk::Label {
-    let l = gtk::Label::new(Some(&e.message()));
-    l.set_css_classes(&["label-small-error"]);
-    l.set_halign(gtk::Align::Start);
-    l.set_xalign(0.0);
-    l.set_wrap(true);
-    l
-}
-
 fn boxed_list() -> gtk::Box {
     let b = gtk::Box::new(gtk::Orientation::Vertical, 0);
     b.set_css_classes(&["ok-boxed-list", "compact", "github-list"]);
@@ -369,10 +396,11 @@ fn boxed_list() -> gtk::Box {
 }
 
 /// Title + dim subtitle, left-aligned, title wrapping to two lines.
-fn text_block(title: &str, subtitle: &str) -> gtk::Box {
+/// Returns the box and both labels.
+fn text_block() -> (gtk::Box, gtk::Label, gtk::Label) {
     let b = gtk::Box::new(gtk::Orientation::Vertical, 2);
     b.set_hexpand(true);
-    let t = gtk::Label::new(Some(title));
+    let t = gtk::Label::new(None);
     t.set_css_classes(&["label-medium"]);
     t.set_halign(gtk::Align::Start);
     t.set_xalign(0.0);
@@ -381,57 +409,95 @@ fn text_block(title: &str, subtitle: &str) -> gtk::Box {
     t.set_lines(2);
     t.set_ellipsize(gtk::pango::EllipsizeMode::End);
     b.append(&t);
-    let s = gtk::Label::new(Some(subtitle));
+    let s = gtk::Label::new(None);
     s.set_css_classes(&["label-small", "dim-label"]);
     s.set_halign(gtk::Align::Start);
     s.set_xalign(0.0);
     s.set_ellipsize(gtk::pango::EllipsizeMode::End);
     b.append(&s);
-    b
+    (b, t, s)
 }
 
-fn notification_row(n: &Notification, sender: &ComponentSender<GithubMenuWidgetModel>) -> gtk::Box {
-    let row = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-    row.add_css_class("github-row");
+/// An unread thread: open it (and mark it read), or just mark it read.
+struct NotificationRow {
+    row: gtk::Box,
+    icon: gtk::Image,
+    title: gtk::Label,
+    subtitle: gtk::Label,
+    url: Rc<RefCell<String>>,
+}
 
-    let open = gtk::Button::new();
-    open.set_css_classes(&["github-row-main"]);
-    open.set_hexpand(true);
-    let inner = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    let icon = gtk::Image::from_icon_name(n.icon());
-    icon.add_css_class("github-row-icon");
-    icon.set_valign(gtk::Align::Start);
-    inner.append(&icon);
-    let now = chrono::Utc::now().timestamp_millis();
-    inner.append(&text_block(
-        &n.title,
-        &format!(
+impl NotificationRow {
+    fn new(item: &(Notification, i64), sender: &ComponentSender<GithubMenuWidgetModel>) -> Self {
+        let n = &item.0;
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        row.add_css_class("github-row");
+
+        let open = gtk::Button::new();
+        open.set_css_classes(&["github-row-main"]);
+        open.set_hexpand(true);
+        let inner = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+        let icon = gtk::Image::new();
+        icon.add_css_class("github-row-icon");
+        icon.set_valign(gtk::Align::Start);
+        inner.append(&icon);
+        let (block, title, subtitle) = text_block();
+        inner.append(&block);
+        open.set_child(Some(&inner));
+        let url = Rc::new(RefCell::new(String::new()));
+        {
+            let (s, url, id) = (sender.clone(), url.clone(), n.id.clone());
+            open.connect_clicked(move |_| {
+                s.input(GithubMenuWidgetInput::Open(url.borrow().clone()));
+                s.input(GithubMenuWidgetInput::MarkRead(id.clone()));
+            });
+        }
+        row.append(&open);
+
+        let mark = gtk::Button::from_icon_name("object-select-symbolic");
+        mark.set_css_classes(&["ok-button-flat", "github-row-action"]);
+        mark.set_valign(gtk::Align::Center);
+        mshell_common::a11y::name(&mark, "Mark as read");
+        {
+            let (s, id) = (sender.clone(), n.id.clone());
+            mark.connect_clicked(move |_| s.input(GithubMenuWidgetInput::MarkRead(id.clone())));
+        }
+        row.append(&mark);
+        let r = NotificationRow {
+            row,
+            icon,
+            title,
+            subtitle,
+            url,
+        };
+        r.update(item);
+        r
+    }
+}
+
+impl KeyedRow for NotificationRow {
+    type Item = (Notification, i64);
+    type Key = String;
+
+    fn key(item: &Self::Item) -> String {
+        item.0.id.clone()
+    }
+
+    fn widget(&self) -> gtk::Widget {
+        self.row.clone().upcast()
+    }
+
+    fn update(&self, (n, now): &Self::Item) {
+        self.icon.set_icon_name(Some(n.icon()));
+        self.title.set_label(&n.title);
+        self.subtitle.set_label(&format!(
             "{} · {} · {}",
             n.repo,
             github::reason_label(&n.reason),
-            github::ago(now, n.updated_ms)
-        ),
-    ));
-    open.set_child(Some(&inner));
-    {
-        let (s, url, id) = (sender.clone(), n.url.clone(), n.id.clone());
-        open.connect_clicked(move |_| {
-            s.input(GithubMenuWidgetInput::Open(url.clone()));
-            s.input(GithubMenuWidgetInput::MarkRead(id.clone()));
-        });
+            github::ago(*now, n.updated_ms)
+        ));
+        self.url.replace(n.url.clone());
     }
-    row.append(&open);
-
-    let mark = gtk::Button::from_icon_name("object-select-symbolic");
-    mark.set_css_classes(&["ok-button-flat", "github-row-action"]);
-    mark.set_valign(gtk::Align::Center);
-    mshell_common::a11y::name(&mark, "Mark as read");
-    {
-        let (s, id) = (sender.clone(), n.id.clone());
-        mark.connect_clicked(move |_| s.input(GithubMenuWidgetInput::MarkRead(id.clone())));
-    }
-    row.append(&mark);
-    row
 }
 
 fn chip(text: &str, state: &str) -> gtk::Label {
@@ -441,33 +507,95 @@ fn chip(text: &str, state: &str) -> gtk::Label {
     l
 }
 
-fn pr_row(p: &PullRequest, sender: &ComponentSender<GithubMenuWidgetModel>) -> gtk::Box {
-    let row = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-    row.add_css_class("github-row");
-    let open = gtk::Button::new();
-    open.set_css_classes(&["github-row-main"]);
-    open.set_hexpand(true);
-    let inner = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    let icon = gtk::Image::from_icon_name("vcs-pull-request-symbolic");
-    icon.add_css_class("github-row-icon");
-    icon.set_valign(gtk::Align::Start);
-    inner.append(&icon);
+/// One of the user's open PRs, with CI and review chips; click opens it.
+struct PrRow {
+    row: gtk::Box,
+    title: gtk::Label,
+    subtitle: gtk::Label,
+    chips: gtk::Box,
+    /// What `chips` shows, so an unchanged set isn't rebuilt.
+    chip_state: RefCell<Vec<(&'static str, &'static str)>>,
+}
 
-    let col = gtk::Box::new(gtk::Orientation::Vertical, 4);
-    col.set_hexpand(true);
-    let now = chrono::Utc::now().timestamp_millis();
-    col.append(&text_block(
-        &p.title,
-        &format!(
+impl PrRow {
+    fn new(item: &(PullRequest, i64), sender: &ComponentSender<GithubMenuWidgetModel>) -> Self {
+        let p = &item.0;
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        row.add_css_class("github-row");
+        let open = gtk::Button::new();
+        open.set_css_classes(&["github-row-main"]);
+        open.set_hexpand(true);
+        let inner = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+        let icon = gtk::Image::from_icon_name("vcs-pull-request-symbolic");
+        icon.add_css_class("github-row-icon");
+        icon.set_valign(gtk::Align::Start);
+        inner.append(&icon);
+
+        let col = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        col.set_hexpand(true);
+        let (block, title, subtitle) = text_block();
+        col.append(&block);
+        let chips = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        col.append(&chips);
+        inner.append(&col);
+        open.set_child(Some(&inner));
+        {
+            // The key is the URL, so it never changes for this row.
+            let (s, url) = (sender.clone(), p.url.clone());
+            open.connect_clicked(move |_| s.input(GithubMenuWidgetInput::Open(url.clone())));
+        }
+        row.append(&open);
+        let r = PrRow {
+            row,
+            title,
+            subtitle,
+            chips,
+            chip_state: RefCell::new(Vec::new()),
+        };
+        // An empty chip set differs from nothing only by visibility.
+        r.chips.set_visible(false);
+        r.update(item);
+        r
+    }
+}
+
+impl KeyedRow for PrRow {
+    type Item = (PullRequest, i64);
+    type Key = String;
+
+    fn key(item: &Self::Item) -> String {
+        item.0.url.clone()
+    }
+
+    fn widget(&self) -> gtk::Widget {
+        self.row.clone().upcast()
+    }
+
+    fn update(&self, (p, now): &Self::Item) {
+        self.title.set_label(&p.title);
+        self.subtitle.set_label(&format!(
             "{} #{} · {}",
             p.repo,
             p.number,
-            github::ago(now, p.updated_ms)
-        ),
-    ));
-    let chips = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+            github::ago(*now, p.updated_ms)
+        ));
+        let state = pr_chips(p);
+        if *self.chip_state.borrow() != state {
+            clear(&self.chips);
+            for (text, class) in &state {
+                self.chips.append(&chip(text, class));
+            }
+            self.chips.set_visible(!state.is_empty());
+            self.chip_state.replace(state);
+        }
+    }
+}
+
+/// The chips a PR shows: `(label, severity class)`.
+fn pr_chips(p: &PullRequest) -> Vec<(&'static str, &'static str)> {
+    let mut v = Vec::new();
     if p.draft {
-        chips.append(&chip("Draft", "neutral"));
+        v.push(("Draft", "neutral"));
     }
     let ci_state = match p.ci {
         CiState::Failure => "danger",
@@ -476,7 +604,7 @@ fn pr_row(p: &PullRequest, sender: &ComponentSender<GithubMenuWidgetModel>) -> g
         CiState::None => "",
     };
     if !ci_state.is_empty() {
-        chips.append(&chip(p.ci.label(), ci_state));
+        v.push((p.ci.label(), ci_state));
     }
     let review_state = match p.review {
         Review::Approved => "positive",
@@ -485,17 +613,7 @@ fn pr_row(p: &PullRequest, sender: &ComponentSender<GithubMenuWidgetModel>) -> g
         Review::None => "",
     };
     if !review_state.is_empty() {
-        chips.append(&chip(p.review.label(), review_state));
+        v.push((p.review.label(), review_state));
     }
-    if chips.first_child().is_some() {
-        col.append(&chips);
-    }
-    inner.append(&col);
-    open.set_child(Some(&inner));
-    {
-        let (s, url) = (sender.clone(), p.url.clone());
-        open.connect_clicked(move |_| s.input(GithubMenuWidgetInput::Open(url.clone())));
-    }
-    row.append(&open);
-    row
+    v
 }

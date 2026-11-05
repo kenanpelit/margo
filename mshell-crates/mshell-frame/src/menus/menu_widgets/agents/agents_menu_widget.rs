@@ -20,7 +20,7 @@ use crate::agents::sessions;
 use crate::agents::{
     ProviderLimits, SESSIONS_POLL, SessionsSnapshot, USAGE_POLL, UsageSnapshot, request_refresh,
 };
-use crate::menus::menu_widgets::agents::sessions_page::{self, SessionAction};
+use crate::menus::menu_widgets::agents::sessions_page::{SessionAction, SessionsPage};
 use mshell_process::SpawnReaped;
 use mshell_utils::shared_poll::PollSubscription;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
@@ -28,8 +28,10 @@ use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
 pub(crate) struct AgentsMenuWidgetModel {
     usage_box: gtk::Box,
-    sessions_box: gtk::Box,
-    tabs: gtk::Box,
+    /// Built once; updated in place so focus and scroll survive a poll.
+    sessions_page: SessionsPage,
+    /// Usage | Sessions, built once (the label and active state change).
+    tab_buttons: Vec<gtk::Button>,
     plan_label: gtk::Label,
     snapshot: Option<UsageSnapshot>,
     sessions: Option<SessionsSnapshot>,
@@ -207,10 +209,23 @@ impl Component for AgentsMenuWidgetModel {
         let sessions_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
         let tabs = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         let plan_label = gtk::Label::new(None);
-        let model = AgentsMenuWidgetModel {
+        let s = sender.clone();
+        let sessions_page = SessionsPage::new(&sessions_box, move |a| {
+            s.input(AgentsMenuWidgetInput::Session(a));
+        });
+        let tab_buttons = (0..2u8)
+            .map(|i| {
+                let b = gtk::Button::new();
+                let s = sender.clone();
+                b.connect_clicked(move |_| s.input(AgentsMenuWidgetInput::SelectTab(i)));
+                tabs.append(&b);
+                b
+            })
+            .collect();
+        let mut model = AgentsMenuWidgetModel {
             usage_box: usage_box.clone(),
-            sessions_box: sessions_box.clone(),
-            tabs: tabs.clone(),
+            sessions_page,
+            tab_buttons,
             plan_label: plan_label.clone(),
             snapshot: None,
             sessions: None,
@@ -224,8 +239,8 @@ impl Component for AgentsMenuWidgetModel {
         crate::menus::list_fit::mark_menu_list(&widgets.sessions_scroll, 560);
         mshell_common::a11y::name(&widgets.refresh_btn, "Refresh");
         rebuild_usage(&model.usage_box, None);
-        model.rebuild_sessions(&sender);
-        model.rebuild_tabs(&sender);
+        model.update_sessions();
+        model.update_tabs();
         ComponentParts { model, widgets }
     }
 
@@ -241,7 +256,7 @@ impl Component for AgentsMenuWidgetModel {
                 self.tab = tab;
                 widgets.usage_scroll.set_visible(tab == 0);
                 widgets.sessions_scroll.set_visible(tab == 1);
-                self.rebuild_tabs(&sender);
+                self.update_tabs();
             }
             AgentsMenuWidgetInput::Session(action) => {
                 self.notice = None;
@@ -270,7 +285,7 @@ impl Component for AgentsMenuWidgetModel {
     fn update_cmd(
         &mut self,
         message: Self::CommandOutput,
-        sender: ComponentSender<Self>,
+        _sender: ComponentSender<Self>,
         _root: &Self::Root,
     ) {
         match message {
@@ -290,45 +305,38 @@ impl Component for AgentsMenuWidgetModel {
             AgentsMenuWidgetCommandOutput::Sessions(s) => {
                 if self.sessions.as_ref() != Some(&s) {
                     self.sessions = Some(s);
-                    self.rebuild_sessions(&sender);
-                    self.rebuild_tabs(&sender);
+                    self.update_sessions();
+                    self.update_tabs();
                 }
             }
             AgentsMenuWidgetCommandOutput::ActionDone(notice) => {
                 self.notice = notice;
-                self.rebuild_sessions(&sender);
+                self.update_sessions();
             }
         }
     }
 }
 
 impl AgentsMenuWidgetModel {
-    fn rebuild_sessions(&self, sender: &ComponentSender<Self>) {
-        let s = sender.clone();
-        sessions_page::rebuild(
-            &self.sessions_box,
+    fn update_sessions(&mut self) {
+        self.sessions_page.update(
             self.sessions.as_ref(),
             self.notice.as_deref(),
             chrono::Utc::now().timestamp_millis(),
-            move |a| s.input(AgentsMenuWidgetInput::Session(a)),
         );
     }
 
-    /// The §12 segmented control: Usage | Sessions (with a needs-you count).
-    fn rebuild_tabs(&self, sender: &ComponentSender<Self>) {
-        clear(&self.tabs);
+    /// The §12 segmented control: Usage | Sessions (with a running count).
+    fn update_tabs(&self) {
         let live = self.sessions.as_ref().map_or(0, |s| s.live.len());
         let labels = ["Usage".to_string(), format!("Sessions · {live}")];
-        for (i, text) in labels.iter().enumerate() {
-            let b = gtk::Button::with_label(text);
+        for (i, (b, text)) in self.tab_buttons.iter().zip(&labels).enumerate() {
+            b.set_label(text);
             b.set_css_classes(if i as u8 == self.tab {
                 &["agents-tab", "active"]
             } else {
                 &["agents-tab"]
             });
-            let s = sender.clone();
-            b.connect_clicked(move |_| s.input(AgentsMenuWidgetInput::SelectTab(i as u8)));
-            self.tabs.append(&b);
         }
     }
 }

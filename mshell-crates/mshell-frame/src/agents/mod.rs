@@ -300,10 +300,14 @@ impl SessionsSnapshot {
 pub(crate) static SESSIONS_POLL: LazyLock<SharedPoll<SessionsSnapshot>> =
     LazyLock::new(|| SharedPoll::new(|| SESSIONS_TICK, || Box::pin(probe_sessions())));
 
-/// history.jsonl is megabytes; re-group it only when it changed.
+/// history.jsonl is megabytes: [`sessions::SavedIndex`] reads only what
+/// was appended, and only when its size or mtime moved.
 #[derive(Default)]
 struct SavedCache {
-    key: Option<(u64, std::time::SystemTime, Vec<String>)>,
+    index: sessions::SavedIndex,
+    stat: Option<(u64, std::time::SystemTime)>,
+    /// The running sessions `saved` leaves out.
+    live_ids: Option<Vec<String>>,
     saved: Vec<SavedSession>,
 }
 
@@ -322,17 +326,18 @@ fn probe_sessions_blocking() -> SessionsSnapshot {
     let live_ids: Vec<String> = live.iter().map(|s| s.session_id.clone()).collect();
     let history = dir.join("history.jsonl");
     let saved = match (std::fs::metadata(&history), SAVED.lock()) {
-        (Ok(meta), Ok(mut cache)) => {
-            let key = (
-                meta.len(),
-                meta.modified().unwrap_or(std::time::UNIX_EPOCH),
-                live_ids.clone(),
-            );
-            if cache.key.as_ref() != Some(&key) {
-                let raw = std::fs::read_to_string(&history).unwrap_or_default();
+        (Ok(meta), Ok(mut guard)) => {
+            let cache = &mut *guard;
+            let stat = (meta.len(), meta.modified().unwrap_or(std::time::UNIX_EPOCH));
+            let mut changed = false;
+            if cache.stat != Some(stat) {
+                changed = cache.index.refresh(&history);
+                cache.stat = Some(stat);
+            }
+            if changed || cache.live_ids.as_ref() != Some(&live_ids) {
                 let exclude: Vec<&str> = live_ids.iter().map(String::as_str).collect();
-                cache.saved = sessions::saved_sessions(&raw, &exclude, SAVED_LIMIT);
-                cache.key = Some(key);
+                cache.saved = cache.index.top(&exclude, SAVED_LIMIT);
+                cache.live_ids = Some(live_ids);
             }
             cache.saved.clone()
         }
