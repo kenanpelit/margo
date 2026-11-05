@@ -1,7 +1,7 @@
 .\" mshellctl(1) — margo desktop-shell IPC client
 .\" Command list mirrors `mshellctl --help`; per-command detail is in
 .\" `mshellctl <CMD> --help`.
-.TH MSHELLCTL 1 "2026-06-01" "margo 0.9.1" "Margo Manual"
+.TH MSHELLCTL 1 "2026-11-05" "margo" "Margo Manual"
 .SH NAME
 mshellctl \- control the margo desktop shell (mshell)
 .SH SYNOPSIS
@@ -16,7 +16,7 @@ over the session D-Bus (service
 .IR com.mshell.Shell ).
 It controls the
 .IR shell "\(em"
-menus, bars, audio, brightness, wallpaper, and the lock screen.
+menus, bars, audio, the session, notifications, and the companion tools.
 .PP
 This is distinct from
 .BR mctl (1),
@@ -25,46 +25,71 @@ which controls the
 (windows, tags, layouts). The two talk to different daemons \(em don't
 conflate them.
 .SH COMMANDS
-.SS "Menus and bars"
+.SS "Surfaces"
 .TP
 .B menu \fISUBCOMMAND\fR
-Open / close a shell menu:
-.IR control-center ", " dashboard ", " mdash ", " cpu-dashboard ", " audio-dashboard ,
+Open, close or toggle a shell menu:
+.IR control-center ", " dashboard ", " mdash ", " clipboard ", " cpu-dashboard ", " audio-dashboard ,
 .IR ssh-sessions ", " session ", " plugin ", \[char46]\&.\&.\&."
 .TP
 .B bar \fISUBCOMMAND\fR
-Hide or reveal bars.
+Show, hide or toggle the bars:
+.IR top " | " bottom " | " toggle-all " | " reveal-all " | " hide-all .
 .TP
-.B hidden-bar \fISUBCOMMAND\fR
+.B hidden-bar \fIACTION\fR [\fINAME\fR]
 Control the Hidden Bar drawer widget
-.RI ( toggle " | " expand " | " collapse " | " pin " | " unpin ).
+.RI ( toggle " | " expand " | " collapse " | " pin " | " unpin );
+with no
+.I NAME
+every drawer is affected.
+.TP
+.B custom-refresh \fR[\fINAME\fR]
+Re-run a custom bar pill's
+.B exec
+now instead of waiting for its interval; with no
+.I NAME
+every custom pill refreshes.
+.TP
+.B dock \fISUBCOMMAND\fR
+The standalone mdock surface:
+.IR toggle " | " show " | " hide " | " "activate \fIN\fR" .
 .TP
 .B settings \fISUBCOMMAND\fR
-Open / control the settings window.
+Open or close the Settings window
+.RI ( open " | " close ).
 .TP
 .B wizard
 Open the in-shell setup wizard (a layer-shell menu).
+.TP
+.B inspect
+Open the GTK4 inspector (find CSS node ids and classes).
 .SS "Audio and media"
 .TP
 .B audio \fISUBCOMMAND\fR
-Volume, mute, mic, and device switching \(em e.g.
-.IR volume-up ", " "volume " PERCENT ", " mute ", " "output " next .
+Volume, mute, mic and device switching \(em e.g.
+.IR volume-up ", " "volume " PERCENT ", " mute ", " "output " next ", " mic-mute .
 .TP
 .B media \fISUBCOMMAND\fR
-Control MPRIS players:
+Control MPRIS players and native MPD:
 .IR toggle ", " next ", " prev ", " status ", " list .
 .TP
 .B brightness \fISUBCOMMAND\fR
 Backlight control:
 .IR up " | " down .
-.SS "Appearance"
 .TP
-.B set-wallpaper \fIPATH\fR
-Set the current wallpaper to a specific image.
+.B mtune \fISUBCOMMAND\fR
+Control the
+.B mtune
+music player directly (no shell needed): playback, seek, volume, rate,
+repeat, shuffle, queue, library and playlists, status and metadata.
+.SS "Appearance"
 .TP
 .B wallpaper \fISUBCOMMAND\fR
 Cycle the wallpaper:
 .IR next " | " prev " | " random .
+.TP
+.B set-wallpaper \fIPATH\fR
+Set the current wallpaper to a specific image.
 .TP
 .B theme \fISUBCOMMAND\fR
 Inspect or switch the colour scheme (the same picker as Settings \(->
@@ -78,28 +103,109 @@ separators, so
 all resolve;
 .B theme list
 prints the valid names.
-.SS "Session and system"
+.SS "Session and notifications"
 .TP
-.B lock " " [\fBcheck\fR]
+.B session \fISUBCOMMAND\fR
+Session and power actions:
+.IR menu " | " lock " | " logout " | " suspend " | " reboot " | " shutdown .
+.TP
+.B lock \fR[\fBactivate\fR | \fBcheck\fR]
 Lock the session. Bare
 .B lock
 locks;
 .B lock check
-reports the current lock state.
+prints
+.I locked
+or
+.IR unlocked .
 .TP
-.B quit
-Kill mshell.
+.B notification \fISUBCOMMAND\fR
+The notification centre:
+.IR open " | " clear " | " read " | " "dnd \fR[\fIon\fR|\fIoff\fR]" " | " count .
 .TP
-.B plugin \fISUBCOMMAND\fR
-Manage installed WASM plugins (e.g. reload from disk).
+.B toast \fR[\fB\-\-icon\fR \fIICON\fR] [\fB\-\-severity\fR \fILEVEL\fR] \fITITLE\fR [\fIBODY\fR]
+Show a transient toast \(em the
+.BR notify-send (1)
+equivalent for the toast surface (no notification history).
+.TP
+.B gamemode \fR[\fIon\fR | \fIoff\fR | \fItoggle\fR | \fIstatus\fR]
+Game Mode: drop compositor effects, silence notifications and keep the
+session awake (default:
+.IR toggle ).
+.SS "Capture"
 .TP
 .B screenshot \fISUBCOMMAND\fR
-Bridge to the
-.BR mscreenshot (1)
-helper (e.g. the in-shell region selector).
+Capture to file and clipboard:
+.IR region ", " window ", " output ", " full ", " repeat ", " ocr ", " qr ", " palette .
 .TP
-.B inspect
-Launch the GTK4 inspector (find CSS node ids / classes).
+.B screenrecord \fISUBCOMMAND\fR
+The shell's screen recorder:
+.IR start " | " stop " | " toggle .
+.TP
+.B clipboard \fISUBCOMMAND\fR
+Clipboard history:
+.IR list ", " "copy \fIID\fR" ", " "pin \fIID\fR" ", " "delete \fIID\fR" ", " clear ", " wipe .
+.TP
+.B translate \fISUBCOMMAND\fR
+Headless translation: translate the selection
+.RI ( selection ),
+the clipboard
+.RI ( clipboard )
+or a string
+.RI ( "text \fITEXT\fR" ),
+copy the result and toast it.
+.SS "Companion tools"
+.TP
+.B calendar \fISUBCOMMAND\fR
+Events and accounts via
+.BR mcal :
+.IR today ", " "agenda \fR[\fIDAYS\fR]" ", " "on \fIDATE\fR" ", " "account \fR\&.\|.\|." .
+.TP
+.B vpn \fISUBCOMMAND\fR
+Mullvad VPN via
+.BR mvpn :
+.IR status ", " connect ", " disconnect ", " toggle ", " reconnect ", " random ", " fastest ", " menu .
+.TP
+.B power \fISUBCOMMAND\fR
+Power profile via
+.BR mpower :
+.IR status ", " cycle ", " "set \fIPROFILE\fR" ", " pause ", " resume .
+.TP
+.B layout \fISUBCOMMAND\fR
+Saved layouts via
+.BR mlayout :
+.IR list ", " current ", " "set \fINAME\fR" ", " next ", " prev ", " preview ", " pick .
+.TP
+.B osk \fISUBCOMMAND\fR
+The on-screen keyboard
+.RB ( mkeys ):
+.IR show " | " hide " | " toggle .
+.TP
+.B color \fR[\fB\-\-copy\fR] [\fB\-\-notify\fR] [\fB\-\-format\fR \fIFORMAT\fR] \&.\|.\|.
+Pick a screen colour with
+.BR mpicker
+and print it
+.RI ( hex ", " rgb ", " hsl ", " cmyk ).
+.TP
+.B play \fISUBCOMMAND\fR
+The mpv companion: start, toggle, play a URL / path / the clipboard,
+download with yt-dlp, window control, and the native video-wallpaper
+engine
+.RB ( "play wallpaper" ).
+.SS "System and diagnostics"
+.TP
+.B bluetooth \fISUBCOMMAND\fR
+The auto-connect engine:
+.IR toggle ", " connect ", " disconnect ", " "connect-number \fIN\fR" .
+.TP
+.B log \fISUBCOMMAND\fR
+Shell file logging
+.RI ( ~/.local/state/margo/logs/mshell-*.log ):
+.IR "level \fILEVEL\fR" ", " enable ", " disable ", " path ", " open .
+.TP
+.B plugin \fISUBCOMMAND\fR
+Manage installed WASM plugins:
+.IR list ", " "reload \fINAME\fR" ", " "keybind \fR\&.\|.\|." .
 .TP
 .B doctor
 One-shot health check of the shell: session-bus reachability, whether
@@ -114,6 +220,9 @@ for the compositor side.
 .B completions \fISHELL\fR
 Emit a shell-completion script to stdout
 .RI ( bash " | " zsh " | " fish " | " elvish " | " powershell ).
+.TP
+.B quit
+Quit the shell (the compositor keeps running).
 .PP
 Run
 .B mshellctl
@@ -140,7 +249,7 @@ mshellctl lock
 .SH "SEE ALSO"
 .BR margo (1),
 .BR mctl (1),
-.BR mscreenshot (1)
+.BR mdots (1)
 .SH AUTHORS
 Part of margo, by Kenan Pelit and contributors \(em
 .UR https://github.com/kenanpelit/margo

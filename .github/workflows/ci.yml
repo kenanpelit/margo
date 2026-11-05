@@ -118,9 +118,11 @@ jobs:
         # Built on its own in the PKGBUILD too (its GStreamer/libadwaita stack).
         run: ./scripts/build-groups.sh run mtune cargo build --locked
 
-      - name: shell completions drift (gate)
-        # contrib/completions/ is clap output checked in for packagers;
-        # regenerate from the debug binaries just built and diff.
+      - name: shell completions + mdots.1 drift (gate)
+        # contrib/completions/ and man/mdots.1 are clap output checked in for
+        # packagers; regenerate from the debug binaries just built and diff.
+        # (man/mctl.1 + man/mshellctl.1 are hand-written; `cargo test` holds
+        # their COMMANDS sections to the CLIs.)
         run: ./contrib/completions/generate.sh --check target/debug
 
       - name: cargo test

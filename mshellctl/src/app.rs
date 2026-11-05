@@ -49,6 +49,7 @@ SURFACES
   menu            Open / close / toggle a shell menu (control-center, mdash, …)
   bar             Show / hide / toggle the top & bottom bars
   hidden-bar      Control a Hidden Bar drawer (toggle / pin / collapse)
+  custom-refresh  Re-run a custom bar pill's exec now
   dock            Standalone mdock surface — toggle / show / hide
   settings        Open or close the Settings window
   wizard          Open the in-shell setup wizard
@@ -57,7 +58,8 @@ SURFACES
 AUDIO & MEDIA
   audio           Output / input volume, mute, device switching
   media           Play-pause, next, previous — MPRIS + native MPD
-  brightness      Backlight — up / down / set
+  brightness      Backlight — up / down
+  mtune           The mtune music player — playback, queue, playlists
 
 APPEARANCE
   wallpaper       Cycle wallpaper — next / prev / random
@@ -75,6 +77,7 @@ CAPTURE
   screenshot      Region / window / output / full → file + clipboard
   screenrecord    Screen recording — start / stop / toggle
   clipboard       History — list / copy / pin / delete / clear
+  translate       Translate the selection / clipboard, copy + toast it
 
 COMPANION TOOLS
   calendar        Events & connected accounts           (mcal)

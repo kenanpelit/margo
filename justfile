@@ -70,8 +70,10 @@ mtune:
     @echo "mtune installed"
 
 # Regenerate the checked-in mctl + mshellctl + mdots shell completions
-# (bash/zsh/fish) from clap. Run after adding/renaming a subcommand or
-# argument, then commit contrib/completions/ (CI fails on drift).
+# (bash/zsh/fish) and man/mdots.1 from clap. Run after adding/renaming a
+# subcommand or argument, then commit contrib/completions/ and man/ (CI fails
+# on drift; the hand-written man/mctl.1 + man/mshellctl.1 are held to the CLI
+# by `cargo test -p mctl -p mshellctl`).
 completions:
     ./contrib/completions/generate.sh
 

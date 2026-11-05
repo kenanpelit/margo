@@ -3101,6 +3101,10 @@ fn cmd_focused(json_out: bool) -> Result<()> {
 }
 
 #[cfg(test)]
+#[path = "../man_page_tests.rs"]
+mod man_page_tests;
+
+#[cfg(test)]
 mod tests {
     use super::{Args, Command, ConfigCmd, default_rollback_index, diff_stat_vs_current};
     use clap::Parser;

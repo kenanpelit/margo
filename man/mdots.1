@@ -1,6 +1,6 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH mdots 1  "mdots 1.1.0" 
+.TH mdots 1  margo "Margo Manual"
 .SH NAME
 mdots \- A declarative package management CLI tool for Linux
 .SH SYNOPSIS
@@ -30,6 +30,9 @@ Remove a package and untrack from mdots
 .TP
 mdots\-status(1)
 Show current configuration and sync status
+.TP
+mdots\-diff(1)
+Show declared\-vs\-installed package diff (read\-only)
 .TP
 mdots\-sync(1)
 Sync packages to match configuration
@@ -80,7 +83,7 @@ mdots\-restore(1)
 Restore from backup snapshot
 .TP
 mdots\-self\-update(1)
-Update mdots from git repository
+Explain how mdots is updated (with the margo package; no self\-build)
 .TP
 mdots\-nix(1)
 Nix package manager and Home Manager integration
@@ -106,9 +109,10 @@ Generate a shell completion script (bash, zsh, fish, …)
 mdots\-man(1)
 Print the man page (roff) to stdout
 .TP
+mdots\-doctor(1)
+Run environment health checks and report pass/warn/fail status
+.TP
 mdots\-help(1)
 Print this message or the help of the given subcommand(s)
-.SH VERSION
-v1.1.0
 .SH AUTHORS
 Kenan Pelit <kenanpelit@gmail.com>
