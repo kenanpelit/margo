@@ -75,6 +75,13 @@ jobs:
           # to check every baseline raise carries its reason trailer.
           fetch-depth: 0
 
+      # The container runs as root but the workspace belongs to the runner's
+      # uid; actions/checkout trusts it only in a temporary git config, so
+      # every later git call failed with "dubious ownership" and the panic
+      # baseline guard skipped itself ("no base commit to compare against").
+      - name: Trust the checkout for later git calls
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       # The toolchain rust-toolchain.toml pins, with the clippy and rustfmt
       # it lists. cargo uses that pin whatever the default is, so no other
       # (`stable`) toolchain is installed.

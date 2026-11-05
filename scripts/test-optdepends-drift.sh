@@ -18,7 +18,10 @@ fresh() {
     mkdir -p "$tmp/r/scripts"
     cp "$root/PKGBUILD" "$tmp/r/"
     cp "$root/scripts/runtime-tools.txt" "$tmp/r/scripts/"
-    (cd "$root" && git ls-files -z '*.rs' | xargs -0 cp --parents -t "$tmp/r")
+    # The same tree the gate scans (find, not git: CI's container git may
+    # refuse the checkout, which left cp without a single file).
+    (cd "$root" && find . \( -name target -o -name .git \) -prune -o -name '*.rs' -print0 |
+        xargs -0 cp --parents -t "$tmp/r")
 }
 run() { set +e; "$here/optdepends-drift.sh" "$tmp/r" >/dev/null 2>&1; echo $?; set -e; }
 
