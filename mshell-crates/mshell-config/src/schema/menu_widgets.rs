@@ -153,6 +153,11 @@ pub enum MenuWidget {
     Translate,
     Wallpaper,
     Weather,
+    /// World clocks — the device time compared with `tempo.world_clocks`:
+    /// offset, the other city's day, working hours and an hour strip per
+    /// city, with add / reorder / remove / "make device timezone". For the
+    /// Clock menu (Settings → Widgets → Clock adds it).
+    WorldClocks,
 }
 
 impl PatchField for MenuWidget {
@@ -232,6 +237,7 @@ impl MenuWidget {
             MenuWidget::Translate => "Translate",
             MenuWidget::Wallpaper => "Wallpaper",
             MenuWidget::Weather => "Weather",
+            MenuWidget::WorldClocks => "World Clocks",
         }
     }
 
@@ -307,6 +313,7 @@ impl MenuWidget {
             MenuWidget::Translate,
             MenuWidget::Wallpaper,
             MenuWidget::Weather,
+            MenuWidget::WorldClocks,
         ]
     }
 }

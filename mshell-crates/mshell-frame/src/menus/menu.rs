@@ -869,6 +869,18 @@ impl Component for MenuModel {
                             .send(AppLauncherInput::ParentRevealChanged(visible))
                             .ok();
                     }
+                    if let Some(controller) = controller.downcast_ref::<Controller<
+                        crate::menus::menu_widgets::world_clocks::WorldClocksModel,
+                    >>() {
+                        controller
+                            .sender()
+                            .send(
+                                crate::menus::menu_widgets::world_clocks::WorldClocksInput::ParentRevealChanged(
+                                    visible,
+                                ),
+                            )
+                            .ok();
+                    }
                     if let Some(controller) =
                         controller.downcast_ref::<Controller<AlarmClockMenuWidgetModel>>()
                     {

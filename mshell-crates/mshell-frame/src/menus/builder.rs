@@ -475,6 +475,11 @@ pub fn build_widget(
                 })
                 .detach(),
         ),
+        MenuWidget::WorldClocks => Box::new(
+            crate::menus::menu_widgets::world_clocks::WorldClocksModel::builder()
+                .launch(crate::menus::menu_widgets::world_clocks::WorldClocksInit {})
+                .detach(),
+        ),
         MenuWidget::Weather => Box::new(
             WeatherModel::builder()
                 .launch(WeatherInit {

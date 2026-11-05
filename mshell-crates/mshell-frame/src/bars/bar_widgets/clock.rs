@@ -18,8 +18,14 @@
 //! Back-compat: when `clock_format` is empty, fall back to the
 //! pre-tempo `clock_format_24_h` bool (so an existing config that
 //! never mentioned `[tempo]` still gets the old behavior).
+//!
+//! World clocks: the first `tempo.world_clocks_in_bar` of
+//! `tempo.world_clocks` ride after the time (`New York 07:05`, horizontal
+//! bars only) and every city is listed in the tooltip. Both stay empty —
+//! today's pill — while the list is empty.
 
-use chrono::Local;
+use crate::menus::menu_widgets::world_clocks::logic as world;
+use chrono::{Local, Utc};
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::schema::config::*;
 use reactive_graph::traits::{Get, GetUntracked};
@@ -28,7 +34,7 @@ use relm4::{
     gtk::{
         self, Orientation,
         glib::{self, SourceId},
-        prelude::{ButtonExt, GestureSingleExt, WidgetExt},
+        prelude::{BoxExt, ButtonExt, GestureSingleExt, WidgetExt},
     },
 };
 use std::cell::Cell;
@@ -59,6 +65,11 @@ pub(crate) struct ClockModel {
     /// callback can `set()` without needing &mut self.
     current_idx: Rc<Cell<usize>>,
     time_label: String,
+    /// `tempo.world_clocks` + how many of them show inline.
+    zones: Vec<String>,
+    zones_in_bar: u32,
+    zones_label: String,
+    tooltip: Option<String>,
     timer_id: Option<SourceId>,
     _effects: EffectScope,
 }
@@ -74,6 +85,8 @@ pub(crate) enum ClockInput {
     ReloadFormats {
         formats: Vec<String>,
         fallback_24h: bool,
+        zones: Vec<String>,
+        zones_in_bar: u32,
     },
 }
 
@@ -100,6 +113,8 @@ impl SimpleComponent for ClockModel {
             set_vexpand: model.orientation == Orientation::Horizontal,
             set_halign: gtk::Align::Center,
             set_valign: gtk::Align::Center,
+            #[watch]
+            set_tooltip_text: model.tooltip.as_deref(),
 
             #[name="button"]
             gtk::Button {
@@ -108,10 +123,20 @@ impl SimpleComponent for ClockModel {
                     sender.output(ClockOutput::Clicked).unwrap_or_default();
                 },
 
-                gtk::Label {
-                    add_css_class: "clock-bar-label",
-                    #[watch]
-                    set_label: model.time_label.as_str(),
+                gtk::Box {
+                    set_spacing: 8,
+                    gtk::Label {
+                        add_css_class: "clock-bar-label",
+                        #[watch]
+                        set_label: model.time_label.as_str(),
+                    },
+                    gtk::Label {
+                        add_css_class: "clock-bar-zones",
+                        #[watch]
+                        set_label: model.zones_label.as_str(),
+                        #[watch]
+                        set_visible: !model.zones_label.is_empty(),
+                    },
                 }
             }
         }
@@ -152,7 +177,9 @@ impl SimpleComponent for ClockModel {
             .clock_format_24_h()
             .get_untracked();
 
-        let formats = collect_formats(base_config.clone().tempo().get_untracked());
+        let tempo = base_config.clone().tempo().get_untracked();
+        let (zones, zones_in_bar) = (tempo.world_clocks.clone(), tempo.world_clocks_in_bar);
+        let formats = collect_formats(tempo);
         let current_idx = Rc::new(Cell::new(0usize));
 
         let time_label = render_now(
@@ -171,22 +198,31 @@ impl SimpleComponent for ClockModel {
         let base_config_eff = base_config.clone();
         effects.push(move |_| {
             let fallback_24h = base_config_eff.clone().general().clock_format_24_h().get();
-            let formats = collect_formats(base_config_eff.clone().tempo().get());
+            let tempo = base_config_eff.clone().tempo().get();
+            let (zones, zones_in_bar) = (tempo.world_clocks.clone(), tempo.world_clocks_in_bar);
+            let formats = collect_formats(tempo);
             sender_clone.input(ClockInput::ReloadFormats {
                 formats,
                 fallback_24h,
+                zones,
+                zones_in_bar,
             });
         });
 
-        let model = ClockModel {
+        let mut model = ClockModel {
             orientation: params.orientation,
             formats,
             fallback_24h,
             current_idx: current_idx.clone(),
             time_label,
+            zones,
+            zones_in_bar,
+            zones_label: String::new(),
+            tooltip: None,
             timer_id: Some(id),
             _effects: effects,
         };
+        model.render_zones();
 
         let widgets = view_output!();
 
@@ -219,6 +255,7 @@ impl SimpleComponent for ClockModel {
                     self.fallback_24h,
                     self.orientation,
                 );
+                self.render_zones();
             }
             ClockInput::CycleFormat => {
                 if self.formats.len() > 1 {
@@ -231,13 +268,35 @@ impl SimpleComponent for ClockModel {
             ClockInput::ReloadFormats {
                 formats,
                 fallback_24h,
+                zones,
+                zones_in_bar,
             } => {
                 self.formats = formats;
                 self.fallback_24h = fallback_24h;
+                self.zones = zones;
+                self.zones_in_bar = zones_in_bar;
+                self.render_zones();
                 self.current_idx.set(0);
                 self.time_label = render_now(&self.formats, 0, self.fallback_24h, self.orientation);
             }
         }
+    }
+}
+
+impl ClockModel {
+    /// Refresh the inline world clocks + the tooltip (no-ops to empty while
+    /// `tempo.world_clocks` is empty).
+    fn render_zones(&mut self) {
+        let now = Utc::now();
+        let inline = if self.orientation == Orientation::Vertical {
+            0
+        } else {
+            self.zones_in_bar.min(3) as usize
+        };
+        self.zones_label = world::pill_text(&self.zones, inline, now, self.fallback_24h);
+        let device_offset = Local::now().offset().local_minus_utc() / 60;
+        let lines = world::tooltip_lines(&self.zones, now, device_offset, self.fallback_24h);
+        self.tooltip = (!lines.is_empty()).then_some(lines);
     }
 }
 

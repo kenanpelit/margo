@@ -112,6 +112,7 @@ mod weather_settings;
 mod widget_menu_settings;
 mod window_rules_settings;
 mod window_switcher_settings;
+mod world_clock_settings;
 
 pub use settings::{
     SettingsWindowCommandOutput, SettingsWindowInit, SettingsWindowInput, SettingsWindowModel,

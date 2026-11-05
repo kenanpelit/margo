@@ -5218,6 +5218,7 @@ name = "mshell-frame"
 version = "5.0.0"
 dependencies = [
  "chrono",
+ "chrono-tz",
  "futures",
  "gio-unix",
  "gtk4-layer-shell",

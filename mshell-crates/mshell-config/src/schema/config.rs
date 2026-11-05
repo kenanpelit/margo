@@ -524,6 +524,16 @@ impl Default for General {
 pub struct Tempo {
     pub clock_format: String,
     pub formats: Vec<String>,
+    /// IANA zones (`America/New_York`) compared in the Clock menu's World
+    /// Clocks section, in display order. Edited from that section.
+    pub world_clocks: Vec<String>,
+    /// How many of the first `world_clocks` ride next to the bar clock
+    /// (0–3; 0 = none). All of them are listed in its tooltip.
+    pub world_clocks_in_bar: u32,
+    /// Working day used for the "working hours" hints and the hour-strip
+    /// shading, as hours `start..end` (an end before the start wraps).
+    pub work_day_start: u32,
+    pub work_day_end: u32,
 }
 
 impl Default for Tempo {
@@ -536,6 +546,10 @@ impl Default for Tempo {
                 "%a %d %b %H:%M".to_string(),
                 "%d.%m.%Y %H:%M".to_string(),
             ],
+            world_clocks: Vec::new(),
+            world_clocks_in_bar: 0,
+            work_day_start: 9,
+            work_day_end: 17,
         }
     }
 }

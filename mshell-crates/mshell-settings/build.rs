@@ -76,6 +76,7 @@ const PAGES: &[(&str, &[&str])] = &[
     ("widgets/valent", &["valent_mirror_settings.rs"]),
     ("widgets/alarmclock", &["pomodoro_settings.rs"]),
     ("widgets/eyecare", &["eyecare_settings.rs"]),
+    ("widgets/clock", &["world_clock_settings.rs"]),
 ];
 
 /// Shell settings that hold data the user created (or live state) rather
@@ -86,6 +87,7 @@ const USER_DATA: &[&str] = &[
     "/bars/widgets/hidden_bars",
     "/bars/widgets/system_update/hidden_packages",
     "/game_mode/active",
+    "/menus/clock_menu/widgets",
     "/calendars/subscriptions",
     "/general/weather_saved_locations",
     "/launcher/autostart_scripts",

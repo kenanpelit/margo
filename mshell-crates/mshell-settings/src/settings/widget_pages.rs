@@ -87,6 +87,14 @@ fn alarm_clock_parts() -> Vec<PagePart> {
     ]
 }
 
+/// Clock: the world-clock options above the menu geometry.
+fn clock_parts() -> Vec<PagePart> {
+    vec![
+        page_part!(crate::world_clock_settings::WorldClockSettingsModel => crate::world_clock_settings::WorldClockSettingsInit {}),
+        page_part!(WidgetMenuSettingsModel => WidgetMenuSettingsInit { kind: MenuKind::Clock }),
+    ]
+}
+
 /// Eye Care: the reminder's rules (a bar-only pill, no menu geometry).
 fn eyecare_parts() -> Vec<PagePart> {
     vec![
@@ -150,11 +158,12 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
         // behaviour), so it's a dedicated entry rather than the
         // generic per-menu settings.
         WidgetEntry::Clipboard,
-        WidgetEntry::Menu {
-            kind: MenuKind::Clock,
+        // Clock = world-clock options + the menu geometry.
+        WidgetEntry::Composite {
             stack_name: "clock",
             label: "Clock",
             icon: "alarm-symbolic",
+            parts: clock_parts,
         },
         WidgetEntry::Menu {
             kind: MenuKind::Mdash,

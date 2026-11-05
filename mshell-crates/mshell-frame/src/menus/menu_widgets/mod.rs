@@ -60,3 +60,4 @@ pub(crate) mod vpn_indicator;
 pub(crate) mod wallpaper;
 pub(crate) mod weather;
 pub(crate) mod wizard;
+pub(crate) mod world_clocks;

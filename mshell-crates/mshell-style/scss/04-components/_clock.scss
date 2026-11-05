@@ -403,3 +403,84 @@
   color: color-mix(in srgb, var(--on-surface-variant) 60%, transparent);
   padding: var(--space-2) 0;
 }
+// ── World clocks (bar clock extras + Clock-menu section) ─────────
+// The inline cities ride the bar clock at the dimmer secondary tier so
+// the device time stays the headline.
+.clock-bar-zones {
+  font-size: var(--font-bar);
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface-variant);
+}
+
+.world-clocks-section-label {
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+}
+
+.world-clocks-empty {
+  font-size: var(--font-xs);
+  color: var(--on-surface-variant);
+  padding: var(--space-2);
+}
+
+.world-clock-row {
+  padding: var(--space-2) var(--space-3);
+}
+
+.world-clock-title {
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
+.world-clock-subtitle {
+  font-size: var(--font-xs);
+  color: var(--on-surface-variant);
+}
+
+.world-clock-time {
+  font-size: var(--font-lg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface);
+}
+.world-clock-row.device .world-clock-time {
+  color: var(--primary);
+}
+
+// Hour strip: one cell per hour; now = primary chip, the working day a
+// faint tonal step, midnight carries the weekday + date.
+.world-clock-strip {
+  margin-top: var(--space-1);
+}
+.world-clock-cell {
+  font-size: var(--font-2xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface-variant);
+  padding: 2px 0;
+  border-radius: var(--radius-xs);
+  transition: background-color var(--motion-fast) var(--ease-standard);
+
+  &.work {
+    background-color: var(--surface-container-high);
+  }
+  &.midnight {
+    color: var(--on-surface);
+    font-weight: 600;
+  }
+  &.now {
+    background-color: color-mix(in srgb, var(--primary) 18%, transparent);
+    color: var(--primary);
+    font-weight: 600;
+  }
+}
+
+.world-clock-action {
+  color: var(--on-surface-variant);
+}
+
+.world-clock-result {
+  padding: var(--space-1) var(--space-3);
+}
