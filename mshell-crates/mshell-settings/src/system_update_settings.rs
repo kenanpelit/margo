@@ -9,10 +9,14 @@
 //! hours (the widget only re-probes once per interval, persisting the
 //! last check across restarts).
 
+use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{SystemUpdateBackend, SystemUpdateMode};
+use mshell_config::schema::config::{
+    BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, SystemUpdateBackend,
+    SystemUpdateBarWidgetStoreFields, SystemUpdateMode,
+};
 use mshell_config::schema::position::Position;
-use reactive_graph::traits::GetUntracked;
+use reactive_graph::traits::{Get, GetUntracked};
 use relm4::gtk::glib;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -20,6 +24,8 @@ use relm4::{Component, ComponentParts, ComponentSender, gtk};
 #[derive(Debug)]
 pub(crate) struct SystemUpdateSettingsModel {
     position_model: gtk::StringList,
+    hidden: Vec<String>,
+    _effects: EffectScope,
 }
 
 #[derive(Debug)]
@@ -37,6 +43,8 @@ pub(crate) enum SystemUpdateSettingsInput {
     SetUpdateMode(u32),
     SetCheckAudit(bool),
     SetBackend(u32),
+    Unhide(String),
+    HiddenChanged(Vec<String>),
 }
 
 #[derive(Debug)]
@@ -158,6 +166,25 @@ impl Component for SystemUpdateSettingsModel {
                             },
                         },
                     },
+                },
+
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Hidden packages",
+                    set_halign: gtk::Align::Start,
+                },
+                gtk::Label {
+                    add_css_class: "label-small",
+                    add_css_class: "dim-label",
+                    set_label: "Hidden from the count only — these packages still upgrade. Unhide them here even when no update is pending.",
+                    set_wrap: true,
+                    set_xalign: 0.0,
+                },
+                #[name = "hidden_list"]
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_widget_name: "setting:/bars/widgets/system_update/hidden_packages",
+                    set_orientation: gtk::Orientation::Vertical,
                 },
 
                 // Update checks ────────────────────────────────
@@ -332,8 +359,31 @@ impl Component for SystemUpdateSettingsModel {
         let position_refs: Vec<&str> = Position::all().iter().map(|p| p.display_name()).collect();
         let position_model = gtk::StringList::new(&position_refs);
 
-        let model = SystemUpdateSettingsModel { position_model };
+        let mut effects = EffectScope::new();
+        let sc = sender.clone();
+        effects.push(move |_| {
+            let names = config_manager()
+                .config()
+                .bars()
+                .widgets()
+                .system_update()
+                .hidden_packages()
+                .get();
+            sc.input(SystemUpdateSettingsInput::HiddenChanged(names));
+        });
+        let model = SystemUpdateSettingsModel {
+            position_model,
+            hidden: config_manager()
+                .config()
+                .bars()
+                .widgets()
+                .system_update()
+                .hidden_packages()
+                .get_untracked(),
+            _effects: effects,
+        };
         let widgets = view_output!();
+        rebuild_hidden(&widgets.hidden_list, &model.hidden, &sender);
 
         // Prime all controls from config.
         let cfg = config_manager().config().get_untracked();
@@ -369,8 +419,29 @@ impl Component for SystemUpdateSettingsModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
+    fn update_with_view(
+        &mut self,
+        widgets: &mut Self::Widgets,
+        message: Self::Input,
+        sender: ComponentSender<Self>,
+        _root: &Self::Root,
+    ) {
         match message {
+            SystemUpdateSettingsInput::Unhide(name) => {
+                config_manager().update_config(move |c| {
+                    c.bars
+                        .widgets
+                        .system_update
+                        .hidden_packages
+                        .retain(|n| n != &name);
+                });
+            }
+            SystemUpdateSettingsInput::HiddenChanged(names) => {
+                if self.hidden != names {
+                    self.hidden = names;
+                    rebuild_hidden(&widgets.hidden_list, &self.hidden, &sender);
+                }
+            }
             SystemUpdateSettingsInput::SetPosition(i) => {
                 config_manager().update_config(|c| {
                     c.menus.system_update_menu.position = Position::from_index(i)
@@ -424,5 +495,42 @@ impl Component for SystemUpdateSettingsModel {
                 config_manager().update_config(|c| c.bars.widgets.system_update.check_news = on);
             }
         }
+    }
+}
+
+/// Every configured name, not just those with pending updates. Plain
+/// action rows match the neighbouring settings; Unhide never edits pacman.conf.
+fn rebuild_hidden(
+    list: &gtk::Box,
+    names: &[String],
+    sender: &ComponentSender<SystemUpdateSettingsModel>,
+) {
+    while let Some(child) = list.first_child() {
+        list.remove(&child);
+    }
+    if names.is_empty() {
+        let label = gtk::Label::new(Some("No packages hidden."));
+        label.add_css_class("action-row");
+        label.add_css_class("dim-label");
+        list.append(&label);
+    }
+    let mut names = names.to_vec();
+    names.sort();
+    names.dedup();
+    for name in names {
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        row.add_css_class("action-row");
+        let label = gtk::Label::new(Some(&name));
+        label.set_xalign(0.0);
+        label.set_hexpand(true);
+        label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        row.append(&label);
+        let button = gtk::Button::with_label("Unhide");
+        button.add_css_class("ok-button-surface");
+        button.set_valign(gtk::Align::Center);
+        let sc = sender.clone();
+        button.connect_clicked(move |_| sc.input(SystemUpdateSettingsInput::Unhide(name.clone())));
+        row.append(&button);
+        list.append(&row);
     }
 }

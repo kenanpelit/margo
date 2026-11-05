@@ -12,13 +12,14 @@ use crate::system_update::pacnew::{
 };
 use crate::system_update::run::{self, RunStatus};
 use crate::system_update::{self, ProbeConfig, Source, UpdateReport};
+use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
     BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, SystemUpdateBarWidgetStoreFields,
     SystemUpdateMode,
 };
 use mshell_process::SpawnReaped;
-use reactive_graph::traits::GetUntracked;
+use reactive_graph::traits::{Get, GetUntracked};
 use relm4::gtk::glib;
 use relm4::gtk::prelude::{AccessibleExtManual, BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -58,6 +59,8 @@ pub(crate) struct SystemUpdateMenuWidgetModel {
     /// `IgnorePkg` from pacman.conf (shown read-only under Hidden).
     pacman_ignored: Vec<String>,
     auxiliary_checked: Option<std::time::Instant>,
+    hidden_names: Vec<String>,
+    _effects: EffectScope,
 }
 
 /// What the review view's buttons do.
@@ -107,6 +110,7 @@ pub(crate) enum SystemUpdateMenuWidgetInput {
     ConfigAction(ConfigAction),
     /// Hide a package from the count / show it again.
     ToggleHidden(String),
+    HiddenChanged(Vec<String>),
     /// Background mode: run the AUR helper interactively in a
     /// terminal (PKGBUILD diffs shown) for the pending AUR updates.
     ReviewAur,
@@ -575,6 +579,19 @@ impl Component for SystemUpdateMenuWidgetModel {
         // probing here fired the AUR helper (and its sudo) on every
         // shell restart. The probe now happens only when the panel is
         // actually opened (ParentRevealChanged) or via the toggles.
+        let mut effects = EffectScope::new();
+        let sc = sender.clone();
+        effects.push(move |_| {
+            sc.input(SystemUpdateMenuWidgetInput::HiddenChanged(
+                config_manager()
+                    .config()
+                    .bars()
+                    .widgets()
+                    .system_update()
+                    .hidden_packages()
+                    .get(),
+            ));
+        });
         let model = SystemUpdateMenuWidgetModel {
             report: system_update::load_cache().map(|(_, report)| report),
             refreshing: false,
@@ -592,6 +609,14 @@ impl Component for SystemUpdateMenuWidgetModel {
             config_error: None,
             pacman_ignored: Vec::new(),
             auxiliary_checked: None,
+            hidden_names: config_manager()
+                .config()
+                .bars()
+                .widgets()
+                .system_update()
+                .hidden_packages()
+                .get_untracked(),
+            _effects: effects,
         };
         let widgets = view_output!();
 
@@ -752,14 +777,16 @@ impl Component for SystemUpdateMenuWidgetModel {
                     config_manager().update_config(move |c| {
                         c.bars.widgets.system_update.hidden_packages = for_config
                     });
-                    if let Some(report) = self.report.as_mut() {
-                        // Re-split locally (no re-probe) and push the
-                        // new count to every pill.
-                        report.entries.append(&mut report.hidden);
-                        system_update::ignore::apply_hidden(report, &next);
-                        rebuild_list(&widgets.list, report, &self.pacman_ignored, &sender);
-                        system_update::publish_report(report.clone());
-                    }
+                }
+            }
+            SystemUpdateMenuWidgetInput::HiddenChanged(names) => {
+                if self.hidden_names != names {
+                    self.hidden_names = names;
+                    let report = self.report.get_or_insert_with(UpdateReport::default);
+                    report.entries.append(&mut report.hidden);
+                    system_update::ignore::apply_hidden(report, &self.hidden_names);
+                    rebuild_list(&widgets.list, report, &self.pacman_ignored, &sender);
+                    system_update::publish_report(report.clone());
                 }
             }
             SystemUpdateMenuWidgetInput::ScanConfigs => {
@@ -892,7 +919,10 @@ impl Component for SystemUpdateMenuWidgetModel {
         _root: &Self::Root,
     ) {
         match message {
-            SystemUpdateMenuWidgetCommandOutput::Loaded(report) => {
+            SystemUpdateMenuWidgetCommandOutput::Loaded(mut report) => {
+                // A cached probe may predate a Settings edit. Apply the
+                // current list without losing previously hidden entries.
+                system_update::ignore::apply_hidden(&mut report, &self.hidden_names);
                 self.refreshing = false;
                 rebuild_list(&widgets.list, &report, &self.pacman_ignored, &sender);
                 rebuild_audit(&widgets.audit_list, &report.audit, &sender);
@@ -1114,6 +1144,7 @@ fn rebuild_list(
 
     if let Some(err) = &report.error {
         list.append(&info_label(err));
+        append_hidden_section(list, report, pacman_ignored, sender);
         return;
     }
     if report.is_empty() {
@@ -1491,14 +1522,19 @@ fn append_hidden_section(
     pacman_ignored: &[String],
     sender: &ComponentSender<SystemUpdateMenuWidgetModel>,
 ) {
-    if report.hidden.is_empty() && pacman_ignored.is_empty() {
+    let names = config_manager()
+        .config()
+        .bars()
+        .widgets()
+        .system_update()
+        .hidden_packages()
+        .get_untracked();
+    let hidden = system_update::ignore::hidden_rows(&names, report);
+    if hidden.is_empty() && pacman_ignored.is_empty() {
         return;
     }
     let header = gtk::Label::builder()
-        .label(format!(
-            "Hidden ({})",
-            report.hidden.len() + pacman_ignored.len()
-        ))
+        .label(format!("Hidden ({})", hidden.len() + pacman_ignored.len()))
         .halign(gtk::Align::Start)
         .xalign(0.0)
         .build();
@@ -1525,14 +1561,18 @@ fn append_hidden_section(
         r.append(&t);
         r
     };
-    for e in &report.hidden {
-        let tag = match (&e.old_version, &e.new_version) {
-            (Some(o), Some(n)) => format!("{o} → {n}"),
-            (None, Some(n)) => n.clone(),
-            _ => String::new(),
+    for (name, entry) in hidden {
+        let tag = match entry.as_ref().map(|e| (&e.old_version, &e.new_version)) {
+            Some((Some(o), Some(n))) => format!("{o} → {n}"),
+            Some((_, Some(n))) => n.clone(),
+            Some(_) => "pending update".to_string(),
+            None => "no pending update".to_string(),
         };
-        let r = row(&e.name, &tag);
-        r.append(&hide_button(&e.name, false, sender));
+        let r = row(&name, &tag);
+        if entry.is_none() {
+            r.add_css_class("dim-label");
+        }
+        r.append(&hide_button(&name, false, sender));
         group.append(&r);
     }
     for name in pacman_ignored {
