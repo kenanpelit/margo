@@ -12,9 +12,13 @@
 //!   * Apply requests — a [`ZwlrOutputConfigurationV1`] of per-head
 //!     changes: enable / disable (never the last enabled output),
 //!     `scale`, `transform`, `position`, and `set_mode` with one of the
-//!     head's advertised modes. Custom modes, and mode changes on a
-//!     backend that can't do them (winit, headless), fail the
-//!     configuration.
+//!     head's advertised modes. Custom modes, adaptive sync (margo has
+//!     no VRR), and mode changes on a backend that can't do them (winit,
+//!     headless), fail the configuration.
+//!   * Test requests — the same checks as apply
+//!     ([`OutputManagementHandler::test_output_pending`]) without
+//!     changing anything. A head that is (or goes) off is fine as long as
+//!     one output stays on.
 //!
 //! Enable/disable, scale, transform and position are applied while the
 //! `apply` request is dispatched. Mode changes are queued for the udev
@@ -31,7 +35,7 @@ use smithay::output::Output;
 use smithay::reexports::wayland_protocols_wlr::output_management::v1::server::{
     zwlr_output_configuration_head_v1::{self, ZwlrOutputConfigurationHeadV1},
     zwlr_output_configuration_v1::{self, ZwlrOutputConfigurationV1},
-    zwlr_output_head_v1::{self, ZwlrOutputHeadV1},
+    zwlr_output_head_v1::{self, AdaptiveSyncState, ZwlrOutputHeadV1},
     zwlr_output_manager_v1::{self, ZwlrOutputManagerV1},
     zwlr_output_mode_v1::{self, ZwlrOutputModeV1},
 };
@@ -94,7 +98,7 @@ enum ConfigurationState {
     Finished,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct PendingHeadConfig {
     enabled: bool,
     scale: Option<f64>,
@@ -157,6 +161,13 @@ pub trait OutputManagementHandler {
         pending: HashMap<String, PendingHeadConfig>,
         reply: &ModeReply,
     ) -> bool;
+
+    /// Called on `test`: whether `apply_output_pending` would accept this
+    /// configuration (known outputs, a supported mode change, at least
+    /// one output on afterwards). Must not change anything. Per-head
+    /// values margo refuses outright (bad scale, custom mode, …) were
+    /// already checked by the caller.
+    fn test_output_pending(&mut self, pending: &HashMap<String, PendingHeadConfig>) -> bool;
 
     /// Whether the backend can apply a mode change (udev can; winit and
     /// headless can't). Configurations that set a mode fail without it.
@@ -476,7 +487,6 @@ where
             Some(c) => c.id(),
             None => return,
         };
-        let mode_changes = state.supports_mode_changes();
         let mgr_state = state.output_management_state();
         let client_data = match mgr_state.clients.get_mut(&client_id) {
             Some(c) => c,
@@ -595,24 +605,23 @@ where
                 reply.seal(ok);
             }
             zwlr_output_configuration_v1::Request::Test => {
-                // We don't actually run a side-effect-free
-                // simulation; declare success only if the request
-                // doesn't touch features we don't support (disable,
-                // or a mode change the backend can't do). Anything
-                // else: reject.
-                if let Some(ConfigurationState::Ongoing(map)) = client_data.configs.get(cfg) {
-                    let supportable = map
-                        .values()
-                        .all(|p| p.enabled && (p.mode.is_none() || mode_changes) && !p.invalid);
-                    if supportable {
-                        cfg.succeeded();
-                    } else {
-                        cfg.failed();
-                    }
-                }
+                // The checks `apply` makes, without applying: off heads
+                // are fine (wlr-randr lists every head it read as off with
+                // `disable_head`), as long as one output stays on.
+                let pending = match client_data.configs.remove(cfg) {
+                    Some(ConfigurationState::Ongoing(p)) => p,
+                    _ => return,
+                };
                 client_data
                     .configs
                     .insert(cfg.clone(), ConfigurationState::Finished);
+                let ok =
+                    !pending.values().any(|p| p.invalid) && state.test_output_pending(&pending);
+                if ok {
+                    cfg.succeeded();
+                } else {
+                    cfg.failed();
+                }
             }
             zwlr_output_configuration_v1::Request::Destroy => {
                 client_data.configs.remove(cfg);
@@ -701,6 +710,16 @@ where
                     pending.invalid = true;
                 }
             },
+            zwlr_output_configuration_head_v1::Request::SetAdaptiveSync {
+                state: WEnum::Value(AdaptiveSyncState::Disabled),
+            } => {
+                // What every output already does.
+            }
+            zwlr_output_configuration_head_v1::Request::SetAdaptiveSync { .. } => {
+                // No VRR in margo: answering `succeeded` would claim it is on.
+                tracing::warn!(output = %name, "output_management: rejecting adaptive sync (no VRR)");
+                pending.invalid = true;
+            }
             zwlr_output_configuration_head_v1::Request::SetCustomMode { .. } => {
                 // Only advertised modes can be applied (the udev path
                 // matches against the connector's mode list).

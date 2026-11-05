@@ -62,6 +62,7 @@ mod move_client;
 mod mru_switcher;
 mod opacity;
 mod output_assignment;
+mod output_config;
 mod output_management;
 mod overview;
 mod pacing;

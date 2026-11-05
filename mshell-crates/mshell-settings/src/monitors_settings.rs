@@ -3,7 +3,8 @@
 //! * an **arrangement map** — drag a screen next to another, or use the
 //!   Left / Right / Above / Below buttons, instead of typing X/Y;
 //! * per-output **resolution / refresh** dropdowns filled from the modes
-//!   the output advertises, **rotation**, scale and VRR;
+//!   the output advertises, **rotation** and scale (no VRR switch: margo
+//!   has no variable refresh and refuses `adaptive_sync`);
 //! * **validate → apply → confirm**: the compositor test-applies the
 //!   arrangement first (`wlr-randr --dryrun`), then it goes live and
 //!   reverts by itself after [`CONFIRM_SECS`] unless kept. Keep writes it
@@ -40,7 +41,6 @@ pub(crate) enum MonitorsInput {
     SetRate(u32),
     SetTransform(u32),
     SetScale(f64),
-    SetVrr(bool),
     Apply,
     Keep,
     Revert,
@@ -407,12 +407,6 @@ fn rebuild_controls(model: &MonitorsModel, sender: &ComponentSender<MonitorsMode
     let s = sender.clone();
     spin.connect_value_changed(move |sp| s.input(MonitorsInput::SetScale(sp.value())));
     list.append(&control_row("Scale", "", &spin));
-
-    let sw = gtk::Switch::new();
-    sw.set_active(h.adaptive_sync);
-    let s = sender.clone();
-    sw.connect_active_notify(move |w| s.input(MonitorsInput::SetVrr(w.is_active())));
-    list.append(&control_row("Variable refresh rate (VRR)", "", &sw));
 }
 
 fn rebuild_list(model: &MonitorsModel, sender: &ComponentSender<MonitorsModel>) {
@@ -701,12 +695,6 @@ impl Component for MonitorsModel {
                 }
                 // The spin button keeps focus: only the map changes.
                 rebuild_canvas(self, &sender);
-                redraw = false;
-            }
-            MonitorsInput::SetVrr(v) => {
-                if let Some(h) = self.selected_head_mut() {
-                    h.adaptive_sync = v;
-                }
                 redraw = false;
             }
             MonitorsInput::Apply => {

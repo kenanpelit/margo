@@ -114,7 +114,7 @@ runtime-checked even where the per-protocol behaviour isn't.
 
 | Protocol | Advertised | Implemented | Runtime-tested | Unit/snapshot | Known gaps |
 |---|---|---|---|---|---|
-| `zwlr_output_manager_v1` | ✅ | ✅ | 🟢 `output_management.rs` (2) | ❌ | apply scale/transform/position; multi-output assignment is 🟡 manual |
+| `zwlr_output_manager_v1` | ✅ | ✅ | 🟢 `output_management.rs` (2) | ❌ | apply + test scale/transform/position/mode/on-off (a mirror target reads as off); adaptive sync refused (no VRR); multi-output assignment is 🟡 manual |
 | `wp_color_management_v1` (HDR) | ✅ | ✅ | 🟢 `color_management.rs` (2) | ✅ `render/icc_lut` (6), `render/hdr_metadata` (5), `render/linear_composite` (8) | best dual-covered protocol; see [`hdr-design.md`](hdr-design.md) |
 | `zwlr_gamma_control_manager_v1` | ✅ | ✅ | 🟢 `gamma_control.rs` (3) + 🟡 | ✅ `twilight/*` (gamma LUT / schedule / interpolation, ~28) | day-night shift is 🟡 manual |
 | `zwlr_screencopy_manager_v1` | ✅ | ✅ | 🟢 `screencopy.rs` (2) + 🟡 | ✅ `mpicker` / `mscreenshot` (grim) | hand-rolled (`protocols/screencopy.rs`) |

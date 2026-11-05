@@ -28,69 +28,43 @@ impl OutputManagementHandler for MargoState {
         pending: std::collections::HashMap<String, PendingHeadConfig>,
         reply: &ModeReply,
     ) -> bool {
-        // Mode changes are queued for the backend; refuse the whole
-        // configuration up front when nothing would drain them.
-        if !self.supports_mode_changes() && pending.values().any(|p| p.mode().is_some()) {
-            tracing::warn!(
-                "output_management: rejecting mode change — unsupported by this backend"
-            );
+        if let Err(why) = self.check_output_pending(&pending) {
+            tracing::warn!("output_management: rejecting configuration: {why}");
             return false;
         }
-
-        // Every head must name a live output; a stale name means the
-        // client's view is out of date.
-        if let Some(name) = pending
-            .keys()
-            .find(|name| !self.monitors.iter().any(|m| m.name == **name))
-        {
-            tracing::warn!("output_management: rejecting configuration for unknown output {name}");
-            return false;
-        }
-
-        // Disable / re-enable handled BEFORE the geometry-update
-        // loop — toggling `monitor.enabled` is cheap, but if a
-        // pending head says "disable + change mode" we'd want the
-        // mode change to apply against the *enabled* monitor; same
-        // for "enable + change scale".
-        //
-        // Refuse to disable the LAST enabled monitor — leaving zero
-        // active outputs strands the user with a dark screen.
-        // wlr-randr / kanshi typically guard client-side, but the
-        // protocol allows the request, so guard server-side too.
-        let any_disable = pending.values().any(|p| !p.enabled());
-        if any_disable {
-            let currently_enabled = self.monitors.iter().filter(|m| m.enabled).count();
-            let pending_disabling = pending
-                .iter()
-                .filter(|(name, p)| {
-                    !p.enabled() && self.monitors.iter().any(|m| m.name == **name && m.enabled)
-                })
-                .count();
-            if pending_disabling >= currently_enabled {
-                tracing::warn!(
-                    "output_management: rejecting disable — would leave 0 active outputs"
-                );
-                return false;
-            }
-        }
-
+        let mut ok = true;
         let mut changed = false;
-        // Pass 1 — enable/disable toggles. Disable migrates clients
-        // off the doomed output FIRST so the geometry pass below
-        // doesn't try to arrange against it.
-        for (name, p) in &pending {
-            let Some(mon_idx) = self.monitors.iter().position(|m| m.name == *name) else {
-                continue;
-            };
-            let was_enabled = self.monitors[mon_idx].enabled;
-            let want_enabled = p.enabled();
-            if was_enabled == want_enabled {
-                continue;
-            }
-            if !want_enabled {
-                self.disable_monitor(mon_idx);
-            } else {
+
+        // Pass 1 — enable/disable toggles, in output order. A head is
+        // toggled when the client asks for the opposite of what it was
+        // told (`reported_on`), not of what an earlier toggle in this
+        // pass made it: switching a mirror source off brings the mirror
+        // target back as the desktop, and the target's `disable_head`
+        // (it reads as off) must not then switch it off again.
+        //
+        // Enables run before disables, so a swap (A off, B on) never
+        // passes through "no output on" — `take_monitor_out_of_layout`
+        // refuses that. Disable migrates clients off the doomed output
+        // FIRST so the geometry pass below doesn't arrange against it.
+        let reported_on: Vec<bool> = self.monitors.iter().map(|m| m.enabled).collect();
+        let mut toggles: Vec<(usize, bool)> = pending
+            .iter()
+            .filter_map(|(name, p)| {
+                let idx = self.monitors.iter().position(|m| m.name == *name)?;
+                (reported_on[idx] != p.enabled()).then_some((idx, p.enabled()))
+            })
+            .collect();
+        // Enables (`true`) first, then by output index.
+        toggles.sort_by_key(|&(idx, on)| (!on, idx));
+        for (mon_idx, on) in toggles {
+            if on {
                 self.enable_monitor(mon_idx);
+            } else if !self.disable_monitor(mon_idx) {
+                tracing::warn!(
+                    output = %self.monitors[mon_idx].name,
+                    "output_management: could not switch the output off"
+                );
+                ok = false;
             }
             changed = true;
         }
@@ -103,7 +77,15 @@ impl OutputManagementHandler for MargoState {
             let Some(mon_idx) = self.monitors.iter().position(|m| m.name == *name) else {
                 continue;
             };
+            if !p.enabled() {
+                continue;
+            }
             if !self.monitors[mon_idx].enabled {
+                // Every `enable_head` head was switched on above; one that
+                // is still off would have its changes dropped while the
+                // client hears `succeeded`.
+                tracing::warn!(output = %name, "output_management: head stayed off");
+                ok = false;
                 continue;
             }
             let mon = &self.monitors[mon_idx];
@@ -177,11 +159,80 @@ impl OutputManagementHandler for MargoState {
         }
         // Success also when nothing changed: enabling an output that is
         // already on (`wlr-randr --output X --on`) is a valid no-op.
-        true
+        ok
+    }
+
+    fn test_output_pending(
+        &mut self,
+        pending: &std::collections::HashMap<String, PendingHeadConfig>,
+    ) -> bool {
+        match self.check_output_pending(pending) {
+            Ok(()) => true,
+            Err(why) => {
+                tracing::info!("output_management: test refused: {why}");
+                false
+            }
+        }
     }
 
     fn supports_mode_changes(&self) -> bool {
         self.output_pending.mode_changes_supported
     }
 }
+
+impl MargoState {
+    /// Why `pending` can't be applied — the checks `test` and `apply`
+    /// share. Per-head values margo refuses outright (bad scale, custom
+    /// mode, adaptive sync) are caught by the protocol layer first.
+    fn check_output_pending(
+        &self,
+        pending: &std::collections::HashMap<String, PendingHeadConfig>,
+    ) -> Result<(), String> {
+        // Mode changes are queued for the backend; nothing drains them
+        // on winit / headless.
+        if !self.supports_mode_changes() && pending.values().any(|p| p.mode().is_some()) {
+            return Err("mode changes are unsupported by this backend".into());
+        }
+        // Every head must name a live output; a stale name means the
+        // client's view is out of date.
+        if let Some(name) = pending
+            .keys()
+            .find(|name| !self.monitors.iter().any(|m| m.name == **name))
+        {
+            return Err(format!("unknown output {name}"));
+        }
+        // At least one output must be on afterwards — zero active outputs
+        // strands the user with a dark screen and no recovery short of a
+        // TTY login. wlr-randr / kanshi guard client-side, but the
+        // protocol allows the request, so guard here too.
+        let on_after = self
+            .monitors
+            .iter()
+            .filter(|m| self.output_on_after(m, pending))
+            .count();
+        if on_after == 0 {
+            return Err("it would leave no output on".into());
+        }
+        Ok(())
+    }
+
+    /// Whether `mon` is lit after `pending` is applied. An output the
+    /// configuration leaves alone keeps its state. A mirror target reads
+    /// as off (it is out of the layout) but is lit; it stays a target when
+    /// the client repeats that `off`, and if its source goes off the mirror
+    /// ends and the target is the desktop again — on either way.
+    fn output_on_after(
+        &self,
+        mon: &crate::state::MargoMonitor,
+        pending: &std::collections::HashMap<String, PendingHeadConfig>,
+    ) -> bool {
+        let target = self.mirror.is_target(&mon.name);
+        match pending.get(&mon.name).map(PendingHeadConfig::enabled) {
+            Some(true) => true,
+            Some(false) => target && !mon.enabled,
+            None => mon.enabled || target,
+        }
+    }
+}
+
 delegate_output_management!(MargoState);

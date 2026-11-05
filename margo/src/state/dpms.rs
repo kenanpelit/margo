@@ -72,15 +72,18 @@ impl MargoState {
     /// The panel is blanked through the DPMS path
     /// (`output_pending.dpms`, `DrmCompositor::clear()`), the output leaves
     /// the space, and the pointer is moved onto an enabled output.
-    pub fn disable_monitor(&mut self, mon_idx: usize) {
+    ///
+    /// `true` when the monitor is off afterwards; `false` when refused
+    /// (unknown index, already off, or no other monitor to move to).
+    pub fn disable_monitor(&mut self, mon_idx: usize) -> bool {
         if mon_idx >= self.monitors.len() {
-            return;
+            return false;
         }
         // Switching off either end of a mirror ends it first (that puts a
         // mirror target back, so it is then switched off for real).
         let name = self.monitors[mon_idx].name.clone();
         self.mirror_output_gone(&name);
-        self.take_monitor_out_of_layout(mon_idx, true);
+        self.take_monitor_out_of_layout(mon_idx, true)
     }
 
     /// Take a monitor out of the layout: clients migrate to another
