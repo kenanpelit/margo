@@ -5480,6 +5480,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "mshell-privileged"
+version = "4.9.2"
+dependencies = [
+ "libc",
+ "tempfile",
+]
+
+[[package]]
 name = "mshell-process"
 version = "4.9.2"
 dependencies = [

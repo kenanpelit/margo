@@ -1,0 +1,24 @@
+[package]
+name = "mshell-privileged"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "The one audited root helper mshell runs through pkexec: fixed subcommands, every argument re-validated as root."
+repository.workspace = true
+license.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "mshell-privileged"
+path = "src/main.rs"
+
+[dependencies]
+libc.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true
