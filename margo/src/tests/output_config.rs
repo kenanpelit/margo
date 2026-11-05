@@ -327,3 +327,38 @@ fn the_monitors_page_applies_with_an_output_off() {
     );
     assert!(!enabled(&fx, "DP-3"));
 }
+
+/// A mode for the mirror target reaches it: the client must switch the
+/// head on to send `set_mode` (a head it read as off can only be
+/// `disable_head`ed, without settings), and switching the target on ends
+/// the mirror — the mode is then applied to it, not dropped.
+#[test]
+fn a_mode_for_the_mirror_target_is_applied_not_dropped() {
+    let (mut fx, id, manager) = desk();
+    fx.server.state.output_pending.mode_changes_supported = true;
+    fx.server
+        .state
+        .start_mirror(Some("eDP-1"), Some("DP-3"))
+        .unwrap();
+    reread(&mut fx, id);
+    let om = &fx.client(id).state.output_management;
+    let mode = om.mode(&om.head("DP-3"), (2560, 1440, 60_000));
+    let c = fx.client(id);
+    let serial = c.state.output_management.serial.unwrap();
+    let cfg = manager.create_configuration(serial, &c.qh, ());
+    let _edp = cfg.enable_head(&c.state.output_management.head("eDP-1"), &c.qh, ());
+    cfg.enable_head(&c.state.output_management.head("DP-3"), &c.qh, ())
+        .set_mode(&mode);
+    assert_eq!(send(&mut fx, id, &cfg, false), None, "waits for the mode");
+    let queued: Vec<String> = fx
+        .server
+        .state
+        .output_pending
+        .mode_changes
+        .iter()
+        .map(|m| m.output_name.clone())
+        .collect();
+    assert_eq!(queued, ["DP-3"]);
+    assert!(fx.server.state.mirror.active().is_none());
+    assert!(enabled(&fx, "DP-3"));
+}
