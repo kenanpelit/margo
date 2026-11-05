@@ -483,9 +483,13 @@ pub(crate) fn subscribe_reports() -> tokio::sync::watch::Receiver<Option<UpdateR
     fresh_channel().1.clone()
 }
 
+fn deliver_report(tx: &tokio::sync::watch::Sender<Option<UpdateReport>>, report: UpdateReport) {
+    tx.send_replace(Some(report));
+}
+
 pub(crate) fn publish_report(report: UpdateReport) {
     save_cache(&report);
-    let _ = fresh_channel().0.send(Some(report));
+    deliver_report(&fresh_channel().0, report);
 }
 
 // ── Upgrade dispatch ────────────────────────────────────────────
@@ -828,6 +832,21 @@ mod tests {
         assert_eq!(report.count(Source::Flatpak), 0);
         assert!(!report.is_empty());
         assert!(UpdateReport::default().is_empty());
+    }
+
+    #[test]
+    fn a_completed_probe_reaches_both_monitors() {
+        let (tx, mut first) = tokio::sync::watch::channel(None);
+        let mut second = first.clone();
+        let report = UpdateReport {
+            entries: vec![entry(Source::Repo, "shared", None, None)],
+            ..Default::default()
+        };
+        deliver_report(&tx, report.clone());
+        assert!(first.has_changed().unwrap());
+        assert!(second.has_changed().unwrap());
+        assert_eq!(*first.borrow_and_update(), Some(report.clone()));
+        assert_eq!(*second.borrow_and_update(), Some(report));
     }
 
     #[test]

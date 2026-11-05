@@ -230,8 +230,9 @@ impl Component for SystemUpdateModel {
                     }
 
                     let report = system_update::probe_with_audit(ProbeConfig::from_config()).await;
-                    system_update::save_cache(&report);
-                    let _ = out.send(SystemUpdateCommandOutput::Refreshed(report));
+                    // Every monitor (including this one) receives the winner's
+                    // report through subscribe_reports, not only its own pill.
+                    system_update::publish_report(report);
                     next_delay = configured_interval();
                 }
             }
