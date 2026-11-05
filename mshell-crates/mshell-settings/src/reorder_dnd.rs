@@ -99,11 +99,8 @@ fn highlight_target(parent: &gtk::Widget, target: i32) {
 /// `.dragging` highlight and anchors the live drop indicator. On release,
 /// `on_drag(delta)` is called with the signed number of positions to move
 /// (0 is suppressed); the caller clamps it to the list length.
-pub(crate) fn attach_grip_drag<F>(
-    grip: &impl IsA<gtk::Widget>,
-    pos: &impl IsA<gtk::Widget>,
-    on_drag: F,
-) where
+pub fn attach_grip_drag<F>(grip: &impl IsA<gtk::Widget>, pos: &impl IsA<gtk::Widget>, on_drag: F)
+where
     F: Fn(i32) + 'static,
 {
     let gesture = gtk::GestureDrag::new();

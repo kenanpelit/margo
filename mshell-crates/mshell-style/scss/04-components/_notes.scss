@@ -8,14 +8,31 @@
   color: var(--primary);
 }
 
-// ── Header counters ──────────────────────────────────────
-.notes-counter {
-  padding: 2px var(--space-2);
-  border-radius: var(--radius-pill);
-  font-size: 0.8em;
-  font-weight: 600;
-  background-color: var(--surface-container-high);
+// ── Lists stay transparent (§5 "dark band" rule) ────────
+.notes-menu-widget scrolledwindow,
+.notes-list {
+  background-color: transparent;
+}
+
+// Dim empty-state line (§17).
+.notes-empty {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-xs);
   color: var(--on-surface-variant);
+}
+
+// ── Todos toolbar (page picker + actions) ────────────────
+.notes-toolbar {
+  margin-bottom: var(--space-1);
+}
+.notes-tool-btn {
+  min-width: 34px;
+  min-height: 34px;
+  border-radius: var(--radius-sm);
+}
+.notes-popover-list button {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
 }
 
 // ── Scratchpad TextView ──────────────────────────────────
@@ -69,4 +86,13 @@
 .notes-todo-entry.completed {
   opacity: 0.55;
   text-decoration: line-through;
+}
+.notes-todo-details {
+  margin: 0 var(--space-2) var(--space-2) var(--space-6);
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-container-high);
+  font-size: var(--font-xs);
+}
+.notes-todo-details text {
+  background-color: transparent;
 }

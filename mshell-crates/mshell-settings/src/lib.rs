@@ -88,7 +88,7 @@ mod power_settings;
 mod privacy_pill_settings;
 mod privacy_settings;
 mod region_settings;
-mod reorder_dnd;
+pub mod reorder_dnd;
 mod row;
 mod screen_settings;
 mod session_settings;

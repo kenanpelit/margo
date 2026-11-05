@@ -13,7 +13,6 @@
 use mshell_config::doc_store::DocStore;
 use relm4::gtk::prelude::{ButtonExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
@@ -21,35 +20,7 @@ use std::time::Duration;
 const REFRESH_INTERVAL: Duration = Duration::from_secs(30);
 const STARTUP_DELAY: Duration = Duration::from_millis(500);
 
-/// Persistent state for the Notes Hub plugin. Mirrors the
-/// upstream QML plugin's `pluginSettings` shape — scratchpad
-/// text + arrays of notes / todos — but we own the on-disk
-/// representation (a single JSON document at
-/// `$XDG_DATA_HOME/mshell/notes.json`).
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct NotesState {
-    #[serde(default)]
-    pub(crate) scratchpad: String,
-    #[serde(default)]
-    pub(crate) notes: Vec<Note>,
-    #[serde(default)]
-    pub(crate) todos: Vec<Todo>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub(crate) struct Note {
-    pub(crate) id: String,
-    pub(crate) title: String,
-    pub(crate) body: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub(crate) struct Todo {
-    pub(crate) id: String,
-    pub(crate) text: String,
-    #[serde(default)]
-    pub(crate) completed: bool,
-}
+pub(crate) use crate::menus::menu_widgets::notes::model::NotesState;
 
 /// Canonical on-disk path: `$XDG_DATA_HOME/mshell/notes.json`,
 /// falling back to `$HOME/.local/share/mshell/notes.json`.
