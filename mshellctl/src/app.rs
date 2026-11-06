@@ -289,7 +289,9 @@ pub enum Commands {
         severity: String,
     },
     /// Game Mode — drop compositor effects, silence notifications, and keep
-    /// the session awake while gaming. Configure what it affects in
+    /// the session awake while gaming; optionally switch the power profile,
+    /// hide the bars / dock, hold back the OSD, stop the wallpaper, pause
+    /// media and run your hooks. Configure what it affects in
     /// Settings → Game Mode.
     Gamemode {
         /// on | off | toggle | status (default: toggle).

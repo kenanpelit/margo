@@ -1,9 +1,10 @@
 //! Settings → Game Mode. A live master toggle plus the per-effect switches
 //! that pick *what* the mode affects. Shell-owned config (`config.game_mode`)
 //! through the reactive store; flipping `active` is reconciled by the
-//! reconcile effect in mshell-core (which writes the compositor effects
-//! fragment, toggles DND, and holds the idle inhibitor). Page shape copied
-//! from `toast_settings.rs` (DESIGN.md §8b).
+//! reconcile in mshell-core (`game_mode.rs`: the compositor effects
+//! fragment, DND, the idle inhibitor, and the session switches below). Page
+//! shape copied from `toast_settings.rs` (DESIGN.md §8b); the session +
+//! hooks section is `game_mode_extras.rs`.
 
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
@@ -93,7 +94,7 @@ impl Component for GameModeSettingsModel {
                         },
                         gtk::Label {
                             add_css_class: "settings-hero-subtitle",
-                            set_label: "One toggle to drop compositor effects, silence notifications, and keep the session awake while gaming. Also `mshellctl gamemode on|off|toggle`.",
+                            set_label: "One toggle to drop compositor effects, silence notifications and keep the session awake while gaming — and, if you like, switch the power profile, hide the bars and the dock, hold back pop-ups and run your own commands. Turning it off puts everything back. Also `mshellctl gamemode on|off|toggle`.",
                             set_halign: gtk::Align::Start,
                             set_xalign: 0.0,
                             set_wrap: true,
@@ -347,6 +348,11 @@ impl Component for GameModeSettingsModel {
                         },
                     },
                 },
+
+                // Power profile, what entering hides / pauses / clears, and
+                // the hooks (`game_mode_extras.rs`).
+                #[local_ref]
+                extras -> gtk::Box {},
             }
         }
     }
@@ -356,7 +362,8 @@ impl Component for GameModeSettingsModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let model = Self::from_config_store(&sender);
+        let mut model = Self::from_config_store(&sender);
+        let extras = crate::game_mode_extras::section(&mut model._effects);
 
         let widgets = view_output!();
 

@@ -253,26 +253,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         }
     });
 
-    // Game Mode: a single reactive reconcile. Whoever flips
-    // `config.game_mode.active` (the `mshellctl gamemode` CLI, the Settings
-    // toggle) or edits *what* the mode affects, this re-applies the effects
-    // fragment + DND + idle inhibitor. Skip the very first run when inactive so
-    // a normal login doesn't write + reload an empty override fragment.
-    {
-        let initialized = Cell::new(false);
-        Effect::new(move |_| {
-            let gm = mshell_config::config_manager::config_manager()
-                .config()
-                .game_mode()
-                .get();
-            let first = !initialized.get();
-            initialized.set(true);
-            if first && !gm.active {
-                return;
-            }
-            game_mode::apply(&gm, gm.active);
-        });
-    }
+    // Game Mode reconciles from the shell (`relm_app.rs`): its bar / dock
+    // steps need the per-monitor window groups.
 
     // Autostart: run each `>start` script the user ticked in Settings,
     // `delay_secs` after startup. Spawned by short name via the session

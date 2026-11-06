@@ -43,6 +43,7 @@ mod dock_settings;
 mod effects_settings;
 mod eyecare_settings;
 mod fonts_settings;
+mod game_mode_extras;
 mod game_mode_settings;
 mod general_settings;
 pub mod guide;

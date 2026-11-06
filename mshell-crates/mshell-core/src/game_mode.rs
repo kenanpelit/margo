@@ -2,28 +2,49 @@
 //!
 //! One toggle that, while engaged: drops compositor effects (animations / blur
 //! / shadows, optional tearing) via a managed `conf.d/gamemode.conf` fragment
-//! margo sources after `config.conf` so it wins; turns on Do Not Disturb; and
-//! holds the idle inhibitor so the session stays awake. Turning it off clears
-//! the fragment (restoring the original config values), restores DND, and
-//! releases the inhibitor — back to whatever the user had before.
+//! margo sources after `config.conf` so it wins; turns on Do Not Disturb;
+//! holds the idle inhibitor; and, each opt-in, switches the power profile,
+//! hides the bars and the dock, holds the OSD back and tears down the shell's
+//! wallpaper windows. Entering can also pause media and clear the popups on
+//! screen, and run a user hook; leaving runs the exit hook. Turning it off
+//! puts back exactly what entering changed (see [`plan`]).
 //!
-//! Call [`apply`] from the GTK main thread (it reads no reactive state itself,
-//! but the caller updates `config.game_mode.active` there, and the idle
-//! inhibitor's async enable/disable is spawned on the glib main context).
+//! Call [`apply`] from the GTK main thread: the OSD / wallpaper switches and
+//! the async D-Bus calls (inhibitor, power profile, media) are main-thread
+//! state spawned on the glib main context. The bar / dock steps need the
+//! shell's window groups, so [`apply`] hands them back to the caller.
 
 use mshell_config::schema::config::GameMode;
 use mshell_idle::inhibitor::IdleInhibitor;
-use mshell_services::notification_service;
+use mshell_process::SpawnReaped;
+use mshell_services::{media_service, notification_service, power_profile_service};
 use std::path::PathBuf;
+use std::process::Stdio;
 use std::sync::Mutex;
+use wayle_media::types::PlaybackState;
+use wayle_power_profiles::types::profile::PowerProfile;
 
 mod plan;
 
 /// What game mode holds right now (see [`plan::Held`]). GTK thread only.
-static HELD: Mutex<plan::Held> = Mutex::new(plan::Held {
-    dnd_before: None,
-    idle_before: None,
-});
+static HELD: Mutex<plan::Held> = Mutex::new(plan::Held::new());
+
+/// A step only the shell (it owns the per-monitor window groups) can run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ShellStep {
+    /// Hide (`true`) every bar, or bring back the bars shown by default.
+    HideBars(bool),
+    /// Hide (`true`) or show the standalone dock.
+    HideDock(bool),
+}
+
+/// Whether game mode currently hides the bars / the dock — for a monitor
+/// that appears while it is on.
+pub(crate) fn hides() -> (bool, bool) {
+    HELD.lock()
+        .map(|h| (h.bars_hidden, h.dock_hidden))
+        .unwrap_or_default()
+}
 
 fn margo_dir() -> PathBuf {
     let base = margo_fs::xdg::config_home();
@@ -48,10 +69,10 @@ fn config_sources_us(text: &str) -> bool {
         })
 }
 
-/// Write the effects fragment (overrides when `on`, header-only when off) and
+/// Write the effects fragment (its overrides; none = header only) and
 /// make sure `config.conf` sources it once. `Err` with a message if any file
 /// write fails.
-fn write_fragment(cfg: &GameMode, on: bool) -> Result<(), String> {
+fn write_fragment(fragment: plan::Fragment) -> Result<(), String> {
     let dir = margo_dir();
     let frag = fragment_path();
     if let Some(parent) = frag.parent() {
@@ -63,19 +84,17 @@ fn write_fragment(cfg: &GameMode, on: bool) -> Result<(), String> {
          # gamemode`). Sourced after config.conf so it overrides while game\n\
          # mode is on; cleared (no overrides below) when it's off.\n\n",
     );
-    if on {
-        if cfg.disable_animations {
-            body.push_str("animations = 0\nlayer_animations = 0\n");
-        }
-        if cfg.disable_blur {
-            body.push_str("blur = 0\n");
-        }
-        if cfg.disable_shadows {
-            body.push_str("shadows = 0\nlayer_shadows = 0\n");
-        }
-        if cfg.allow_tearing {
-            body.push_str("allow_tearing = 1\n");
-        }
+    if fragment.animations_off {
+        body.push_str("animations = 0\nlayer_animations = 0\n");
+    }
+    if fragment.blur_off {
+        body.push_str("blur = 0\n");
+    }
+    if fragment.shadows_off {
+        body.push_str("shadows = 0\nlayer_shadows = 0\n");
+    }
+    if fragment.tearing_on {
+        body.push_str("allow_tearing = 1\n");
     }
     std::fs::write(&frag, body).map_err(|e| e.to_string())?;
 
@@ -110,36 +129,106 @@ fn spawn_idle(enable: bool) {
     });
 }
 
+fn set_power_profile(name: String) {
+    let Some(svc) = power_profile_service() else {
+        return;
+    };
+    relm4::gtk::glib::spawn_future_local(async move {
+        if let Err(e) = svc
+            .power_profiles
+            .set_active_profile(PowerProfile::from(name.as_str()))
+            .await
+        {
+            tracing::warn!(error = %e, profile = %name, "game mode: setting the power profile failed");
+        }
+    });
+}
+
+/// Pause every player that is playing now (not a blind play/pause toggle).
+fn pause_media() {
+    let Some(svc) = media_service() else {
+        return;
+    };
+    for player in svc.players() {
+        if player.playback_state.get() != PlaybackState::Playing {
+            continue;
+        }
+        relm4::gtk::glib::spawn_future_local(async move {
+            if let Err(e) = player.play_pause().await {
+                tracing::warn!(error = %e, "game mode: pausing a media player failed");
+            }
+        });
+    }
+}
+
+/// Dismiss the popups on screen; the notification history stays.
+fn dismiss_popups() {
+    if let Some(svc) = notification_service() {
+        for popup in svc.popups.get() {
+            svc.dismiss_popup(popup.id);
+        }
+    }
+}
+
+/// Run a user hook through `sh -c`, in its own scope so a long-running hook
+/// survives a shell restart; output is discarded, the child reaped.
+fn run_hook(cmdline: &str) {
+    let mut cmd = mshell_process::outliving_shell("sh", ["-c", cmdline], "gamemode-hook");
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    if let Err(e) = cmd.spawn_reaped() {
+        tracing::warn!(error = %e, "game mode: running a hook failed");
+    }
+}
+
 /// The session state [`plan::reconcile`] reads.
 fn live() -> plan::Live {
     plan::Live {
         dnd: notification_service().is_some_and(|svc| svc.dnd.get()),
         idle_held: IdleInhibitor::global().get(),
+        profile: power_profile_service()
+            .map(|svc| svc.power_profiles.active_profile.get())
+            .filter(|p| *p != PowerProfile::Unknown)
+            .map(|p| p.to_string()),
     }
 }
 
-/// Apply game mode on/off. Writes the effects fragment + reloads margo, and
-/// engages or releases DND and the idle inhibitor — each gated on its config
-/// switch, each putting back the state it found. Idempotent: called on every
-/// `game_mode` change, it only acts on what differs.
-pub fn apply(cfg: &GameMode, on: bool) {
-    match write_fragment(cfg, on) {
-        Ok(()) => reload(),
-        Err(e) => tracing::warn!(error = %e, "game mode: writing effects fragment failed"),
+/// Apply game mode on/off: reconcile against what it holds and run the
+/// steps — each gated on its config switch, each putting back the state it
+/// found. Idempotent: called on every `game_mode` change, it only acts on
+/// what differs. Returns the bar / dock steps for the shell to run.
+pub(crate) fn apply(cfg: &GameMode, on: bool) -> Vec<ShellStep> {
+    let live = live();
+    if on && plan::profile_name(&cfg.power_profile).is_some() && live.profile.is_none() {
+        tracing::info!("game mode: no power-profiles-daemon, leaving the power profile alone");
     }
-
     let steps = match HELD.lock() {
-        Ok(mut held) => plan::reconcile(&mut held, cfg, on, &live()),
-        Err(_) => return,
+        Ok(mut held) => plan::reconcile(&mut held, cfg, on, &live),
+        Err(_) => return Vec::new(),
     };
+    let mut shell = Vec::new();
     for step in steps {
         match step {
+            plan::Step::WriteFragment(fragment) => match write_fragment(fragment) {
+                Ok(()) => reload(),
+                Err(e) => tracing::warn!(error = %e, "game mode: writing effects fragment failed"),
+            },
             plan::Step::Dnd(v) => {
                 if let Some(svc) = notification_service() {
                     svc.set_dnd(v);
                 }
             }
             plan::Step::IdleInhibit(v) => spawn_idle(v),
+            plan::Step::PowerProfile(name) => set_power_profile(name),
+            plan::Step::PauseMedia => pause_media(),
+            plan::Step::DismissPopups => dismiss_popups(),
+            plan::Step::HideBars(v) => shell.push(ShellStep::HideBars(v)),
+            plan::Step::HideDock(v) => shell.push(ShellStep::HideDock(v)),
+            plan::Step::SuppressOsd(v) => mshell_osd::set_suppressed(v),
+            plan::Step::SuspendWallpaper(v) => mshell_wallpaper::wallpaper::set_suspended(v),
+            plan::Step::Hook(cmdline) => run_hook(&cmdline),
         }
     }
+    shell
 }

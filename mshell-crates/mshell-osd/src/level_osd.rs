@@ -190,7 +190,8 @@ impl<S: LevelSource> Component for LevelOsdModel<S> {
             LevelOsdCommand::Changed => {
                 if let Some(level) = S::read() {
                     self.take(widgets, &level, &sender);
-                    if self.show_gate.allow() {
+                    // The gate counts every request, suppressed or not.
+                    if self.show_gate.allow() && !crate::suppressed() {
                         root.set_visible(true);
                     }
                 }

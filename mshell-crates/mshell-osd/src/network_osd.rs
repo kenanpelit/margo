@@ -206,11 +206,12 @@ fn is_enabled() -> bool {
     use mshell_config::config_manager::config_manager;
     use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields};
     use reactive_graph::traits::GetUntracked;
-    config_manager()
-        .config()
-        .general()
-        .network_osd_enabled()
-        .get_untracked()
+    !crate::suppressed()
+        && config_manager()
+            .config()
+            .general()
+            .network_osd_enabled()
+            .get_untracked()
 }
 
 fn snapshot_state() -> NetState {

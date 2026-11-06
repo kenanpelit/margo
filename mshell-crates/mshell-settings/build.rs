@@ -41,7 +41,10 @@ const PAGES: &[(&str, &[&str])] = &[
     ("sound", &["sound_settings.rs"]),
     ("bluetooth", &["bluetooth_settings.rs"]),
     ("power", &["power_settings.rs"]),
-    ("game_mode", &["game_mode_settings.rs"]),
+    (
+        "game_mode",
+        &["game_mode_settings.rs", "game_mode_extras.rs"],
+    ),
     ("network", &["network_settings.rs"]),
     ("vpn", &["vpn_settings.rs"]),
     ("ai", &["ai_settings.rs"]),

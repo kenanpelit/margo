@@ -9,6 +9,20 @@ pub mod toast;
 pub mod toast_producer;
 pub mod volume_osd;
 
+/// Game mode's "no OSD" switch: while set, the level and network OSDs stay
+/// hidden (the readings still update, so the first OSD after it clears is
+/// current). Runtime-only — never written to the config.
+static SUPPRESSED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Hold (or release) every OSD popup.
+pub fn set_suppressed(on: bool) {
+    SUPPRESSED.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub(crate) fn suppressed() -> bool {
+    SUPPRESSED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// The numeric label next to an OSD slider: the percentage rounded to a whole
 /// number (`42.5` → `"43%"`). Not clamped — PipeWire allows boosting volume
 /// past 100 %, and the label should say so even though the slider saturates.

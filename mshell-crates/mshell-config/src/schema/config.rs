@@ -267,6 +267,39 @@ pub struct GameMode {
     /// for fullscreen games. Off by default.
     #[serde(default)]
     pub allow_tearing: bool,
+    /// Switch to this power profile while active (`performance`,
+    /// `balanced`, `power-saver`; power-profiles-daemon) and put the previous
+    /// one back on exit. Empty (the default) leaves the profile alone.
+    #[serde(default)]
+    pub power_profile: String,
+    /// Pause every playing media player (MPRIS) on enter. Not resumed on exit.
+    #[serde(default)]
+    pub pause_media: bool,
+    /// Hide the bars while active; the bars that show by default come back
+    /// on exit.
+    #[serde(default)]
+    pub hide_bars: bool,
+    /// Hide the standalone (popup-style) dock while active; shown again on
+    /// exit.
+    #[serde(default)]
+    pub hide_dock: bool,
+    /// Suppress the volume / brightness / microphone OSD while active.
+    #[serde(default)]
+    pub disable_osd: bool,
+    /// Tear down the shell's wallpaper windows while active (frees their
+    /// GPU buffers); rebuilt on exit. A wallpaper margo draws is left alone.
+    #[serde(default)]
+    pub disable_wallpaper: bool,
+    /// Dismiss the notification popups on screen on enter (the history in
+    /// the notification centre is kept).
+    #[serde(default)]
+    pub clear_notifications: bool,
+    /// Shell command run (`sh -c`) when game mode turns on. Empty = none.
+    #[serde(default)]
+    pub on_enter: String,
+    /// Shell command run (`sh -c`) when game mode turns off. Empty = none.
+    #[serde(default)]
+    pub on_exit: String,
 }
 
 impl Default for GameMode {
@@ -279,6 +312,15 @@ impl Default for GameMode {
             inhibit_idle: true,
             enable_dnd: true,
             allow_tearing: false,
+            power_profile: String::new(),
+            pause_media: false,
+            hide_bars: false,
+            hide_dock: false,
+            disable_osd: false,
+            disable_wallpaper: false,
+            clear_notifications: false,
+            on_enter: String::new(),
+            on_exit: String::new(),
         }
     }
 }

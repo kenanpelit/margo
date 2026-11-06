@@ -68,7 +68,12 @@ The GTK4 + relm4 shell hosting the bars, menus, settings, and dashboard.
 - **Material You theming** — matugen palette extraction from the wallpaper,
   applied across the shell, the compositor border, and the login screen.
 - **Game Mode** — one toggle drops compositor effects, enables Do Not Disturb,
-  and holds the idle inhibitor (`mshellctl gamemode toggle`).
+  and holds the idle inhibitor (`mshellctl gamemode toggle`). Opt-in extras
+  (Settings → Game Mode): a power profile while it is on (restored after,
+  unless you changed it by hand meanwhile), hide the bars / standalone dock,
+  no volume / brightness OSD, no shell wallpaper windows, pause media and
+  clear notification pop-ups on enter, and `on_enter` / `on_exit` hook
+  commands (`sh -c`). Leaving puts back exactly what entering changed.
 - **WASM plugins** — capability-sandboxed plugin runtime (wasmtime). See
   [WASM plugins](mplugins-wasm-design.md).
 - **Music player (`mtune`)** — a folder-first player with its own bar pill +

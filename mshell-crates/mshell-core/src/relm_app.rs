@@ -76,13 +76,16 @@ fn make_mdock(monitor: &Monitor) -> Option<Controller<MdockSurface>> {
     if !dock.standalone || !matches!(dock.style, mshell_config::schema::config::DockStyle::Popup) {
         return None;
     }
-    Some(
-        MdockSurface::builder()
-            .launch(MdockSurfaceInit {
-                monitor: Some(monitor.clone()),
-            })
-            .detach(),
-    )
+    let surface = MdockSurface::builder()
+        .launch(MdockSurfaceInit {
+            monitor: Some(monitor.clone()),
+        })
+        .detach();
+    // Rebuilt or on a new monitor while game mode hides the dock.
+    if crate::game_mode::hides().1 {
+        surface.emit(MdockSurfaceInput::Hide);
+    }
+    Some(surface)
 }
 
 /// The corner radius to draw, or `None` when the overlays are off (the
@@ -145,6 +148,8 @@ pub(crate) enum ShellInput {
     /// `dock.standalone/behavior/position` changed — tear down + recreate
     /// every output's standalone mdock surface.
     RebuildDocks,
+    /// `config.game_mode` changed: reconcile game mode (`game_mode.rs`).
+    GameModeChanged(mshell_config::schema::config::GameMode),
     /// Re-create the screen-corner overlays (toggle / radius changed).
     RebuildCorners,
     /// Re-anchor the OSD and toast surfaces (position / distance changed).
@@ -322,6 +327,22 @@ impl Component for Shell {
                 .monitor_filter()
                 .get();
             sender_clone.input(ShellInput::MonitorFilterUpdated(monitors));
+        });
+
+        // Game Mode: a single reactive reconcile. Whoever flips
+        // `config.game_mode.active` (the `mshellctl gamemode` CLI, the
+        // Settings toggle) or edits *what* the mode affects, this re-applies
+        // it. Skip the very first run when inactive so a normal login doesn't
+        // write + reload an empty override fragment.
+        let sender_clone = sender.clone();
+        let initialized = std::cell::Cell::new(false);
+        Effect::new(move |_| {
+            let gm = config_manager().config().game_mode().get();
+            let first = !initialized.replace(true);
+            if first && !gm.active {
+                return;
+            }
+            sender_clone.input(ShellInput::GameModeChanged(gm));
         });
 
         // Rebuild the standalone mdock surfaces when their shape changes.
@@ -528,6 +549,11 @@ impl Component for Shell {
                     }
                 }
             }
+            ShellInput::GameModeChanged(gm) => {
+                for step in crate::game_mode::apply(&gm, gm.active) {
+                    self.run_game_mode_step(step);
+                }
+            }
             ShellInput::RebuildDocks => {
                 for group in self.window_groups.values_mut() {
                     if let Some(old) = group.mdock.take() {
@@ -615,6 +641,12 @@ impl Component for Shell {
                 } else {
                     None
                 };
+                // A monitor plugged in while game mode hides the bars.
+                if let Some(frame) = &frame
+                    && crate::game_mode::hides().0
+                {
+                    frame.emit(FrameInput::BarHideAll(false));
+                }
 
                 let popup_notifications = Some(
                     PopupNotificationsModel::builder()
@@ -1353,6 +1385,36 @@ mod dim_overlay_tests {
 }
 
 impl Shell {
+    /// Run a game-mode step on every monitor: hide every bar (or bring back
+    /// the ones shown by default), hide / show the standalone Popup dock.
+    /// The LayerShell dock is a bar menu that only toggles and is closed
+    /// unless summoned, so it is left alone.
+    fn run_game_mode_step(&self, step: crate::game_mode::ShellStep) {
+        use crate::game_mode::ShellStep;
+        for group in self.window_groups.values() {
+            match step {
+                ShellStep::HideBars(hide) => {
+                    if let Some(frame) = &group.frame {
+                        frame.emit(if hide {
+                            FrameInput::BarHideAll(false)
+                        } else {
+                            FrameInput::BarRevealAll(true)
+                        });
+                    }
+                }
+                ShellStep::HideDock(hide) => {
+                    if let Some(mdock) = &group.mdock {
+                        mdock.emit(if hide {
+                            MdockSurfaceInput::Hide
+                        } else {
+                            MdockSurfaceInput::Show
+                        });
+                    }
+                }
+            }
+        }
+    }
+
     /// Close every surface of `name`'s window group and drop it.
     fn close_window_group(&mut self, name: &str) {
         if let Some(group) = self.window_groups.remove(name) {

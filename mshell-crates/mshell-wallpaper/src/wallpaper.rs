@@ -9,13 +9,30 @@ use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, WallpaperStoreFields};
 use mshell_config::schema::content_fit::ContentFit;
-use reactive_graph::prelude::{Get, GetUntracked};
+use reactive_graph::prelude::{Get, GetUntracked, Set};
+use reactive_graph::signal::ArcRwSignal;
 use relm4::gtk::gdk;
 use relm4::gtk::glib;
 use relm4::gtk::prelude::{GtkWindowExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
 use crate::handoff::{self, TRANSITION_DURATION_MS};
+
+thread_local! {
+    /// Game mode's "no wallpaper" switch (main thread, runtime-only).
+    static SUSPENDED: ArcRwSignal<bool> = ArcRwSignal::new(false);
+}
+
+/// Tear down (`true`) or bring back (`false`) every monitor's wallpaper
+/// window, e.g. to free its GPU buffers while gaming. A wallpaper margo
+/// draws is not affected. Main thread.
+pub fn set_suspended(on: bool) {
+    SUSPENDED.with(|s| s.set(on));
+}
+
+fn suspended_signal() -> ArcRwSignal<bool> {
+    SUSPENDED.with(Clone::clone)
+}
 
 /// One monitor's wallpaper while mshell draws it: a full-screen background
 /// layer window, created only when margo doesn't draw the wallpaper (see
@@ -31,6 +48,8 @@ pub struct WallpaperModel {
     surface: Option<Surface>,
     /// margo draws the wallpaper: no surface wanted.
     margo_draws: bool,
+    /// Suspended (game mode): no surface wanted either.
+    suspended: bool,
     /// When the surface's crossfade ends; it is not destroyed before.
     transition_end: Option<Instant>,
     /// A queued destroy (cancelled when margo stops drawing).
@@ -49,6 +68,7 @@ pub enum WallpaperInput {
     WallpaperChanged(u64),
     ContentFitChanged(ContentFit),
     MargoDrawsChanged(bool),
+    SuspendedChanged(bool),
     DestroySurface,
 }
 
@@ -98,6 +118,12 @@ impl Component for WallpaperModel {
             sender_clone.input(WallpaperInput::MargoDrawsChanged(margo_draws.get()));
         });
 
+        let suspended = suspended_signal();
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            sender_clone.input(WallpaperInput::SuspendedChanged(suspended.get()));
+        });
+
         let mut model = WallpaperModel {
             monitor: params.monitor,
             content_fit: config_manager()
@@ -107,11 +133,12 @@ impl Component for WallpaperModel {
                 .get_untracked(),
             surface: None,
             margo_draws: handoff::margo_draws(),
+            suspended: suspended_signal().get_untracked(),
             transition_end: None,
             destroy_timer: None,
             _effects: effects,
         };
-        if !model.margo_draws {
+        if !model.margo_draws && !model.suspended {
             model.show_surface();
         }
 
@@ -171,14 +198,31 @@ impl Component for WallpaperModel {
                     if let Some(timer) = self.destroy_timer.take() {
                         timer.remove();
                     }
-                    if self.surface.is_none() {
+                    if self.surface.is_none() && !self.suspended {
                         self.show_surface();
                     }
                 }
             }
+            WallpaperInput::SuspendedChanged(on) => {
+                if on == self.suspended {
+                    return;
+                }
+                self.suspended = on;
+                if on {
+                    // Gone at once: the point is freeing the swapchain.
+                    if let Some(timer) = self.destroy_timer.take() {
+                        timer.remove();
+                    }
+                    if let Some(surface) = self.surface.take() {
+                        surface.window.destroy();
+                    }
+                } else if !self.margo_draws && self.surface.is_none() {
+                    self.show_surface();
+                }
+            }
             WallpaperInput::DestroySurface => {
                 self.destroy_timer = None;
-                if self.margo_draws
+                if (self.margo_draws || self.suspended)
                     && let Some(surface) = self.surface.take()
                 {
                     surface.window.destroy();
