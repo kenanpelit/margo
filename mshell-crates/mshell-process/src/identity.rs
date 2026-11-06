@@ -382,13 +382,19 @@ mod tests {
             .spawn()
             .expect("spawn sleep");
         let pid = child.id();
-        // `spawn` returns when the close-on-exec pipe closes, which the kernel
-        // does in `begin_new_exec`, before the new argv is mapped: a read in
-        // that window sees an empty cmdline. Wait for the exec to finish.
+        // `spawn` can return before the child's cmdline shows `sleep`. With
+        // posix_spawn (CLONE_VFORK) the parent wakes in `exec_mmap`, just
+        // *before* the child switches to its new mm, so a read then still
+        // sees the shared parent argv (this test binary); with fork + the
+        // close-on-exec pipe it wakes before the new argv is mapped (empty
+        // cmdline). Only `sleep` itself proves the exec finished. Start
+        // ticks never change across exec, so production, which records
+        // them right after spawn, is not affected.
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         let info = loop {
             let info = read_in(Path::new(PROC), pid).expect("readable");
-            if info.program_name().is_some() || std::time::Instant::now() > deadline {
+            if info.program_name() == Some("sleep".as_ref()) || std::time::Instant::now() > deadline
+            {
                 break info;
             }
             std::thread::sleep(std::time::Duration::from_millis(2));
