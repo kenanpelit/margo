@@ -40,6 +40,9 @@ checkupdates                pacman-contrib             update count without sudo
 scrcpy                      scrcpy                     Android mirroring from the Valent menu
 adb                         android-tools              device discovery for scrcpy
 gh                          github-cli                 GitHub menu
+discord                     -                          Discord voice "Launch Discord" (a client the user picks; detected, AUR/flatpak vary)
+discord-canary              -                          Discord voice "Launch Discord" (a client the user picks)
+discord-ptb                 -                          Discord voice "Launch Discord" (a client the user picks)
 -                           valent                     phone integration pill/menu over D-Bus (AUR)
 -                           udisks2                    removable-drive pill over D-Bus
 -                           noise-suppression-for-voice microphone noise suppression (RNNoise LADSPA plugin)

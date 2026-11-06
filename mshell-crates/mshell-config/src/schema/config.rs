@@ -86,6 +86,8 @@ pub struct Config {
     pub notes: NotesConfig,
     /// GitHub pill metric (+ PR search rules).
     pub github: GithubConfig,
+    /// Discord voice pill: launch on click, hide when not in a call.
+    pub discord: DiscordConfig,
 }
 
 /// Transient state-change toasts — a small opaque corner card that auto-

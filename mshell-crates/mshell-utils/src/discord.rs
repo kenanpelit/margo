@@ -102,7 +102,11 @@ pub const CHANNEL_EVENTS: [&str; 5] = [
     "SPEAKING_STOP",
 ];
 /// Global events (no channel argument).
-pub const GLOBAL_EVENTS: [&str; 2] = ["VOICE_CHANNEL_SELECT", "VOICE_SETTINGS_UPDATE"];
+pub const GLOBAL_EVENTS: [&str; 3] = [
+    "VOICE_CHANNEL_SELECT",
+    "VOICE_SETTINGS_UPDATE",
+    "VOICE_CONNECTION_STATUS",
+];
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -141,6 +145,56 @@ pub struct DiscordState {
     pub participants: BTreeMap<String, Participant>,
     pub self_mute: bool,
     pub self_deaf: bool,
+    /// The current channel's server (empty for a group DM call).
+    pub guild_id: String,
+    pub guild_name: String,
+    /// Your microphone input volume 0..=100 (%), once Discord reported it.
+    pub input_volume: Option<u32>,
+    /// `VOICE_CONNECTION_STATUS` state (`VOICE_CONNECTED`, `NO_ROUTE`, …).
+    pub connection_state: String,
+    /// Average voice-server ping in ms (0 = not measured yet).
+    pub ping_ms: u32,
+    /// Recent + favourite voice channels (persisted by the client).
+    pub history: ChannelHistory,
+}
+
+/// How the voice connection reads in the menu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Latency {
+    /// Connecting / checking (any state Discord reports in between).
+    Connecting,
+    /// Connected; the ping (ms, 0 = not measured yet).
+    Good(u32),
+    Fair(u32),
+    Poor(u32),
+    NoRoute,
+    Disconnected,
+}
+
+impl Latency {
+    /// The plugin's thresholds: ≤ 60 ms good, ≤ 120 ms fair, else poor.
+    pub fn from_status(state: &str, ping_ms: u32) -> Self {
+        match state {
+            "VOICE_CONNECTED" => match ping_ms {
+                0..=60 => Self::Good(ping_ms),
+                61..=120 => Self::Fair(ping_ms),
+                _ => Self::Poor(ping_ms),
+            },
+            "NO_ROUTE" => Self::NoRoute,
+            "" | "DISCONNECTED" | "VOICE_DISCONNECTED" => Self::Disconnected,
+            _ => Self::Connecting,
+        }
+    }
+
+    pub fn label(self) -> String {
+        match self {
+            Self::Good(0) => "Connected".to_string(),
+            Self::Good(ms) | Self::Fair(ms) | Self::Poor(ms) => format!("{ms} ms"),
+            Self::Connecting => "Connecting…".to_string(),
+            Self::NoRoute => "No route".to_string(),
+            Self::Disconnected => "Disconnected".to_string(),
+        }
+    }
 }
 
 impl DiscordState {
@@ -173,6 +227,16 @@ impl DiscordState {
         };
         let same = self.channel_id.as_deref() == Some(id);
         let old = std::mem::take(&mut self.participants);
+        let guild = data
+            .get("guild_id")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if guild != self.guild_id {
+            // A known name for this server (from the history) until
+            // GET_GUILD answers.
+            self.guild_name = self.history.guild_name(guild).unwrap_or_default();
+            self.guild_id = guild.to_string();
+        }
         self.channel_id = Some(id.to_string());
         self.channel_name = data
             .get("name")
@@ -195,6 +259,25 @@ impl DiscordState {
         self.channel_id = None;
         self.channel_name.clear();
         self.participants.clear();
+        self.guild_id.clear();
+        self.guild_name.clear();
+        self.connection_state.clear();
+        self.ping_ms = 0;
+    }
+
+    pub fn latency(&self) -> Latency {
+        Latency::from_status(&self.connection_state, self.ping_ms)
+    }
+
+    /// The current channel as a history entry (`None` outside voice).
+    pub fn current_channel(&self, now: i64) -> Option<SavedChannel> {
+        Some(SavedChannel {
+            id: self.channel_id.clone()?,
+            name: self.channel_name.clone(),
+            guild_id: self.guild_id.clone(),
+            guild_name: self.guild_name.clone(),
+            last_joined: now,
+        })
     }
 
     /// Insert/update a participant from a voice-state object.
@@ -250,6 +333,19 @@ impl DiscordState {
         if let Some(d) = data.get("deaf").and_then(Value::as_bool) {
             self.self_deaf = d;
         }
+        if let Some(v) = data.pointer("/input/volume").and_then(Value::as_f64) {
+            self.input_volume = Some(v.round().clamp(0.0, 100.0) as u32);
+        }
+    }
+
+    /// `VOICE_CONNECTION_STATUS` event: state + average ping.
+    pub fn set_connection_status(&mut self, data: &Value) {
+        if let Some(st) = data.get("state").and_then(Value::as_str) {
+            self.connection_state = st.to_string();
+        }
+        if let Some(p) = data.get("average_ping").and_then(Value::as_f64) {
+            self.ping_ms = p.round().clamp(0.0, 60_000.0) as u32;
+        }
     }
 
     /// Apply a `DISPATCH` event. Returns `true` when the selected channel
@@ -265,6 +361,10 @@ impl DiscordState {
             }
             "VOICE_SETTINGS_UPDATE" => {
                 self.set_voice_settings(data);
+                false
+            }
+            "VOICE_CONNECTION_STATUS" => {
+                self.set_connection_status(data);
                 false
             }
             "VOICE_STATE_CREATE" | "VOICE_STATE_UPDATE" => {
@@ -295,6 +395,188 @@ impl DiscordState {
             }
             _ => false,
         }
+    }
+}
+
+// ── Channel history ────────────────────────────────────────────────────────
+
+/// Saved channels kept per list (the plugin's limit).
+pub const MAX_SAVED: usize = 5;
+
+/// A voice channel you joined (or starred), for one-click rejoin.
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct SavedChannel {
+    pub id: String,
+    pub name: String,
+    pub guild_id: String,
+    pub guild_name: String,
+    /// Unix seconds of the last join (sort key, newest first).
+    pub last_joined: i64,
+}
+
+/// Recent (last [`MAX_SAVED`] joined) and favourite channels.
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct ChannelHistory {
+    pub recent: Vec<SavedChannel>,
+    pub favorites: Vec<SavedChannel>,
+}
+
+/// Snowflakes are decimal ids; anything else is not a channel we saved.
+fn valid_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 24 && id.bytes().all(|b| b.is_ascii_digit())
+}
+
+fn clean(list: Vec<SavedChannel>) -> Vec<SavedChannel> {
+    let mut out: Vec<SavedChannel> = Vec::new();
+    for mut c in list {
+        if !valid_id(&c.id) || out.iter().any(|o| o.id == c.id) {
+            continue;
+        }
+        if !c.guild_id.is_empty() && !valid_id(&c.guild_id) {
+            c.guild_id.clear();
+        }
+        if c.name.trim().is_empty() {
+            c.name = "Voice channel".to_string();
+        }
+        out.push(c);
+        if out.len() == MAX_SAVED {
+            break;
+        }
+    }
+    out
+}
+
+impl ChannelHistory {
+    /// Parse the saved file; a broken or foreign file reads as empty (it
+    /// is only a convenience list), bad entries are dropped.
+    pub fn from_json(text: &str) -> Self {
+        let h: Self = serde_json::from_str(text).unwrap_or_default();
+        Self {
+            recent: clean(h.recent),
+            favorites: clean(h.favorites),
+        }
+    }
+
+    pub fn to_json(&self) -> String {
+        serde_json::to_string_pretty(self).unwrap_or_default()
+    }
+
+    pub fn is_favorite(&self, id: &str) -> bool {
+        self.favorites.iter().any(|c| c.id == id)
+    }
+
+    fn guild_name(&self, guild_id: &str) -> Option<String> {
+        if guild_id.is_empty() {
+            return None;
+        }
+        self.recent
+            .iter()
+            .chain(&self.favorites)
+            .find(|c| c.guild_id == guild_id && !c.guild_name.is_empty())
+            .map(|c| c.guild_name.clone())
+    }
+
+    /// Record a join: the channel moves to the front of the recent list
+    /// and a favourite copy is refreshed (name / server may have changed).
+    /// Returns whether anything changed (i.e. the file needs saving).
+    pub fn remember(&mut self, ch: SavedChannel) -> bool {
+        if !valid_id(&ch.id) {
+            return false;
+        }
+        let before = self.clone();
+        self.recent.retain(|c| c.id != ch.id);
+        self.recent.insert(0, ch.clone());
+        self.recent.truncate(MAX_SAVED);
+        for f in self.favorites.iter_mut().filter(|f| f.id == ch.id) {
+            *f = ch.clone();
+        }
+        *self != before
+    }
+
+    /// Star / unstar. Starring needs the channel's details: the current
+    /// channel or a recent one. A new favourite goes first; the oldest
+    /// falls off past [`MAX_SAVED`]. Returns whether anything changed.
+    pub fn set_favorite(&mut self, id: &str, on: bool, current: Option<&SavedChannel>) -> bool {
+        if !on {
+            let n = self.favorites.len();
+            self.favorites.retain(|c| c.id != id);
+            return self.favorites.len() != n;
+        }
+        if self.is_favorite(id) {
+            return false;
+        }
+        let Some(ch) = current
+            .filter(|c| c.id == id)
+            .or_else(|| self.recent.iter().find(|c| c.id == id))
+            .cloned()
+        else {
+            return false;
+        };
+        self.favorites.insert(0, ch);
+        self.favorites.truncate(MAX_SAVED);
+        true
+    }
+
+    /// One list for the menu: favourites, then the other recent ones,
+    /// each newest join first.
+    pub fn entries(&self) -> Vec<(&SavedChannel, bool)> {
+        let mut favs: Vec<&SavedChannel> = self.favorites.iter().collect();
+        favs.sort_by_key(|c| std::cmp::Reverse(c.last_joined));
+        let mut rest: Vec<&SavedChannel> = self
+            .recent
+            .iter()
+            .filter(|c| !self.is_favorite(&c.id))
+            .collect();
+        rest.sort_by_key(|c| std::cmp::Reverse(c.last_joined));
+        favs.into_iter()
+            .map(|c| (c, true))
+            .chain(rest.into_iter().map(|c| (c, false)))
+            .collect()
+    }
+
+    /// GET_GUILD answered: fill the server name into every saved entry
+    /// of that server. Returns whether anything changed.
+    pub fn set_guild_name(&mut self, guild_id: &str, name: &str) -> bool {
+        let mut changed = false;
+        for c in self
+            .recent
+            .iter_mut()
+            .chain(self.favorites.iter_mut())
+            .filter(|c| c.guild_id == guild_id && c.guild_name != name)
+        {
+            c.guild_name = name.to_string();
+            changed = true;
+        }
+        changed
+    }
+
+    pub fn find(&self, id: &str) -> Option<&SavedChannel> {
+        self.favorites
+            .iter()
+            .chain(&self.recent)
+            .find(|c| c.id == id)
+    }
+}
+
+/// `discord://-/channels/<guild>/<channel>` — opens the channel in a
+/// (starting) Discord client. `None` for a DM call or a bad id.
+pub fn channel_deep_link(guild_id: &str, channel_id: &str) -> Option<String> {
+    (valid_id(guild_id) && valid_id(channel_id))
+        .then(|| format!("discord://-/channels/{guild_id}/{channel_id}"))
+}
+
+/// Programs tried to launch Discord, in order: the configured one (a
+/// bare name or a path), else the stable, Canary and PTB clients.
+pub fn launch_candidates(configured: &str) -> Vec<String> {
+    let configured = configured.trim();
+    if configured.is_empty() {
+        ["discord", "discord-canary", "discord-ptb"]
+            .map(str::to_string)
+            .to_vec()
+    } else {
+        vec![configured.to_string()]
     }
 }
 
@@ -427,5 +709,181 @@ mod tests {
         // Voice-state events outside a channel are ignored.
         s.apply_dispatch("VOICE_STATE_UPDATE", &json!({"user": {"id": "40"}}));
         assert!(s.participants.is_empty());
+    }
+
+    // GET_VOICE_SETTINGS response (Discord RPC docs; volume is a float).
+    #[test]
+    fn voice_settings_read_the_input_volume() {
+        let mut s = DiscordState::default();
+        assert_eq!(s.input_volume, None, "unknown until Discord says");
+        s.set_voice_settings(&json!({
+            "input": {"available_devices": [{"id": "default", "name": "Default"}],
+                      "device_id": "default", "volume": 49.803_92},
+            "output": {"device_id": "default", "volume": 100.0},
+            "mode": {"type": "VOICE_ACTIVITY"}, "automatic_gain_control": false,
+            "mute": false, "deaf": false
+        }));
+        assert_eq!(s.input_volume, Some(50));
+        s.set_voice_settings(&json!({"input": {"volume": 180.0}}));
+        assert_eq!(s.input_volume, Some(100), "clamped to the input range");
+        s.set_voice_settings(&json!({"mute": true}));
+        assert_eq!(s.input_volume, Some(100), "a partial update keeps it");
+    }
+
+    #[test]
+    fn connection_status_drives_the_latency_readout() {
+        let mut s = DiscordState::default();
+        s.set_channel(&channel());
+        assert_eq!(s.latency(), Latency::Disconnected);
+        s.apply_dispatch(
+            "VOICE_CONNECTION_STATUS",
+            &json!({"state": "AWAITING_ENDPOINT", "hostname": "", "pings": [], "average_ping": 0, "last_ping": 0}),
+        );
+        assert_eq!(s.latency(), Latency::Connecting);
+        s.apply_dispatch(
+            "VOICE_CONNECTION_STATUS",
+            &json!({"state": "VOICE_CONNECTED", "hostname": "frankfurt1234.discord.media",
+                    "pings": [30, 33], "average_ping": 31.5, "last_ping": 33}),
+        );
+        assert_eq!(s.latency(), Latency::Good(32));
+        assert_eq!(s.latency().label(), "32 ms");
+        assert_eq!(
+            Latency::from_status("VOICE_CONNECTED", 0).label(),
+            "Connected"
+        );
+        assert_eq!(
+            Latency::from_status("VOICE_CONNECTED", 61),
+            Latency::Fair(61)
+        );
+        assert_eq!(
+            Latency::from_status("VOICE_CONNECTED", 121),
+            Latency::Poor(121)
+        );
+        assert_eq!(Latency::from_status("NO_ROUTE", 0), Latency::NoRoute);
+        s.leave();
+        assert_eq!(s.latency(), Latency::Disconnected, "leaving resets it");
+    }
+
+    fn saved(id: &str, t: i64) -> SavedChannel {
+        SavedChannel {
+            id: id.into(),
+            name: format!("ch{id}"),
+            guild_id: "1".into(),
+            guild_name: String::new(),
+            last_joined: t,
+        }
+    }
+
+    #[test]
+    fn recent_channels_are_newest_first_unique_and_capped() {
+        let mut h = ChannelHistory::default();
+        for i in 1..=7 {
+            assert!(h.remember(saved(&i.to_string(), i)));
+        }
+        assert_eq!(h.recent.len(), MAX_SAVED);
+        assert_eq!(h.recent[0].id, "7");
+        assert!(h.remember(saved("4", 10)), "a rejoin moves it up");
+        let ids: Vec<&str> = h.recent.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, ["4", "7", "6", "5", "3"]);
+        assert!(!h.remember(saved("4", 10)), "nothing new, no save");
+        assert!(!h.remember(saved("../x", 11)), "not a snowflake");
+    }
+
+    #[test]
+    fn favourites_star_unstar_and_list_first() {
+        let mut h = ChannelHistory::default();
+        h.remember(saved("2", 2));
+        h.remember(saved("3", 3));
+        assert!(!h.set_favorite("9", true, None), "unknown channel");
+        let cur = saved("9", 9);
+        assert!(h.set_favorite("9", true, Some(&cur)), "the current channel");
+        assert!(h.set_favorite("2", true, None), "a recent one");
+        assert!(!h.set_favorite("2", true, None), "already starred");
+        let order: Vec<(&str, bool)> = h
+            .entries()
+            .iter()
+            .map(|(c, f)| (c.id.as_str(), *f))
+            .collect();
+        assert_eq!(order, [("9", true), ("2", true), ("3", false)]);
+        // A rejoin refreshes the favourite's copy too.
+        h.remember(SavedChannel {
+            name: "renamed".into(),
+            ..saved("2", 20)
+        });
+        assert_eq!(
+            h.favorites.iter().find(|c| c.id == "2").unwrap().name,
+            "renamed"
+        );
+        assert!(h.set_favorite("9", false, None));
+        assert!(!h.is_favorite("9"));
+        assert!(!h.set_favorite("9", false, None));
+        assert!(h.set_guild_name("1", "Margo"));
+        assert!(h.recent.iter().all(|c| c.guild_name == "Margo"));
+        assert!(!h.set_guild_name("1", "Margo"));
+    }
+
+    #[test]
+    fn history_file_round_trips_and_drops_bad_entries() {
+        let mut h = ChannelHistory::default();
+        h.remember(saved("5", 5));
+        h.set_favorite("5", true, None);
+        assert_eq!(ChannelHistory::from_json(&h.to_json()), h);
+        let messy = r#"{"recent": [{"id": "1", "name": ""}, {"id": "1"}, {"id": "x/y"},
+                         {"id": "2", "guild_id": "../../etc"}], "favorites": "nope"}"#;
+        let h = ChannelHistory::from_json(messy);
+        assert!(
+            h.favorites.is_empty() && h.recent.is_empty(),
+            "wrong shape reads as empty"
+        );
+        let h = ChannelHistory::from_json(
+            r#"{"recent": [{"id": "1", "name": ""}, {"id": "1"}, {"id": "x/y"}, {"id": "2", "guild_id": "../../etc"}]}"#,
+        );
+        let ids: Vec<&str> = h.recent.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, ["1", "2"]);
+        assert_eq!(h.recent[0].name, "Voice channel");
+        assert_eq!(h.recent[1].guild_id, "", "a bad server id is dropped");
+        assert_eq!(
+            ChannelHistory::from_json("not json"),
+            ChannelHistory::default()
+        );
+    }
+
+    #[test]
+    fn entering_a_channel_keeps_its_server() {
+        let mut s = DiscordState::default();
+        s.history.remember(SavedChannel {
+            guild_name: "Margo".into(),
+            ..saved("7", 1)
+        });
+        s.set_channel(&channel());
+        assert_eq!(s.guild_id, "1");
+        assert_eq!(s.guild_name, "Margo", "known before GET_GUILD answers");
+        let cur = s.current_channel(42).unwrap();
+        assert_eq!(
+            (cur.id.as_str(), cur.last_joined),
+            ("199737254929760256", 42)
+        );
+    }
+
+    #[test]
+    fn deep_links_and_launch_candidates() {
+        assert_eq!(
+            channel_deep_link("1", "22").as_deref(),
+            Some("discord://-/channels/1/22")
+        );
+        assert_eq!(
+            channel_deep_link("", "22"),
+            None,
+            "DM call: no server route"
+        );
+        assert_eq!(channel_deep_link("1", "2; rm"), None);
+        assert_eq!(
+            launch_candidates(" "),
+            ["discord", "discord-canary", "discord-ptb"]
+        );
+        assert_eq!(
+            launch_candidates("/opt/discord/Discord"),
+            ["/opt/discord/Discord"]
+        );
     }
 }

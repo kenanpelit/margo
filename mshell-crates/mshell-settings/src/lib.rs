@@ -38,6 +38,7 @@ mod cursor_settings;
 mod cpu_dashboard_pill_settings;
 mod date_time_settings;
 mod default_apps_settings;
+mod discord_settings;
 mod display_settings;
 mod dock_settings;
 mod effects_settings;

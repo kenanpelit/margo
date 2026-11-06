@@ -21,6 +21,40 @@
   background-color: transparent;
 }
 
+// Voice latency readout: the plugin's ladder (≤ 60 ms good, ≤ 120 ms
+// fair, else poor) on the theme's status tokens.
+.discord-voice-latency {
+  -gtk-icon-size: var(--icon-sm);
+
+  &.good {
+    color: var(--primary);
+  }
+  &.fair {
+    color: var(--warning);
+  }
+  &.poor {
+    color: var(--error);
+  }
+  &.idle {
+    color: var(--on-surface-variant);
+  }
+}
+
+// Microphone input volume row.
+.discord-voice-mic {
+  padding: 0 var(--space-1);
+}
+
+// Saved (favourite / recent) channels: star, name + server, Join.
+.discord-voice-saved-row {
+  padding: var(--space-1) var(--space-2);
+}
+
+// A starred channel (saved row or the call header).
+.discord-voice-menu-widget button.ok-button-flat.selected image {
+  color: var(--primary);
+}
+
 // Speaking indicator: a dim dot that lights up --primary while the
 // participant talks (eased, so a flickering VAD doesn't strobe).
 .discord-voice-speaking-dot {

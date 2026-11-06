@@ -370,11 +370,17 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
             label: "USB Drives",
             icon: "drive-removable-media-symbolic",
         },
-        WidgetEntry::Menu {
+        WidgetEntry::MenuWith {
             kind: MenuKind::DiscordVoice,
             stack_name: "discord_voice",
             label: "Discord Voice",
             icon: "call-start-symbolic",
+            extra: || {
+                let c = crate::discord_settings::DiscordSettingsModel::builder()
+                    .launch(crate::discord_settings::DiscordSettingsInit {})
+                    .detach();
+                (c.widget().clone(), Box::new(c))
+            },
         },
         WidgetEntry::Menu {
             kind: MenuKind::Crashes,

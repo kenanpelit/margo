@@ -135,6 +135,7 @@ fn stored_token_authenticates_saves_and_subscribes() {
         [
             ("SUBSCRIBE", Some("VOICE_CHANNEL_SELECT")),
             ("SUBSCRIBE", Some("VOICE_SETTINGS_UPDATE")),
+            ("SUBSCRIBE", Some("VOICE_CONNECTION_STATUS")),
             ("GET_SELECTED_VOICE_CHANNEL", None),
             ("GET_VOICE_SETTINGS", None),
         ]
@@ -270,7 +271,10 @@ fn joining_a_channel_subscribes_its_events() {
     assert_eq!(s.state.channel_name, "General");
     assert_eq!(s.state.participants.len(), 2);
     assert_eq!(s.subscribed.as_deref(), Some("100"));
-    assert_eq!(out.len(), CHANNEL_EVENTS.len());
+    // The channel's events, then its server's name (once per join).
+    assert_eq!(out.len(), CHANNEL_EVENTS.len() + 1);
+    assert_eq!(out[CHANNEL_EVENTS.len()].0, "GET_GUILD");
+    assert_eq!(out[CHANNEL_EVENTS.len()].2, json!({ "guild_id": "1" }));
     for ((cmd, evt, args), want) in out.iter().zip(CHANNEL_EVENTS) {
         assert_eq!(cmd, "SUBSCRIBE");
         assert_eq!(evt.as_deref(), Some(want));
@@ -302,7 +306,10 @@ fn switching_channels_moves_the_subscriptions() {
     let out = join(&mut s, "200", "Gaming");
     assert_eq!(s.state.channel_name, "Gaming");
     assert_eq!(s.subscribed.as_deref(), Some("200"));
-    let (unsub, sub): (Vec<_>, Vec<_>) = out.iter().partition(|(c, _, _)| c == "UNSUBSCRIBE");
+    let (unsub, sub): (Vec<_>, Vec<_>) = out
+        .iter()
+        .filter(|(c, _, _)| c != "GET_GUILD")
+        .partition(|(c, _, _)| c == "UNSUBSCRIBE");
     assert_eq!(unsub.len(), CHANNEL_EVENTS.len());
     assert_eq!(sub.len(), CHANNEL_EVENTS.len());
     assert!(unsub.iter().all(|(_, _, a)| a["channel_id"] == "100"));
@@ -471,6 +478,127 @@ fn token_storage_trims_and_ignores_empty() {
 
 // ── The socket loop against a fake Discord ─────────────────────────────────
 
+#[test]
+fn a_join_is_remembered_with_its_server_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut s = ready_session(&dir);
+    let out = join(&mut s, "300", "General");
+    let n = nonce_of_sent(&out, &s, "GET_GUILD");
+    assert_eq!(s.state.history.recent.len(), 1);
+    assert_eq!(s.state.history.recent[0].id, "300");
+    assert_eq!(s.state.history.recent[0].guild_id, "1");
+    s.on_payload(reply(
+        "GET_GUILD",
+        &n,
+        json!({ "id": "1", "name": "Margo", "icon_url": null, "members": [] }),
+    ));
+    assert_eq!(s.state.guild_name, "Margo");
+    // Persisted beside the token, private, and read back by a new session.
+    let file = dir.path().join("margo/discord-channels.json");
+    let mode = std::fs::metadata(&file).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o600);
+    let again = session_in(&dir);
+    assert_eq!(again.state.history.recent[0].guild_name, "Margo");
+    // A refresh of the same channel is not a new join.
+    let before = s.state.history.clone();
+    let n = {
+        s.request(
+            "GET_SELECTED_VOICE_CHANNEL",
+            json!({}),
+            Kind::SelectedChannel,
+            None,
+        );
+        nonce_of(&s, "GET_SELECTED_VOICE_CHANNEL")
+    };
+    s.out.clear();
+    s.on_payload(reply(
+        "GET_SELECTED_VOICE_CHANNEL",
+        &n,
+        channel("300", "General"),
+    ));
+    assert!(sent(&mut s).iter().all(|(c, _, _)| c != "GET_GUILD"));
+    assert_eq!(s.state.history, before);
+}
+
+/// The nonce of `cmd` in an already-drained `out` list (looked up in the
+/// pending map, since `sent` drops nonces).
+fn nonce_of_sent(out: &[(String, Option<String>, Value)], s: &Session, cmd: &str) -> String {
+    assert!(
+        out.iter().any(|(c, _, _)| c == cmd),
+        "no {cmd} sent: {out:?}"
+    );
+    s.pending
+        .iter()
+        .find(|(_, k)| matches!((k, cmd), (Kind::Guild(_), "GET_GUILD")))
+        .map(|(n, _)| n.clone())
+        .unwrap_or_else(|| panic!("no pending {cmd}"))
+}
+
+#[test]
+fn rejoin_a_saved_channel_and_star_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut s = ready_session(&dir);
+    join(&mut s, "300", "General");
+    s.on_command(DiscordCommand::SetFavorite("300".into(), true));
+    assert!(s.state.history.is_favorite("300"), "the current channel");
+    s.on_payload(dispatch(
+        "VOICE_CHANNEL_SELECT",
+        json!({ "channel_id": null }),
+    ));
+    s.out.clear();
+
+    s.on_command(DiscordCommand::JoinChannel("999".into()));
+    assert!(sent(&mut s).is_empty(), "only saved channels");
+    s.on_command(DiscordCommand::JoinChannel("300".into()));
+    let n = nonce_of(&s, "SELECT_VOICE_CHANNEL");
+    let out = sent(&mut s);
+    assert_eq!(out[0].0, "SELECT_VOICE_CHANNEL");
+    assert_eq!(out[0].2, json!({ "channel_id": "300" }));
+    s.on_payload(reply("SELECT_VOICE_CHANNEL", &n, channel("300", "General")));
+    assert!(s.state.in_voice(), "the reply is the joined channel");
+    assert!(
+        sent(&mut s)
+            .iter()
+            .any(|(c, e, _)| c == "SUBSCRIBE" && e.as_deref() == Some("SPEAKING_START"))
+    );
+    // In a call, a rejoin click is ignored (Discord would refuse it).
+    s.on_command(DiscordCommand::JoinChannel("300".into()));
+    assert!(sent(&mut s).is_empty());
+    s.on_command(DiscordCommand::SetFavorite("300".into(), false));
+    assert!(!s.state.history.is_favorite("300"));
+}
+
+#[test]
+fn input_volume_and_connection_status() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut s = session_in(&dir);
+    s.on_command(DiscordCommand::SetInputVolume(40));
+    assert!(sent(&mut s).is_empty(), "needs ready");
+    let mut s = ready_session(&dir);
+    s.on_command(DiscordCommand::SetInputVolume(140));
+    assert_eq!(s.state.input_volume, Some(100), "optimistic + clamped");
+    let n = nonce_of(&s, "SET_VOICE_SETTINGS");
+    let out = sent(&mut s);
+    assert_eq!(out[0].2, json!({ "input": { "volume": 100 } }));
+    s.on_payload(reply(
+        "SET_VOICE_SETTINGS",
+        &n,
+        json!({ "input": { "device_id": "default", "volume": 87.5 }, "mute": false, "deaf": false }),
+    ));
+    assert_eq!(s.state.input_volume, Some(88), "Discord's answer wins");
+
+    join(&mut s, "300", "General");
+    s.on_payload(dispatch(
+        "VOICE_CONNECTION_STATUS",
+        json!({ "state": "VOICE_CONNECTED", "hostname": "x.discord.media", "pings": [44], "average_ping": 44.2, "last_ping": 44 }),
+    ));
+    assert_eq!(s.state.ping_ms, 44);
+    assert!(
+        GLOBAL_EVENTS.contains(&"VOICE_CONNECTION_STATUS"),
+        "subscribed once authenticated"
+    );
+}
+
 async fn read_raw(r: &mut UnixStream) -> (u32, Value) {
     let mut h = [0u8; 8];
     r.read_exact(&mut h).await.unwrap();
@@ -520,12 +648,13 @@ async fn socket_session_handshake_auth_ping_and_close() {
     let nonce = auth["nonce"].as_str().unwrap().to_string();
     write_raw(&mut discord, OP_FRAME, &authenticated_reply(&nonce)).await;
     let mut cmds = Vec::new();
-    for _ in 0..4 {
+    for _ in 0..5 {
         cmds.push(read_raw(&mut discord).await.1["cmd"].clone());
     }
     assert_eq!(
         cmds,
         [
+            "SUBSCRIBE",
             "SUBSCRIBE",
             "SUBSCRIBE",
             "GET_SELECTED_VOICE_CHANNEL",

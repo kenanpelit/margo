@@ -1,5 +1,5 @@
-//! Notes & social config: the Notes Hub's Markdown folder and the GitHub
-//! pill / menu.
+//! Notes & social config: the Notes Hub's Markdown folder, the GitHub
+//! pill / menu and the Discord voice pill.
 //!
 //! Every key is inert by default (a blank folder hides nothing and starts
 //! no I/O), so an existing profile behaves exactly as before.
@@ -125,6 +125,22 @@ impl Default for GithubConfig {
     }
 }
 
+/// Discord voice pill + menu settings (Settings → Widgets → Discord Voice).
+#[derive(
+    Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize, Store, Patch, JsonSchema,
+)]
+#[serde(default)]
+pub struct DiscordConfig {
+    /// Clicking the pill while Discord isn't running starts Discord
+    /// instead of opening the menu (the menu always offers a button).
+    pub launch_on_click: bool,
+    /// Hide the pill while you're not in a voice channel.
+    pub hide_when_disconnected: bool,
+    /// Program that starts Discord (a name on `$PATH` or a full path).
+    /// Blank = the first of `discord`, `discord-canary`, `discord-ptb`.
+    pub binary: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -148,5 +164,14 @@ mod tests {
         // A profile saved before the PR rules existed keeps today's search.
         assert_eq!(cfg.github.pr_rules, ["author:@me"]);
         assert!(!cfg.github.hide_when_zero && cfg.github.excluded_repos.is_empty());
+    }
+
+    #[test]
+    fn discord_defaults_keep_the_click_opening_the_menu() {
+        let cfg: Config = yaml_serde::from_str("{}").unwrap();
+        assert_eq!(cfg.discord, DiscordConfig::default());
+        assert!(!cfg.discord.launch_on_click && !cfg.discord.hide_when_disconnected);
+        let cfg: Config = yaml_serde::from_str("discord:\n  binary: vesktop\n").unwrap();
+        assert_eq!(cfg.discord.binary, "vesktop");
     }
 }

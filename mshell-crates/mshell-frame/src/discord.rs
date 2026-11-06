@@ -15,6 +15,10 @@
 //! * subscribe to voice events, keep [`DiscordState`] current and
 //!   publish it on a `watch` channel.
 //!
+//! Recent and favourite voice channels (for one-click rejoin) are kept in
+//! `$XDG_STATE_HOME/margo/discord-channels.json` (mode 0600) and shown
+//! even while Discord isn't running.
+//!
 //! While Discord isn't running the loop re-checks for the socket every
 //! [`RECONNECT`] (a few `stat`s — no process spawn), but only while
 //! something subscribes: with no pill and no open menu it parks and drops
@@ -23,8 +27,8 @@
 //! 0600 and never logged.
 
 use mshell_utils::discord::{
-    self, CHANNEL_EVENTS, DiscordState, DiscordStatus, GLOBAL_EVENTS, OP_CLOSE, OP_FRAME,
-    OP_HANDSHAKE, OP_PING, OP_PONG, TOKEN_EXCHANGE_URL,
+    self, CHANNEL_EVENTS, ChannelHistory, DiscordState, DiscordStatus, GLOBAL_EVENTS, OP_CLOSE,
+    OP_FRAME, OP_HANDSHAKE, OP_PING, OP_PONG, TOKEN_EXCHANGE_URL,
 };
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -49,6 +53,12 @@ pub(crate) enum DiscordCommand {
     Leave,
     /// (user id, volume 0..=200)
     SetUserVolume(String, u32),
+    /// Your microphone input volume, 0..=100.
+    SetInputVolume(u32),
+    /// Join a saved (recent / favourite) voice channel by id.
+    JoinChannel(String),
+    /// Star / unstar a channel (the current one or a recent one).
+    SetFavorite(String, bool),
 }
 
 struct Handle {
@@ -87,10 +97,94 @@ pub(crate) fn send(cmd: DiscordCommand) {
     let _ = handle().cmd.send(cmd);
 }
 
+// ── Launching Discord ───────────────────────────────────────────────────────
+
+/// The Discord program to start: the configured one, else the first
+/// installed client (see [`discord::launch_candidates`]), on `path`.
+fn discord_program_in(configured: &str, path: &std::ffi::OsStr) -> Option<PathBuf> {
+    discord::launch_candidates(configured)
+        .into_iter()
+        .find_map(|c| {
+            if c.contains('/') {
+                let p = match (c.strip_prefix("~/"), margo_fs::xdg::home()) {
+                    (Some(rest), Some(home)) => home.join(rest),
+                    _ => PathBuf::from(&c),
+                };
+                margo_fs::path::is_executable(&p).then_some(p)
+            } else {
+                margo_fs::path::find_in_path_in(&c, path)
+            }
+        })
+}
+
+/// The Discord program for `configured` on `$PATH`, if any (stats only).
+pub(crate) fn discord_program(configured: &str) -> Option<PathBuf> {
+    discord_program_in(configured, &std::env::var_os("PATH").unwrap_or_default())
+}
+
+/// The argv after the program: `--url -- <deep link>` to open a channel.
+fn launch_args(link: Option<&str>) -> Vec<String> {
+    link.map(|l| vec!["--url".to_string(), "--".to_string(), l.to_string()])
+        .unwrap_or_default()
+}
+
+/// Start Discord (in its own scope, so it outlives an mshell restart),
+/// optionally on a channel's deep link. No shell is involved.
+pub(crate) fn launch(configured: &str, link: Option<&str>) -> Result<(), String> {
+    use mshell_process::SpawnReaped;
+    let program = discord_program(configured).ok_or_else(|| {
+        if configured.trim().is_empty() {
+            "Discord isn't installed (discord, discord-canary or discord-ptb)".to_string()
+        } else {
+            format!("Can't run {}", configured.trim())
+        }
+    })?;
+    mshell_process::outliving_shell(&program, launch_args(link), "discord")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn_reaped()
+        .map(|_| ())
+        .map_err(|e| format!("Couldn't start Discord: {e}"))
+}
+
+/// [`launch`], with a failure surfaced as a toast (pill + menu clicks).
+pub(crate) fn launch_or_toast(configured: &str, link: Option<&str>) {
+    if let Err(e) = launch(configured, link) {
+        use mshell_config::toast::{ToastEvent, ToastSeverity, push_toast};
+        warn!(error = %e, "discord: launch failed");
+        push_toast(ToastEvent {
+            icon: "call-start-symbolic".to_string(),
+            title: "Couldn't start Discord".to_string(),
+            body: Some(e),
+            severity: ToastSeverity::Warn,
+        });
+    }
+}
+
 // ── Token storage ───────────────────────────────────────────────────────────
 
 fn token_path() -> PathBuf {
     margo_fs::xdg::state_home().join("margo/discord-token")
+}
+
+/// The channel history lives beside the token.
+fn history_path(token_file: &Path) -> PathBuf {
+    token_file.with_file_name("discord-channels.json")
+}
+
+fn load_history(path: &Path) -> ChannelHistory {
+    std::fs::read_to_string(path)
+        .map(|t| ChannelHistory::from_json(&t))
+        .unwrap_or_default()
+}
+
+/// The idle state (Discord not running): only the saved channels.
+pub(crate) fn idle_state() -> DiscordState {
+    DiscordState {
+        history: load_history(&history_path(&token_path())),
+        ..Default::default()
+    }
 }
 
 fn load_token(path: &Path) -> Option<String> {
@@ -100,21 +194,48 @@ fn load_token(path: &Path) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-fn save_token(path: &Path, token: &str) {
+/// Write a private file (mode 0600 from creation, never world-readable
+/// in between) via a sibling temp file + rename.
+fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
     use std::os::unix::fs::OpenOptionsExt;
     if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
+        std::fs::create_dir_all(dir)?;
     }
-    let file = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(path);
-    if let Ok(mut f) = file {
-        let _ = f.write_all(token.as_bytes());
+    let tmp = margo_fs::atomic_write::tmp_sibling(path);
+    let written = (|| {
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+        std::fs::rename(&tmp, path)
+    })();
+    if written.is_err() {
+        let _ = std::fs::remove_file(&tmp);
     }
+    written
+}
+
+fn save_token(path: &Path, token: &str) {
+    if let Err(e) = write_private(path, token.as_bytes()) {
+        warn!(error = %e, "discord: could not store the access token");
+    }
+}
+
+fn save_history(path: &Path, history: &ChannelHistory) {
+    if let Err(e) = write_private(path, history.to_json().as_bytes()) {
+        warn!(error = %e, "discord: could not save the channel history");
+    }
+}
+
+fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64)
 }
 
 fn clear_token(path: &Path) {
@@ -191,6 +312,10 @@ enum Kind {
     Authenticate,
     SelectedChannel,
     VoiceSettings,
+    /// GET_GUILD for this server id (its name for the header / history).
+    Guild(String),
+    /// SELECT_VOICE_CHANNEL from a saved-channel click.
+    JoinChannel,
     Other,
 }
 
@@ -206,15 +331,19 @@ struct Session {
     subscribed: Option<String>,
     /// Where the access token is stored.
     token_file: PathBuf,
+    /// Where the recent / favourite channels are stored.
+    history_file: PathBuf,
     /// Command payloads not yet written to the socket, in order.
     out: Vec<Value>,
 }
 
 impl Session {
     fn new(token_file: PathBuf) -> Self {
+        let history_file = history_path(&token_file);
         Self {
             state: DiscordState {
                 status: DiscordStatus::NeedsAuth,
+                history: load_history(&history_file),
                 ..Default::default()
             },
             pending: HashMap::new(),
@@ -222,7 +351,46 @@ impl Session {
             token: None,
             subscribed: None,
             token_file,
+            history_file,
             out: Vec::new(),
+        }
+    }
+
+    /// A channel object (GET_SELECTED_VOICE_CHANNEL / SELECT_VOICE_CHANNEL
+    /// response): enter it, record a new join in the history and look up
+    /// the server's name once.
+    fn enter_channel(&mut self, data: &Value) {
+        let before = self.state.channel_id.clone();
+        self.state.set_channel(data);
+        self.sync_subscriptions();
+        if self.state.channel_id.is_none() || self.state.channel_id == before {
+            return;
+        }
+        if let Some(ch) = self.state.current_channel(now_secs())
+            && self.state.history.remember(ch)
+        {
+            save_history(&self.history_file, &self.state.history);
+        }
+        let guild = self.state.guild_id.clone();
+        if !guild.is_empty() {
+            self.request(
+                "GET_GUILD",
+                json!({ "guild_id": guild }),
+                Kind::Guild(guild.clone()),
+                None,
+            );
+        }
+    }
+
+    fn on_guild(&mut self, guild_id: &str, data: &Value) {
+        let Some(name) = data.get("name").and_then(Value::as_str) else {
+            return;
+        };
+        if self.state.guild_id == guild_id {
+            self.state.guild_name = name.to_string();
+        }
+        if self.state.history.set_guild_name(guild_id, name) {
+            save_history(&self.history_file, &self.state.history);
         }
     }
 
@@ -340,11 +508,9 @@ impl Session {
                 }
                 self.on_ready_authenticated();
             }
-            Some(Kind::SelectedChannel) => {
-                self.state.set_channel(&data);
-                self.sync_subscriptions();
-            }
+            Some(Kind::SelectedChannel | Kind::JoinChannel) => self.enter_channel(&data),
             Some(Kind::VoiceSettings) => self.state.set_voice_settings(&data),
+            Some(Kind::Guild(id)) => self.on_guild(&id, &data),
             Some(Kind::Other) => {}
             None => {
                 if p.get("cmd").and_then(Value::as_str) == Some("DISPATCH")
@@ -437,6 +603,33 @@ impl Session {
                     Kind::Other,
                     None,
                 );
+            }
+            DiscordCommand::SetInputVolume(v) if ready => {
+                let v = v.min(100);
+                self.state.input_volume = Some(v); // optimistic; the reply carries the settings
+                self.request(
+                    "SET_VOICE_SETTINGS",
+                    json!({ "input": { "volume": v } }),
+                    Kind::VoiceSettings,
+                    None,
+                );
+            }
+            DiscordCommand::JoinChannel(id)
+                if ready && !self.state.in_voice() && self.state.history.find(&id).is_some() =>
+            {
+                self.state.message.clear();
+                self.request(
+                    "SELECT_VOICE_CHANNEL",
+                    json!({ "channel_id": id }),
+                    Kind::JoinChannel,
+                    None,
+                );
+            }
+            DiscordCommand::SetFavorite(id, on) => {
+                let current = self.state.current_channel(now_secs());
+                if self.state.history.set_favorite(&id, on, current.as_ref()) {
+                    save_history(&self.history_file, &self.state.history);
+                }
             }
             _ => {}
         }
@@ -550,8 +743,8 @@ async fn run(
                 () = state_tx.closed() => {}
             }
         }
+        let idle = idle_state();
         state_tx.send_if_modified(|cur| {
-            let idle = DiscordState::default();
             let changed = *cur != idle;
             *cur = idle;
             changed
@@ -580,6 +773,43 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     static CONNECTS: AtomicUsize = AtomicUsize::new(0);
+
+    #[test]
+    fn launcher_prefers_the_configured_program_then_the_first_client() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let exe = |name: &str| {
+            let p = dir.path().join(name);
+            std::fs::write(&p, "#!/bin/sh\n").unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+            p
+        };
+        let path = dir.path().as_os_str();
+        assert_eq!(discord_program_in("", path), None, "nothing installed");
+        let canary = exe("discord-canary");
+        assert_eq!(discord_program_in("", path), Some(canary.clone()));
+        let stable = exe("discord");
+        assert_eq!(discord_program_in("", path), Some(stable), "stable first");
+        assert_eq!(
+            discord_program_in("discord-canary", path),
+            Some(canary.clone())
+        );
+        assert_eq!(
+            discord_program_in(canary.to_str().unwrap(), std::ffi::OsStr::new("")),
+            Some(canary),
+            "a full path needs no $PATH"
+        );
+        assert_eq!(
+            discord_program_in("vesktop", path),
+            None,
+            "configured but missing"
+        );
+        assert!(launch_args(None).is_empty());
+        assert_eq!(
+            launch_args(Some("discord://-/channels/1/2")),
+            ["--url", "--", "discord://-/channels/1/2"]
+        );
+    }
 
     fn no_discord() -> ConnectFuture {
         CONNECTS.fetch_add(1, Ordering::SeqCst);
