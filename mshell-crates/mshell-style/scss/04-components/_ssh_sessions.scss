@@ -93,3 +93,19 @@
 .ssh-host-row:hover .ssh-host-go {
   opacity: 1;
 }
+// ── Forwards tab ─────────────────────────────────────────────
+// One boxed-list row per `ssh -L` profile: title + live state, trailing
+// open / copy / logs / remove + the on switch. Connected = §3 primary
+// tint on the name; a failing tunnel warns in its subtitle (§2).
+.ssh-forward-row {
+  padding: var(--space-2) var(--space-3);
+
+  &.active .ssh-host-name {
+    color: var(--primary);
+    font-weight: 600;
+  }
+
+  .ssh-host-sub.warn {
+    color: var(--warning);
+  }
+}

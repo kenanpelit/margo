@@ -27,6 +27,7 @@ tesseract                   tesseract                  screenshot-region OCR
 -                           tesseract-data-eng         English data for tesseract OCR
 zbarimg                     zbar                       screenshot-region QR decoding
 qrencode                    qrencode                   QR codes to share text / Wi-Fi with a phone (QR menu, Network menu)
+ssh                         openssh                    SSH Sessions menu port forwards (ssh -L)
 gpu-screen-recorder         gpu-screen-recorder        hardware-encoded screen recording
 ffmpeg                      ffmpeg                     webcam overlay in screen recordings (V4L2 capture)
 v4l2-ctl                    v4l-utils                  webcam overlay: pick a camera node + a 30 fps mode

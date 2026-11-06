@@ -35,6 +35,7 @@ pub mod session;
 pub mod shared_poll;
 pub mod shutdown;
 pub mod speedtest;
+pub mod ssh_forward;
 pub mod strings;
 pub mod units;
 pub mod weather;

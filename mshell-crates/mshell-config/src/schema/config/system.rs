@@ -104,6 +104,31 @@ pub struct NetworkConfig {
     /// a connection that is in use; unconfirmed, the saved profile comes
     /// back. `0` = off (the change is just applied).
     pub ip_confirm_seconds: u32,
+    /// Named SSH local port forwards (SSH Sessions menu · Forwards). Each
+    /// runs as a systemd user service while started; none start on their
+    /// own.
+    pub ssh_forwards: Vec<SshForward>,
+}
+
+/// One `ssh -L` forward: `127.0.0.1:<local_port>` on this machine reaches
+/// `<remote_host>:<remote_port>` as seen from the SSH destination `host`.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize, Store, Patch, JsonSchema,
+)]
+#[serde(default)]
+pub struct SshForward {
+    /// Display name; also names the systemd unit (`margo-ssh-forward-<name>`).
+    pub name: String,
+    /// SSH destination: an alias from `~/.ssh/config`, a host or `user@host`.
+    pub host: String,
+    /// Port on this machine (bound on 127.0.0.1 only).
+    pub local_port: u16,
+    /// Host to reach from the SSH destination (`localhost` = the destination
+    /// itself).
+    pub remote_host: String,
+    pub remote_port: u16,
+    /// Open the forwarded port as `https://` instead of `http://`.
+    pub https: bool,
 }
 
 /// Home-network login automation (Settings → Network · Network Console menu).

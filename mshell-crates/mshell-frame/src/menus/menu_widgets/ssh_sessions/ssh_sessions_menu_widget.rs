@@ -5,11 +5,16 @@
 //! live count. Clicking a row opens `kitty -e ssh <host>`. Active
 //! sessions are re-polled while the panel is open. With hundreds of
 //! hosts the rendered list is capped; the search narrows it.
+//!
+//! A **Hosts · Forwards** segmented control switches to the managed
+//! `ssh -L` port forwards ([`super::forwards`]).
 
+use super::forwards::{ForwardsInput, ForwardsModel};
+use crate::common_widgets::segmented::{Segmented, SegmentedStyle};
 use crate::menus::reveal_poll::RevealGate;
 use crate::ssh::{self, SshHost};
 use relm4::gtk::prelude::{BoxExt, ButtonExt, EditableExt, EntryExt, OrientableExt, WidgetExt};
-use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::time::Duration;
 
 /// Re-poll cadence for active sessions while the panel is open.
@@ -31,6 +36,10 @@ pub(crate) struct SshSessionsMenuWidgetModel {
     /// monitor, forever, regardless of visibility — despite the
     /// "while the panel is open" comment).
     visible: RevealGate,
+    /// `false` = Hosts, `true` = Forwards.
+    show_forwards: bool,
+    tabs: Segmented,
+    forwards: Controller<ForwardsModel>,
 }
 
 #[derive(Debug)]
@@ -39,6 +48,8 @@ pub(crate) enum SshSessionsMenuWidgetInput {
     /// Sent by the host menu on show/hide. Starts the active-session
     /// poll lazily on first reveal and gates the probe on visibility.
     ParentRevealChanged(bool),
+    /// The Hosts (`false`) / Forwards (`true`) tab.
+    ShowForwards(bool),
 }
 
 #[derive(Debug)]
@@ -90,8 +101,19 @@ impl Component for SshSessionsMenuWidgetModel {
                 },
             },
 
+            #[local_ref]
+            tabs_root -> gtk::Box {},
+
+            #[local_ref]
+            forwards_root -> gtk::Box {
+                #[watch]
+                set_visible: model.show_forwards,
+            },
+
             #[name = "search_entry"]
             gtk::Entry {
+                #[watch]
+                set_visible: !model.show_forwards,
                 add_css_class: "ssh-sessions-search",
                 set_placeholder_text: Some("Filter hosts…"),
                 connect_changed[sender] => move |e| {
@@ -100,6 +122,8 @@ impl Component for SshSessionsMenuWidgetModel {
             },
 
             gtk::ScrolledWindow {
+                #[watch]
+                set_visible: !model.show_forwards,
                 set_vexpand: true,
                 set_hscrollbar_policy: gtk::PolicyType::Never,
                 set_min_content_height: 320,
@@ -122,6 +146,18 @@ impl Component for SshSessionsMenuWidgetModel {
         // (see `ParentRevealChanged`), not here — so a menu the user never
         // opens forks no `pgrep`.
         let content = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        let s = sender.clone();
+        let tabs = Segmented::new(
+            &["Hosts", "Forwards"],
+            0,
+            SegmentedStyle::Capsule,
+            move |i| {
+                s.input(SshSessionsMenuWidgetInput::ShowForwards(i == 1));
+            },
+        );
+        let tabs_root = tabs.root().clone();
+        let forwards = ForwardsModel::builder().launch(()).detach();
+        let forwards_root = forwards.widget().clone();
         let model = SshSessionsMenuWidgetModel {
             hosts: ssh::load_hosts(),
             active: Vec::new(),
@@ -129,6 +165,9 @@ impl Component for SshSessionsMenuWidgetModel {
             content: content.clone(),
             poll_started: false,
             visible: RevealGate::new(false),
+            show_forwards: false,
+            tabs,
+            forwards,
         };
         let widgets = view_output!();
 
@@ -158,8 +197,15 @@ impl Component for SshSessionsMenuWidgetModel {
                     &sender,
                 );
             }
+            SshSessionsMenuWidgetInput::ShowForwards(on) => {
+                self.show_forwards = on;
+                self.tabs.set_active(usize::from(on));
+                self.forwards.emit(ForwardsInput::Reveal(on));
+            }
             SshSessionsMenuWidgetInput::ParentRevealChanged(visible) => {
                 self.visible.set(visible);
+                self.forwards
+                    .emit(ForwardsInput::Reveal(visible && self.show_forwards));
                 if visible && !self.poll_started {
                     self.poll_started = true;
                     start_polling(&sender, self.visible.clone());

@@ -52,7 +52,7 @@ parameter and use YAML tag syntax:
 | `Podman` | Podman | Running containers / pods / images summary from `podman ps`. Click opens the Podman menu: containers (lifecycle, shell, logs; a published TCP port chip opens `http://localhost:<port>` in the browser, right-click copies the URL), images, pods, and a **Host** tab listing your own listening TCP services (`ss -tlpn`, one row per process, named after its systemd unit) with the same open / copy chips. |
 | `Agents` | AI Agents | Claude Code plan usage: the window closest to its limit (5-hour, weekly, per-model weekly) as a percentage, tinted calm/warn/danger by where the current burn rate takes it. Reads the real limits from `api.anthropic.com/api/oauth/usage` with Claude Code's saved sign-in (read-only, never refreshed or logged), and Codex limits when the Codex CLI is signed in. Click opens the AI Agents menu: per-window bars, forecast, reset time and per-hour budget, plus today's prompts / tokens / tokens per model from the local transcripts. One lamp per running Claude Code session sits beside the percentage (red = needs you, accent = working, dim = idle); the menu's **Sessions** tab lists them grouped Needs you / Working / Idle — click one to jump to its terminal (tmux pane selected, then the terminal window focused through margo's window pids) — and recent saved sessions to resume in a new terminal (`claude --resume`). Right-click refreshes the limits. Replaces the `model-usage` plugin. |
 | `Github` | GitHub | Unread GitHub notifications: the GitHub mark with the unread dot and count, via the `gh` CLI and its saved login (`github-cli` package; a missing or logged-out `gh` is reported in the tooltip/menu). Polled every 2 min while shown. Click opens the GitHub menu — **Inbox** (unread threads; click opens one in the browser and marks it read, ✓ marks read, header ✓ marks all read) and **My PRs** (your open pull requests with CI and review chips). Right-click refreshes. |
-| `SshSessions` | SSH Sessions | Live count of active `ssh` clients. Click opens a searchable host list from `~/.ssh/config` and the files it `Include`s, read like the launcher's `ssh` provider reads it (click a host to connect in a new terminal); right-click re-polls. |
+| `SshSessions` | SSH Sessions | Live count of active `ssh` clients. Click opens a searchable host list from `~/.ssh/config` and the files it `Include`s, read like the launcher's `ssh` provider reads it (click a host to connect in a new terminal), plus a **Forwards** tab of managed `ssh -L` port forwards; right-click re-polls. |
 | `Usb` | USB Drives | Removable drives over udisks2 (D-Bus, no `udisksctl` parsing). Hidden while nothing is plugged in (or udisks2 isn't running); the icon tints while a volume is mounted, the count shows with 2+ drives. Click opens the drive panel (`mshellctl menu usb`): per volume Open (mounting first) / Unmount, LUKS Unlock (inline passphrase) / Lock; per drive Remove safely (unmount → lock → power off / eject). Right-click removes every drive safely. Toasts on plug / unplug (`toasts.removable_drives`, default on); unplugging a mounted drive always warns. |
 | `Power` | Power Profile | Active power profile (performance / balanced / power-saver) + battery / power source, from power-profiles-daemon + UPower. Click opens the profile switcher panel, which also draws a battery-level history graph from UPower's own record (`GetHistory`; 6h / 24h / 7d chips, persisted as `power.history_hours`, default 6) and a USB-C POWER section per occupied port (charging / powering a device, live W when the firmware reports voltage, else the negotiated A, charger max from PD PDOs, PD flag; read from `/sys/class/typec` + `power_supply`, hidden when nothing is plugged) and a CHARGE LIMIT section (presets + custom; the battery's `charge_control_end_threshold` through the `mshell-privileged charge-limit` polkit action, hidden when the platform has none). |
 
@@ -250,6 +250,24 @@ profile and re-activates it. The rollback is a transient systemd user timer
 (`margo-net-rollback-<uuid>`), armed before anything is written, so it still
 runs if the shell restarts in the meantime. Changes to inactive profiles and
 non-IP settings (autoconnect, metered, Wi-Fi password) apply directly.
+
+## SSH port forwards (SSH Sessions menu)
+
+The SSH Sessions menu's **Hosts · Forwards** switch opens named local port
+forwards (`ssh -L`), saved in `network.ssh_forwards` (name, SSH host,
+local port, remote host, remote port, *Open as https://*). **Add forward**
+takes an SSH host (an alias from `~/.ssh/config` or `user@host`), the local
+port and the host:port to reach as the SSH host sees it (`localhost` = the
+SSH host itself). The switch starts or stops a forward; each row shows its
+state (*Connected*, *Connecting…*, *Failed · retrying*) and has **Open**
+(`http(s)://localhost:<port>` in the browser), **Copy** (the URL),
+**Logs** (its journal, followed in a terminal) and **Remove** (stops it
+first). A forward runs as the transient systemd user service
+`margo-ssh-forward-<name>`: it survives a shell restart, reconnects after
+a dropped link, binds `127.0.0.1` only and never starts on its own. It uses
+`BatchMode=yes`, so the host needs key / agent login and a known host key
+(connect once from the Hosts tab first); the shell never asks for or stores
+a password. Needs `openssh` and systemd user services.
 
 ## Phone screen mirroring (Valent menu)
 
