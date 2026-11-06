@@ -89,18 +89,23 @@ pub fn radio_display(
     }
 }
 
-/// GstPlay's error text without its element path: `"Error from element
-/// /GstPlayBin3:…/GstSoupHTTPSrc:souphttpsrc8: GStreamer encountered a
-/// general stream error."` -> `"GStreamer encountered a general stream
-/// error."`.
+/// GstPlay's error text without its element path or multi-line C debug dump:
+/// `"Error from element /GstPlayBin3:…/GstSoupHTTPSrc:souphttpsrc8: GStreamer
+/// encountered a general stream error."` -> `"GStreamer encountered a general
+/// stream error."`.
 pub fn clean_gst_error(msg: &str) -> String {
-    let msg = msg.trim();
-    match msg.strip_prefix("Error from element ") {
+    let first = msg.lines().next().unwrap_or("").trim();
+    let cleaned = match first.strip_prefix("Error from element ") {
         Some(rest) => rest
             .split_once(": ")
-            .map(|(_, reason)| reason.trim().to_string())
-            .unwrap_or_else(|| msg.to_string()),
-        None => msg.to_string(),
+            .map(|(_, reason)| reason.trim())
+            .unwrap_or(first),
+        None => first,
+    };
+    if cleaned.starts_with("Your GStreamer installation is missing a plug-in") {
+        "Unsupported stream format (use a direct audio stream URL, not a web page).".to_string()
+    } else {
+        cleaned.to_string()
     }
 }
 
@@ -182,6 +187,16 @@ mod tests {
             "GStreamer encountered a general stream error."
         );
         assert_eq!(clean_gst_error(" Not found "), "Not found");
+        let missing_plugin = "Your GStreamer installation is missing a plug-in.\n\
+            Your GStreamer installation is missing a plug-in.\n\
+            ../gstreamer/subprojects/gst-plugins-base/gst/playback/gstdecodebin3.c(3258):\n\
+            mq_slot_check_reconfiguration (): /GstPlayBin3:playbin3/\
+            GstURIDecodeBin3:uridecodebin3/GstDecodebin3:decodebin3-0:\n\
+            No suitable plugins found";
+        assert_eq!(
+            clean_gst_error(missing_plugin),
+            "Unsupported stream format (use a direct audio stream URL, not a web page)."
+        );
     }
 
     #[test]

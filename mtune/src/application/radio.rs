@@ -18,13 +18,12 @@ pub(super) fn wire(station: &Station) -> RadioStation {
 
 impl Application {
     pub(super) fn radio_command(&self, command: RadioCommand) -> Result<(), String> {
-        if let RadioCommand::Preview(station) = command {
-            self.play_radio_list(&[station], 0);
-            return Ok(());
-        }
-        let lib = shared::radio();
         match command {
+            RadioCommand::Preview(station) => {
+                self.play_radio_list(&[station], 0);
+            }
             RadioCommand::Add(station) => {
+                let lib = shared::radio();
                 if !lib.writable {
                     return Err(
                         "Radio library is unreadable; repair radio.json before saving".into(),
@@ -37,6 +36,7 @@ impl Application {
                 shared::radio_changed();
             }
             RadioCommand::Remove(key) => {
+                let lib = shared::radio();
                 if !lib.writable {
                     return Err(
                         "Radio library is unreadable; repair radio.json before saving".into(),
@@ -52,6 +52,7 @@ impl Application {
                 shared::radio_changed();
             }
             RadioCommand::Play(key) => {
+                let lib = shared::radio();
                 let stations = lib.data.borrow().stations.clone();
                 let index = stations
                     .iter()
@@ -63,7 +64,6 @@ impl Application {
                 }
                 self.play_radio_list(&stations, index);
             }
-            RadioCommand::Preview(_) => unreachable!(),
         }
         Ok(())
     }

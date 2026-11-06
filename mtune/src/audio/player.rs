@@ -801,15 +801,16 @@ impl AudioPlayer {
 }
 
 #[cfg(test)]
+#[path = "radio_recovery_tests.rs"]
+mod radio_recovery_tests;
+
+#[cfg(test)]
 mod tests {
-    mod radio_recovery {
-        include!("radio_recovery_tests.rs");
-    }
     use super::*;
     use crate::audio::stream::{StreamInfo, StreamKind};
 
     // No window, session bus, inhibitors or real audio device in these tests.
-    fn test_player() -> AudioPlayer {
+    pub(super) fn test_player() -> AudioPlayer {
         gst::init().unwrap();
         let (app_sender, _) = async_channel::unbounded();
         let (sender, receiver) = async_channel::unbounded();

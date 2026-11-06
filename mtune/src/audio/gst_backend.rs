@@ -166,7 +166,10 @@ impl GstBackend {
 
                 match play_msg {
                     gst_play::PlayMessage::UriLoaded(message) => {
-                        *loaded_uri.lock().unwrap() = message.uri().to_string();
+                        *loaded_uri
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                            message.uri().to_string();
                     }
                     gst_play::PlayMessage::Error(message) => {
                         error!(
@@ -178,7 +181,12 @@ impl GstBackend {
                             uri: message
                                 .details()
                                 .and_then(|s| s.get::<String>("uri").ok())
-                                .unwrap_or_else(|| loaded_uri.lock().unwrap().clone()),
+                                .unwrap_or_else(|| {
+                                    loaded_uri
+                                        .lock()
+                                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                        .clone()
+                                }),
                             message: crate::audio::stream::clean_gst_error(
                                 message.error().message(),
                             ),
@@ -203,7 +211,10 @@ impl GstBackend {
                     }
                     gst_play::PlayMessage::EndOfStream(_) => {
                         if let Err(e) = sender.send_blocking(PlaybackAction::StreamEnded(
-                            loaded_uri.lock().unwrap().clone(),
+                            loaded_uri
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                .clone(),
                         )) {
                             error!("Failed to send StreamEnded: {e}");
                         }
@@ -216,7 +227,10 @@ impl GstBackend {
                         );
                         if message.state() == gst_play::PlayState::Playing {
                             let _ = sender.send_blocking(PlaybackAction::StreamPlaying(
-                                loaded_uri.lock().unwrap().clone(),
+                                loaded_uri
+                                    .lock()
+                                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                    .clone(),
                             ));
                         }
                         // Preroll finished — a queued resume seek can land now.

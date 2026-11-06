@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-use super::*;
-use crate::audio::gst_backend::tests::{GST_TEST_LOCK, RadioFixture, stop_player};
+use super::{tests::test_player, *};
+use crate::audio::{
+    gst_backend::tests::{GST_TEST_LOCK, RadioFixture, stop_player},
+    stream::{StreamInfo, StreamKind},
+};
 use gst::prelude::*;
 use std::sync::{
     Arc,
