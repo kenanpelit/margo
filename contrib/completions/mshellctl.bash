@@ -49,6 +49,9 @@ _mshellctl() {
             mshellctl,doctor)
                 cmd="mshellctl__subcmd__doctor"
                 ;;
+            mshellctl,eyecare)
+                cmd="mshellctl__subcmd__eyecare"
+                ;;
             mshellctl,gamemode)
                 cmd="mshellctl__subcmd__gamemode"
                 ;;
@@ -90,6 +93,9 @@ _mshellctl() {
                 ;;
             mshellctl,plugin)
                 cmd="mshellctl__subcmd__plugin"
+                ;;
+            mshellctl,pomodoro)
+                cmd="mshellctl__subcmd__pomodoro"
                 ;;
             mshellctl,power)
                 cmd="mshellctl__subcmd__power"
@@ -469,6 +475,9 @@ _mshellctl() {
             mshellctl__subcmd__help,doctor)
                 cmd="mshellctl__subcmd__help__subcmd__doctor"
                 ;;
+            mshellctl__subcmd__help,eyecare)
+                cmd="mshellctl__subcmd__help__subcmd__eyecare"
+                ;;
             mshellctl__subcmd__help,gamemode)
                 cmd="mshellctl__subcmd__help__subcmd__gamemode"
                 ;;
@@ -510,6 +519,9 @@ _mshellctl() {
                 ;;
             mshellctl__subcmd__help,plugin)
                 cmd="mshellctl__subcmd__help__subcmd__plugin"
+                ;;
+            mshellctl__subcmd__help,pomodoro)
+                cmd="mshellctl__subcmd__help__subcmd__pomodoro"
                 ;;
             mshellctl__subcmd__help,power)
                 cmd="mshellctl__subcmd__help__subcmd__power"
@@ -759,6 +771,9 @@ _mshellctl() {
                 ;;
             mshellctl__subcmd__help__subcmd__menu,close-all)
                 cmd="mshellctl__subcmd__help__subcmd__menu__subcmd__close__subcmd__all"
+                ;;
+            mshellctl__subcmd__help__subcmd__menu,color-picker)
+                cmd="mshellctl__subcmd__help__subcmd__menu__subcmd__color__subcmd__picker"
                 ;;
             mshellctl__subcmd__help__subcmd__menu,control-center)
                 cmd="mshellctl__subcmd__help__subcmd__menu__subcmd__control__subcmd__center"
@@ -1108,6 +1123,9 @@ _mshellctl() {
             mshellctl__subcmd__help__subcmd__screenshot,window)
                 cmd="mshellctl__subcmd__help__subcmd__screenshot__subcmd__window"
                 ;;
+            mshellctl__subcmd__help__subcmd__session,boot-entries)
+                cmd="mshellctl__subcmd__help__subcmd__session__subcmd__boot__subcmd__entries"
+                ;;
             mshellctl__subcmd__help__subcmd__session,lock)
                 cmd="mshellctl__subcmd__help__subcmd__session__subcmd__lock"
                 ;;
@@ -1119,6 +1137,9 @@ _mshellctl() {
                 ;;
             mshellctl__subcmd__help__subcmd__session,reboot)
                 cmd="mshellctl__subcmd__help__subcmd__session__subcmd__reboot"
+                ;;
+            mshellctl__subcmd__help__subcmd__session,reboot-into)
+                cmd="mshellctl__subcmd__help__subcmd__session__subcmd__reboot__subcmd__into"
                 ;;
             mshellctl__subcmd__help__subcmd__session,shutdown)
                 cmd="mshellctl__subcmd__help__subcmd__session__subcmd__shutdown"
@@ -1132,6 +1153,9 @@ _mshellctl() {
             mshellctl__subcmd__help__subcmd__settings,open)
                 cmd="mshellctl__subcmd__help__subcmd__settings__subcmd__open"
                 ;;
+            mshellctl__subcmd__help__subcmd__theme,bundle)
+                cmd="mshellctl__subcmd__help__subcmd__theme__subcmd__bundle"
+                ;;
             mshellctl__subcmd__help__subcmd__theme,get)
                 cmd="mshellctl__subcmd__help__subcmd__theme__subcmd__get"
                 ;;
@@ -1140,6 +1164,12 @@ _mshellctl() {
                 ;;
             mshellctl__subcmd__help__subcmd__theme,set)
                 cmd="mshellctl__subcmd__help__subcmd__theme__subcmd__set"
+                ;;
+            mshellctl__subcmd__help__subcmd__theme__subcmd__bundle,apply)
+                cmd="mshellctl__subcmd__help__subcmd__theme__subcmd__bundle__subcmd__apply"
+                ;;
+            mshellctl__subcmd__help__subcmd__theme__subcmd__bundle,list)
+                cmd="mshellctl__subcmd__help__subcmd__theme__subcmd__bundle__subcmd__list"
                 ;;
             mshellctl__subcmd__help__subcmd__translate,clipboard)
                 cmd="mshellctl__subcmd__help__subcmd__translate__subcmd__clipboard"
@@ -1348,6 +1378,9 @@ _mshellctl() {
             mshellctl__subcmd__menu,close-all)
                 cmd="mshellctl__subcmd__menu__subcmd__close__subcmd__all"
                 ;;
+            mshellctl__subcmd__menu,color-picker)
+                cmd="mshellctl__subcmd__menu__subcmd__color__subcmd__picker"
+                ;;
             mshellctl__subcmd__menu,control-center)
                 cmd="mshellctl__subcmd__menu__subcmd__control__subcmd__center"
                 ;;
@@ -1488,6 +1521,9 @@ _mshellctl() {
                 ;;
             mshellctl__subcmd__menu__subcmd__help,close-all)
                 cmd="mshellctl__subcmd__menu__subcmd__help__subcmd__close__subcmd__all"
+                ;;
+            mshellctl__subcmd__menu__subcmd__help,color-picker)
+                cmd="mshellctl__subcmd__menu__subcmd__help__subcmd__color__subcmd__picker"
                 ;;
             mshellctl__subcmd__menu__subcmd__help,control-center)
                 cmd="mshellctl__subcmd__menu__subcmd__help__subcmd__control__subcmd__center"
@@ -2176,6 +2212,9 @@ _mshellctl() {
             mshellctl__subcmd__screenshot__subcmd__help,window)
                 cmd="mshellctl__subcmd__screenshot__subcmd__help__subcmd__window"
                 ;;
+            mshellctl__subcmd__session,boot-entries)
+                cmd="mshellctl__subcmd__session__subcmd__boot__subcmd__entries"
+                ;;
             mshellctl__subcmd__session,help)
                 cmd="mshellctl__subcmd__session__subcmd__help"
                 ;;
@@ -2191,11 +2230,17 @@ _mshellctl() {
             mshellctl__subcmd__session,reboot)
                 cmd="mshellctl__subcmd__session__subcmd__reboot"
                 ;;
+            mshellctl__subcmd__session,reboot-into)
+                cmd="mshellctl__subcmd__session__subcmd__reboot__subcmd__into"
+                ;;
             mshellctl__subcmd__session,shutdown)
                 cmd="mshellctl__subcmd__session__subcmd__shutdown"
                 ;;
             mshellctl__subcmd__session,suspend)
                 cmd="mshellctl__subcmd__session__subcmd__suspend"
+                ;;
+            mshellctl__subcmd__session__subcmd__help,boot-entries)
+                cmd="mshellctl__subcmd__session__subcmd__help__subcmd__boot__subcmd__entries"
                 ;;
             mshellctl__subcmd__session__subcmd__help,help)
                 cmd="mshellctl__subcmd__session__subcmd__help__subcmd__help"
@@ -2211,6 +2256,9 @@ _mshellctl() {
                 ;;
             mshellctl__subcmd__session__subcmd__help,reboot)
                 cmd="mshellctl__subcmd__session__subcmd__help__subcmd__reboot"
+                ;;
+            mshellctl__subcmd__session__subcmd__help,reboot-into)
+                cmd="mshellctl__subcmd__session__subcmd__help__subcmd__reboot__subcmd__into"
                 ;;
             mshellctl__subcmd__session__subcmd__help,shutdown)
                 cmd="mshellctl__subcmd__session__subcmd__help__subcmd__shutdown"
@@ -2236,6 +2284,9 @@ _mshellctl() {
             mshellctl__subcmd__settings__subcmd__help,open)
                 cmd="mshellctl__subcmd__settings__subcmd__help__subcmd__open"
                 ;;
+            mshellctl__subcmd__theme,bundle)
+                cmd="mshellctl__subcmd__theme__subcmd__bundle"
+                ;;
             mshellctl__subcmd__theme,get)
                 cmd="mshellctl__subcmd__theme__subcmd__get"
                 ;;
@@ -2248,6 +2299,27 @@ _mshellctl() {
             mshellctl__subcmd__theme,set)
                 cmd="mshellctl__subcmd__theme__subcmd__set"
                 ;;
+            mshellctl__subcmd__theme__subcmd__bundle,apply)
+                cmd="mshellctl__subcmd__theme__subcmd__bundle__subcmd__apply"
+                ;;
+            mshellctl__subcmd__theme__subcmd__bundle,help)
+                cmd="mshellctl__subcmd__theme__subcmd__bundle__subcmd__help"
+                ;;
+            mshellctl__subcmd__theme__subcmd__bundle,list)
+                cmd="mshellctl__subcmd__theme__subcmd__bundle__subcmd__list"
+                ;;
+            mshellctl__subcmd__theme__subcmd__bundle__subcmd__help,apply)
+                cmd="mshellctl__subcmd__theme__subcmd__bundle__subcmd__help__subcmd__apply"
+                ;;
+            mshellctl__subcmd__theme__subcmd__bundle__subcmd__help,help)
+                cmd="mshellctl__subcmd__theme__subcmd__bundle__subcmd__help__subcmd__help"
+                ;;
+            mshellctl__subcmd__theme__subcmd__bundle__subcmd__help,list)
+                cmd="mshellctl__subcmd__theme__subcmd__bundle__subcmd__help__subcmd__list"
+                ;;
+            mshellctl__subcmd__theme__subcmd__help,bundle)
+                cmd="mshellctl__subcmd__theme__subcmd__help__subcmd__bundle"
+                ;;
             mshellctl__subcmd__theme__subcmd__help,get)
                 cmd="mshellctl__subcmd__theme__subcmd__help__subcmd__get"
                 ;;
@@ -2259,6 +2331,12 @@ _mshellctl() {
                 ;;
             mshellctl__subcmd__theme__subcmd__help,set)
                 cmd="mshellctl__subcmd__theme__subcmd__help__subcmd__set"
+                ;;
+            mshellctl__subcmd__theme__subcmd__help__subcmd__bundle,apply)
+                cmd="mshellctl__subcmd__theme__subcmd__help__subcmd__bundle__subcmd__apply"
+                ;;
+            mshellctl__subcmd__theme__subcmd__help__subcmd__bundle,list)
+                cmd="mshellctl__subcmd__theme__subcmd__help__subcmd__bundle__subcmd__list"
                 ;;
             mshellctl__subcmd__translate,clipboard)
                 cmd="mshellctl__subcmd__translate__subcmd__clipboard"
@@ -2369,7 +2447,7 @@ _mshellctl() {
 
     case "${cmd}" in
         mshellctl)
-            opts="-h -V --help --version quit inspect set-wallpaper menu bar hidden-bar custom-refresh audio bluetooth mtune media brightness log dock lock session notification settings wizard wallpaper theme plugin screenshot screenrecord clipboard translate qr toast gamemode calendar vpn power layout osk color play doctor completions help"
+            opts="-h -V --help --version quit inspect set-wallpaper menu bar hidden-bar custom-refresh audio bluetooth mtune media brightness log dock lock session notification settings wizard wallpaper theme plugin screenshot screenrecord clipboard translate qr toast gamemode pomodoro eyecare calendar vpn power layout osk color play doctor completions help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -3884,6 +3962,20 @@ _mshellctl() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        mshellctl__subcmd__eyecare)
+            opts="-h --help break skip reset on off toggle status"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         mshellctl__subcmd__gamemode)
             opts="-h --help on off toggle status"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
@@ -3899,7 +3991,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help)
-            opts="quit inspect set-wallpaper menu bar hidden-bar custom-refresh audio bluetooth mtune media brightness log dock lock session notification settings wizard wallpaper theme plugin screenshot screenrecord clipboard translate qr toast gamemode calendar vpn power layout osk color play doctor completions help"
+            opts="quit inspect set-wallpaper menu bar hidden-bar custom-refresh audio bluetooth mtune media brightness log dock lock session notification settings wizard wallpaper theme plugin screenshot screenrecord clipboard translate qr toast gamemode pomodoro eyecare calendar vpn power layout osk color play doctor completions help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -4640,6 +4732,20 @@ _mshellctl() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        mshellctl__subcmd__help__subcmd__eyecare)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         mshellctl__subcmd__help__subcmd__gamemode)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
@@ -5019,7 +5125,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help__subcmd__menu)
-            opts="app-launcher clipboard clock notifications screenshot wallpaper ufw privacy bluetooth cpu-dashboard audio-dashboard system-update valent keep-awake twilight margo-layout weather keybinds alarm-clock control-center ssh-sessions usb discord-voice crashes vpn dns ai podman github host-monitor agents qr notes ip vpn-indicator network power media-player mtune lyrics session mdash plugin translate close-all"
+            opts="app-launcher clipboard clock notifications screenshot wallpaper ufw privacy bluetooth cpu-dashboard audio-dashboard system-update valent keep-awake twilight margo-layout weather keybinds alarm-clock control-center ssh-sessions usb shelf discord-voice crashes vpn dns ai podman github host-monitor agents qr notes ip vpn-indicator network power media-player mtune lyrics session mdash plugin translate color-picker close-all"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -5145,6 +5251,20 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help__subcmd__menu__subcmd__close__subcmd__all)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__menu__subcmd__color__subcmd__picker)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -6586,6 +6706,20 @@ _mshellctl() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        mshellctl__subcmd__help__subcmd__pomodoro)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         mshellctl__subcmd__help__subcmd__power)
             opts="status cycle set pause resume auto"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
@@ -6923,8 +7057,22 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help__subcmd__session)
-            opts="menu lock logout suspend reboot shutdown"
+            opts="menu lock logout suspend reboot shutdown boot-entries reboot-into"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__session__subcmd__boot__subcmd__entries)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
@@ -6979,6 +7127,20 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help__subcmd__session__subcmd__reboot)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__session__subcmd__reboot__subcmd__into)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -7077,8 +7239,50 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help__subcmd__theme)
-            opts="list get set"
+            opts="list get set bundle"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__theme__subcmd__bundle)
+            opts="list apply"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__theme__subcmd__bundle__subcmd__apply)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__theme__subcmd__bundle__subcmd__list)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
@@ -8127,7 +8331,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__menu)
-            opts="-h --help app-launcher clipboard clock notifications screenshot wallpaper ufw privacy bluetooth cpu-dashboard audio-dashboard system-update valent keep-awake twilight margo-layout weather keybinds alarm-clock control-center ssh-sessions usb discord-voice crashes vpn dns ai podman github host-monitor agents qr notes ip vpn-indicator network power media-player mtune lyrics session mdash plugin translate close-all help"
+            opts="-h --help app-launcher clipboard clock notifications screenshot wallpaper ufw privacy bluetooth cpu-dashboard audio-dashboard system-update valent keep-awake twilight margo-layout weather keybinds alarm-clock control-center ssh-sessions usb shelf discord-voice crashes vpn dns ai podman github host-monitor agents qr notes ip vpn-indicator network power media-player mtune lyrics session mdash plugin translate color-picker close-all help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -8270,6 +8474,20 @@ _mshellctl() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        mshellctl__subcmd__menu__subcmd__color__subcmd__picker)
+            opts="-h --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         mshellctl__subcmd__menu__subcmd__control__subcmd__center)
             opts="-h --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
@@ -8355,7 +8573,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__menu__subcmd__help)
-            opts="app-launcher clipboard clock notifications screenshot wallpaper ufw privacy bluetooth cpu-dashboard audio-dashboard system-update valent keep-awake twilight margo-layout weather keybinds alarm-clock control-center ssh-sessions usb discord-voice crashes vpn dns ai podman github host-monitor agents qr notes ip vpn-indicator network power media-player mtune lyrics session mdash plugin translate close-all help"
+            opts="app-launcher clipboard clock notifications screenshot wallpaper ufw privacy bluetooth cpu-dashboard audio-dashboard system-update valent keep-awake twilight margo-layout weather keybinds alarm-clock control-center ssh-sessions usb shelf discord-voice crashes vpn dns ai podman github host-monitor agents qr notes ip vpn-indicator network power media-player mtune lyrics session mdash plugin translate color-picker close-all help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -8481,6 +8699,20 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__menu__subcmd__help__subcmd__close__subcmd__all)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__menu__subcmd__help__subcmd__color__subcmd__picker)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -11632,6 +11864,20 @@ _mshellctl() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        mshellctl__subcmd__pomodoro)
+            opts="-h --help toggle start pause skip reset reset-all status"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         mshellctl__subcmd__power)
             opts="-h --help status cycle set pause resume auto help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
@@ -12403,7 +12649,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__session)
-            opts="-h --help menu lock logout suspend reboot shutdown help"
+            opts="-h --help menu lock logout suspend reboot shutdown boot-entries reboot-into help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -12416,9 +12662,37 @@ _mshellctl() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        mshellctl__subcmd__session__subcmd__help)
-            opts="menu lock logout suspend reboot shutdown help"
+        mshellctl__subcmd__session__subcmd__boot__subcmd__entries)
+            opts="-h --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__session__subcmd__help)
+            opts="menu lock logout suspend reboot shutdown boot-entries reboot-into help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__session__subcmd__help__subcmd__boot__subcmd__entries)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
@@ -12487,6 +12761,20 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__session__subcmd__help__subcmd__reboot)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__session__subcmd__help__subcmd__reboot__subcmd__into)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -12572,6 +12860,20 @@ _mshellctl() {
             ;;
         mshellctl__subcmd__session__subcmd__reboot)
             opts="-h --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__session__subcmd__reboot__subcmd__into)
+            opts="-h --help <ENTRY>"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -12725,8 +13027,106 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__theme)
-            opts="-h --help list get set help"
+            opts="-h --help list get set bundle help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__theme__subcmd__bundle)
+            opts="-h --help list apply help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__theme__subcmd__bundle__subcmd__apply)
+            opts="-h --help <NAME>"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__theme__subcmd__bundle__subcmd__help)
+            opts="list apply help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__theme__subcmd__bundle__subcmd__help__subcmd__apply)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__theme__subcmd__bundle__subcmd__help__subcmd__help)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__theme__subcmd__bundle__subcmd__help__subcmd__list)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__theme__subcmd__bundle__subcmd__list)
+            opts="-h --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
@@ -12753,8 +13153,50 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__theme__subcmd__help)
-            opts="list get set help"
+            opts="list get set bundle help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__theme__subcmd__help__subcmd__bundle)
+            opts="list apply"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__theme__subcmd__help__subcmd__bundle__subcmd__apply)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__theme__subcmd__help__subcmd__bundle__subcmd__list)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi

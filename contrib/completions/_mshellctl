@@ -489,6 +489,12 @@ _arguments "${_arguments_options[@]}" : \
 '--help[Print help]' \
 && ret=0
 ;;
+(color-picker)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
 (close-all)
 _arguments "${_arguments_options[@]}" : \
 '-h[Print help]' \
@@ -744,6 +750,10 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (translate)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(color-picker)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -1915,6 +1925,19 @@ _arguments "${_arguments_options[@]}" : \
 '--help[Print help]' \
 && ret=0
 ;;
+(boot-entries)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(reboot-into)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+':entry -- Entry number or label:_default' \
+&& ret=0
+;;
 (help)
 _arguments "${_arguments_options[@]}" : \
 ":: :_mshellctl__subcmd__session__subcmd__help_commands" \
@@ -1948,6 +1971,14 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (shutdown)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(boot-entries)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(reboot-into)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -2218,6 +2249,65 @@ _arguments "${_arguments_options[@]}" : \
 ':name:_default' \
 && ret=0
 ;;
+(bundle)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+":: :_mshellctl__subcmd__theme__subcmd__bundle_commands" \
+"*::: :->bundle" \
+&& ret=0
+
+    case $state in
+    (bundle)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mshellctl-theme-bundle-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(apply)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+':name:_default' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_mshellctl__subcmd__theme__subcmd__bundle__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mshellctl-theme-bundle-help-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(apply)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
 (help)
 _arguments "${_arguments_options[@]}" : \
 ":: :_mshellctl__subcmd__theme__subcmd__help_commands" \
@@ -2241,6 +2331,30 @@ _arguments "${_arguments_options[@]}" : \
 (set)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
+;;
+(bundle)
+_arguments "${_arguments_options[@]}" : \
+":: :_mshellctl__subcmd__theme__subcmd__help__subcmd__bundle_commands" \
+"*::: :->bundle" \
+&& ret=0
+
+    case $state in
+    (bundle)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mshellctl-theme-help-bundle-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(apply)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
 ;;
 (help)
 _arguments "${_arguments_options[@]}" : \
@@ -2790,6 +2904,20 @@ _arguments "${_arguments_options[@]}" : \
 '-h[Print help]' \
 '--help[Print help]' \
 '::action -- on | off | toggle | status (default\: toggle):(on off toggle status)' \
+&& ret=0
+;;
+(pomodoro)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+'::action -- toggle | start | pause | skip | reset | reset-all | status (default\: status):(toggle start pause skip reset reset-all status)' \
+&& ret=0
+;;
+(eyecare)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+'::action -- break | skip | reset | on | off | toggle | status (default\: status):(break skip reset on off toggle status)' \
 && ret=0
 ;;
 (calendar)
@@ -3830,6 +3958,10 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(color-picker)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (close-all)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -4294,6 +4426,14 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(boot-entries)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(reboot-into)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
         esac
     ;;
 esac
@@ -4413,6 +4553,30 @@ _arguments "${_arguments_options[@]}" : \
 (set)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
+;;
+(bundle)
+_arguments "${_arguments_options[@]}" : \
+":: :_mshellctl__subcmd__help__subcmd__theme__subcmd__bundle_commands" \
+"*::: :->bundle" \
+&& ret=0
+
+    case $state in
+    (bundle)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mshellctl-help-theme-bundle-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(apply)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
 ;;
         esac
     ;;
@@ -4611,6 +4775,14 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (gamemode)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(pomodoro)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(eyecare)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -4950,7 +5122,9 @@ _mshellctl_commands() {
 'translate:Headless translate\: select or copy text, run this (bind it to a keybind/gesture), get the result copied + toasted back. No menu panel involved — use \`mshellctl menu translate\` for manual entry' \
 'qr:Show a QR code to scan from a phone in the QR menu\: a text / URL (\`-\` = stdin), the clipboard, the Wi-Fi network this machine is on, or its hotspot (\`mshellctl menu qr\` just toggles the menu)' \
 'toast:Show a transient state-change toast — the \`notify-send\` equivalent for the toast surface. Ephemeral (no notification history); usable from scripts and startup services' \
-'gamemode:Game Mode — drop compositor effects, silence notifications, and keep the session awake while gaming. Configure what it affects in Settings → Game Mode' \
+'gamemode:Game Mode — drop compositor effects, silence notifications, and keep the session awake while gaming; optionally switch the power profile, hide the bars / dock, hold back the OSD, stop the wallpaper, pause media and run your hooks. Configure what it affects in Settings → Game Mode' \
+'pomodoro:Pomodoro timer — work / short-break / long-break cycle. Prints the status line after the action (\`phase=work state=running remaining=24\:13 session=1/4 completed=0\`). Lengths and auto-start live in Settings → Widgets → Alarm Clock' \
+'eyecare:20-20-20 eye-care reminder — every 20 minutes of screen time, look ~6 m away for 20 seconds. Prints the status line after the action (\`state=active next-break-in=840s\`). Off by default; \`on\` enables it. Lengths live in Settings → Widgets → Eye Care' \
 'calendar:Calendar — today'\''s / upcoming events and connected accounts (proxied to the \`mcal\` calendar tool). \`calendar account setup google\` connects a Google account' \
 'vpn:Mullvad VPN control — connect / disconnect / pick a relay (proxied to \`mvpn\`). Use \`vpn menu\` for the shell'\''s DNS/VPN panel' \
 'power:Power-profile control — status / cycle / set / pause / resume (proxied to the \`mpower\` daemon). Use \`menu power\` for the panel' \
@@ -5614,6 +5788,11 @@ _mshellctl__subcmd__doctor_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl doctor commands' commands "$@"
 }
+(( $+functions[_mshellctl__subcmd__eyecare_commands] )) ||
+_mshellctl__subcmd__eyecare_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl eyecare commands' commands "$@"
+}
 (( $+functions[_mshellctl__subcmd__gamemode_commands] )) ||
 _mshellctl__subcmd__gamemode_commands() {
     local commands; commands=()
@@ -5650,7 +5829,9 @@ _mshellctl__subcmd__help_commands() {
 'translate:Headless translate\: select or copy text, run this (bind it to a keybind/gesture), get the result copied + toasted back. No menu panel involved — use \`mshellctl menu translate\` for manual entry' \
 'qr:Show a QR code to scan from a phone in the QR menu\: a text / URL (\`-\` = stdin), the clipboard, the Wi-Fi network this machine is on, or its hotspot (\`mshellctl menu qr\` just toggles the menu)' \
 'toast:Show a transient state-change toast — the \`notify-send\` equivalent for the toast surface. Ephemeral (no notification history); usable from scripts and startup services' \
-'gamemode:Game Mode — drop compositor effects, silence notifications, and keep the session awake while gaming. Configure what it affects in Settings → Game Mode' \
+'gamemode:Game Mode — drop compositor effects, silence notifications, and keep the session awake while gaming; optionally switch the power profile, hide the bars / dock, hold back the OSD, stop the wallpaper, pause media and run your hooks. Configure what it affects in Settings → Game Mode' \
+'pomodoro:Pomodoro timer — work / short-break / long-break cycle. Prints the status line after the action (\`phase=work state=running remaining=24\:13 session=1/4 completed=0\`). Lengths and auto-start live in Settings → Widgets → Alarm Clock' \
+'eyecare:20-20-20 eye-care reminder — every 20 minutes of screen time, look ~6 m away for 20 seconds. Prints the status line after the action (\`state=active next-break-in=840s\`). Off by default; \`on\` enables it. Lengths live in Settings → Widgets → Eye Care' \
 'calendar:Calendar — today'\''s / upcoming events and connected accounts (proxied to the \`mcal\` calendar tool). \`calendar account setup google\` connects a Google account' \
 'vpn:Mullvad VPN control — connect / disconnect / pick a relay (proxied to \`mvpn\`). Use \`vpn menu\` for the shell'\''s DNS/VPN panel' \
 'power:Power-profile control — status / cycle / set / pause / resume (proxied to the \`mpower\` daemon). Use \`menu power\` for the panel' \
@@ -5972,6 +6153,11 @@ _mshellctl__subcmd__help__subcmd__doctor_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help doctor commands' commands "$@"
 }
+(( $+functions[_mshellctl__subcmd__help__subcmd__eyecare_commands] )) ||
+_mshellctl__subcmd__help__subcmd__eyecare_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help eyecare commands' commands "$@"
+}
 (( $+functions[_mshellctl__subcmd__help__subcmd__gamemode_commands] )) ||
 _mshellctl__subcmd__help__subcmd__gamemode_commands() {
     local commands; commands=()
@@ -6178,6 +6364,7 @@ _mshellctl__subcmd__help__subcmd__menu_commands() {
 'mdash:Toggle the mdash dashboard menu — greeting header, calendar + weather, the quick-settings card stack, and a menu-shortcut grid' \
 'plugin:Toggle an installed plugin'\''s panel/menu by key — e.g. \`menu plugin assistant\` or \`menu plugin mullvad\`. Generic\: works for any plugin that ships a panel or a \`\[\[widget.menu\]\]\`, with no per-plugin code (the key matches the plugin id or a widget key)' \
 'translate:Toggle the Translate menu (manual language lookup; the select-or-copy + keybind flow is headless — see \`mshellctl translate\`)' \
+'color-picker:Toggle the Color Picker menu (recent colours + HEX / RGB / HSL editor)' \
 'close-all:Close all open menus' \
     )
     _describe -t commands 'mshellctl help menu commands' commands "$@"
@@ -6226,6 +6413,11 @@ _mshellctl__subcmd__help__subcmd__menu__subcmd__clock_commands() {
 _mshellctl__subcmd__help__subcmd__menu__subcmd__close-all_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help menu close-all commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__menu__subcmd__color-picker_commands] )) ||
+_mshellctl__subcmd__help__subcmd__menu__subcmd__color-picker_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help menu color-picker commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__help__subcmd__menu__subcmd__control-center_commands] )) ||
 _mshellctl__subcmd__help__subcmd__menu__subcmd__control-center_commands() {
@@ -6805,6 +6997,11 @@ _mshellctl__subcmd__help__subcmd__plugin__subcmd__reload_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help plugin reload commands' commands "$@"
 }
+(( $+functions[_mshellctl__subcmd__help__subcmd__pomodoro_commands] )) ||
+_mshellctl__subcmd__help__subcmd__pomodoro_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help pomodoro commands' commands "$@"
+}
 (( $+functions[_mshellctl__subcmd__help__subcmd__power_commands] )) ||
 _mshellctl__subcmd__help__subcmd__power_commands() {
     local commands; commands=(
@@ -6956,8 +7153,15 @@ _mshellctl__subcmd__help__subcmd__session_commands() {
 'suspend:Suspend the system' \
 'reboot:Reboot the system' \
 'shutdown:Power off the system' \
+'boot-entries:List the UEFI boot entries \`reboot-into\` takes (efibootmgr)' \
+'reboot-into:Reboot into one UEFI boot entry for the next boot only (BootNext, through a polkit prompt). ENTRY is its number (\`0003\`) or exact label (\`cachyos-nvme0\`); see \`mshellctl session boot-entries\`' \
     )
     _describe -t commands 'mshellctl help session commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__session__subcmd__boot-entries_commands] )) ||
+_mshellctl__subcmd__help__subcmd__session__subcmd__boot-entries_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help session boot-entries commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__help__subcmd__session__subcmd__lock_commands] )) ||
 _mshellctl__subcmd__help__subcmd__session__subcmd__lock_commands() {
@@ -6978,6 +7182,11 @@ _mshellctl__subcmd__help__subcmd__session__subcmd__menu_commands() {
 _mshellctl__subcmd__help__subcmd__session__subcmd__reboot_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help session reboot commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__session__subcmd__reboot-into_commands] )) ||
+_mshellctl__subcmd__help__subcmd__session__subcmd__reboot-into_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help session reboot-into commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__help__subcmd__session__subcmd__shutdown_commands] )) ||
 _mshellctl__subcmd__help__subcmd__session__subcmd__shutdown_commands() {
@@ -7018,8 +7227,27 @@ _mshellctl__subcmd__help__subcmd__theme_commands() {
 'list:List every built-in colour scheme as \`name<TAB>label\`, one per line' \
 'get:Print the canonical name of the colour scheme currently in use' \
 'set:Switch to a colour scheme by name and apply it live. Name matching ignores case and \`-\`/\`_\`/space separators (e.g. \`kenp\`, \`tokyo-night\`). Use \`theme list\` to see the valid names' \
+'bundle:Saved theme bundles (Settings → Theme → Bundles)\: a scheme plus its wallpapers, applied together' \
     )
     _describe -t commands 'mshellctl help theme commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__theme__subcmd__bundle_commands] )) ||
+_mshellctl__subcmd__help__subcmd__theme__subcmd__bundle_commands() {
+    local commands; commands=(
+'list:List the saved bundles as \`name<TAB>scheme<TAB>wallpapers\`, with a fourth \`active\` column on the active one' \
+'apply:Apply a bundle by name (exact, then case-insensitive). While it is active, \`mshellctl wallpaper next|previous|random\` step through its wallpapers only' \
+    )
+    _describe -t commands 'mshellctl help theme bundle commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__theme__subcmd__bundle__subcmd__apply_commands] )) ||
+_mshellctl__subcmd__help__subcmd__theme__subcmd__bundle__subcmd__apply_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help theme bundle apply commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__theme__subcmd__bundle__subcmd__list_commands] )) ||
+_mshellctl__subcmd__help__subcmd__theme__subcmd__bundle__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help theme bundle list commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__help__subcmd__theme__subcmd__get_commands] )) ||
 _mshellctl__subcmd__help__subcmd__theme__subcmd__get_commands() {
@@ -7510,6 +7738,7 @@ _mshellctl__subcmd__menu_commands() {
 'mdash:Toggle the mdash dashboard menu — greeting header, calendar + weather, the quick-settings card stack, and a menu-shortcut grid' \
 'plugin:Toggle an installed plugin'\''s panel/menu by key — e.g. \`menu plugin assistant\` or \`menu plugin mullvad\`. Generic\: works for any plugin that ships a panel or a \`\[\[widget.menu\]\]\`, with no per-plugin code (the key matches the plugin id or a widget key)' \
 'translate:Toggle the Translate menu (manual language lookup; the select-or-copy + keybind flow is headless — see \`mshellctl translate\`)' \
+'color-picker:Toggle the Color Picker menu (recent colours + HEX / RGB / HSL editor)' \
 'close-all:Close all open menus' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
@@ -7559,6 +7788,11 @@ _mshellctl__subcmd__menu__subcmd__clock_commands() {
 _mshellctl__subcmd__menu__subcmd__close-all_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl menu close-all commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__menu__subcmd__color-picker_commands] )) ||
+_mshellctl__subcmd__menu__subcmd__color-picker_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl menu color-picker commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__menu__subcmd__control-center_commands] )) ||
 _mshellctl__subcmd__menu__subcmd__control-center_commands() {
@@ -7638,6 +7872,7 @@ _mshellctl__subcmd__menu__subcmd__help_commands() {
 'mdash:Toggle the mdash dashboard menu — greeting header, calendar + weather, the quick-settings card stack, and a menu-shortcut grid' \
 'plugin:Toggle an installed plugin'\''s panel/menu by key — e.g. \`menu plugin assistant\` or \`menu plugin mullvad\`. Generic\: works for any plugin that ships a panel or a \`\[\[widget.menu\]\]\`, with no per-plugin code (the key matches the plugin id or a widget key)' \
 'translate:Toggle the Translate menu (manual language lookup; the select-or-copy + keybind flow is headless — see \`mshellctl translate\`)' \
+'color-picker:Toggle the Color Picker menu (recent colours + HEX / RGB / HSL editor)' \
 'close-all:Close all open menus' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
@@ -7687,6 +7922,11 @@ _mshellctl__subcmd__menu__subcmd__help__subcmd__clock_commands() {
 _mshellctl__subcmd__menu__subcmd__help__subcmd__close-all_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl menu help close-all commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__menu__subcmd__help__subcmd__color-picker_commands] )) ||
+_mshellctl__subcmd__menu__subcmd__help__subcmd__color-picker_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl menu help color-picker commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__menu__subcmd__help__subcmd__control-center_commands] )) ||
 _mshellctl__subcmd__menu__subcmd__help__subcmd__control-center_commands() {
@@ -8959,6 +9199,11 @@ _mshellctl__subcmd__plugin__subcmd__reload_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl plugin reload commands' commands "$@"
 }
+(( $+functions[_mshellctl__subcmd__pomodoro_commands] )) ||
+_mshellctl__subcmd__pomodoro_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl pomodoro commands' commands "$@"
+}
 (( $+functions[_mshellctl__subcmd__power_commands] )) ||
 _mshellctl__subcmd__power_commands() {
     local commands; commands=(
@@ -9263,9 +9508,16 @@ _mshellctl__subcmd__session_commands() {
 'suspend:Suspend the system' \
 'reboot:Reboot the system' \
 'shutdown:Power off the system' \
+'boot-entries:List the UEFI boot entries \`reboot-into\` takes (efibootmgr)' \
+'reboot-into:Reboot into one UEFI boot entry for the next boot only (BootNext, through a polkit prompt). ENTRY is its number (\`0003\`) or exact label (\`cachyos-nvme0\`); see \`mshellctl session boot-entries\`' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'mshellctl session commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__session__subcmd__boot-entries_commands] )) ||
+_mshellctl__subcmd__session__subcmd__boot-entries_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl session boot-entries commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__session__subcmd__help_commands] )) ||
 _mshellctl__subcmd__session__subcmd__help_commands() {
@@ -9276,9 +9528,16 @@ _mshellctl__subcmd__session__subcmd__help_commands() {
 'suspend:Suspend the system' \
 'reboot:Reboot the system' \
 'shutdown:Power off the system' \
+'boot-entries:List the UEFI boot entries \`reboot-into\` takes (efibootmgr)' \
+'reboot-into:Reboot into one UEFI boot entry for the next boot only (BootNext, through a polkit prompt). ENTRY is its number (\`0003\`) or exact label (\`cachyos-nvme0\`); see \`mshellctl session boot-entries\`' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'mshellctl session help commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__session__subcmd__help__subcmd__boot-entries_commands] )) ||
+_mshellctl__subcmd__session__subcmd__help__subcmd__boot-entries_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl session help boot-entries commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__session__subcmd__help__subcmd__help_commands] )) ||
 _mshellctl__subcmd__session__subcmd__help__subcmd__help_commands() {
@@ -9304,6 +9563,11 @@ _mshellctl__subcmd__session__subcmd__help__subcmd__menu_commands() {
 _mshellctl__subcmd__session__subcmd__help__subcmd__reboot_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl session help reboot commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__session__subcmd__help__subcmd__reboot-into_commands] )) ||
+_mshellctl__subcmd__session__subcmd__help__subcmd__reboot-into_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl session help reboot-into commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__session__subcmd__help__subcmd__shutdown_commands] )) ||
 _mshellctl__subcmd__session__subcmd__help__subcmd__shutdown_commands() {
@@ -9334,6 +9598,11 @@ _mshellctl__subcmd__session__subcmd__menu_commands() {
 _mshellctl__subcmd__session__subcmd__reboot_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl session reboot commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__session__subcmd__reboot-into_commands] )) ||
+_mshellctl__subcmd__session__subcmd__reboot-into_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl session reboot-into commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__session__subcmd__shutdown_commands] )) ||
 _mshellctl__subcmd__session__subcmd__shutdown_commands() {
@@ -9399,9 +9668,53 @@ _mshellctl__subcmd__theme_commands() {
 'list:List every built-in colour scheme as \`name<TAB>label\`, one per line' \
 'get:Print the canonical name of the colour scheme currently in use' \
 'set:Switch to a colour scheme by name and apply it live. Name matching ignores case and \`-\`/\`_\`/space separators (e.g. \`kenp\`, \`tokyo-night\`). Use \`theme list\` to see the valid names' \
+'bundle:Saved theme bundles (Settings → Theme → Bundles)\: a scheme plus its wallpapers, applied together' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'mshellctl theme commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__theme__subcmd__bundle_commands] )) ||
+_mshellctl__subcmd__theme__subcmd__bundle_commands() {
+    local commands; commands=(
+'list:List the saved bundles as \`name<TAB>scheme<TAB>wallpapers\`, with a fourth \`active\` column on the active one' \
+'apply:Apply a bundle by name (exact, then case-insensitive). While it is active, \`mshellctl wallpaper next|previous|random\` step through its wallpapers only' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mshellctl theme bundle commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__theme__subcmd__bundle__subcmd__apply_commands] )) ||
+_mshellctl__subcmd__theme__subcmd__bundle__subcmd__apply_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl theme bundle apply commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__theme__subcmd__bundle__subcmd__help_commands] )) ||
+_mshellctl__subcmd__theme__subcmd__bundle__subcmd__help_commands() {
+    local commands; commands=(
+'list:List the saved bundles as \`name<TAB>scheme<TAB>wallpapers\`, with a fourth \`active\` column on the active one' \
+'apply:Apply a bundle by name (exact, then case-insensitive). While it is active, \`mshellctl wallpaper next|previous|random\` step through its wallpapers only' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mshellctl theme bundle help commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__theme__subcmd__bundle__subcmd__help__subcmd__apply_commands] )) ||
+_mshellctl__subcmd__theme__subcmd__bundle__subcmd__help__subcmd__apply_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl theme bundle help apply commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__theme__subcmd__bundle__subcmd__help__subcmd__help_commands] )) ||
+_mshellctl__subcmd__theme__subcmd__bundle__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl theme bundle help help commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__theme__subcmd__bundle__subcmd__help__subcmd__list_commands] )) ||
+_mshellctl__subcmd__theme__subcmd__bundle__subcmd__help__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl theme bundle help list commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__theme__subcmd__bundle__subcmd__list_commands] )) ||
+_mshellctl__subcmd__theme__subcmd__bundle__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl theme bundle list commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__theme__subcmd__get_commands] )) ||
 _mshellctl__subcmd__theme__subcmd__get_commands() {
@@ -9414,9 +9727,28 @@ _mshellctl__subcmd__theme__subcmd__help_commands() {
 'list:List every built-in colour scheme as \`name<TAB>label\`, one per line' \
 'get:Print the canonical name of the colour scheme currently in use' \
 'set:Switch to a colour scheme by name and apply it live. Name matching ignores case and \`-\`/\`_\`/space separators (e.g. \`kenp\`, \`tokyo-night\`). Use \`theme list\` to see the valid names' \
+'bundle:Saved theme bundles (Settings → Theme → Bundles)\: a scheme plus its wallpapers, applied together' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'mshellctl theme help commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__theme__subcmd__help__subcmd__bundle_commands] )) ||
+_mshellctl__subcmd__theme__subcmd__help__subcmd__bundle_commands() {
+    local commands; commands=(
+'list:List the saved bundles as \`name<TAB>scheme<TAB>wallpapers\`, with a fourth \`active\` column on the active one' \
+'apply:Apply a bundle by name (exact, then case-insensitive). While it is active, \`mshellctl wallpaper next|previous|random\` step through its wallpapers only' \
+    )
+    _describe -t commands 'mshellctl theme help bundle commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__theme__subcmd__help__subcmd__bundle__subcmd__apply_commands] )) ||
+_mshellctl__subcmd__theme__subcmd__help__subcmd__bundle__subcmd__apply_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl theme help bundle apply commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__theme__subcmd__help__subcmd__bundle__subcmd__list_commands] )) ||
+_mshellctl__subcmd__theme__subcmd__help__subcmd__bundle__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl theme help bundle list commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__theme__subcmd__help__subcmd__get_commands] )) ||
 _mshellctl__subcmd__theme__subcmd__help__subcmd__get_commands() {
