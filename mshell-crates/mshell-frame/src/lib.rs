@@ -21,6 +21,7 @@ mod plugin_cmd;
 mod plugin_providers;
 pub mod pomodoro;
 mod removable_drives;
+pub mod rss;
 pub mod screen_corners;
 mod ssh;
 

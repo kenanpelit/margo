@@ -5251,6 +5251,7 @@ dependencies = [
  "mshell-utils",
  "notify-rust",
  "nucleo-matcher",
+ "quick-xml 0.39.2",
  "reactive_graph",
  "reactive_stores",
  "regex",

@@ -48,6 +48,7 @@ pub(crate) struct NotificationSettingsModel {
     quiet_end: String,
     _effects: EffectScope,
     _sound_rules_effects: EffectScope,
+    _rss_effects: EffectScope,
 }
 
 #[derive(Debug)]
@@ -1445,9 +1446,11 @@ impl Component for NotificationSettingsModel {
 
         let (sound_rules_section, sound_rules_effects) =
             crate::notification_sound_rules::build_sound_rules_section();
+        let (rss_section, rss_effects) = crate::rss_settings::build_rss_section();
 
         let model = NotificationSettingsModel {
             _sound_rules_effects: sound_rules_effects,
+            _rss_effects: rss_effects,
             crash_notify: config_manager().config().crashes().notify().get_untracked(),
             journal_priority: journal_priority_index(
                 &config_manager()
@@ -1629,6 +1632,7 @@ impl Component for NotificationSettingsModel {
         }
         rebuild_blocklist_rows(&widgets.blocklist_list, &model.blocklist, &sender);
         widgets.page_box.append(&sound_rules_section);
+        widgets.page_box.append(&rss_section);
 
         ComponentParts { model, widgets }
     }

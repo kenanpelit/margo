@@ -25,6 +25,7 @@ mod menus;
 mod notifications;
 mod session;
 mod osd;
+mod rss;
 mod social;
 mod system;
 mod theme;
@@ -39,6 +40,7 @@ pub use menus::*;
 pub use notifications::*;
 pub use session::*;
 pub use osd::*;
+pub use rss::*;
 pub use social::*;
 pub use system::*;
 pub use theme::*;
@@ -88,6 +90,8 @@ pub struct Config {
     pub github: GithubConfig,
     /// Discord voice pill: launch on click, hide when not in a call.
     pub discord: DiscordConfig,
+    /// RSS / Atom feeds that notify on new items.
+    pub rss: RssConfig,
 }
 
 /// Transient state-change toasts — a small opaque corner card that auto-

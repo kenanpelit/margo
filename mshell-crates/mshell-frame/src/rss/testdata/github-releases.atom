@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" xml:lang="en-US">
+  <id>tag:github.com,2008:https://github.com/niri-wm/niri/releases</id>
+  <link type="text/html" rel="alternate" href="https://github.com/niri-wm/niri/releases"/>
+  <link type="application/atom+xml" rel="self" href="https://github.com/niri-wm/niri/releases.atom"/>
+  <title>Release notes from niri</title>
+  <updated>2026-04-25T11:20:03Z</updated>
+  <entry>
+    <id>tag:github.com,2008:Repository/676934005/v26.04</id>
+    <updated>2026-04-25T19:15:41Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/niri-wm/niri/releases/tag/v26.04"/>
+    <title>v26.04</title>
+    <content type="html">&lt;p&gt;Niri is a scrollable-tiling Wayland compositor. Windows are arranged in columns on an infinite strip going to the right. Opening a new window never causes existing windows to resize.&lt;/p&gt;
+&lt;p&gt;As you may have noticed, niri now lives in a &lt;a href=&quot;https://github.com/niri-wm</content>
+    <author>
+      <name>YaLTeR</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/1794388?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/676934005/v25.11</id>
+    <updated>2025-11-30T21:06:53Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/niri-wm/niri/releases/tag/v25.11"/>
+    <title>v25.11</title>
+    <content type="html">&lt;p&gt;Two weeks ago, Cloudflare had a major outage that took down a good half of the internet. Their &lt;a href=&quot;https://blog.cloudflare.com/18-november-2025-outage/&quot; rel=&quot;nofollow&quot;&gt;postmortem&lt;/a&gt; included a snippet of Rust code with an &lt;code&gt;unwrap()&lt;/code</content>
+    <author>
+      <name>YaLTeR</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/1794388?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/676934005/v25.08</id>
+    <updated>2025-08-30T13:38:23Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/niri-wm/niri/releases/tag/v25.08"/>
+    <title>v25.08</title>
+    <content type="html">&lt;p&gt;Niri is a scrollable-tiling Wayland compositor. Windows are arranged in columns on an infinite strip going to the right. Opening a new window never causes existing windows to resize.&lt;/p&gt;
+&lt;p</content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+</feed>

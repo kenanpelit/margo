@@ -374,6 +374,22 @@ From a script or keybind: `mshellctl session boot-entries` lists the
 entries, `mshellctl session reboot-into <0003|label>` reboots into one.
 Needs `efibootmgr`.
 
+## RSS / Atom feed notifier
+
+Add feeds under **Settings → Notifications → RSS feeds** (`rss.feeds`: a
+URL and an optional name). Each feed (RSS 2.0, RSS 1.0 / RDF or Atom) is
+checked every `rss.interval_minutes` (30 by default, 5–1440) with a
+conditional request (`If-None-Match` / `If-Modified-Since`), so an
+unchanged feed costs one `304`. A new item pops a notification: the item's
+title, the feed's name (or its own title), and an **Open** action (or a
+click) that opens the item in the browser — `http(s)` links only. At most
+`rss.max_per_poll` item notifications per check (5); more are summed up in
+one. `rss.notify: false` keeps tracking without notifications.
+Adding a feed only marks what it already lists as seen, so it never floods
+you with its backlog. Seen items (up to 300 per feed) and the HTTP
+validators are kept in `$XDG_STATE_HOME/margo/rss-seen.json`. With no feeds
+the notifier does no network I/O at all.
+
 ## Phone screen mirroring (Valent menu)
 
 The Valent menu ends with a **Screen mirroring** card: every adb device

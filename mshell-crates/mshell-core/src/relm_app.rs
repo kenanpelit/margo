@@ -315,6 +315,8 @@ impl Component for Shell {
         let audio_inhibit = AudioInhibitModel::builder()
             .launch(AudioInhibitInit {})
             .detach();
+        // RSS / Atom notifier: idles until `rss.feeds` lists a feed.
+        mshell_frame::rss::start();
 
         let style_manager = StyleManagerModel::builder().launch(()).forward(
             sender.input_sender(),

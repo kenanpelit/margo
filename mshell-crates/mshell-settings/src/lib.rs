@@ -93,6 +93,7 @@ mod privacy_settings;
 mod region_settings;
 pub mod reorder_dnd;
 mod row;
+mod rss_settings;
 mod screen_settings;
 mod session_settings;
 pub mod settings;
