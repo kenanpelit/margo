@@ -6,9 +6,10 @@
 //!
 //!   * left click  → toggle the `MenuType::Mtune` panel.
 //!   * right click → play / pause in place.
+//!   * scroll (opt-in `scroll_skips`) → next / previous, one per gesture.
 //!   * when mtune isn't running → a single glyph; click launches it.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures::StreamExt;
 use mshell_common::scoped_effects::EffectScope;
@@ -38,6 +39,27 @@ pub(crate) struct TuneBarConfig {
     show_playlist_remaining: bool,
     cover_size_px: i32,
     label_max_width_chars: i32,
+    scroll_skips: bool,
+}
+
+/// A scroll-driven skip.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Skip {
+    Next,
+    Previous,
+}
+
+/// Quiet time after a scroll skip: the rest of one wheel flick or touchpad
+/// swipe must not skip again.
+const SCROLL_SKIP_GAP: Duration = Duration::from_millis(400);
+
+/// What a vertical scroll of `dy` does, `since_last` after the previous
+/// skip: up (negative) = next, down = previous, nothing inside the gap.
+fn scroll_skip(dy: f64, since_last: Option<Duration>) -> Option<Skip> {
+    if dy == 0.0 || since_last.is_some_and(|d| d < SCROLL_SKIP_GAP) {
+        return None;
+    }
+    Some(if dy < 0.0 { Skip::Next } else { Skip::Previous })
 }
 
 pub(crate) struct MtuneModel {
@@ -65,6 +87,8 @@ pub(crate) struct MtuneModel {
     /// Live from `bars.widgets.mtune` — toggling in Settings updates the pill
     /// without a restart.
     bar_cfg: TuneBarConfig,
+    /// When the last scroll skip fired (see [`scroll_skip`]).
+    last_scroll_skip: Option<Instant>,
     _effects: EffectScope,
 }
 
@@ -74,6 +98,8 @@ pub(crate) enum MtuneInput {
     PlayPauseClicked,
     PreviousClicked,
     NextClicked,
+    /// Vertical scroll over the pill (`dy`).
+    Scrolled(f64),
 }
 
 #[derive(Debug)]
@@ -289,6 +315,7 @@ impl Component for MtuneModel {
             repeat_plays: 0,
             playlist_remaining: Duration::ZERO,
             bar_cfg: read_bar_config_untracked(),
+            last_scroll_skip: None,
             _effects: effects,
         };
         read(&mut model);
@@ -303,6 +330,20 @@ impl Component for MtuneModel {
             toggle_sender.input(MtuneInput::PlayPauseClicked);
         });
         widgets.root.add_controller(gesture);
+
+        // Scroll → next / previous (when `scroll_skips` is on; otherwise the
+        // event propagates as before).
+        let scroll = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
+        let scroll_sender = sender.clone();
+        scroll.connect_scroll(move |_, _dx, dy| {
+            if read_bar_config_untracked().scroll_skips {
+                scroll_sender.input(MtuneInput::Scrolled(dy));
+                gtk::glib::Propagation::Stop
+            } else {
+                gtk::glib::Propagation::Proceed
+            }
+        });
+        widgets.root.add_controller(scroll);
 
         apply(&widgets, &model);
         ComponentParts { model, widgets }
@@ -338,6 +379,20 @@ impl Component for MtuneModel {
                     tokio_rt_spawn(async move {
                         mtune_service().player.next().await;
                     });
+                }
+            }
+            MtuneInput::Scrolled(dy) => {
+                let since = self.last_scroll_skip.map(|t| t.elapsed());
+                if self.running
+                    && self.bar_cfg.scroll_skips
+                    && let Some(skip) = scroll_skip(dy, since)
+                {
+                    self.last_scroll_skip = Some(Instant::now());
+                    let next = match skip {
+                        Skip::Next => MtuneInput::NextClicked,
+                        Skip::Previous => MtuneInput::PreviousClicked,
+                    };
+                    sender.input(next);
                 }
             }
         }
@@ -385,6 +440,7 @@ impl From<TuneBarWidget> for TuneBarConfig {
             show_playlist_remaining: cfg.show_playlist_remaining,
             cover_size_px: clamp_cover_size(cfg.cover_size_px),
             label_max_width_chars: clamp_label_width(cfg.label_max_width_chars),
+            scroll_skips: cfg.scroll_skips,
         }
     }
 }
@@ -584,6 +640,23 @@ mod tests {
         assert!(cfg.show_track_info && cfg.show_transport && cfg.show_progress_bar);
         assert_eq!(cfg.cover_size_px, 16);
         assert_eq!(cfg.label_max_width_chars, 40);
+    }
+
+    #[test]
+    fn scrolling_skips_once_per_gesture() {
+        // Up = next, down = previous (stations, like the source plugin).
+        assert_eq!(scroll_skip(-1.0, None), Some(Skip::Next));
+        assert_eq!(scroll_skip(1.0, None), Some(Skip::Previous));
+        assert_eq!(scroll_skip(0.0, None), None);
+        // The rest of one swipe / wheel flick is swallowed…
+        assert_eq!(scroll_skip(-1.0, Some(Duration::from_millis(120))), None);
+        // …but a deliberate second notch skips again.
+        assert_eq!(scroll_skip(-1.0, Some(SCROLL_SKIP_GAP)), Some(Skip::Next));
+    }
+
+    #[test]
+    fn scroll_skipping_is_off_by_default() {
+        assert!(!TuneBarConfig::from(TuneBarWidget::default()).scroll_skips);
     }
 
     #[test]

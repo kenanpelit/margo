@@ -25,6 +25,7 @@ pub(crate) struct TuneBarSettingsModel {
     show_playlist_remaining: bool,
     cover_size: f64,
     label_width: f64,
+    scroll_skips: bool,
     _effects: EffectScope,
 }
 
@@ -40,6 +41,7 @@ pub(crate) enum TuneBarSettingsInput {
     ShowPlaylistRemainingChanged(bool),
     CoverSizeChanged(f64),
     LabelWidthChanged(f64),
+    ScrollSkipsChanged(bool),
     Effect(TuneBarSettingsEffect),
 }
 
@@ -57,6 +59,7 @@ pub(crate) enum TuneBarSettingsEffect {
     ShowPlaylistRemaining(bool),
     CoverSize(i32),
     LabelWidth(i32),
+    ScrollSkips(bool),
 }
 
 #[derive(Debug)]
@@ -390,6 +393,52 @@ impl Component for TuneBarSettingsModel {
 
                 gtk::Label {
                     add_css_class: "label-large-bold",
+                    set_label: "Behaviour",
+                    set_halign: gtk::Align::Start,
+                },
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Scroll to skip",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Scroll up over the pill for the next track, down for the previous one — one skip per scroll. With radio stations playing (Tune → Radio & Podcasts), this flips through your stations.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(scroll_skips_handler)]
+                            set_active: model.scroll_skips,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(TuneBarSettingsInput::ScrollSkipsChanged(v));
+                                glib::Propagation::Proceed
+                            } @scroll_skips_handler,
+                        },
+                    },
+                },
+
+                gtk::Label {
+                    add_css_class: "label-large-bold",
                     set_label: "Size",
                     set_halign: gtk::Align::Start,
                 },
@@ -508,6 +557,7 @@ impl Component for TuneBarSettingsModel {
         push_effect!(show_playlist_remaining, ShowPlaylistRemaining);
         push_effect!(cover_size_px, CoverSize);
         push_effect!(label_max_width_chars, LabelWidth);
+        push_effect!(scroll_skips, ScrollSkips);
 
         let cfg = config_manager()
             .config()
@@ -526,6 +576,7 @@ impl Component for TuneBarSettingsModel {
             show_playlist_remaining: cfg.show_playlist_remaining,
             cover_size: cfg.cover_size_px as f64,
             label_width: cfg.label_max_width_chars as f64,
+            scroll_skips: cfg.scroll_skips,
             _effects: effects,
         };
 
@@ -569,6 +620,9 @@ impl Component for TuneBarSettingsModel {
                 config_manager()
                     .update_config(|c| c.bars.widgets.mtune.label_max_width_chars = chars);
             }
+            TuneBarSettingsInput::ScrollSkipsChanged(v) => {
+                config_manager().update_config(|c| c.bars.widgets.mtune.scroll_skips = v);
+            }
             TuneBarSettingsInput::Effect(effect) => match effect {
                 TuneBarSettingsEffect::ShowCover(v) => self.show_cover = v,
                 TuneBarSettingsEffect::ShowTrackInfo(v) => self.show_track_info = v,
@@ -580,6 +634,7 @@ impl Component for TuneBarSettingsModel {
                 TuneBarSettingsEffect::ShowPlaylistRemaining(v) => self.show_playlist_remaining = v,
                 TuneBarSettingsEffect::CoverSize(v) => self.cover_size = v as f64,
                 TuneBarSettingsEffect::LabelWidth(v) => self.label_width = v as f64,
+                TuneBarSettingsEffect::ScrollSkips(v) => self.scroll_skips = v,
             },
         }
     }

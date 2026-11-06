@@ -748,6 +748,11 @@ pub struct TuneBarWidget {
     /// 10..=80 when applied.
     #[serde(default = "default_tune_label_max_width_chars")]
     pub label_max_width_chars: i32,
+    /// Scroll over the pill to skip: up = next, down = previous — with a
+    /// queue of radio stations, flip through stations. One skip per
+    /// gesture. Off by default (a stray scroll would skip a track).
+    #[serde(default)]
+    pub scroll_skips: bool,
 }
 
 pub(super) fn default_tune_cover_size_px() -> i32 {
@@ -771,6 +776,7 @@ impl Default for TuneBarWidget {
             show_playlist_remaining: true,
             cover_size_px: default_tune_cover_size_px(),
             label_max_width_chars: default_tune_label_max_width_chars(),
+            scroll_skips: false,
         }
     }
 }
