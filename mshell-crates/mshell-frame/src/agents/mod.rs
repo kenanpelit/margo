@@ -15,6 +15,7 @@ pub(crate) mod launcher;
 pub(crate) mod limits;
 pub(crate) mod local_stats;
 pub(crate) mod memory;
+pub(crate) mod plugins;
 pub(crate) mod pricing;
 pub(crate) mod sessions;
 pub(crate) mod settings;
@@ -663,6 +664,12 @@ pub(crate) fn memory_files_now() -> Vec<memory::MemoryFile> {
             .filter(|m| m.is_file())
             .map(|m| m.len())
     })
+}
+
+/// Installed Claude Code plugins and bare skills of every account
+/// (blocking file reads; read-only).
+pub(crate) fn plugins_now() -> plugins::Inventory {
+    plugins::inventory(&accounts::accounts(now_ms()))
 }
 
 #[path = "mod_tests.rs"]

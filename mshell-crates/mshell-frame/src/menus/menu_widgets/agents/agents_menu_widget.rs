@@ -19,11 +19,15 @@
 //! Memory (third tab): every CLAUDE.md, click to edit
 //! ([`super::memory_page`]).
 //!
+//! Plugins (fourth tab): installed Claude Code plugins and bare skills,
+//! read-only ([`super::plugins_page`]).
+//!
 //! The menu subscribes to the shared polls only while revealed.
 
 use crate::agents::limits::{self, LimitWindow, PaceStatus, Provider, WindowKind};
 use crate::agents::local_stats::compact_count;
 use crate::agents::memory::MemoryFile;
+use crate::agents::plugins::Inventory;
 use crate::agents::sessions;
 use crate::agents::sessions::SavedSession;
 use crate::agents::{
@@ -32,6 +36,7 @@ use crate::agents::{
 };
 use crate::common_widgets::segmented::{Segmented, SegmentedStyle};
 use crate::menus::menu_widgets::agents::memory_page::rebuild_memory;
+use crate::menus::menu_widgets::agents::plugins_page::rebuild_plugins;
 use crate::menus::menu_widgets::agents::sessions_page::{SessionAction, SessionsPage};
 use crate::menus::menu_widgets::panel_header::PanelHeader;
 use mshell_config::schema::menu_widgets::MenuWidget;
@@ -50,7 +55,8 @@ pub(crate) struct AgentsMenuWidgetModel {
     sessions: Option<SessionsSnapshot>,
     history: Option<HistorySnapshot>,
     memory_box: gtk::Box,
-    /// 0 = Usage, 1 = Sessions, 2 = Memory.
+    plugins_box: gtk::Box,
+    /// 0 = Usage, 1 = Sessions, 2 = Memory, 3 = Plugins.
     tab: u8,
     /// Bumped per search; an older search's result is dropped.
     search_gen: u64,
@@ -89,6 +95,7 @@ pub(crate) enum AgentsMenuWidgetCommandOutput {
     /// `(generation, query, hits)` of a full-text search.
     SearchDone(u64, String, Vec<SavedSession>),
     Memory(Vec<MemoryFile>),
+    Plugins(Inventory),
     /// A jump / resume finished; `Some` = what went wrong.
     ActionDone(Option<String>),
 }
@@ -137,6 +144,20 @@ impl Component for AgentsMenuWidgetModel {
 
                 #[local_ref]
                 memory_box -> gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 8,
+                },
+            },
+
+            #[name = "plugins_scroll"]
+            gtk::ScrolledWindow {
+                set_hscrollbar_policy: gtk::PolicyType::Never,
+                set_min_content_height: 0,
+                set_propagate_natural_height: true,
+                set_visible: false,
+
+                #[local_ref]
+                plugins_box -> gtk::Box {
                     set_orientation: gtk::Orientation::Vertical,
                     set_spacing: 8,
                 },
@@ -232,9 +253,10 @@ impl Component for AgentsMenuWidgetModel {
         let usage_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
         let sessions_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
         let memory_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
+        let plugins_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
         let s = sender.clone();
         let tabs = Segmented::new(
-            &["Usage", "Sessions", "Memory"],
+            &["Usage", "Sessions", "Memory", "Plugins"],
             0,
             SegmentedStyle::Capsule,
             move |i| {
@@ -270,6 +292,7 @@ impl Component for AgentsMenuWidgetModel {
             sessions: None,
             history: None,
             memory_box: memory_box.clone(),
+            plugins_box: plugins_box.clone(),
             tab: 0,
             search_gen: 0,
             notice: None,
@@ -282,6 +305,7 @@ impl Component for AgentsMenuWidgetModel {
         crate::menus::list_fit::mark_menu_list(&widgets.usage_scroll, 560);
         crate::menus::list_fit::mark_menu_list(&widgets.sessions_scroll, 560);
         crate::menus::list_fit::mark_menu_list(&widgets.memory_scroll, 560);
+        crate::menus::list_fit::mark_menu_list(&widgets.plugins_scroll, 560);
         rebuild_usage(&model.usage_box, None, None);
         model.update_sessions();
         model.update_tabs();
@@ -301,9 +325,12 @@ impl Component for AgentsMenuWidgetModel {
                 widgets.usage_scroll.set_visible(tab == 0);
                 widgets.sessions_scroll.set_visible(tab == 1);
                 widgets.memory_scroll.set_visible(tab == 2);
+                widgets.plugins_scroll.set_visible(tab == 3);
                 self.update_tabs();
-                if tab == 2 {
-                    self.load_memory(&sender);
+                match tab {
+                    2 => self.load_memory(&sender),
+                    3 => self.load_plugins(&sender),
+                    _ => {}
                 }
             }
             AgentsMenuWidgetInput::Search(q) => {
@@ -343,8 +370,10 @@ impl Component for AgentsMenuWidgetModel {
                 request_refresh();
                 SESSIONS_POLL.refresh_now();
                 HISTORY_POLL.refresh_now();
-                if self.tab == 2 {
-                    self.load_memory(&sender);
+                match self.tab {
+                    2 => self.load_memory(&sender),
+                    3 => self.load_plugins(&sender),
+                    _ => {}
                 }
             }
             AgentsMenuWidgetInput::OpenDashboard => open_url(Provider::Claude.dashboard_url()),
@@ -400,6 +429,9 @@ impl Component for AgentsMenuWidgetModel {
             AgentsMenuWidgetCommandOutput::Memory(files) => {
                 rebuild_memory(&self.memory_box, Some(&files), self.open_handler(&sender));
             }
+            AgentsMenuWidgetCommandOutput::Plugins(inv) => {
+                rebuild_plugins(&self.plugins_box, Some(&inv), self.open_handler(&sender));
+            }
             AgentsMenuWidgetCommandOutput::Sessions(s) => {
                 if self.sessions.as_ref() != Some(&s) {
                     self.sessions = Some(s);
@@ -427,6 +459,17 @@ impl AgentsMenuWidgetModel {
                 .await
                 .unwrap_or_default();
             AgentsMenuWidgetCommandOutput::Memory(files)
+        });
+    }
+
+    /// Read the plugin / skill inventory off the GTK thread.
+    fn load_plugins(&self, sender: &ComponentSender<Self>) {
+        rebuild_plugins(&self.plugins_box, None, self.open_handler(sender));
+        sender.oneshot_command(async {
+            let inv = tokio::task::spawn_blocking(crate::agents::plugins_now)
+                .await
+                .unwrap_or_default();
+            AgentsMenuWidgetCommandOutput::Plugins(inv)
         });
     }
 
