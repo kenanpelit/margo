@@ -93,6 +93,7 @@ impl Frame {
                 BarOutput::DnsClicked => FrameInput::ToggleMenu(MenuId::Dns),
                 BarOutput::PodmanClicked => FrameInput::ToggleMenu(MenuId::Podman),
                 BarOutput::GithubClicked => FrameInput::ToggleMenu(MenuId::Github),
+                BarOutput::HostMonitorClicked => FrameInput::ToggleMenu(MenuId::HostMonitor),
                 BarOutput::AgentsClicked => FrameInput::ToggleMenu(MenuId::Agents),
                 BarOutput::NotesClicked => FrameInput::ToggleMenu(MenuId::Notes),
                 BarOutput::PluginPanelClicked {

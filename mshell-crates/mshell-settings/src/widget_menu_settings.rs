@@ -61,6 +61,8 @@ pub(crate) enum MenuKind {
     Agents,
     /// The `github_menu`, opened by the GitHub bar pill.
     Github,
+    /// The `host_monitor_menu`, opened by the Host Monitor bar pill.
+    HostMonitor,
     /// The `qr_menu`, opened by `mshellctl qr` / `mshellctl menu qr`.
     Qr,
     Power,
@@ -113,6 +115,7 @@ macro_rules! menu_read {
             MenuKind::Notifications => m.notification_menu().$field().$g(),
             MenuKind::Podman => m.podman_menu().$field().$g(),
             MenuKind::Github => m.github_menu().$field().$g(),
+            MenuKind::HostMonitor => m.host_monitor_menu().$field().$g(),
             MenuKind::Qr => m.qr_menu().$field().$g(),
             MenuKind::Agents => m.agents_menu().$field().$g(),
             MenuKind::Wallpaper => m.wallpaper_menu().$field().$g(),
@@ -161,6 +164,7 @@ macro_rules! menu_write {
             MenuKind::Notifications => c.menus.notification_menu.$field = $val,
             MenuKind::Podman => c.menus.podman_menu.$field = $val,
             MenuKind::Github => c.menus.github_menu.$field = $val,
+            MenuKind::HostMonitor => c.menus.host_monitor_menu.$field = $val,
             MenuKind::Qr => c.menus.qr_menu.$field = $val,
             MenuKind::Agents => c.menus.agents_menu.$field = $val,
             MenuKind::Wallpaper => c.menus.wallpaper_menu.$field = $val,
@@ -213,6 +217,7 @@ impl MenuKind {
             Self::Notifications => "Notifications",
             Self::Podman => "Podman",
             Self::Github => "GitHub",
+            Self::HostMonitor => "Host Monitor",
             Self::Qr => "QR Code",
             Self::Agents => "AI Agents",
             Self::Power => "Power Profile",
@@ -273,6 +278,7 @@ impl MenuKind {
             MenuKind::Ai,
             MenuKind::Podman,
             MenuKind::Github,
+            MenuKind::HostMonitor,
             MenuKind::Qr,
             MenuKind::Agents,
             MenuKind::Notes,
@@ -367,6 +373,7 @@ pub(crate) struct WidgetMenuSettingsModel {
     _mdash_buttons_controller: Option<Controller<MdashButtonsSettingsModel>>,
     /// Valent-only: keeps the screen-mirroring section's config mirror.
     _valent_effects: Option<EffectScope>,
+    _host_monitor_effects: Option<EffectScope>,
     _effects: EffectScope,
 }
 
@@ -708,6 +715,9 @@ impl Component for WidgetMenuSettingsModel {
         // Valent-only: the scrcpy (screen mirroring) options.
         let valent_section = (kind == MenuKind::Valent)
             .then(crate::valent_mirror_settings::build_valent_mirror_section);
+        // Host Monitor-only: interval, timeout and notifications.
+        let host_monitor_section = (kind == MenuKind::HostMonitor)
+            .then(crate::net::host_monitor_settings::build_host_monitor_section);
 
         let model = WidgetMenuSettingsModel {
             kind,
@@ -725,6 +735,7 @@ impl Component for WidgetMenuSettingsModel {
             _cc_tiles_controller: cc_tiles_controller,
             _mdash_buttons_controller: mdash_buttons_controller,
             _valent_effects: None,
+            _host_monitor_effects: None,
             _effects: effects,
         };
 
@@ -742,6 +753,10 @@ impl Component for WidgetMenuSettingsModel {
         if let Some((section, effects)) = valent_section {
             widgets.page_box.append(&section);
             model._valent_effects = Some(effects);
+        }
+        if let Some((section, effects)) = host_monitor_section {
+            widgets.page_box.append(&section);
+            model._host_monitor_effects = Some(effects);
         }
 
         ComponentParts { model, widgets }

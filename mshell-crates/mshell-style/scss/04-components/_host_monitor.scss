@@ -1,0 +1,52 @@
+@use "../02-functions/index" as *;
+// Host Monitor — bar pill (down count) and the host list menu. Severity
+// ladder (DESIGN.md §2): all up = --success, any down = --error; the
+// round-trip time steps --success / --warning / --error. Tokens only (§1).
+
+.host-monitor-menu-widget {
+  padding: 0;
+}
+
+.host-monitor-menu-widget scrolledwindow,
+.host-monitor-list {
+  background-color: transparent;
+}
+
+// ── Bar pill ──────────────────────────────────────────────────
+.host-monitor-bar-widget.ok image {
+  color: var(--success);
+}
+.host-monitor-bar-widget.error image,
+.host-monitor-bar-widget.error label {
+  color: var(--error);
+}
+.host-monitor-bar-label {
+  font-size: var(--font-bar);
+  font-variant-numeric: tabular-nums;
+}
+
+// ── Rows ──────────────────────────────────────────────────────
+.ok-boxed-list > .host-monitor-row {
+  padding: var(--space-2) var(--space-3);
+}
+
+.host-monitor-status {
+  -gtk-icon-size: var(--icon-sm);
+
+  &.up { color: var(--success); }
+  &.down { color: var(--error); }
+  &.checking {
+    color: var(--on-surface-variant);
+    opacity: 0.65;
+  }
+}
+
+.host-monitor-latency {
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+
+  &.good { color: var(--success); }
+  &.slow { color: var(--warning); }
+  &.bad { color: var(--error); }
+}

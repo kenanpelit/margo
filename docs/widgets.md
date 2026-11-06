@@ -64,6 +64,7 @@ parameter and use YAML tag syntax:
 | `Vpn` | VPN (Mullvad) | Native Mullvad pill driving the `mvpn` binary. Shield tints when the tunnel is up (relay + location in the tooltip). Click opens the VPN menu — live tunnel rx/tx graph (wg0-mullvad), connect / random / fastest, lockdown, auto-connect, quantum, plus a collapsible DNS section. |
 | `VpnIndicator` | VPN Indicator | Lights up while a *generic* VPN tunnel is up — OpenVPN (`tun*`) or WireGuard (`wg*`: wg-quick, NetworkManager). Reads `/sys/class/net` (polled); the whole pill hides while disconnected, and the active interface name shows in the tooltip. Mullvad (`wg0-mullvad`) is excluded — the dedicated `Vpn` pill covers it. No menu. |
 | `Dns` | DNS | Standalone DNS / Blocky panel (separate from the combined VPN pill). Polls DNS/VPN/Blocky state; click opens the DNS menu. |
+| `HostMonitor` | Host Monitor | Pings your own list of hosts (a router, a home server, a VPN endpoint) on an interval: the server glyph is green while all answer and red with a count of the down hosts when any does not; a notification when a host goes down and when it is back. Click opens the Host Monitor menu ([details](#host-monitor)); right-click checks now. Needs `ping` (iputils). |
 | `Ip` | Public IP | Public IP from ipinfo.io (polled). Click opens a detail panel (city, ASN, …). |
 | `Bluetooth` | Bluetooth | Adapter state icon; tints when a paired device is connected (a "hooked up to my headphones" cue). Opens the Bluetooth panel. |
 | `Valent` | Valent Connect | The main paired phone's connection state + battery level, from [Valent](https://valent.andyholmes.ca/) (KDE Connect protocol). Left-click opens the Valent Connect menu (phone status, actions, [screen mirroring](#phone-screen-mirroring-valent-menu)); right-click refreshes device discovery. |
@@ -250,6 +251,28 @@ profile and re-activates it. The rollback is a transient systemd user timer
 (`margo-net-rollback-<uuid>`), armed before anything is written, so it still
 runs if the shell restarts in the meantime. Changes to inactive profiles and
 non-IP settings (autoconnect, metered, Wi-Fi password) apply directly.
+
+## Host monitor
+
+Add the `HostMonitor` pill to a bar, open it and use **+** to add a host:
+an IP (`192.168.1.1`), a host name (`nas.lan`) or a pasted link — scheme,
+user, port and path are dropped and only the host is pinged. A label is
+optional. Each row shows the host's state (up, down with the reason — *No
+reply*, *Unknown host*, *Network unreachable* — or *Checking…*), the
+round-trip time (green under 100 ms, amber under 300 ms, red above) and a
+remove button; **⟳** checks now. The list lives in
+`network.host_monitor.hosts` (`host`, `label`).
+
+One check is three pings 0.2 s apart, so a single lost packet is not an
+outage; a host is down when none of them is answered. Checks run every
+`network.host_monitor.interval_seconds` (30 s, 5–3600) with a
+`timeout_seconds` reply wait (1 s, 1–10), all hosts at once, while the pill
+or the menu is shown. A host that goes down notifies (`notify_down`, on —
+also for one already down when the shell starts) and its recovery replaces
+that notification (`notify_recovery`, on). These four are under **Settings
+→ Widgets → Host Monitor → Checks**; `mshellctl menu host-monitor` toggles
+the menu. Hosts that drop ICMP (some firewalls and cloud hosts) always read
+as down.
 
 ## SSH port forwards (SSH Sessions menu)
 

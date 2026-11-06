@@ -114,6 +114,8 @@ pub enum MenuCommands {
     Podman,
     /// Toggle the GitHub menu
     Github,
+    /// Toggle the Host Monitor menu (pinged hosts: up / down, latency)
+    HostMonitor,
     /// Toggle the AI Agents menu
     Agents,
     /// Toggle the QR code menu (share text / Wi-Fi with a phone)
@@ -281,6 +283,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Github => {
             shell().await?.github().await?;
+        }
+        MenuCommands::HostMonitor => {
+            shell().await?.host_monitor().await?;
         }
         MenuCommands::Agents => {
             shell().await?.agents().await?;

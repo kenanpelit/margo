@@ -34,6 +34,9 @@ use crate::menus::menu_widgets::dns::dns_menu_widget::{DnsMenuWidgetInput, DnsMe
 use crate::menus::menu_widgets::github::github_menu_widget::{
     GithubMenuWidgetInput, GithubMenuWidgetModel,
 };
+use crate::menus::menu_widgets::host_monitor::host_monitor_menu_widget::{
+    HostMonitorMenuWidgetInput, HostMonitorMenuWidgetModel,
+};
 use crate::menus::menu_widgets::ip::ip_menu_widget::{IpMenuWidgetInput, IpMenuWidgetModel};
 use crate::menus::menu_widgets::keep_awake::keep_awake_menu_widget::{
     KeepAwakeMenuWidgetInput, KeepAwakeMenuWidgetModel,
@@ -126,6 +129,7 @@ pub(crate) enum MenuType {
     Ai,
     Podman,
     Github,
+    HostMonitor,
     Qr,
     Agents,
     Notes,
@@ -525,6 +529,12 @@ impl Component for MenuModel {
                 effect_widgets!(effects, base_config, sender, agents_menu);
                 effect_min_width!(effects, base_config, sender, agents_menu);
                 effect_max_height!(effects, base_config, sender, agents_menu);
+            }
+            MenuType::HostMonitor => {
+                css_class = "host-monitor-menu".to_string();
+                effect_widgets!(effects, base_config, sender, host_monitor_menu);
+                effect_min_width!(effects, base_config, sender, host_monitor_menu);
+                effect_max_height!(effects, base_config, sender, host_monitor_menu);
             }
             MenuType::Qr => {
                 css_class = "quick-settings-menu qr-menu".to_string();
@@ -1079,6 +1089,14 @@ impl Component for MenuModel {
                         controller
                             .sender()
                             .send(AgentsMenuWidgetInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<HostMonitorMenuWidgetModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(HostMonitorMenuWidgetInput::ParentRevealChanged(visible))
                             .ok();
                     }
                     if let Some(controller) =

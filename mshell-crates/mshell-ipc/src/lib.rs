@@ -106,6 +106,7 @@ pub trait Shell {
     fn color_picker(&self) -> zbus::Result<()>;
     fn podman(&self) -> zbus::Result<()>;
     fn github(&self) -> zbus::Result<()>;
+    fn host_monitor(&self) -> zbus::Result<()>;
     fn agents(&self) -> zbus::Result<()>;
     fn qr_menu(&self) -> zbus::Result<()>;
     fn qr(&self, mode: &str, text: &str) -> zbus::Result<()>;

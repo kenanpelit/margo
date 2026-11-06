@@ -10,6 +10,7 @@ pub mod clear_box;
 pub mod denoise;
 pub mod discord;
 pub mod gtk;
+pub mod host_monitor;
 pub mod hotspot;
 pub mod hotspot_secret;
 pub mod hover_scroll;

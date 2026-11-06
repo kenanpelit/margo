@@ -528,6 +528,12 @@ impl IPCService {
     async fn github(&self) -> fdo::Result<()> {
         self.send(IPCCommand::Menu(mshell_frame::frame::MenuId::Github, false))
     }
+    async fn host_monitor(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Menu(
+            mshell_frame::frame::MenuId::HostMonitor,
+            false,
+        ))
+    }
     async fn agents(&self) -> fdo::Result<()> {
         self.send(IPCCommand::Menu(mshell_frame::frame::MenuId::Agents, false))
     }

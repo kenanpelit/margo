@@ -310,6 +310,12 @@ _arguments "${_arguments_options[@]}" : \
 '--help[Print help]' \
 && ret=0
 ;;
+(host-monitor)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
 (agents)
 _arguments "${_arguments_options[@]}" : \
 '-h[Print help]' \
@@ -636,6 +642,10 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (github)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(host-monitor)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -3714,6 +3724,10 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(host-monitor)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (agents)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -6134,6 +6148,7 @@ _mshellctl__subcmd__help__subcmd__menu_commands() {
 'ai:Toggle the AI assistant chat menu' \
 'podman:Toggle the Podman menu' \
 'github:Toggle the GitHub menu' \
+'host-monitor:Toggle the Host Monitor menu (pinged hosts\: up / down, latency)' \
 'agents:Toggle the AI Agents menu' \
 'qr:Toggle the QR code menu (share text / Wi-Fi with a phone)' \
 'notes:Toggle the Notes Hub menu' \
@@ -6226,6 +6241,11 @@ _mshellctl__subcmd__help__subcmd__menu__subcmd__dns_commands() {
 _mshellctl__subcmd__help__subcmd__menu__subcmd__github_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help menu github commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__menu__subcmd__host-monitor_commands] )) ||
+_mshellctl__subcmd__help__subcmd__menu__subcmd__host-monitor_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help menu host-monitor commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__help__subcmd__menu__subcmd__ip_commands] )) ||
 _mshellctl__subcmd__help__subcmd__menu__subcmd__ip_commands() {
@@ -7454,6 +7474,7 @@ _mshellctl__subcmd__menu_commands() {
 'ai:Toggle the AI assistant chat menu' \
 'podman:Toggle the Podman menu' \
 'github:Toggle the GitHub menu' \
+'host-monitor:Toggle the Host Monitor menu (pinged hosts\: up / down, latency)' \
 'agents:Toggle the AI Agents menu' \
 'qr:Toggle the QR code menu (share text / Wi-Fi with a phone)' \
 'notes:Toggle the Notes Hub menu' \
@@ -7580,6 +7601,7 @@ _mshellctl__subcmd__menu__subcmd__help_commands() {
 'ai:Toggle the AI assistant chat menu' \
 'podman:Toggle the Podman menu' \
 'github:Toggle the GitHub menu' \
+'host-monitor:Toggle the Host Monitor menu (pinged hosts\: up / down, latency)' \
 'agents:Toggle the AI Agents menu' \
 'qr:Toggle the QR code menu (share text / Wi-Fi with a phone)' \
 'notes:Toggle the Notes Hub menu' \
@@ -7678,6 +7700,11 @@ _mshellctl__subcmd__menu__subcmd__help__subcmd__github_commands() {
 _mshellctl__subcmd__menu__subcmd__help__subcmd__help_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl menu help help commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__menu__subcmd__help__subcmd__host-monitor_commands] )) ||
+_mshellctl__subcmd__menu__subcmd__help__subcmd__host-monitor_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl menu help host-monitor commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__menu__subcmd__help__subcmd__ip_commands] )) ||
 _mshellctl__subcmd__menu__subcmd__help__subcmd__ip_commands() {
@@ -7879,6 +7906,11 @@ _mshellctl__subcmd__menu__subcmd__help__subcmd__wallpaper_commands() {
 _mshellctl__subcmd__menu__subcmd__help__subcmd__weather_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl menu help weather commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__menu__subcmd__host-monitor_commands] )) ||
+_mshellctl__subcmd__menu__subcmd__host-monitor_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl menu host-monitor commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__menu__subcmd__ip_commands] )) ||
 _mshellctl__subcmd__menu__subcmd__ip_commands() {

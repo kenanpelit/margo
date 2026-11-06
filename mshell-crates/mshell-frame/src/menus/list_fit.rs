@@ -63,6 +63,7 @@ pub(crate) fn lists_follow_menu_height(kinds: &[MenuWidget]) -> bool {
                 k,
                 MenuWidget::Agents
                     | MenuWidget::Github
+                    | MenuWidget::HostMonitor
                     | MenuWidget::Crashes
                     | MenuWidget::Usb
                     | MenuWidget::DiscordVoice
@@ -201,6 +202,7 @@ mod tests {
         for kinds in [
             &m.agents_menu.widgets,
             &m.github_menu.widgets,
+            &m.host_monitor_menu.widgets,
             &m.crashes_menu.widgets,
             &m.usb_menu.widgets,
             &m.discord_voice_menu.widgets,

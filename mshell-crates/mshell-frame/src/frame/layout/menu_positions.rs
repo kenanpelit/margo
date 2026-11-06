@@ -62,6 +62,7 @@ macro_rules! positioned_menus {
             MARGO_LAYOUT_MENU => margo_layout_menu,
             TRANSLATE_MENU => translate_menu,
             COLOR_PICKER_MENU => color_picker_menu,
+            NHOST_MONITOR_MENU => host_monitor_menu,
             NPLUGIN_PANEL_MENU => plugin_panel_menu,
         }
     };

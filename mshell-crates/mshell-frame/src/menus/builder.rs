@@ -52,6 +52,9 @@ use crate::menus::menu_widgets::dns::dns_menu_widget::{DnsMenuWidgetInit, DnsMen
 use crate::menus::menu_widgets::github::github_menu_widget::{
     GithubMenuWidgetInit, GithubMenuWidgetModel,
 };
+use crate::menus::menu_widgets::host_monitor::host_monitor_menu_widget::{
+    HostMonitorMenuWidgetInit, HostMonitorMenuWidgetModel,
+};
 use crate::menus::menu_widgets::ip::ip_menu_widget::{IpMenuWidgetInit, IpMenuWidgetModel};
 use crate::menus::menu_widgets::keep_awake::keep_awake_menu_widget::{
     KeepAwakeMenuWidgetInit, KeepAwakeMenuWidgetModel, KeepAwakeMenuWidgetOutput,
@@ -383,6 +386,11 @@ pub fn build_widget(
         MenuWidget::Github => Box::new(
             GithubMenuWidgetModel::builder()
                 .launch(GithubMenuWidgetInit {})
+                .detach(),
+        ),
+        MenuWidget::HostMonitor => Box::new(
+            HostMonitorMenuWidgetModel::builder()
+                .launch(HostMonitorMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::Qr => Box::new(

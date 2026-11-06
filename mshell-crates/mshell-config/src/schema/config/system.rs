@@ -108,6 +108,51 @@ pub struct NetworkConfig {
     /// runs as a systemd user service while started; none start on their
     /// own.
     pub ssh_forwards: Vec<SshForward>,
+    /// Host monitor (Host Monitor bar pill and menu): hosts pinged on an
+    /// interval, with a notification when one goes down or comes back.
+    pub host_monitor: HostMonitorConfig,
+}
+
+/// The Host Monitor's host list and timing. Inert until a host is added
+/// and the `HostMonitor` pill is on a bar (the pings run while the pill or
+/// its menu is shown).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct HostMonitorConfig {
+    /// The hosts, in display order.
+    pub hosts: Vec<MonitoredHost>,
+    /// Seconds between checks (5–3600).
+    pub interval_seconds: u32,
+    /// Seconds to wait for a ping reply (1–10).
+    pub timeout_seconds: u32,
+    /// Notify when a host stops answering.
+    pub notify_down: bool,
+    /// Notify when a host that was down answers again.
+    pub notify_recovery: bool,
+}
+
+impl Default for HostMonitorConfig {
+    fn default() -> Self {
+        Self {
+            hosts: Vec::new(),
+            interval_seconds: 30,
+            timeout_seconds: 1,
+            notify_down: true,
+            notify_recovery: true,
+        }
+    }
+}
+
+/// One monitored host.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize, Store, Patch, JsonSchema,
+)]
+#[serde(default)]
+pub struct MonitoredHost {
+    /// An IP address or host name (a pasted URL is reduced to its host).
+    pub host: String,
+    /// Optional display name; empty = the host.
+    pub label: String,
 }
 
 /// One `ssh -L` forward: `127.0.0.1:<local_port>` on this machine reaches

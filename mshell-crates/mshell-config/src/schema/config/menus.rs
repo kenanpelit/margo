@@ -29,6 +29,10 @@ pub struct Menus {
     /// missing so profiles predating it still parse.
     #[serde(default = "default_qr_menu")]
     pub qr_menu: Menu,
+    /// The Host Monitor pill's panel. Default-on-missing so profiles
+    /// predating it still parse.
+    #[serde(default = "default_host_monitor_menu")]
+    pub host_monitor_menu: Menu,
     pub notes_menu: Menu,
     pub ip_menu: Menu,
     pub network_menu: Menu,
@@ -266,6 +270,15 @@ pub(super) fn default_qr_menu() -> Menu {
         position: Position::TopRight,
         widgets: vec![MenuWidget::Qr],
         minimum_width: 360,
+        maximum_height: 0,
+    }
+}
+
+pub(super) fn default_host_monitor_menu() -> Menu {
+    Menu {
+        position: Position::TopRight,
+        widgets: vec![MenuWidget::HostMonitor],
+        minimum_width: 380,
         maximum_height: 0,
     }
 }
@@ -554,6 +567,7 @@ impl Default for Menus {
             agents_menu: default_agents_menu(),
             github_menu: default_github_menu(),
             qr_menu: default_qr_menu(),
+            host_monitor_menu: default_host_monitor_menu(),
             podman_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Podman],

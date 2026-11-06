@@ -165,6 +165,8 @@ pub enum BarWidget {
     Agents,
     /// GitHub pill — unread notification count (gh CLI); the menu is an inbox plus the user's open PRs with CI / review state.
     Github,
+    /// Host Monitor pill — pings a list of hosts (`network.host_monitor`); a count badge when any is down, notifications on down and recovery.
+    HostMonitor,
     Power,
     Ufw,
     Privacy,
@@ -250,6 +252,7 @@ impl BarWidget {
             BarWidget::Notifications => "Notifications",
             BarWidget::Podman => "Podman",
             BarWidget::Github => "GitHub",
+            BarWidget::HostMonitor => "Host Monitor",
             BarWidget::Agents => "AI Agents",
             BarWidget::Power => "Power Profile",
             BarWidget::Ufw => "UFW Firewall",
@@ -323,6 +326,7 @@ impl BarWidget {
             BarWidget::Notifications,
             BarWidget::Podman,
             BarWidget::Github,
+            BarWidget::HostMonitor,
             BarWidget::Agents,
             BarWidget::Power,
             BarWidget::Ufw,

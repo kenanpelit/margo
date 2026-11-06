@@ -778,6 +778,9 @@ _mshellctl() {
             mshellctl__subcmd__help__subcmd__menu,github)
                 cmd="mshellctl__subcmd__help__subcmd__menu__subcmd__github"
                 ;;
+            mshellctl__subcmd__help__subcmd__menu,host-monitor)
+                cmd="mshellctl__subcmd__help__subcmd__menu__subcmd__host__subcmd__monitor"
+                ;;
             mshellctl__subcmd__help__subcmd__menu,ip)
                 cmd="mshellctl__subcmd__help__subcmd__menu__subcmd__ip"
                 ;;
@@ -1363,6 +1366,9 @@ _mshellctl() {
             mshellctl__subcmd__menu,help)
                 cmd="mshellctl__subcmd__menu__subcmd__help"
                 ;;
+            mshellctl__subcmd__menu,host-monitor)
+                cmd="mshellctl__subcmd__menu__subcmd__host__subcmd__monitor"
+                ;;
             mshellctl__subcmd__menu,ip)
                 cmd="mshellctl__subcmd__menu__subcmd__ip"
                 ;;
@@ -1497,6 +1503,9 @@ _mshellctl() {
                 ;;
             mshellctl__subcmd__menu__subcmd__help,help)
                 cmd="mshellctl__subcmd__menu__subcmd__help__subcmd__help"
+                ;;
+            mshellctl__subcmd__menu__subcmd__help,host-monitor)
+                cmd="mshellctl__subcmd__menu__subcmd__help__subcmd__host__subcmd__monitor"
                 ;;
             mshellctl__subcmd__menu__subcmd__help,ip)
                 cmd="mshellctl__subcmd__menu__subcmd__help__subcmd__ip"
@@ -5001,7 +5010,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help__subcmd__menu)
-            opts="app-launcher clipboard clock notifications screenshot wallpaper ufw privacy bluetooth cpu-dashboard audio-dashboard system-update valent keep-awake twilight margo-layout weather keybinds alarm-clock control-center ssh-sessions usb discord-voice crashes vpn dns ai podman github agents qr notes ip vpn-indicator network power media-player mtune lyrics session mdash plugin translate close-all"
+            opts="app-launcher clipboard clock notifications screenshot wallpaper ufw privacy bluetooth cpu-dashboard audio-dashboard system-update valent keep-awake twilight margo-layout weather keybinds alarm-clock control-center ssh-sessions usb discord-voice crashes vpn dns ai podman github host-monitor agents qr notes ip vpn-indicator network power media-player mtune lyrics session mdash plugin translate close-all"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -5211,6 +5220,20 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help__subcmd__menu__subcmd__github)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__menu__subcmd__host__subcmd__monitor)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -8081,7 +8104,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__menu)
-            opts="-h --help app-launcher clipboard clock notifications screenshot wallpaper ufw privacy bluetooth cpu-dashboard audio-dashboard system-update valent keep-awake twilight margo-layout weather keybinds alarm-clock control-center ssh-sessions usb discord-voice crashes vpn dns ai podman github agents qr notes ip vpn-indicator network power media-player mtune lyrics session mdash plugin translate close-all help"
+            opts="-h --help app-launcher clipboard clock notifications screenshot wallpaper ufw privacy bluetooth cpu-dashboard audio-dashboard system-update valent keep-awake twilight margo-layout weather keybinds alarm-clock control-center ssh-sessions usb discord-voice crashes vpn dns ai podman github host-monitor agents qr notes ip vpn-indicator network power media-player mtune lyrics session mdash plugin translate close-all help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -8309,7 +8332,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__menu__subcmd__help)
-            opts="app-launcher clipboard clock notifications screenshot wallpaper ufw privacy bluetooth cpu-dashboard audio-dashboard system-update valent keep-awake twilight margo-layout weather keybinds alarm-clock control-center ssh-sessions usb discord-voice crashes vpn dns ai podman github agents qr notes ip vpn-indicator network power media-player mtune lyrics session mdash plugin translate close-all help"
+            opts="app-launcher clipboard clock notifications screenshot wallpaper ufw privacy bluetooth cpu-dashboard audio-dashboard system-update valent keep-awake twilight margo-layout weather keybinds alarm-clock control-center ssh-sessions usb discord-voice crashes vpn dns ai podman github host-monitor agents qr notes ip vpn-indicator network power media-player mtune lyrics session mdash plugin translate close-all help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -8533,6 +8556,20 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__menu__subcmd__help__subcmd__help)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__menu__subcmd__help__subcmd__host__subcmd__monitor)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -9067,6 +9104,20 @@ _mshellctl() {
         mshellctl__subcmd__menu__subcmd__help__subcmd__weather)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__menu__subcmd__host__subcmd__monitor)
+            opts="-h --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi

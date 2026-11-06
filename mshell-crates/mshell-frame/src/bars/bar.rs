@@ -14,6 +14,7 @@ use crate::bars::bar_widgets::custom::{CustomWidgetInit, CustomWidgetModel, Cust
 use crate::bars::bar_widgets::dark_mode::{DarkModeInit, DarkModeModel};
 use crate::bars::bar_widgets::discord_voice::{DiscordVoiceInit, DiscordVoiceModel};
 use crate::bars::bar_widgets::github::{GithubInit, GithubModel};
+use crate::bars::bar_widgets::host_monitor::{HostMonitorInit, HostMonitorModel};
 use crate::bars::bar_widgets::ip::{IpInit, IpModel};
 use crate::bars::bar_widgets::keep_awake::{KeepAwakeInit, KeepAwakeModel};
 use crate::bars::bar_widgets::keybinds::{KeybindsInit, KeybindsModel};
@@ -250,6 +251,7 @@ pub(crate) enum BarOutput {
     DnsClicked,
     PodmanClicked,
     GithubClicked,
+    HostMonitorClicked,
     AgentsClicked,
     NotesClicked,
     IpClicked,
@@ -1405,6 +1407,15 @@ impl BarModel {
                     }
                 },
             )),
+            BarWidget::HostMonitor => Box::new(
+                HostMonitorModel::builder()
+                    .launch(HostMonitorInit {})
+                    .forward(sender.output_sender(), |msg| match msg {
+                        crate::bars::bar_widgets::host_monitor::HostMonitorOutput::Clicked => {
+                            BarOutput::HostMonitorClicked
+                        }
+                    }),
+            ),
             BarWidget::Podman => Box::new(PodmanModel::builder().launch(PodmanInit {}).forward(
                 sender.output_sender(),
                 |msg| match msg {
