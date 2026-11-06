@@ -1,9 +1,10 @@
 //! The Theme group: the Theme container page (scheme, fonts, wallpaper,
-//! bundles, cursor, app themes) with its own sub-sidebar; sub-pages are built on first
+//! bundles, cursor, icons, app themes) with its own sub-sidebar; sub-pages are built on first
 //! navigation.
 
 use super::*;
 use crate::cursor_settings::{CursorSettingsInit, CursorSettingsModel};
+use crate::icon_settings::{IconSettingsInit, IconSettingsModel};
 use crate::theme_bundle_settings::{ThemeBundleSettingsInit, ThemeBundleSettingsModel};
 
 /// Build the Theme container (sub-sidebar + lazily filled sub-stack), seed
@@ -145,17 +146,22 @@ pub(super) fn add_theme_group(
             page_factory!(CursorSettingsModel => CursorSettingsInit {}),
         ),
         (
+            "icons".to_string(),
+            page_factory!(IconSettingsModel => IconSettingsInit {}),
+        ),
+        (
             "apps".to_string(),
             page_factory!(HeliumThemeSettingsModel => HeliumThemeSettingsInit {}),
         ),
     ]);
 
-    let theme_entries: [(&str, &str, &'static str); 6] = [
+    let theme_entries: [(&str, &str, &'static str); 7] = [
         ("Scheme", "palette-symbolic", "scheme"),
         ("Fonts", "xsi-font-symbolic", "fonts"),
         ("Wallpaper", "wallpaper-symbolic", "wallpaper"),
         ("Bundles", "view-grid-symbolic", "bundles"),
         ("Cursor", "input-mouse-symbolic", "cursor"),
+        ("Icons", "folder-pictures-symbolic", "icons"),
         ("Apps", "web-browser-symbolic", "apps"),
     ];
     let mut theme_anchor: Option<gtk::ToggleButton> = None;

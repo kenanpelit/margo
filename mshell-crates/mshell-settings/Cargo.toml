@@ -22,6 +22,7 @@ mshell-cache.workspace = true
 mshell-clipboard.workspace = true
 mshell-common.workspace = true
 mshell-config.workspace = true
+mshell-image.workspace = true
 mshell-launcher.workspace = true
 mshell-logging.workspace = true
 mshell-margo-client.workspace = true

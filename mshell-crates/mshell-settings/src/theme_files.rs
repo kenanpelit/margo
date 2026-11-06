@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-/// The icon directories searched for cursor themes, in lookup order:
+/// The directories searched for icon and cursor themes, in lookup order:
 /// `~/.local/share/icons`, `~/.icons`, then each `$XDG_DATA_DIRS/icons`.
 pub(crate) fn icon_dirs(home: &Path, data_home: &Path, data_dirs: &str) -> Vec<PathBuf> {
     let mut dirs = vec![data_home.join("icons"), home.join(".icons")];
@@ -166,6 +166,19 @@ impl Roots {
     pub(crate) fn kcminputrc(&self) -> PathBuf {
         self.config_home.join("kcminputrc")
     }
+
+    pub(crate) fn kdeglobals(&self) -> PathBuf {
+        self.config_home.join("kdeglobals")
+    }
+
+    /// `qt5ct/qt5ct.conf` / `qt6ct/qt6ct.conf`.
+    pub(crate) fn qtct_conf(&self, tool: &str) -> PathBuf {
+        self.config_home.join(tool).join(format!("{tool}.conf"))
+    }
+
+    pub(crate) fn environment_d(&self) -> PathBuf {
+        self.config_home.join("environment.d")
+    }
 }
 
 /// Runs `program args…`, returning stdout or why it failed.
@@ -219,6 +232,30 @@ pub(crate) fn set_env_exports(text: &str, pairs: &[(&str, &str)]) -> String {
     let mut out = lines.join("\n");
     out.push('\n');
     out
+}
+
+/// `text` (an `environment.d` file of `KEY=value` lines) with the value of
+/// an existing `key=` line replaced, or `None` when the file doesn't set
+/// `key` (so a file that never mentioned it is left alone).
+pub(crate) fn replace_env_assignment(text: &str, key: &str, value: &str) -> Option<String> {
+    let mut hit = false;
+    let lines: Vec<String> = text
+        .lines()
+        .map(|l| {
+            let t = l.trim_start();
+            if !t.starts_with('#') && t.strip_prefix(key).is_some_and(|r| r.starts_with('=')) {
+                hit = true;
+                format!("{key}={value}")
+            } else {
+                l.to_string()
+            }
+        })
+        .collect();
+    hit.then(|| {
+        let mut out = lines.join("\n");
+        out.push('\n');
+        out
+    })
 }
 
 /// Write `text` to `path` in place (a dotfiles symlink stays a symlink).
@@ -350,5 +387,20 @@ mod tests {
         for bad in ["", ".", "..", "a/b", "x\ny", "a=b", "$(rm)", "a;b"] {
             assert!(!valid_theme_id(bad), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn env_assignments_are_replaced_only_where_set() {
+        // The owner's real ~/.config/environment.d/20-qt.conf lines.
+        let qt = "QT_QPA_PLATFORMTHEME=kvantum\n# Qt-specific icon theme\nQT_ICON_THEME=kora\n";
+        assert_eq!(
+            replace_env_assignment(qt, "QT_ICON_THEME", "Papirus").as_deref(),
+            Some("QT_QPA_PLATFORMTHEME=kvantum\n# Qt-specific icon theme\nQT_ICON_THEME=Papirus\n")
+        );
+        assert_eq!(replace_env_assignment(qt, "QT_ICON", "x"), None);
+        assert_eq!(
+            replace_env_assignment("#QT_ICON_THEME=a\n", "QT_ICON_THEME", "x"),
+            None
+        );
     }
 }

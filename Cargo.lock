@@ -5587,6 +5587,7 @@ dependencies = [
  "mshell-clipboard",
  "mshell-common",
  "mshell-config",
+ "mshell-image",
  "mshell-launcher",
  "mshell-logging",
  "mshell-margo-client",

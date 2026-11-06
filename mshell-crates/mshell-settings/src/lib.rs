@@ -47,6 +47,7 @@ pub mod guide;
 mod guide_settings;
 mod helium_theme_settings;
 mod hidden_bar_settings;
+mod icon_settings;
 mod idle_settings;
 mod input_settings;
 mod keybinds_settings;
