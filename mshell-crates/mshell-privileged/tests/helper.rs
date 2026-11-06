@@ -60,7 +60,12 @@ impl Fixture {
             .expect("spawn helper");
         let mut input = child.stdin.take().expect("stdin");
         if let Some(b) = stdin {
-            input.write_all(b).expect("feed");
+            // A helper that refuses its argv exits before reading stdin;
+            // the write then races its exit and may hit a closed pipe.
+            match input.write_all(b) {
+                Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {}
+                r => r.expect("feed"),
+            }
         }
         drop(input);
         child.wait_with_output().expect("wait")
