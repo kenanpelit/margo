@@ -619,6 +619,7 @@ mod tests {
                 "hotspot",
                 "thinkpad_led",
                 "custom_shortcut",
+                "internal_keyboard",
             ]
         );
         let order = effective_order(&["mic_denoise".to_string(), "bogus".to_string()]);

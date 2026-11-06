@@ -369,8 +369,9 @@ impl Component for BehaviourModel {
                         #[template_child] desc { set_label: "An app you open that the saved session doesn't list yet is added on the tag it opened on." },
                         gtk::Switch { set_valign: gtk::Align::Center, set_active: model.session_auto_add,
                             connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("session_auto_add", s.is_active())) } },
+                    // An action, not a setting: no `setting:` row tag (those
+                    // must name a config field the page's Defaults covers).
                     #[template] Row {
-                        set_widget_name: "setting:session_save_now",
                         #[template_child] title { set_label: "Save the session now" },
                         #[template_child] desc { set_label: "Record every monitor's tags and layouts and each open window's place (session_save)." },
                         gtk::Button { set_valign: gtk::Align::Center, set_label: "Save", add_css_class: "ok-button-surface",
