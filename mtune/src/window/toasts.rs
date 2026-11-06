@@ -7,8 +7,7 @@ use super::*;
 
 impl Window {
     pub fn add_toast(&self, msg: String) {
-        let toast = adw::Toast::new(&msg);
-        self.toast_target().add_toast(toast);
+        self.toast_target().add_toast(plain_toast(&msg));
     }
 
     /// The window's overlay, or the Radio & Podcasts dialog's while it
@@ -18,10 +17,19 @@ impl Window {
     }
 
     pub fn add_skip_to_toast(&self, msg: String, button: String, pos: u32) {
-        let toast = adw::Toast::new(&msg);
+        let toast = plain_toast(&msg);
         toast.set_button_label(Some(&button));
         toast.set_action_name(Some("win.skip-to"));
         toast.set_action_target_value(Some(&pos.to_variant()));
         self.toast_target().add_toast(toast);
     }
+}
+
+/// A toast whose title is shown as typed. `AdwToast` parses its title as
+/// Pango markup by default, so a playlist or station name with `&` or `<`
+/// in it ("R&B", "Saved playlist “Rock & Roll”") rendered as an empty toast.
+fn plain_toast(msg: &str) -> adw::Toast {
+    let toast = adw::Toast::new(msg);
+    toast.set_use_markup(false);
+    toast
 }
