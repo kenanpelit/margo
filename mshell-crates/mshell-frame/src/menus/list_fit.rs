@@ -73,6 +73,7 @@ pub(crate) fn lists_follow_menu_height(kinds: &[MenuWidget]) -> bool {
                     | MenuWidget::Ufw
                     | MenuWidget::Network
                     | MenuWidget::CpuDashboard
+                    | MenuWidget::Mtune
             )
         })
 }
@@ -213,6 +214,7 @@ mod tests {
             &m.ufw_menu.widgets,
             &m.network_menu.widgets,
             &m.cpu_dashboard_menu.widgets,
+            &m.mtune_menu.widgets,
         ] {
             assert!(lists_follow_menu_height(kinds), "{kinds:?}");
         }

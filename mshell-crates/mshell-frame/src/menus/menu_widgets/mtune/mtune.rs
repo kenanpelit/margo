@@ -8,15 +8,32 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use futures::StreamExt;
-use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{ConfigStoreFields, MenuStoreFields, MenusStoreFields};
 use mshell_services::mtune::{mtune_service, spawn_mtune};
 use mshell_services::tokio_rt_spawn;
 use mshell_utils::media::format_duration;
-use reactive_graph::traits::Get;
 use relm4::gtk::pango;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+
+#[path = "actions.rs"]
+mod actions;
+#[path = "presentation.rs"]
+mod presentation;
+#[path = "queue.rs"]
+mod queue;
+#[path = "radio.rs"]
+mod radio;
+#[path = "radio_state.rs"]
+mod radio_state;
+#[cfg(test)]
+#[path = "render_tests.rs"]
+mod render_tests;
+use crate::common_widgets::segmented::{Segmented, SegmentedStyle};
+use crate::menus::list_fit;
+use crate::menus::menu_widgets::panel_header::PanelHeader;
+use presentation::{apply_dynamic, read, rebuild_playlists, setup_seek};
+use queue::rebuild_queue_rows;
+use radio_state::{RadioState, Station};
 
 const RATE_PRESETS: [(f64, &str); 5] = [
     (0.75, "0.75×"),
@@ -27,6 +44,17 @@ const RATE_PRESETS: [(f64, &str); 5] = [
 ];
 
 pub(crate) struct MtuneMenuWidgetModel {
+    tab: usize,
+    is_live: bool,
+    station_name: String,
+    stream_error: String,
+    radio_stations: Vec<Station>,
+    radio: RadioState,
+    radio_busy: bool,
+    radio_message: String,
+    radio_panel: Option<radio::RadioPanel>,
+    volume: f64,
+    volume_signal: Option<gtk::glib::SignalHandlerId>,
     running: bool,
     playing: bool,
     has_song: bool,
@@ -65,6 +93,10 @@ pub(crate) struct MtuneMenuWidgetModel {
 
 #[derive(Debug)]
 pub(crate) enum MtuneMenuInput {
+    Tab(usize),
+    SearchRadio(String, String),
+    RadioAction(radio::Action),
+    SetVolume(f64),
     PlayPause,
     Next,
     Previous,
@@ -98,6 +130,8 @@ pub(crate) struct MtuneMenuWidgetInit {}
 
 #[derive(Debug)]
 pub(crate) enum MtuneMenuCmd {
+    SearchResult(u64, Result<Vec<Station>, String>),
+    RadioFinished(Result<(), String>),
     Refresh,
     PositionTick(Duration),
 }
@@ -114,61 +148,11 @@ impl Component for MtuneMenuWidgetModel {
         gtk::Box {
             add_css_class: "mtune-menu-widget",
             set_orientation: gtk::Orientation::Vertical,
-            set_spacing: 14,
+            set_spacing: 16,
             set_hexpand: true,
 
-            // ── Panel header (DESIGN.md §12) ────────────────────
-            // Hand-rolled (like Clipboard) rather than the composed
-            // MenuWidget::PanelHeader, since this is one monolithic
-            // component, not a widget-list menu. Reuses the *generic*
-            // panel-header classes (panel_header.rs / the Dashboard
-            // header), not per-widget-prefixed ones.
-            gtk::Box {
-                add_css_class: "panel-header",
-                set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 12,
-
-                gtk::Image {
-                    add_css_class: "panel-header-icon",
-                    set_valign: gtk::Align::Center,
-                    set_icon_name: Some("org.margo.Tune-symbolic"),
-                },
-                gtk::Label {
-                    add_css_class: "panel-title",
-                    set_xalign: 0.0,
-                    set_hexpand: true,
-                    set_label: "Tune",
-                },
-                gtk::Label {
-                    add_css_class: "panel-header-meta",
-                    #[watch]
-                    set_label: &model.queue_count_meta(),
-                    #[watch]
-                    set_visible: model.running,
-                },
-                gtk::Button {
-                    add_css_class: "panel-action-btn",
-                    set_valign: gtk::Align::Center,
-                    set_icon_name: "folder-open-symbolic",
-                    set_tooltip_text: Some("Choose a music folder"),
-                    connect_clicked => MtuneMenuInput::ChooseFolder,
-                },
-                gtk::Button {
-                    add_css_class: "panel-action-btn",
-                    set_valign: gtk::Align::Center,
-                    #[watch]
-                    set_icon_name: if model.running { "go-next-symbolic" } else { "media-playback-start-symbolic" },
-                    #[watch]
-                    set_tooltip_text: Some(if model.running { "Open Tune window" } else { "Launch Tune" }),
-                    connect_clicked[sender] => move |_| {
-                        sender.input(if mtune_service().player.running.get() {
-                            MtuneMenuInput::OpenTune
-                        } else {
-                            MtuneMenuInput::Launch
-                        });
-                    },
-                },
-            },
+            #[name = "header_host"]
+            gtk::Box {},
 
             // ── Now playing ────────────────────────────────────
             gtk::Box {
@@ -178,20 +162,28 @@ impl Component for MtuneMenuWidgetModel {
                 #[name = "cover"]
                 gtk::Image {
                     add_css_class: "mtune-menu-cover",
-                    set_pixel_size: 88,
+                    set_pixel_size: 112,
                     set_valign: gtk::Align::Start,
                 },
                 gtk::Box {
                     set_orientation: gtk::Orientation::Vertical,
                     set_valign: gtk::Align::Center,
                     set_hexpand: true,
-                    set_spacing: 2,
+                    set_spacing: 4,
+                    gtk::Label {
+                        add_css_class: "mtune-menu-section-label",
+                        set_xalign: 0.0,
+                        #[watch]
+                        set_label: if model.is_live { "LIVE RADIO" } else if model.playing { "NOW PLAYING" } else { "READY TO LISTEN" },
+                    },
                     gtk::Label {
                         add_css_class: "mtune-menu-title",
                         set_xalign: 0.0,
                         set_ellipsize: pango::EllipsizeMode::End,
                         #[watch]
-                        set_label: if model.has_song {
+                        set_label: if model.is_live && model.title.is_empty() {
+                            model.station_name.as_str()
+                        } else if model.has_song {
                             model.title.as_str()
                         } else if model.running {
                             "Nothing playing"
@@ -215,18 +207,27 @@ impl Component for MtuneMenuWidgetModel {
                         #[watch]
                         set_label: &model.now_playing_meta(),
                         #[watch]
-                        set_visible: model.running && (model.has_song || model.queue_len > 0),
+                        set_visible: model.running && (model.is_live || model.has_song || model.queue_len > 0),
                     },
                 },
             },
 
+            gtk::Label {
+                add_css_class: "mtune-stream-error",
+                set_xalign: 0.0,
+                set_wrap: true,
+                #[watch]
+                set_label: &model.stream_error,
+                #[watch]
+                set_visible: !model.stream_error.is_empty(),
+            },
             // ── Seek bar ───────────────────────────────────────
             gtk::Box {
                 add_css_class: "mtune-menu-progress",
                 set_spacing: 8,
                 set_valign: gtk::Align::Center,
                 #[watch]
-                set_visible: model.running && model.has_song && !model.duration.is_zero(),
+                set_visible: model.running && !model.is_live && model.has_song && !model.duration.is_zero(),
 
                 #[name = "elapsed"]
                 gtk::Label { add_css_class: "mtune-menu-time" },
@@ -235,8 +236,9 @@ impl Component for MtuneMenuWidgetModel {
                 gtk::Scale {
                     add_css_class: "ok-progress-bar",
                     set_hexpand: true,
-                    set_can_focus: false,
-                    set_focus_on_click: false,
+                    set_can_focus: true,
+                    set_tooltip_text: Some("Seek in track"),
+                        update_property: &[gtk::accessible::Property::Label("Seek in track")],
                     set_range: (0.0, 1.0),
                 },
 
@@ -248,7 +250,7 @@ impl Component for MtuneMenuWidgetModel {
             gtk::Box {
                 add_css_class: "mtune-menu-controls",
                 set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 10,
+                set_spacing: 12,
                 set_halign: gtk::Align::Fill,
                 #[watch]
                 set_sensitive: model.running,
@@ -256,12 +258,14 @@ impl Component for MtuneMenuWidgetModel {
                 gtk::Box {
                     add_css_class: "mtune-menu-transport",
                     set_halign: gtk::Align::Start,
+                    set_valign: gtk::Align::Center,
                     set_spacing: 8,
 
                     gtk::Button {
                         set_css_classes: &["mtune-round"],
                         set_icon_name: "media-skip-backward-symbolic",
                         set_tooltip_text: Some("Previous"),
+                        update_property: &[gtk::accessible::Property::Label("Previous")],
                         #[watch]
                         set_sensitive: model.running && model.queue_len > 1,
                         connect_clicked => MtuneMenuInput::Previous,
@@ -276,31 +280,105 @@ impl Component for MtuneMenuWidgetModel {
                             "media-playback-start-symbolic"
                         },
                         set_tooltip_text: Some("Play / Pause"),
+                        update_property: &[gtk::accessible::Property::Label("Play / Pause")],
                         #[watch]
-                        set_sensitive: model.running && (model.has_song || model.queue_len > 0),
+                        set_sensitive: model.running && (model.is_live || model.has_song || model.queue_len > 0),
                         connect_clicked => MtuneMenuInput::PlayPause,
                     },
                     gtk::Button {
                         set_css_classes: &["mtune-round"],
                         set_icon_name: "media-skip-forward-symbolic",
                         set_tooltip_text: Some("Next"),
+                        update_property: &[gtk::accessible::Property::Label("Next")],
                         #[watch]
                         set_sensitive: model.running && model.queue_len > 1,
                         connect_clicked => MtuneMenuInput::Next,
                     },
                 },
 
-                gtk::Box {
-                    add_css_class: "mtune-menu-toggles",
+                gtk::Image {
+                    set_icon_name: Some("audio-volume-high-symbolic"),
                     set_hexpand: true,
                     set_halign: gtk::Align::End,
-                    set_spacing: 6,
+                },
+                #[name = "volume"]
+                gtk::Scale {
+                    set_width_request: 80,
+                    set_range: (0.0, 1.0),
+                    set_valign: gtk::Align::Center,
+                    set_draw_value: false,
+                    set_tooltip_text: Some("Playback volume"),
+                        update_property: &[gtk::accessible::Property::Label("Playback volume")],
+                    #[watch]
+                    set_sensitive: model.running,
+                },
+            },
+                    #[name = "repeat_count_box"]
+                    gtk::Box {
+                        add_css_class: "mtune-repeat-count",
+                        set_spacing: 4,
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        set_visible: !model.is_live && model.repeat == "repeat-each",
+
+                        gtk::Button {
+                            set_css_classes: &["mtune-repeat-count-btn"],
+                            set_icon_name: "list-remove-symbolic",
+                            set_tooltip_text: Some("Repeat fewer times"),
+                        update_property: &[gtk::accessible::Property::Label("Repeat fewer times")],
+                            connect_clicked => MtuneMenuInput::AdjustRepeatCount(-1),
+                        },
+                        gtk::Label {
+                            add_css_class: "mtune-repeat-count-label",
+                            #[watch]
+                            set_label: &model.repeat_count.to_string(),
+                        },
+                        gtk::Button {
+                            set_css_classes: &["mtune-repeat-count-btn"],
+                            set_icon_name: "list-add-symbolic",
+                            set_tooltip_text: Some("Repeat more times"),
+                        update_property: &[gtk::accessible::Property::Label("Repeat more times")],
+                            connect_clicked => MtuneMenuInput::AdjustRepeatCount(1),
+                        },
+                    },
+            gtk::Box {
+                set_spacing: 8,
+                #[watch]
+                set_visible: !model.is_live,
+                gtk::MenuButton {
+                    #[watch]
+                    set_label: &format!("Speed {:.2}×", model.rate),
+                    set_tooltip_text: Some("Playback speed"),
+                    update_property: &[gtk::accessible::Property::Label("Playback speed")],
+                    #[watch]
+                    set_visible: !model.is_live,
+                    #[watch]
+                    set_sensitive: model.running,
+                    #[wrap(Some)]
+                    set_popover = &gtk::Popover {
+                        #[name = "speed_row"]
+                        gtk::Box {
+                            add_css_class: "mtune-menu-speed",
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_spacing: 4,
+                        },
+                    },
+                },
+                gtk::Box {
+                    add_css_class: "mtune-menu-toggles",
+                #[watch]
+                set_visible: !model.is_live,
+                    set_hexpand: true,
+                    set_halign: gtk::Align::End,
+                    set_valign: gtk::Align::Center,
+                    set_spacing: 8,
 
                     #[name = "shuffle_btn"]
                     gtk::ToggleButton {
                         set_css_classes: &["mtune-toggle"],
                         set_icon_name: "media-playlist-shuffle-symbolic",
                         set_tooltip_text: Some("Shuffle"),
+                        update_property: &[gtk::accessible::Property::Label("Shuffle")],
                         #[watch]
                         #[block_signal(shuffle_toggled)]
                         set_active: model.shuffle,
@@ -330,46 +408,20 @@ impl Component for MtuneMenuWidgetModel {
                         }),
                         connect_clicked => MtuneMenuInput::CycleRepeat,
                     },
-                    #[name = "repeat_count_box"]
-                    gtk::Box {
-                        add_css_class: "mtune-repeat-count",
-                        set_spacing: 2,
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        set_visible: model.repeat == "repeat-each",
 
-                        gtk::Button {
-                            set_css_classes: &["mtune-repeat-count-btn"],
-                            set_icon_name: "list-remove-symbolic",
-                            set_tooltip_text: Some("Repeat fewer times"),
-                            connect_clicked => MtuneMenuInput::AdjustRepeatCount(-1),
-                        },
-                        gtk::Label {
-                            add_css_class: "mtune-repeat-count-label",
-                            #[watch]
-                            set_label: &model.repeat_count.to_string(),
-                        },
-                        gtk::Button {
-                            set_css_classes: &["mtune-repeat-count-btn"],
-                            set_icon_name: "list-add-symbolic",
-                            set_tooltip_text: Some("Repeat more times"),
-                            connect_clicked => MtuneMenuInput::AdjustRepeatCount(1),
-                        },
-                    },
                 },
 
-                #[name = "speed_row"]
-                gtk::Box {
-                    add_css_class: "mtune-menu-speed",
-                    set_spacing: 4,
-                },
             },
+            #[name = "tabs_host"]
+            gtk::Box {},
 
             // ── Queue ────────────────────────────────────────────
             gtk::Box {
                 add_css_class: "mtune-queue-section",
+                #[watch]
+                set_visible: model.tab == 0,
                 set_orientation: gtk::Orientation::Vertical,
-                set_spacing: 6,
+                set_spacing: 8,
                 set_vexpand: true,
 
                 gtk::Label {
@@ -398,16 +450,7 @@ impl Component for MtuneMenuWidgetModel {
                     set_policy: (gtk::PolicyType::Never, gtk::PolicyType::Automatic),
                     #[watch]
                     set_visible: model.queue_len > 0,
-                    #[watch]
-                    set_max_content_height: {
-                        let h = config_manager()
-                            .config()
-                            .menus()
-                            .mtune_menu()
-                            .maximum_height()
-                            .get();
-                        if h > 0 { h } else { -1 }
-                    },
+                    set_min_content_height: 0,
 
                     #[name = "queue_rows"]
                     gtk::Box {
@@ -425,10 +468,21 @@ impl Component for MtuneMenuWidgetModel {
                 },
             },
 
+            #[name = "library_scroller"]
+            gtk::ScrolledWindow {
+                set_policy: (gtk::PolicyType::Never, gtk::PolicyType::Automatic),
+                set_propagate_natural_height: true,
+                set_min_content_height: 0,
+                set_vexpand: true,
+                #[watch]
+                set_visible: model.tab == 1,
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 16,
             // ── Library ────────────────────────────────────────
             gtk::Box {
                 set_orientation: gtk::Orientation::Vertical,
-                set_spacing: 5,
+                set_spacing: 8,
 
                 gtk::Label {
                     add_css_class: "mtune-menu-section-label",
@@ -443,7 +497,7 @@ impl Component for MtuneMenuWidgetModel {
                     set_label: &model.library_status(),
                 },
                 gtk::Box {
-                    set_spacing: 6,
+                    set_spacing: 8,
                     gtk::Button {
                         set_css_classes: &["mtune-menu-action"],
                         set_hexpand: true,
@@ -454,6 +508,7 @@ impl Component for MtuneMenuWidgetModel {
                         set_css_classes: &["mtune-menu-action"],
                         set_icon_name: "view-refresh-symbolic",
                         set_tooltip_text: Some("Rescan the library"),
+                        update_property: &[gtk::accessible::Property::Label("Rescan the library")],
                         #[watch]
                         set_sensitive: model.running && !model.scanning,
                         connect_clicked => MtuneMenuInput::Rescan,
@@ -464,7 +519,7 @@ impl Component for MtuneMenuWidgetModel {
             // ── Playlists ──────────────────────────────────────
             gtk::Box {
                 set_orientation: gtk::Orientation::Vertical,
-                set_spacing: 5,
+                set_spacing: 8,
 
                 gtk::Label {
                     add_css_class: "mtune-menu-section-label",
@@ -475,7 +530,7 @@ impl Component for MtuneMenuWidgetModel {
                 gtk::Box {
                     add_css_class: "mtune-menu-playlists",
                     set_orientation: gtk::Orientation::Vertical,
-                    set_spacing: 2,
+                    set_spacing: 4,
                     #[watch]
                     set_visible: !model.playlists.is_empty(),
                 },
@@ -485,6 +540,14 @@ impl Component for MtuneMenuWidgetModel {
                     set_label: "Open playlist file…",
                     connect_clicked => MtuneMenuInput::OpenPlaylist,
                 },
+            },                },
+            },
+            #[name = "radio_host"]
+            gtk::Box {
+                set_orientation: gtk::Orientation::Vertical,
+                set_vexpand: true,
+                #[watch]
+                set_visible: model.tab == 2,
             },
         }
     }
@@ -501,6 +564,11 @@ impl Component for MtuneMenuWidgetModel {
             tokio::pin!(shutdown_fut);
             let p = mtune_service().player.clone();
             let mut streams: Vec<std::pin::Pin<Box<dyn futures::Stream<Item = ()> + Send>>> = vec![
+                Box::pin(p.radio_stations.watch().map(|_| ())),
+                Box::pin(p.is_live.watch().map(|_| ())),
+                Box::pin(p.station_name.watch().map(|_| ())),
+                Box::pin(p.stream_error.watch().map(|_| ())),
+                Box::pin(p.volume.watch().map(|_| ())),
                 Box::pin(p.running.watch().map(|_| ())),
                 Box::pin(p.playing.watch().map(|_| ())),
                 Box::pin(p.has_song.watch().map(|_| ())),
@@ -541,6 +609,17 @@ impl Component for MtuneMenuWidgetModel {
         });
 
         let mut model = MtuneMenuWidgetModel {
+            tab: 0,
+            is_live: false,
+            station_name: String::new(),
+            stream_error: String::new(),
+            radio_stations: Vec::new(),
+            radio: RadioState::default(),
+            radio_busy: false,
+            radio_message: String::new(),
+            radio_panel: None,
+            volume: 1.0,
+            volume_signal: None,
             running: false,
             playing: false,
             has_song: false,
@@ -570,6 +649,40 @@ impl Component for MtuneMenuWidgetModel {
 
         let widgets = view_output!();
 
+        let s = sender.clone();
+        let header = PanelHeader::new("org.margo.Tune-symbolic", "Tune").action(
+            "folder-open-symbolic",
+            "Choose a music folder",
+            move || s.input(MtuneMenuInput::ChooseFolder),
+        );
+        let s = sender.clone();
+        let header = header.action("go-next-symbolic", "Open or launch Tune", move || {
+            s.input(if mtune_service().player.running.get() {
+                MtuneMenuInput::OpenTune
+            } else {
+                MtuneMenuInput::Launch
+            });
+        });
+        widgets.header_host.append(header.root());
+        let s = sender.clone();
+        let tabs = Segmented::new(
+            &["Queue", "Library", "Radio"],
+            0,
+            SegmentedStyle::Capsule,
+            move |i| s.input(MtuneMenuInput::Tab(i)),
+        );
+        widgets.tabs_host.append(tabs.root());
+        // Classes are updated by the same model-owned selection on every change.
+        model.radio_panel = Some(radio::RadioPanel::new(&widgets.radio_host, &sender));
+        list_fit::mark_menu_list(&widgets.queue_scroller, 320);
+        list_fit::mark_menu_list(&widgets.library_scroller, 320);
+        let s = sender.clone();
+        model.volume_signal =
+            Some(widgets.volume.connect_value_changed(move |scale| {
+                s.input(MtuneMenuInput::SetVolume(scale.value()))
+            }));
+        rebuild_playlists(&widgets, &model, &sender);
+        queue::keyboard_rows(&widgets.queue_rows);
         model.seek_signal = Some(setup_seek(&widgets.seek, &sender));
 
         // Build the speed-preset row once; state (highlight) is applied
@@ -596,117 +709,8 @@ impl Component for MtuneMenuWidgetModel {
         sender: ComponentSender<Self>,
         _root: &Self::Root,
     ) {
-        match message {
-            MtuneMenuInput::SeekPreview(value) => {
-                // Immediate feedback; the real seek is debounced.
-                let pos = self.duration.mul_f64(value.clamp(0.0, 1.0));
-                self.pending_seek = Some((pos, Instant::now()));
-                self.position = pos;
-                widgets.elapsed.set_label(&format_duration(pos));
-                if let Some(sig) = &self.seek_signal {
-                    widgets.seek.block_signal(sig);
-                    widgets.seek.set_value(value);
-                    widgets.seek.unblock_signal(sig);
-                }
-            }
-            MtuneMenuInput::Seek(value) => {
-                let secs = self.duration.mul_f64(value.clamp(0.0, 1.0)).as_secs();
-                tokio_rt_spawn(async move { mtune_service().player.seek(secs).await });
-            }
-            MtuneMenuInput::PlayPause => {
-                tokio_rt_spawn(async { mtune_service().player.play_pause().await });
-            }
-            MtuneMenuInput::Next => {
-                tokio_rt_spawn(async { mtune_service().player.next().await });
-            }
-            MtuneMenuInput::Previous => {
-                tokio_rt_spawn(async { mtune_service().player.previous().await });
-            }
-            MtuneMenuInput::ToggleShuffle => {
-                let on = !self.shuffle;
-                tokio_rt_spawn(async move { mtune_service().player.set_shuffle(on).await });
-            }
-            MtuneMenuInput::CycleRepeat => {
-                let next = match self.repeat.as_str() {
-                    "consecutive" => "repeat-all",
-                    "repeat-all" => "repeat-one",
-                    "repeat-one" => "repeat-each",
-                    _ => "consecutive",
-                };
-                tokio_rt_spawn(async move { mtune_service().player.set_repeat_mode(next).await });
-            }
-            MtuneMenuInput::AdjustRepeatCount(delta) => {
-                let next = (self.repeat_count as i32 + delta).clamp(1, 20) as u32;
-                tokio_rt_spawn(async move { mtune_service().player.set_repeat_count(next).await });
-            }
-            MtuneMenuInput::SetRate(r) => {
-                tokio_rt_spawn(async move { mtune_service().player.set_rate(r).await });
-            }
-            MtuneMenuInput::LoadPlaylist(name) => {
-                tokio_rt_spawn(async move { mtune_service().player.load_playlist(&name).await });
-            }
-            MtuneMenuInput::OpenPlaylist => {
-                // Parent must be `None`: a layer-shell menu surface has no
-                // xdg_toplevel, so handing it to the file-chooser as a
-                // parent aborts GTK (crashing the shell).
-                let dialog = gtk::FileDialog::builder()
-                    .title("Open a playlist")
-                    .modal(true)
-                    .build();
-                dialog.open(gtk::Window::NONE, gtk::gio::Cancellable::NONE, move |res| {
-                    if let Ok(file) = res
-                        && let Some(path) = file.path()
-                    {
-                        let path = path.to_string_lossy().into_owned();
-                        tokio_rt_spawn(async move {
-                            let svc = mtune_service().player.clone();
-                            if !svc.running.get() {
-                                spawn_mtune();
-                            }
-                            svc.open_playlist(&path).await;
-                        });
-                    }
-                });
-            }
-            MtuneMenuInput::Rescan => {
-                tokio_rt_spawn(async { mtune_service().player.rescan_library().await });
-            }
-            MtuneMenuInput::OpenTune => {
-                tokio_rt_spawn(async { mtune_service().player.raise().await });
-            }
-            MtuneMenuInput::Launch => spawn_mtune(),
-            MtuneMenuInput::ChooseFolder => {
-                let dialog = gtk::FileDialog::builder()
-                    .title("Choose a music folder")
-                    .modal(true)
-                    .build();
-                dialog.select_folder(gtk::Window::NONE, gtk::gio::Cancellable::NONE, move |res| {
-                    if let Ok(folder) = res
-                        && let Some(path) = folder.path()
-                    {
-                        let path = path.to_string_lossy().into_owned();
-                        tokio_rt_spawn(async move {
-                            let svc = mtune_service().player.clone();
-                            if !svc.running.get() {
-                                spawn_mtune();
-                            }
-                            svc.set_library_roots(vec![path.clone()]).await;
-                            svc.play_folder(&path).await;
-                        });
-                    }
-                });
-            }
-            MtuneMenuInput::FilterQueue(text) => {
-                self.queue_filter = text;
-                rebuild_queue_rows(widgets, self, &sender);
-            }
-            MtuneMenuInput::PlayQueueIndex(i) => {
-                tokio_rt_spawn(async move { mtune_service().player.play_index(i).await });
-            }
-            MtuneMenuInput::RemoveQueueIndex(i) => {
-                tokio_rt_spawn(async move { mtune_service().player.remove_index(i).await });
-            }
-        }
+        actions::handle(self, widgets, message, &sender);
+        apply_dynamic(widgets, self, &sender);
         // relm4 doesn't re-run `#[watch]` after `update_with_view` — do it.
         self.update_view(widgets, sender);
     }
@@ -719,11 +723,25 @@ impl Component for MtuneMenuWidgetModel {
         _root: &Self::Root,
     ) {
         match message {
+            MtuneMenuCmd::SearchResult(generation, result) => {
+                self.radio.complete(generation, result)
+            }
+            MtuneMenuCmd::RadioFinished(result) => {
+                self.radio_busy = false;
+                self.radio_message = result.err().unwrap_or_default();
+            }
             MtuneMenuCmd::Refresh => {
+                let old_queue = (self.queue_entries.clone(), self.current_index, self.is_live);
+                let old_playlists = self.playlists.clone();
                 read(self);
+                if old_playlists != self.playlists {
+                    rebuild_playlists(widgets, self, &sender);
+                }
                 // A fresh song / stop clears any in-flight seek.
                 self.pending_seek = None;
-                rebuild_queue_rows(widgets, self, &sender);
+                if old_queue != (self.queue_entries.clone(), self.current_index, self.is_live) {
+                    rebuild_queue_rows(widgets, self, &sender);
+                }
             }
             MtuneMenuCmd::PositionTick(d) => {
                 // Ignore ticks while a seek is settling.
@@ -741,321 +759,5 @@ impl Component for MtuneMenuWidgetModel {
         // sensitivity, …). relm4 does *not* do this automatically after
         // `update_cmd_with_view` — every other menu widget calls it too.
         self.update_view(widgets, sender);
-    }
-}
-
-/// Whether `title`/`artist` should show under `query` (case-insensitive
-/// substring on either field; a blank query matches everything).
-fn queue_row_matches(title: &str, artist: &str, query: &str) -> bool {
-    let q = query.trim().to_lowercase();
-    if q.is_empty() {
-        return true;
-    }
-    title.to_lowercase().contains(&q) || artist.to_lowercase().contains(&q)
-}
-
-fn read(m: &mut MtuneMenuWidgetModel) {
-    let p = mtune_service().player.clone();
-    m.running = p.running.get();
-    m.playing = p.playing.get();
-    m.has_song = p.has_song.get();
-    m.title = p.title.get();
-    m.artist = p.artist.get();
-    m.album = p.album.get();
-    m.cover_art = p.cover_art.get();
-    m.shuffle = p.shuffle.get();
-    m.repeat = p.repeat_mode.get();
-    m.repeat_count = p.repeat_count.get();
-    m.repeat_plays = p.repeat_plays.get();
-    m.rate = p.rate.get();
-    m.queue_len = p.queue_len.get();
-    m.current_index = p.current_index.get();
-    m.queue_entries = p.queue_entries.get();
-    m.roots = p.library_roots.get();
-    m.playlists = p.playlists.get();
-    m.scanning = p.scanning.get();
-    m.scan_progress = p.scan_progress.get();
-    m.position = p.position.get();
-    m.duration = p.duration.get();
-}
-
-/// Widget updates the `#[watch]` macro can't express: the cover image,
-/// the repeat/speed highlight, and the saved-playlist rows.
-fn apply_dynamic(
-    widgets: &MtuneMenuWidgetModelWidgets,
-    m: &MtuneMenuWidgetModel,
-    sender: &ComponentSender<MtuneMenuWidgetModel>,
-) {
-    // Cover
-    match m.cover_art.as_deref() {
-        Some(path) if !path.trim().is_empty() => widgets.cover.set_from_file(Some(path)),
-        _ => widgets.cover.set_icon_name(Some("org.margo.Tune-symbolic")),
-    }
-
-    // Seek bar + time readouts
-    let frac = if m.duration.is_zero() {
-        0.0
-    } else {
-        (m.position.as_secs_f64() / m.duration.as_secs_f64()).clamp(0.0, 1.0)
-    };
-    match &m.seek_signal {
-        Some(sig) => {
-            widgets.seek.block_signal(sig);
-            widgets.seek.set_value(frac);
-            widgets.seek.unblock_signal(sig);
-        }
-        None => widgets.seek.set_value(frac),
-    }
-    widgets.elapsed.set_label(&format_duration(m.position));
-    widgets.total.set_label(&format_duration(m.duration));
-
-    // Repeat active state
-    if m.repeat == "consecutive" {
-        widgets.repeat_btn.remove_css_class("selected");
-    } else {
-        widgets.repeat_btn.add_css_class("selected");
-    }
-
-    // Speed preset highlight
-    let mut child = widgets.speed_row.first_child();
-    let mut i = 0;
-    while let Some(w) = child {
-        child = w.next_sibling();
-        if let Some((rate, _)) = RATE_PRESETS.get(i) {
-            if (m.rate - rate).abs() < 0.01 {
-                w.add_css_class("selected");
-            } else {
-                w.remove_css_class("selected");
-            }
-        }
-        i += 1;
-    }
-
-    // Saved-playlist rows
-    while let Some(c) = widgets.playlists_list.first_child() {
-        widgets.playlists_list.remove(&c);
-    }
-    for name in &m.playlists {
-        let label = gtk::Label::new(Some(name));
-        label.set_xalign(0.0);
-        label.set_ellipsize(pango::EllipsizeMode::End);
-        let row = gtk::Button::builder()
-            .child(&label)
-            .css_classes(["mtune-playlist-row"])
-            .build();
-        let name = name.clone();
-        let s = sender.clone();
-        row.connect_clicked(move |_| s.input(MtuneMenuInput::LoadPlaylist(name.clone())));
-        widgets.playlists_list.append(&row);
-    }
-}
-
-/// Rebuild the queue row list from `m.queue_entries`, filtered by
-/// `m.queue_filter`. Called after every refresh and every filter
-/// keystroke — the list is small enough (a folder-first personal
-/// library queue, not a virtualized thousand-row history) that a full
-/// rebuild is simpler and cheap enough, same call shape as the
-/// existing saved-playlist rows.
-fn rebuild_queue_rows(
-    widgets: &MtuneMenuWidgetModelWidgets,
-    m: &MtuneMenuWidgetModel,
-    sender: &ComponentSender<MtuneMenuWidgetModel>,
-) {
-    while let Some(c) = widgets.queue_rows.first_child() {
-        widgets.queue_rows.remove(&c);
-    }
-
-    let mut current_row: Option<gtk::Widget> = None;
-    for (i, (title, artist, duration)) in m.queue_entries.iter().enumerate() {
-        if !queue_row_matches(title, artist, &m.queue_filter) {
-            continue;
-        }
-        let idx = i as u32;
-        let is_current = m.current_index >= 0 && m.current_index as usize == i;
-
-        let row = gtk::Box::builder()
-            .css_classes(["mtune-queue-row"])
-            .orientation(gtk::Orientation::Horizontal)
-            .spacing(8)
-            .build();
-        if is_current {
-            row.add_css_class("mtune-queue-row-current");
-        }
-
-        let num = gtk::Label::new(Some(&(i + 1).to_string()));
-        num.add_css_class("mtune-queue-row-num");
-
-        let text = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        let title_label = gtk::Label::new(Some(title));
-        title_label.set_xalign(0.0);
-        title_label.set_ellipsize(pango::EllipsizeMode::End);
-        title_label.add_css_class("mtune-queue-row-title");
-        let artist_label = gtk::Label::new(Some(artist));
-        artist_label.set_xalign(0.0);
-        artist_label.set_ellipsize(pango::EllipsizeMode::End);
-        artist_label.add_css_class("mtune-queue-row-artist");
-        text.append(&title_label);
-        text.append(&artist_label);
-        text.set_hexpand(true);
-
-        let dur = gtk::Label::new(Some(&format_duration(Duration::from_secs(*duration))));
-        dur.add_css_class("mtune-queue-row-duration");
-
-        let remove_btn = gtk::Button::builder()
-            .css_classes(["mtune-queue-row-remove"])
-            .icon_name("window-close-symbolic")
-            .tooltip_text("Remove from queue")
-            .valign(gtk::Align::Center)
-            .build();
-        let s = sender.clone();
-        remove_btn.connect_clicked(move |_| s.input(MtuneMenuInput::RemoveQueueIndex(idx)));
-
-        let click = gtk::GestureClick::new();
-        let s = sender.clone();
-        click.connect_released(move |_, _, _, _| s.input(MtuneMenuInput::PlayQueueIndex(idx)));
-        row.add_controller(click);
-
-        row.append(&num);
-        row.append(&text);
-        row.append(&dur);
-        row.append(&remove_btn);
-        widgets.queue_rows.append(&row);
-
-        if is_current {
-            current_row = Some(row.upcast::<gtk::Widget>());
-        }
-    }
-
-    if let Some(row) = current_row {
-        scroll_queue_to(&widgets.queue_scroller, &row);
-    }
-}
-
-/// Smoothly centre `row` in `scroller`. Deferred to idle so its geometry
-/// is laid out (freshly appended on a rebuild) — same technique as the
-/// Lyrics menu's `scroll_center`.
-fn scroll_queue_to(scroller: &gtk::ScrolledWindow, row: &gtk::Widget) {
-    let scroller = scroller.clone();
-    let row = row.clone();
-    gtk::glib::idle_add_local_once(move || {
-        let Some(parent) = row.parent() else { return };
-        let Some(bounds) = row.compute_bounds(&parent) else {
-            return;
-        };
-        if bounds.height() == 0.0 {
-            return;
-        }
-        let vadj = scroller.vadjustment();
-        let center = bounds.y() as f64 + bounds.height() as f64 / 2.0;
-        let target = center - vadj.page_size() / 2.0;
-        let max = (vadj.upper() - vadj.page_size()).max(0.0);
-        vadj.set_value(target.clamp(0.0, max));
-    });
-}
-
-/// Wire the seek scale: immediate readout on drag, the real seek
-/// debounced ~280ms after the last move. Returns the `value-changed`
-/// handler id so programmatic updates can block it.
-fn setup_seek(
-    scale: &gtk::Scale,
-    sender: &ComponentSender<MtuneMenuWidgetModel>,
-) -> gtk::glib::SignalHandlerId {
-    let pending: Rc<Cell<Option<gtk::glib::SourceId>>> = Rc::new(Cell::new(None));
-    let sender = sender.clone();
-    scale.connect_value_changed(move |scale| {
-        if let Some(id) = pending.take() {
-            id.remove();
-        }
-        let value = scale.value();
-        // Fallible send: `value-changed` also fires on a programmatic
-        // `set_value` during teardown, where `input()` would panic.
-        let _ = sender
-            .input_sender()
-            .send(MtuneMenuInput::SeekPreview(value));
-
-        let s = sender.clone();
-        let p = pending.clone();
-        let id = gtk::glib::timeout_add_local_once(Duration::from_millis(280), move || {
-            p.set(None);
-            let _ = s.input_sender().send(MtuneMenuInput::Seek(value));
-        });
-        pending.set(Some(id));
-    })
-}
-
-impl MtuneMenuWidgetModel {
-    /// "12 songs" for the header's trailing meta; empty when there's no
-    /// queue yet (header hides it via `set_visible` in that case, but an
-    /// empty string is the harmless fallback either way).
-    fn queue_count_meta(&self) -> String {
-        if self.queue_len == 0 {
-            String::new()
-        } else {
-            format!("{} songs", self.queue_len)
-        }
-    }
-
-    /// "3 of 240  ·  45:20 played  ·  12:34 left  ·  58:20 total  ·  1.5×" —
-    /// position in the queue, time played/left/total across the *whole*
-    /// queue (not just this track), and a non-default speed.
-    fn now_playing_meta(&self) -> String {
-        let mut parts: Vec<String> = Vec::new();
-        if self.queue_len > 0 {
-            let n = if self.current_index >= 0 {
-                self.current_index as u32 + 1
-            } else {
-                0
-            };
-            parts.push(format!("{n} of {}", self.queue_len));
-
-            let (total, elapsed, remaining) = mtune_service().player.playlist_progress();
-            if !total.is_zero() {
-                parts.push(format!("{} played", format_duration(elapsed)));
-                parts.push(format!("{} left", format_duration(remaining)));
-                parts.push(format!("{} total", format_duration(total)));
-            }
-        }
-        if (self.rate - 1.0).abs() >= 0.01 {
-            parts.push(format!("{:.2}×", self.rate));
-        }
-        parts.join("  ·  ")
-    }
-
-    fn library_status(&self) -> String {
-        if !self.running {
-            return "Tune isn't running.".into();
-        }
-        if self.scanning {
-            let (done, total) = self.scan_progress;
-            return if total > 0 {
-                format!("Scanning… {done}/{total}")
-            } else {
-                "Scanning…".into()
-            };
-        }
-        let roots = if self.roots.is_empty() {
-            "no folder set".to_string()
-        } else {
-            self.roots.join(", ")
-        };
-        format!("{} tracks  ·  {roots}", self.queue_len)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn matches_on_title_or_artist_case_insensitively() {
-        assert!(queue_row_matches("Get Lucky", "Daft Punk", "lucky"));
-        assert!(queue_row_matches("Get Lucky", "Daft Punk", "DAFT"));
-        assert!(!queue_row_matches("Get Lucky", "Daft Punk", "acoustic"));
-    }
-
-    #[test]
-    fn blank_query_matches_everything() {
-        assert!(queue_row_matches("Anything", "Anyone", ""));
-        assert!(queue_row_matches("Anything", "Anyone", "   "));
     }
 }
