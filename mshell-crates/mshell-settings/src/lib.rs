@@ -35,6 +35,7 @@ mod clipboard_settings;
 mod color_input;
 mod compositor_conf;
 mod cursor_settings;
+mod cpu_dashboard_pill_settings;
 mod date_time_settings;
 mod default_apps_settings;
 mod display_settings;

@@ -95,6 +95,14 @@ fn clock_parts() -> Vec<PagePart> {
     ]
 }
 
+/// CPU Dashboard: the bar capsule's metrics above the menu geometry.
+fn cpu_dashboard_parts() -> Vec<PagePart> {
+    vec![
+        page_part!(crate::cpu_dashboard_pill_settings::CpuDashboardPillSettingsModel => crate::cpu_dashboard_pill_settings::CpuDashboardPillSettingsInit {}),
+        page_part!(WidgetMenuSettingsModel => WidgetMenuSettingsInit { kind: MenuKind::CpuDashboard }),
+    ]
+}
+
 /// Eye Care: the reminder's rules (a bar-only pill, no menu geometry).
 fn eyecare_parts() -> Vec<PagePart> {
     vec![
@@ -266,11 +274,12 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
             label: "Bluetooth",
             icon: "bluetooth-active-symbolic",
         },
-        WidgetEntry::Menu {
-            kind: MenuKind::CpuDashboard,
+        // CPU Dashboard = the bar capsule's metrics + the menu geometry.
+        WidgetEntry::Composite {
             stack_name: "cpu_dashboard",
             label: "CPU Dashboard",
             icon: "computer-symbolic",
+            parts: cpu_dashboard_parts,
         },
         WidgetEntry::Menu {
             kind: MenuKind::AudioDashboard,

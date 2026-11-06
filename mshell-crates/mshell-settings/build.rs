@@ -77,6 +77,7 @@ const PAGES: &[(&str, &[&str])] = &[
     ("widgets/alarmclock", &["pomodoro_settings.rs"]),
     ("widgets/eyecare", &["eyecare_settings.rs"]),
     ("widgets/clock", &["world_clock_settings.rs"]),
+    ("widgets/cpu_dashboard", &["cpu_dashboard_pill_settings.rs"]),
 ];
 
 /// Shell settings that hold data the user created (or live state) rather

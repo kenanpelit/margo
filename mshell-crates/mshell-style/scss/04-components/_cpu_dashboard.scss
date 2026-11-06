@@ -1,7 +1,7 @@
 // CPU dashboard bar pill — the pill chrome itself (rounded
 // surface + hover) comes from `ok-button-surface` + `ok-bar-widget`
 // so the pill stays visually aligned with podman / network /
-// dns / etc. We only tint the cluster (icon + labels) per
+// dns / etc. We only tint each metric's icon + label per
 // severity:
 //
 //   calm   → inherit standard bar text colour (no override)
@@ -18,14 +18,16 @@
   transition: color var(--motion-fast) var(--ease-standard);
 }
 
-// Targeting `label` + `image` inside the cluster (not just the
-// cluster Box) is load-bearing here: the primitive
-// `.ok-button-surface label { color: var(--on-surface) }` rule
-// in 03-primitives/_buttons.scss has higher specificity than a
-// plain `color` on the cluster Box, so the labels would never
-// repaint. Hitting `label` / `image` directly with the .warn
-// / .danger ladder bumps specificity past the surface rule.
-.cpu-dashboard-bar-cluster {
+// Each metric group (`.cpu-dashboard-bar-metric`, one icon + value per
+// metric) carries its own severity class, so only the hot metric lights
+// up. Targeting `label` + `image` inside the group (not just the group
+// Box) is load-bearing: the primitive
+// `.ok-button-surface label { color: var(--on-surface) }` rule in
+// 03-primitives/_buttons.scss has higher specificity than a plain
+// `color` on the Box, so the labels would never repaint. Hitting
+// `label` / `image` directly with the .warn / .danger ladder bumps
+// specificity past the surface rule.
+.cpu-dashboard-bar-metric {
   label, image {
     transition: color var(--motion-fast) var(--ease-standard);
   }
@@ -51,6 +53,16 @@
 .cpu-dashboard-bar-icon {
   -gtk-icon-size: 14px;
   opacity: 0.85;
+}
+
+// Hover table: metric names dimmed, values in tabular figures so the
+// columns stay aligned while the numbers tick.
+.cpu-dashboard-tooltip-key {
+  opacity: 0.7;
+}
+
+.cpu-dashboard-tooltip-value {
+  font-variant-numeric: tabular-nums;
 }
 
 // ── Popover surface ────────────────────────────────────────────

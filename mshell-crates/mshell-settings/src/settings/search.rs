@@ -242,6 +242,7 @@ pub(super) const SEARCH_ALIASES: &[(&str, &str)] = &[
     ("world clock", "widgets/clock"),
     ("time zones", "widgets/clock"),
     ("20-20-20", "widgets/eyecare"),
+    ("system monitor", "widgets/cpu_dashboard"),
     ("on-screen keyboard", "keyboard"),
     ("keyboard", "keyboard"),
     ("lock", "lock"),

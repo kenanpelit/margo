@@ -81,6 +81,10 @@ pub struct BarWidgets {
     /// Tune bar pill behaviour (which elements show, cover/label size).
     #[serde(default)]
     pub mtune: TuneBarWidget,
+    /// CPU Dashboard pill (system-monitor capsule): which metrics show,
+    /// per-metric tinting and the hover table.
+    #[serde(default)]
+    pub cpu_dashboard: CpuDashboardBarWidget,
     /// Hidden Bar drawer behaviour (hover-expand, auto-collapse, …) for the
     /// bar's default (`!HiddenBar`) drawer.
     pub hidden_bar: HiddenBarConfig,
@@ -639,6 +643,53 @@ impl Default for SystemUpdateBarWidget {
             hidden_packages: Vec::new(),
             check_audit: true,
             upgrade_backend: SystemUpdateBackend::default(),
+        }
+    }
+}
+
+/// CPU Dashboard pill (system monitor capsule): the metrics it shows, in
+/// this order — CPU %, CPU temperature, Intel iGPU busy %, RAM %, swap %,
+/// disk use of `disk_path`, network down / up — each with its own calm /
+/// warn / danger tint. The defaults are the classic CPU % + temperature
+/// chip (right-click still adds RAM for the session).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct CpuDashboardBarWidget {
+    pub show_cpu: bool,
+    pub show_temperature: bool,
+    /// Intel iGPU busy % (xe / i915 sysfs idle residency; no root).
+    pub show_gpu: bool,
+    pub show_ram: bool,
+    pub show_swap: bool,
+    /// Usage of the filesystem holding `disk_path`.
+    pub show_disk: bool,
+    pub disk_path: String,
+    /// Down / up rate over the physical interfaces.
+    pub show_network: bool,
+    /// Tint each metric on its own warn / danger thresholds.
+    pub highlight: bool,
+    /// Drop a metric whose sensor has no reading instead of showing "—".
+    pub hide_unavailable: bool,
+    /// Hover shows a two-column table (every shown metric with used /
+    /// total, CPU frequency, load, the top CPU and memory processes),
+    /// sampled only while the pointer is on the pill.
+    pub detailed_tooltip: bool,
+}
+
+impl Default for CpuDashboardBarWidget {
+    fn default() -> Self {
+        Self {
+            show_cpu: true,
+            show_temperature: true,
+            show_gpu: false,
+            show_ram: false,
+            show_swap: false,
+            show_disk: false,
+            disk_path: "/".to_string(),
+            show_network: false,
+            highlight: true,
+            hide_unavailable: false,
+            detailed_tooltip: true,
         }
     }
 }
