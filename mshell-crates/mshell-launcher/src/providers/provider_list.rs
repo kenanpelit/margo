@@ -221,6 +221,18 @@ const ENTRIES: &[Entry] = &[
         icon: "media-playback-start-symbolic",
     },
     Entry {
+        prefix: "cc [query]",
+        example: "cc margo",
+        description: "Claude Code sessions — jump to a running one, resume a recent one",
+        icon: "ai-agents-symbolic",
+    },
+    Entry {
+        prefix: "ai <question>",
+        example: "ai what does set -euo pipefail do",
+        description: "Ask Claude — answer in place; Enter on it continues the session",
+        icon: "ai-agents-symbolic",
+    },
+    Entry {
         prefix: ";",
         example: ";",
         description: "(this list)",
@@ -434,5 +446,20 @@ mod tests {
                 .iter()
                 .all(|i| i.description.to_lowercase().contains("emoji"))
         );
+    }
+
+    #[test]
+    fn claude_code_prefixes_are_listed() {
+        let captured = Rc::new(RefCell::new(String::new()));
+        let p = make(captured.clone());
+        let items = p.search(";claude");
+        for (prefix, expected) in [
+            ("cc [query]", "cc margo"),
+            ("ai <question>", "ai what does set -euo pipefail do"),
+        ] {
+            let row = items.iter().find(|i| i.name.starts_with(prefix)).unwrap();
+            (row.on_activate)();
+            assert_eq!(*captured.borrow(), expected);
+        }
     }
 }
