@@ -3,6 +3,9 @@
 
 use super::*;
 
+mod menu_positions;
+pub(super) use menu_positions::{menu_position, positioned_menus};
+
 impl Frame {
     // Can't use sender for this.  Must queue redraw in the callback.  Otherwise, there is a slight
     // delay and the frame isn't draw immediately.
@@ -346,75 +349,6 @@ impl Frame {
                 .update_style(|s| s.bottom_thickness = height as f64);
         }
         self.strips.set_band(is_top, f64::from(height));
-    }
-}
-
-/// A menu's configured screen anchor, read fresh from the config store by its
-/// stable menu-name. The single source of truth for where
-/// [`Frame::ensure_menu_built`] first attaches a menu and where
-/// [`Frame::apply_left_and_right_side_children`] re-attaches it on a reposition
-/// — the two used to duplicate these per-menu `.position().get()` reads.
-/// `wizard` shares the settings slot (both are mutually-exclusive centre
-/// panels). The fallback is unreachable: callers only pass known menu names.
-pub(super) fn menu_position(name: &str) -> Position {
-    macro_rules! pos {
-        ($menu:ident) => {
-            mshell_config::config_manager::config_manager()
-                .config()
-                .menus()
-                .$menu()
-                .position()
-                .get()
-        };
-    }
-    match name {
-        CLOCK_MENU => pos!(clock_menu),
-        CLIPBOARD_MENU => pos!(clipboard_menu),
-        NOTIFICATION_MENU => pos!(notification_menu),
-        SCREENSHOT_MENU => pos!(screenshot_menu),
-        APP_LAUNCHER_MENU => pos!(app_launcher_menu),
-        WALLPAPER_MENU => pos!(wallpaper_menu),
-        SCREENSHARE_MENU => pos!(screenshare_menu),
-        // The wizard shares the settings slot/position (both centre panels).
-        WIZARD_MENU | SETTINGS_MENU => pos!(settings_menu),
-        NUFW_MENU => pos!(ufw_menu),
-        PRIVACY_MENU => pos!(privacy_menu),
-        BLUETOOTH_MENU => pos!(bluetooth_menu),
-        CPU_DASHBOARD_MENU => pos!(cpu_dashboard_menu),
-        AUDIO_DASHBOARD_MENU => pos!(audio_dashboard_menu),
-        SYSTEM_UPDATE_MENU => pos!(system_update_menu),
-        VALENT_MENU => pos!(valent_menu),
-        WEATHER_MENU => pos!(weather_menu),
-        KEEP_AWAKE_MENU => pos!(keep_awake_menu),
-        TWILIGHT_MENU => pos!(twilight_menu),
-        KEYBINDS_MENU => pos!(keybinds_menu),
-        ALARMCLOCK_MENU => pos!(alarmclock_menu),
-        DOCK_MENU => pos!(dock_menu),
-        CONTROL_CENTER_MENU => pos!(control_center_menu),
-        SSH_MENU => pos!(ssh_menu),
-        USB_MENU => pos!(usb_menu),
-        DISCORD_MENU => pos!(discord_voice_menu),
-        CRASHES_MENU => pos!(crashes_menu),
-        NDNS_MENU => pos!(dns_menu),
-        NVPN_MENU => pos!(vpn_menu),
-        NAI_MENU => pos!(ai_menu),
-        NPODMAN_MENU => pos!(podman_menu),
-        NGITHUB_MENU => pos!(github_menu),
-        NAGENTS_MENU => pos!(agents_menu),
-        NNOTES_MENU => pos!(notes_menu),
-        NIP_MENU => pos!(ip_menu),
-        NVPN_INDICATOR_MENU => pos!(vpn_indicator_menu),
-        NNETWORK_MENU => pos!(network_menu),
-        NPOWER_MENU => pos!(power_menu),
-        MEDIA_PLAYER_MENU => pos!(media_player_menu),
-        MTUNE_MENU => pos!(mtune_menu),
-        LYRICS_MENU => pos!(lyrics_menu),
-        SESSION_MENU => pos!(session_menu),
-        MDASH_MENU => pos!(mdash_menu),
-        MARGO_LAYOUT_MENU => pos!(margo_layout_menu),
-        COLOR_PICKER_MENU => pos!(color_picker_menu),
-        NPLUGIN_PANEL_MENU => pos!(plugin_panel_menu),
-        _ => Position::TopRight,
     }
 }
 

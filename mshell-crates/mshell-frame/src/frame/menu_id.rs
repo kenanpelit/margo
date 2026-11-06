@@ -110,6 +110,55 @@ pub enum MenuId {
 }
 
 impl MenuId {
+    /// Every id, for tests that must cover each menu.
+    #[cfg(test)]
+    pub(super) const ALL: [MenuId; 44] = [
+        MenuId::Clock,
+        MenuId::Clipboard,
+        MenuId::Notification,
+        MenuId::Screenshot,
+        MenuId::AppLauncher,
+        MenuId::Wallpaper,
+        MenuId::Wizard,
+        MenuId::Ufw,
+        MenuId::Privacy,
+        MenuId::Bluetooth,
+        MenuId::CpuDashboard,
+        MenuId::AudioDashboard,
+        MenuId::SystemUpdate,
+        MenuId::Valent,
+        MenuId::Weather,
+        MenuId::KeepAwake,
+        MenuId::Twilight,
+        MenuId::Keybinds,
+        MenuId::AlarmClock,
+        MenuId::Dock,
+        MenuId::ControlCenter,
+        MenuId::SshSessions,
+        MenuId::Usb,
+        MenuId::DiscordVoice,
+        MenuId::Crashes,
+        MenuId::Dns,
+        MenuId::Vpn,
+        MenuId::Ai,
+        MenuId::Podman,
+        MenuId::Github,
+        MenuId::Agents,
+        MenuId::Notes,
+        MenuId::Ip,
+        MenuId::VpnIndicator,
+        MenuId::Network,
+        MenuId::Power,
+        MenuId::MediaPlayer,
+        MenuId::Mtune,
+        MenuId::Lyrics,
+        MenuId::Session,
+        MenuId::Mdash,
+        MenuId::MargoLayout,
+        MenuId::Translate,
+        MenuId::ColorPicker,
+    ];
+
     /// The stable menu-name key this id toggles — the same `&str` the
     /// per-menu arms passed to [`Frame::toggle_menu`] before the collapse.
     pub(super) const fn menu_name(self) -> &'static str {
