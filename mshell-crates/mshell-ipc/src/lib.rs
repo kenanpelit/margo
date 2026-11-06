@@ -97,6 +97,7 @@ pub trait Shell {
     fn custom_refresh(&self, name: &str) -> zbus::Result<u32>;
     fn ssh_sessions(&self) -> zbus::Result<()>;
     fn usb(&self) -> zbus::Result<()>;
+    fn shelf(&self) -> zbus::Result<()>;
     fn discord_voice(&self) -> zbus::Result<()>;
     fn crashes(&self) -> zbus::Result<()>;
     fn vpn(&self) -> zbus::Result<()>;

@@ -54,6 +54,7 @@ pub(crate) mod scratchpads;
 pub(crate) mod screenshot;
 pub(crate) mod scroller_ribbon;
 pub(crate) mod setup;
+pub(crate) mod shelf;
 pub(crate) mod shutdown;
 pub(crate) mod ssh_sessions;
 pub(crate) mod sysstat;

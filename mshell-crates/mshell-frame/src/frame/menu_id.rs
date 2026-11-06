@@ -28,6 +28,7 @@ pub(super) const DOCK_MENU: &str = "dock";
 pub(super) const CONTROL_CENTER_MENU: &str = "control_center";
 pub(super) const SSH_MENU: &str = "ssh_sessions";
 pub(super) const USB_MENU: &str = "usb";
+pub(super) const SHELF_MENU: &str = "shelf";
 pub(super) const DISCORD_MENU: &str = "discord_voice";
 pub(super) const CRASHES_MENU: &str = "crashes";
 pub(super) const NDNS_MENU: &str = "dns";
@@ -88,6 +89,7 @@ pub enum MenuId {
     ControlCenter,
     SshSessions,
     Usb,
+    Shelf,
     DiscordVoice,
     Crashes,
     Dns,
@@ -190,6 +192,7 @@ impl MenuId {
             MenuId::ControlCenter => CONTROL_CENTER_MENU,
             MenuId::SshSessions => SSH_MENU,
             MenuId::Usb => USB_MENU,
+            MenuId::Shelf => SHELF_MENU,
             MenuId::DiscordVoice => DISCORD_MENU,
             MenuId::Crashes => CRASHES_MENU,
             MenuId::Dns => NDNS_MENU,
@@ -244,6 +247,7 @@ impl MenuId {
             MenuId::ControlCenter => MenuType::ControlCenter,
             MenuId::SshSessions => MenuType::SshSessions,
             MenuId::Usb => MenuType::Usb,
+            MenuId::Shelf => MenuType::Shelf,
             MenuId::DiscordVoice => MenuType::DiscordVoice,
             MenuId::Crashes => MenuType::Crashes,
             MenuId::Dns => MenuType::Dns,

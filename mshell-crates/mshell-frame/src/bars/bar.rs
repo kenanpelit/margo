@@ -51,6 +51,7 @@ use crate::bars::bar_widgets::scratchpads::{ScratchpadsInit, ScratchpadsModel};
 use crate::bars::bar_widgets::screenshot::{ScreenshotInit, ScreenshotModel, ScreenshotOutput};
 use crate::bars::bar_widgets::scroller_ribbon::{ScrollerRibbonInit, ScrollerRibbonModel};
 use crate::bars::bar_widgets::setup::{SetupInit, SetupModel, SetupOutput};
+use crate::bars::bar_widgets::shelf::{ShelfInit, ShelfModel, ShelfOutput};
 use crate::bars::bar_widgets::shutdown::{ShutdownInit, ShutdownModel};
 use crate::bars::bar_widgets::ssh_sessions::{SshSessionsInit, SshSessionsModel};
 use crate::bars::bar_widgets::system_tray::{SystemTrayInit, SystemTrayModel};
@@ -244,6 +245,7 @@ pub(crate) enum BarOutput {
     ControlCenterClicked,
     SshSessionsClicked,
     UsbClicked,
+    ShelfClicked,
     DiscordVoiceClicked,
     AudioDashboardClicked,
     VpnClicked,
@@ -1270,6 +1272,13 @@ impl BarModel {
                     },
                 ))
             }
+            BarWidget::Shelf => Box::new(
+                ShelfModel::builder()
+                    .launch(ShelfInit { orientation })
+                    .forward(sender.output_sender(), |msg| match msg {
+                        ShelfOutput::Clicked => BarOutput::ShelfClicked,
+                    }),
+            ),
             BarWidget::DiscordVoice => Box::new(
                 DiscordVoiceModel::builder()
                     .launch(DiscordVoiceInit { orientation })

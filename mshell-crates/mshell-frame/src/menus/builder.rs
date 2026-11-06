@@ -109,6 +109,9 @@ use crate::menus::menu_widgets::section_label::{SectionLabelInit, SectionLabelMo
 use crate::menus::menu_widgets::session::session_menu_widget::{
     SessionMenuWidgetInit, SessionMenuWidgetModel, SessionMenuWidgetOutput,
 };
+use crate::menus::menu_widgets::shelf::shelf_menu_widget::{
+    ShelfMenuWidgetInit, ShelfMenuWidgetModel,
+};
 use crate::menus::menu_widgets::spacer::{SpacerInit, SpacerModel};
 use crate::menus::menu_widgets::ssh_sessions::ssh_sessions_menu_widget::{
     SshSessionsMenuWidgetInit, SshSessionsMenuWidgetModel,
@@ -268,6 +271,11 @@ pub fn build_widget(
         MenuWidget::Usb => Box::new(
             UsbMenuWidgetModel::builder()
                 .launch(UsbMenuWidgetInit {})
+                .detach(),
+        ),
+        MenuWidget::Shelf => Box::new(
+            ShelfMenuWidgetModel::builder()
+                .launch(ShelfMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::DiscordVoice => Box::new(

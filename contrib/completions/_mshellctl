@@ -268,6 +268,12 @@ _arguments "${_arguments_options[@]}" : \
 '--help[Print help]' \
 && ret=0
 ;;
+(shelf)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
 (discord-voice)
 _arguments "${_arguments_options[@]}" : \
 '-h[Print help]' \
@@ -614,6 +620,10 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (usb)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(shelf)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -3696,6 +3706,10 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(shelf)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (discord-voice)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -6141,6 +6155,7 @@ _mshellctl__subcmd__help__subcmd__menu_commands() {
 'control-center:Toggle the Control Center menu (system preferences + quick controls)' \
 'ssh-sessions:Toggle the SSH Sessions menu (searchable ~/.ssh/config host list)' \
 'usb:Toggle the USB Drives menu (removable drives\: mount, unlock, safe removal)' \
+'shelf:Toggle the Shelf menu (files held to drag into other apps)' \
 'discord-voice:Toggle the Discord voice menu (call controls + participants)' \
 'crashes:Toggle the Crashes menu (your core dumps + this boot'\''s journal errors)' \
 'vpn:Toggle the DNS / VPN menu (Mullvad controls + a collapsible DNS section)' \
@@ -6392,6 +6407,11 @@ _mshellctl__subcmd__help__subcmd__menu__subcmd__session__subcmd__shutdown_comman
 _mshellctl__subcmd__help__subcmd__menu__subcmd__session__subcmd__suspend_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help menu session suspend commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__menu__subcmd__shelf_commands] )) ||
+_mshellctl__subcmd__help__subcmd__menu__subcmd__shelf_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help menu shelf commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__help__subcmd__menu__subcmd__ssh-sessions_commands] )) ||
 _mshellctl__subcmd__help__subcmd__menu__subcmd__ssh-sessions_commands() {
@@ -7467,6 +7487,7 @@ _mshellctl__subcmd__menu_commands() {
 'control-center:Toggle the Control Center menu (system preferences + quick controls)' \
 'ssh-sessions:Toggle the SSH Sessions menu (searchable ~/.ssh/config host list)' \
 'usb:Toggle the USB Drives menu (removable drives\: mount, unlock, safe removal)' \
+'shelf:Toggle the Shelf menu (files held to drag into other apps)' \
 'discord-voice:Toggle the Discord voice menu (call controls + participants)' \
 'crashes:Toggle the Crashes menu (your core dumps + this boot'\''s journal errors)' \
 'vpn:Toggle the DNS / VPN menu (Mullvad controls + a collapsible DNS section)' \
@@ -7594,6 +7615,7 @@ _mshellctl__subcmd__menu__subcmd__help_commands() {
 'control-center:Toggle the Control Center menu (system preferences + quick controls)' \
 'ssh-sessions:Toggle the SSH Sessions menu (searchable ~/.ssh/config host list)' \
 'usb:Toggle the USB Drives menu (removable drives\: mount, unlock, safe removal)' \
+'shelf:Toggle the Shelf menu (files held to drag into other apps)' \
 'discord-voice:Toggle the Discord voice menu (call controls + participants)' \
 'crashes:Toggle the Crashes menu (your core dumps + this boot'\''s journal errors)' \
 'vpn:Toggle the DNS / VPN menu (Mullvad controls + a collapsible DNS section)' \
@@ -7851,6 +7873,11 @@ _mshellctl__subcmd__menu__subcmd__help__subcmd__session__subcmd__shutdown_comman
 _mshellctl__subcmd__menu__subcmd__help__subcmd__session__subcmd__suspend_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl menu help session suspend commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__menu__subcmd__help__subcmd__shelf_commands] )) ||
+_mshellctl__subcmd__menu__subcmd__help__subcmd__shelf_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl menu help shelf commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__menu__subcmd__help__subcmd__ssh-sessions_commands] )) ||
 _mshellctl__subcmd__menu__subcmd__help__subcmd__ssh-sessions_commands() {
@@ -8137,6 +8164,11 @@ _mshellctl__subcmd__menu__subcmd__session__subcmd__shutdown_commands() {
 _mshellctl__subcmd__menu__subcmd__session__subcmd__suspend_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl menu session suspend commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__menu__subcmd__shelf_commands] )) ||
+_mshellctl__subcmd__menu__subcmd__shelf_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl menu shelf commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__menu__subcmd__ssh-sessions_commands] )) ||
 _mshellctl__subcmd__menu__subcmd__ssh-sessions_commands() {

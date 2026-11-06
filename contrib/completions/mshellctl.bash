@@ -835,6 +835,9 @@ _mshellctl() {
             mshellctl__subcmd__help__subcmd__menu,session)
                 cmd="mshellctl__subcmd__help__subcmd__menu__subcmd__session"
                 ;;
+            mshellctl__subcmd__help__subcmd__menu,shelf)
+                cmd="mshellctl__subcmd__help__subcmd__menu__subcmd__shelf"
+                ;;
             mshellctl__subcmd__help__subcmd__menu,ssh-sessions)
                 cmd="mshellctl__subcmd__help__subcmd__menu__subcmd__ssh__subcmd__sessions"
                 ;;
@@ -1423,6 +1426,9 @@ _mshellctl() {
             mshellctl__subcmd__menu,session)
                 cmd="mshellctl__subcmd__menu__subcmd__session"
                 ;;
+            mshellctl__subcmd__menu,shelf)
+                cmd="mshellctl__subcmd__menu__subcmd__shelf"
+                ;;
             mshellctl__subcmd__menu,ssh-sessions)
                 cmd="mshellctl__subcmd__menu__subcmd__ssh__subcmd__sessions"
                 ;;
@@ -1560,6 +1566,9 @@ _mshellctl() {
                 ;;
             mshellctl__subcmd__menu__subcmd__help,session)
                 cmd="mshellctl__subcmd__menu__subcmd__help__subcmd__session"
+                ;;
+            mshellctl__subcmd__menu__subcmd__help,shelf)
+                cmd="mshellctl__subcmd__menu__subcmd__help__subcmd__shelf"
                 ;;
             mshellctl__subcmd__menu__subcmd__help,ssh-sessions)
                 cmd="mshellctl__subcmd__menu__subcmd__help__subcmd__ssh__subcmd__sessions"
@@ -5625,6 +5634,20 @@ _mshellctl() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        mshellctl__subcmd__help__subcmd__menu__subcmd__shelf)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         mshellctl__subcmd__help__subcmd__menu__subcmd__ssh__subcmd__sessions)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
@@ -8961,6 +8984,20 @@ _mshellctl() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        mshellctl__subcmd__menu__subcmd__help__subcmd__shelf)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         mshellctl__subcmd__menu__subcmd__help__subcmd__ssh__subcmd__sessions)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
@@ -9678,6 +9715,20 @@ _mshellctl() {
         mshellctl__subcmd__menu__subcmd__session__subcmd__suspend)
             opts="-h --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__menu__subcmd__shelf)
+            opts="-h --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi

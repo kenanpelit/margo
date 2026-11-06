@@ -144,6 +144,9 @@ pub enum MenuWidget {
     /// `usb` bar pill's panel — removable drives with mount / open,
     /// LUKS unlock / lock and safe removal (udisks2).
     Usb,
+    /// `shelf` bar pill's panel — files dropped in to hold, dragged out
+    /// into other apps; open / show in folder / copy path / remove / clear.
+    Shelf,
     DiscordVoice,
     /// Crash history (systemd-coredump, your own processes) with
     /// per-program mute, plus this boot's journal errors.
@@ -236,6 +239,7 @@ impl MenuWidget {
             MenuWidget::Keybinds => "Keyboard Shortcuts",
             MenuWidget::SshSessions => "SSH Sessions",
             MenuWidget::Usb => "USB Drives",
+            MenuWidget::Shelf => "Shelf",
             MenuWidget::DiscordVoice => "Discord Voice",
             MenuWidget::Crashes => "Crashes",
             MenuWidget::ThemePicker => "Theme Picker",
@@ -314,6 +318,7 @@ impl MenuWidget {
             MenuWidget::Keybinds,
             MenuWidget::SshSessions,
             MenuWidget::Usb,
+            MenuWidget::Shelf,
             MenuWidget::DiscordVoice,
             MenuWidget::Crashes,
             MenuWidget::ThemePicker,

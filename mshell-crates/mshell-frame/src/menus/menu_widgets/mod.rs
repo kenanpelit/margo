@@ -47,6 +47,7 @@ pub(crate) mod screenshare;
 pub(crate) mod screenshot;
 pub(crate) mod section_label;
 pub(crate) mod session;
+pub(crate) mod shelf;
 pub(crate) mod spacer;
 pub(crate) mod ssh_sessions;
 pub(crate) mod system_status;

@@ -23,6 +23,7 @@ pub mod pomodoro;
 mod removable_drives;
 pub mod rss;
 pub mod screen_corners;
+mod shelf;
 mod ssh;
 
 /// `mshellctl qr …`: the request the QR menu shows when it next opens, and

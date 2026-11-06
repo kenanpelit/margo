@@ -103,6 +103,10 @@ pub enum BarWidget {
     /// a volume is mounted; hidden while nothing is plugged in. Click
     /// opens the drive panel, right-click removes every drive safely.
     Usb,
+    /// File shelf — a tray glyph + how many files are on the shelf. Drop
+    /// files on it (or in its menu) to hold them; click opens the shelf,
+    /// where they can be dragged out into any app, opened or copied.
+    Shelf,
     DiscordVoice,
     LockKeys,
     /// Keyboard-layout pill — shows the active xkb layout (e.g. "US",
@@ -222,6 +226,7 @@ impl BarWidget {
             BarWidget::Keybinds => "Keyboard Shortcuts",
             BarWidget::SshSessions => "SSH Sessions",
             BarWidget::Usb => "USB Drives",
+            BarWidget::Shelf => "Shelf",
             BarWidget::DiscordVoice => "Discord Voice",
             BarWidget::LockKeys => "Lock Keys (Caps/Num/Scroll)",
             BarWidget::KeyboardLayout => "Keyboard Layout",
@@ -297,6 +302,7 @@ impl BarWidget {
             BarWidget::Keybinds,
             BarWidget::SshSessions,
             BarWidget::Usb,
+            BarWidget::Shelf,
             BarWidget::DiscordVoice,
             BarWidget::LockKeys,
             BarWidget::KeyboardLayout,

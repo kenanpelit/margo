@@ -168,6 +168,7 @@ pub(crate) enum MenuType {
     SshSessions,
     /// `usb` bar pill's panel — removable drives (udisks2).
     Usb,
+    Shelf,
     DiscordVoice,
     /// Crash history + this boot's journal errors (`crashes` menu).
     Crashes,
@@ -673,6 +674,12 @@ impl Component for MenuModel {
                 effect_widgets!(effects, base_config, sender, usb_menu);
                 effect_min_width!(effects, base_config, sender, usb_menu);
                 effect_max_height!(effects, base_config, sender, usb_menu);
+            }
+            MenuType::Shelf => {
+                css_class = "quick-settings-menu shelf-menu".to_string();
+                effect_widgets!(effects, base_config, sender, shelf_menu);
+                effect_min_width!(effects, base_config, sender, shelf_menu);
+                effect_max_height!(effects, base_config, sender, shelf_menu);
             }
             MenuType::DiscordVoice => {
                 css_class = "quick-settings-menu discord-voice-menu".to_string();

@@ -501,6 +501,9 @@ impl IPCService {
     async fn usb(&self) -> fdo::Result<()> {
         self.send(IPCCommand::Usb)
     }
+    async fn shelf(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Menu(mshell_frame::frame::MenuId::Shelf, false))
+    }
     async fn discord_voice(&self) -> fdo::Result<()> {
         self.send(IPCCommand::DiscordVoice)
     }

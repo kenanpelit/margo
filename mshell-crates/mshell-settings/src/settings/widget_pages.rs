@@ -370,6 +370,12 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
             label: "USB Drives",
             icon: "drive-removable-media-symbolic",
         },
+        WidgetEntry::Menu {
+            kind: MenuKind::Shelf,
+            stack_name: "shelf",
+            label: "Shelf",
+            icon: "folder-download-symbolic",
+        },
         WidgetEntry::MenuWith {
             kind: MenuKind::DiscordVoice,
             stack_name: "discord_voice",

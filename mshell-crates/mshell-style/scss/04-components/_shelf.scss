@@ -1,0 +1,62 @@
+// Shelf — bar pill + file-shelf panel (shelf port, GTK4 drag and drop).
+// DESIGN.md: §3 active tint on the pill, §5 boxed-list rows, §12 header.
+
+@use "../02-functions/index" as *;
+
+// ── Bar pill ──────────────────────────────────────────────
+.shelf-bar-label {
+  font-size: var(--font-bar);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--primary);
+}
+.shelf-bar-widget.active image {
+  color: var(--primary);
+}
+// A file dragged over the pill: the drop target lights up.
+.shelf-bar-widget:drop(active) {
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+
+// ── Panel ─────────────────────────────────────────────────
+.shelf-menu-widget {
+  padding: var(--space-1);
+}
+
+.shelf-list,
+.shelf-menu scrolledwindow {
+  background-color: transparent;
+}
+
+// The drop zone: a dashed card that turns primary while a drag hovers
+// the panel (the whole panel is the drop target).
+.shelf-drop-zone {
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--outline-variant);
+  border-radius: var(--card-radius);
+}
+.shelf-menu-widget:drop(active) .shelf-drop-zone {
+  border-color: var(--primary);
+  background-color: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+
+.shelf-row {
+  padding: 0 var(--space-1);
+
+  &.missing .shelf-row-main {
+    opacity: 0.55;
+  }
+}
+
+// The row's main part is a flat button (open on click, drag to share).
+.shelf-row-main {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: var(--space-1) var(--space-1);
+  border-radius: var(--button-radius);
+
+  &:hover {
+    background-color: color-mix(in srgb, var(--on-surface) 6%, transparent);
+  }
+}

@@ -100,6 +100,8 @@ pub enum MenuCommands {
     SshSessions,
     /// Toggle the USB Drives menu (removable drives: mount, unlock, safe removal)
     Usb,
+    /// Toggle the Shelf menu (files held to drag into other apps)
+    Shelf,
     /// Toggle the Discord voice menu (call controls + participants)
     DiscordVoice,
     /// Toggle the Crashes menu (your core dumps + this boot's journal errors)
@@ -259,6 +261,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Usb => {
             shell().await?.usb().await?;
+        }
+        MenuCommands::Shelf => {
+            shell().await?.shelf().await?;
         }
         MenuCommands::DiscordVoice => {
             shell().await?.discord_voice().await?;
