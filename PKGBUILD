@@ -106,6 +106,9 @@ makedepends=(
   libadwaita      # `mtune` links libadwaita-1
   mpv             # mshellctl links libmpv directly (build.rs -lmpv) for the wallpaper engine
 )
+checkdepends=(
+  gst-libav       # avenc_aac / avdec_aac for mtune's live-radio unit tests
+)
 optdepends=(
   # Every external program the code runs is listed in
   # scripts/runtime-tools.txt with the package that provides it;
