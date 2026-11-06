@@ -221,6 +221,15 @@ pub fn active_tag_windows(state: &crate::state_json::StateJson) -> Vec<TagWindow
         .collect()
 }
 
+/// Occupancy of every tag as bit masks (bit `n - 1` = tag `n`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TagMasks {
+    /// Tags with at least one window that isn't minimized.
+    pub occupied: u32,
+    /// Tags with an urgent window that isn't minimized.
+    pub urgent: u32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

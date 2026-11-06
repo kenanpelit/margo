@@ -361,16 +361,157 @@ impl Default for WallpaperBarWidget {
 }
 
 /// Settings for the [`crate::schema::bar_widgets::BarWidget::MargoTags`]
-/// tag row.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize, Store, Patch, JsonSchema,
-)]
+/// tag row. The display mode, glyphs and accents port the lunar-workspaces
+/// plugin's options, `minimap` the niri-workspace-preview plugin's map.
+/// Every default keeps the plain 1–9 digit row.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
 pub struct MargoTagsConfig {
     /// Show the active tag's windows as clickable app icons after the tag
     /// pills (click focuses that window). Off by default: the row stays
     /// the plain 1–9 tags.
     pub window_icons: bool,
+    /// Which tags get a pill.
+    pub display: MargoTagsDisplay,
+    /// Text / emoji for a tag in each state (e.g. 🌕 🌟 🌗 🌙). Empty
+    /// shows the tag number.
+    pub glyph_focused: String,
+    pub glyph_urgent: String,
+    pub glyph_occupied: String,
+    pub glyph_empty: String,
+    /// Theme colour of each state: the capsule fill of a focused / urgent
+    /// tag, the digit (glyph) tint of an occupied one.
+    pub accent_focused: TagAccent,
+    pub accent_urgent: TagAccent,
+    pub accent_occupied: TagAccent,
+    /// Draw each occupied tag as a tiny proportional map of its windows
+    /// instead of its number / glyph.
+    pub minimap: bool,
+}
+
+impl Default for MargoTagsConfig {
+    fn default() -> Self {
+        Self {
+            window_icons: false,
+            display: MargoTagsDisplay::All,
+            glyph_focused: String::new(),
+            glyph_urgent: String::new(),
+            glyph_occupied: String::new(),
+            glyph_empty: String::new(),
+            accent_focused: TagAccent::Primary,
+            accent_urgent: TagAccent::Error,
+            accent_occupied: TagAccent::Primary,
+            minimap: false,
+        }
+    }
+}
+
+/// Which tags the MargoTags row shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, Store, JsonSchema)]
+pub enum MargoTagsDisplay {
+    /// Every tag (today's row).
+    #[default]
+    All,
+    /// Only the focused, occupied and urgent tags.
+    ActiveOccupied,
+    /// As `ActiveOccupied`, plus the first empty tag after the last
+    /// occupied one, so there is always a pill to open a new tag on.
+    OccupiedPlusNext,
+}
+
+impl MargoTagsDisplay {
+    pub const ALL: [Self; 3] = [Self::All, Self::ActiveOccupied, Self::OccupiedPlusNext];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::All => "All tags",
+            Self::ActiveOccupied => "Focused and occupied",
+            Self::OccupiedPlusNext => "Occupied + next empty",
+        }
+    }
+
+    /// Position in [`Self::ALL`] (the Settings dropdown index).
+    pub fn index(self) -> u32 {
+        Self::ALL.iter().position(|m| *m == self).unwrap_or(0) as u32
+    }
+
+    /// [`Self::ALL`]`[i]`, [`Self::All`] when out of range.
+    pub fn from_index(i: u32) -> Self {
+        Self::ALL.get(i as usize).copied().unwrap_or_default()
+    }
+}
+
+impl PatchField for MargoTagsDisplay {
+    fn patch_field(
+        &mut self,
+        new: Self,
+        path: &StorePath,
+        notify: &mut dyn FnMut(&StorePath),
+        _keys: Option<&KeyMap>,
+    ) {
+        if *self != new {
+            *self = new;
+            notify(path);
+        }
+    }
+}
+
+/// A theme colour role for one MargoTags state. Maps to a matugen CSS var
+/// through a `tag-accent-*` class on the pill (`_margo_tag.scss`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Store, JsonSchema)]
+pub enum TagAccent {
+    Primary,
+    Secondary,
+    Tertiary,
+    Error,
+}
+
+impl TagAccent {
+    pub const ALL: [Self; 4] = [Self::Primary, Self::Secondary, Self::Tertiary, Self::Error];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Primary => "Primary",
+            Self::Secondary => "Secondary",
+            Self::Tertiary => "Tertiary",
+            Self::Error => "Error (red)",
+        }
+    }
+
+    /// CSS modifier class for the stylesheet (never a hard-coded colour).
+    pub fn css_class(self) -> &'static str {
+        match self {
+            Self::Primary => "tag-accent-primary",
+            Self::Secondary => "tag-accent-secondary",
+            Self::Tertiary => "tag-accent-tertiary",
+            Self::Error => "tag-accent-error",
+        }
+    }
+
+    /// Position in [`Self::ALL`] (the Settings dropdown index).
+    pub fn index(self) -> u32 {
+        Self::ALL.iter().position(|a| *a == self).unwrap_or(0) as u32
+    }
+
+    /// [`Self::ALL`]`[i]`, `Primary` when out of range.
+    pub fn from_index(i: u32) -> Self {
+        Self::ALL.get(i as usize).copied().unwrap_or(Self::Primary)
+    }
+}
+
+impl PatchField for TagAccent {
+    fn patch_field(
+        &mut self,
+        new: Self,
+        path: &StorePath,
+        notify: &mut dyn FnMut(&StorePath),
+        _keys: Option<&KeyMap>,
+    ) {
+        if *self != new {
+            *self = new;
+            notify(path);
+        }
+    }
 }
 
 /// Settings for the [`BarWidget::Catwalk`] animated-cat pill (port of the
@@ -1129,5 +1270,56 @@ mod agents_config_tests {
                 vec!["~/.claude-work".to_string()]
             )
         );
+    }
+}
+
+#[cfg(test)]
+mod margo_tags_tests {
+    use super::*;
+
+    #[test]
+    fn an_old_margo_tags_block_keeps_todays_row() {
+        let cfg: MargoTagsConfig = yaml_serde::from_str("window_icons: true\n").unwrap();
+        assert!(cfg.window_icons);
+        assert_eq!(
+            MargoTagsConfig {
+                window_icons: false,
+                ..cfg
+            },
+            MargoTagsConfig::default()
+        );
+        let d = MargoTagsConfig::default();
+        assert_eq!(d.display, MargoTagsDisplay::All);
+        assert!(!d.minimap);
+        assert!(d.glyph_focused.is_empty() && d.glyph_empty.is_empty());
+        assert_eq!(
+            (d.accent_focused, d.accent_urgent, d.accent_occupied),
+            (TagAccent::Primary, TagAccent::Error, TagAccent::Primary)
+        );
+    }
+
+    #[test]
+    fn the_new_keys_round_trip() {
+        let yaml = "display: OccupiedPlusNext\nglyph_focused: \"🌕\"\naccent_urgent: Tertiary\nminimap: true\n";
+        let cfg: MargoTagsConfig = yaml_serde::from_str(yaml).unwrap();
+        assert_eq!(cfg.display, MargoTagsDisplay::OccupiedPlusNext);
+        assert_eq!(cfg.glyph_focused, "🌕");
+        assert_eq!(cfg.accent_urgent, TagAccent::Tertiary);
+        assert!(cfg.minimap);
+        let back: MargoTagsConfig =
+            yaml_serde::from_str(&yaml_serde::to_string(&cfg).unwrap()).unwrap();
+        assert_eq!(back, cfg);
+    }
+
+    #[test]
+    fn dropdown_indices_round_trip() {
+        for m in MargoTagsDisplay::ALL {
+            assert_eq!(MargoTagsDisplay::from_index(m.index()), m);
+        }
+        for a in TagAccent::ALL {
+            assert_eq!(TagAccent::from_index(a.index()), a);
+        }
+        assert_eq!(MargoTagsDisplay::from_index(99), MargoTagsDisplay::All);
+        assert_eq!(TagAccent::from_index(99), TagAccent::Primary);
     }
 }

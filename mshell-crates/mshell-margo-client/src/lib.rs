@@ -37,6 +37,7 @@ use futures::{Stream, StreamExt};
 
 pub mod ctl;
 pub mod indicators;
+pub mod minimap;
 pub mod state_json;
 mod sync;
 
@@ -307,6 +308,10 @@ pub struct Workspace {
     pub last_window_title: Reactive<String>,
     pub persistent: Reactive<bool>,
     pub tiled_layout: Reactive<String>,
+    /// A visible (not minimized) window on the tag asks for attention.
+    pub urgent: Reactive<bool>,
+    /// The tag's windows as a proportional map (MargoTags `minimap`).
+    pub minimap: Reactive<crate::minimap::TagMinimap>,
 }
 
 impl PartialEq for Workspace {
@@ -518,6 +523,9 @@ pub struct MargoService {
     /// The windows on the focused output's active tag (visible ones, in
     /// client order). The tag row's optional app icons read this.
     pub active_tag_windows: Reactive<Vec<crate::indicators::TagWindow>>,
+    /// Which tags hold visible windows / an urgent one, as bit masks (bit
+    /// `n - 1` = tag `n`), change-only: the MargoTags display modes.
+    pub tag_masks: Reactive<crate::indicators::TagMasks>,
     /// The focused output's tiling layout. `None` until the first
     /// snapshot, or while the output's `layout_idx` is past the
     /// layouts list (transient during a config reload). The layout
@@ -573,6 +581,7 @@ impl MargoService {
             scratchpads: Reactive::new(Vec::new()),
             minimized: Reactive::new(Vec::new()),
             active_tag_windows: Reactive::new(Vec::new()),
+            tag_masks: Reactive::new(Default::default()),
             active_layout: Reactive::new(None),
             config_errors: Reactive::new(Vec::new()),
             fullscreen_outputs: Reactive::new(Vec::new()),

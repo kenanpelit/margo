@@ -7,7 +7,9 @@ use mshell_common::dynamic_box::dynamic_box::{
 use mshell_common::dynamic_box::generic_widget_controller::{
     GenericWidgetController, GenericWidgetControllerExtSafe,
 };
-use mshell_margo_client::{MargoEvent, Workspace, WorkspaceId};
+use mshell_config::schema::config::MargoTagsDisplay;
+use mshell_margo_client::indicators::TagMasks;
+use mshell_margo_client::{MargoEvent, Workspace, WorkspaceId, WorkspaceInfo};
 use mshell_services::margo_service;
 use mshell_utils::hover_scroll::attach_hover_scroll;
 use mshell_utils::margo::{get_active_workspaces, go_down_workspace, go_up_workspace};
@@ -292,5 +294,107 @@ impl MargoTagsModel {
             .filter(|w| !w.name.get().starts_with("special:"))
             .map(WsRow::Workspace)
             .collect()
+    }
+}
+
+/// Bit mask (bit `n - 1` = tag `n`) of the given tags; ids outside 1..=32
+/// are ignored.
+pub(crate) fn active_mask(infos: &[WorkspaceInfo]) -> u32 {
+    infos
+        .iter()
+        .filter(|w| (1..=32).contains(&w.id))
+        .fold(0, |m, w| m | 1u32 << (w.id - 1))
+}
+
+/// Which of `count` tags get a pill under `mode` (the lunar-workspaces
+/// display modes), as a bit mask:
+/// * `All` — every tag;
+/// * `ActiveOccupied` — occupied, focused and urgent tags;
+/// * `OccupiedPlusNext` — those, plus the first unoccupied tag after the
+///   highest occupied one (there is always a pill to open a new tag on).
+pub(crate) fn shown_tags(mode: MargoTagsDisplay, masks: TagMasks, active: u32, count: u32) -> u32 {
+    let all = match count {
+        0 => return 0,
+        32.. => u32::MAX,
+        n => (1u32 << n) - 1,
+    };
+    let base = (masks.occupied | masks.urgent | active) & all;
+    match mode {
+        MargoTagsDisplay::All => all,
+        MargoTagsDisplay::ActiveOccupied => base,
+        MargoTagsDisplay::OccupiedPlusNext => {
+            let occupied = masks.occupied & all;
+            let after_last = u32::BITS - occupied.leading_zeros();
+            let next = (after_last < count.min(32)).then(|| 1u32 << after_last);
+            base | next.unwrap_or(0)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn masks(occupied: u32, urgent: u32) -> TagMasks {
+        TagMasks { occupied, urgent }
+    }
+
+    #[test]
+    fn all_shows_every_tag() {
+        assert_eq!(
+            shown_tags(MargoTagsDisplay::All, masks(0, 0), 0, 9),
+            0b1_1111_1111
+        );
+        assert_eq!(
+            shown_tags(MargoTagsDisplay::All, masks(0, 0), 0, 32),
+            u32::MAX
+        );
+        assert_eq!(shown_tags(MargoTagsDisplay::All, masks(0, 0), 0, 0), 0);
+    }
+
+    #[test]
+    fn active_occupied_is_occupied_focused_and_urgent() {
+        // Tags 1, 3 occupied; 6 focused but empty; 8 urgent.
+        let m = masks(0b101, 0b1000_0000);
+        assert_eq!(
+            shown_tags(MargoTagsDisplay::ActiveOccupied, m, 0b10_0000, 9),
+            0b1010_0101
+        );
+    }
+
+    #[test]
+    fn occupied_plus_next_adds_the_slot_after_the_last_occupied_tag() {
+        // Tags 1-6 occupied (the owner's DP-3), tag 2 focused: 1-7.
+        let m = masks(0b11_1111, 0);
+        assert_eq!(
+            shown_tags(MargoTagsDisplay::OccupiedPlusNext, m, 0b10, 9),
+            0b111_1111
+        );
+        // A gap is not the "next" slot: 1 and 4 occupied -> 1, 4, 5.
+        let m = masks(0b1001, 0);
+        assert_eq!(
+            shown_tags(MargoTagsDisplay::OccupiedPlusNext, m, 0b1, 9),
+            0b1_1001
+        );
+        // Nothing open: the first tag (and the focused one).
+        assert_eq!(
+            shown_tags(MargoTagsDisplay::OccupiedPlusNext, masks(0, 0), 0b100, 9),
+            0b101
+        );
+        // The last tag occupied: no slot past the end.
+        let m = masks(1 << 8, 0);
+        assert_eq!(
+            shown_tags(MargoTagsDisplay::OccupiedPlusNext, m, 1 << 8, 9),
+            1 << 8
+        );
+    }
+
+    #[test]
+    fn active_mask_ignores_out_of_range_ids() {
+        let info = |id| WorkspaceInfo {
+            id,
+            name: id.to_string(),
+        };
+        assert_eq!(active_mask(&[info(2), info(0), info(40)]), 0b10);
     }
 }

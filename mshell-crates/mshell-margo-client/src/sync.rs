@@ -312,6 +312,7 @@ fn apply(service: &MargoService, state: &StateJson) {
     };
     let mut windows_per_tag = vec![0u16; tag_count + 1];
     let mut fullscreen_per_tag = vec![false; tag_count + 1];
+    let mut urgent_per_tag = vec![false; tag_count + 1];
     for c in &state.clients {
         let mut bits = c.tags & tag_mask;
         while bits != 0 {
@@ -319,6 +320,7 @@ fn apply(service: &MargoService, state: &StateJson) {
             bits &= bits - 1;
             if !c.minimized {
                 windows_per_tag[idx] = windows_per_tag[idx].saturating_add(1);
+                urgent_per_tag[idx] |= c.urgent;
             }
             if c.fullscreen {
                 fullscreen_per_tag[idx] = true;
@@ -342,6 +344,13 @@ fn apply(service: &MargoService, state: &StateJson) {
             });
         let windows = windows_per_tag[tag as usize];
         let fullscreen = fullscreen_per_tag[tag as usize];
+        let urgent = urgent_per_tag[tag as usize];
+        let minimap = state
+            .outputs
+            .iter()
+            .find(|o| o.name == owner.0)
+            .map(|o| crate::minimap::tag_minimap(state, o, bit))
+            .unwrap_or_default();
         let last = state
             .outputs
             .iter()
@@ -381,6 +390,12 @@ fn apply(service: &MargoService, state: &StateJson) {
             if existing.tiled_layout.get() != tiled_layout {
                 existing.tiled_layout.set(tiled_layout.clone());
             }
+            if existing.urgent.get() != urgent {
+                existing.urgent.set(urgent);
+            }
+            if existing.minimap.get() != minimap {
+                existing.minimap.set(minimap);
+            }
             Arc::clone(existing)
         } else {
             Arc::new(Workspace {
@@ -394,10 +409,23 @@ fn apply(service: &MargoService, state: &StateJson) {
                 last_window_title: Reactive::new(last_window_title),
                 persistent: Reactive::new(true),
                 tiled_layout: Reactive::new(tiled_layout),
+                urgent: Reactive::new(urgent),
+                minimap: Reactive::new(minimap),
             })
         };
         workspace_by_id.insert(ws_id, Arc::clone(&ws));
         next_ws.push(ws);
+    }
+    let masks = crate::indicators::TagMasks {
+        occupied: (1..=tag_count_u32)
+            .filter(|t| windows_per_tag[*t as usize] > 0)
+            .fold(0, |m, t| m | 1 << (t - 1)),
+        urgent: (1..=tag_count_u32)
+            .filter(|t| urgent_per_tag[*t as usize])
+            .fold(0, |m, t| m | 1 << (t - 1)),
+    };
+    if service.tag_masks.get() != masks {
+        service.tag_masks.set(masks);
     }
     // Workspace lifecycle events (Create / Destroy) so widget watchers
     // light up. Compare ID sets between prev/next; emit per added or
@@ -1127,6 +1155,7 @@ mod apply_tests {
             scratchpads: Reactive::new(Vec::new()),
             minimized: Reactive::new(Vec::new()),
             active_tag_windows: Reactive::new(Vec::new()),
+            tag_masks: Reactive::new(Default::default()),
             config_errors: Reactive::new(Vec::new()),
             active_layout: Reactive::new(None),
             fullscreen_outputs: Reactive::new(Vec::new()),
@@ -1361,6 +1390,29 @@ mod apply_tests {
         assert!(!ws(&svc, 1).fullscreen.get());
         assert!(client_by_id(&svc, 2).hidden.get());
         assert!(!client_by_id(&svc, 2).mapped.get());
+    }
+
+    #[test]
+    fn urgent_follows_visible_urgent_windows_and_the_minimap_its_tag() {
+        let svc = service();
+        let mut f = frame();
+        f.clients[1].urgent = true;
+        apply(&svc, &f);
+        let tag = |c: &crate::state_json::RawClient| c.tags.trailing_zeros() as i64 + 1;
+        let urgent_tag = tag(&f.clients[1]);
+        assert!(ws(&svc, urgent_tag).urgent.get());
+        assert_eq!(
+            ws(&svc, urgent_tag).minimap.get().windows.len() as u16,
+            ws(&svc, urgent_tag).windows.get()
+        );
+        let bit = 1u32 << (urgent_tag - 1);
+        assert_eq!(svc.tag_masks.get().urgent, bit);
+        assert_ne!(svc.tag_masks.get().occupied & bit, 0);
+        // A minimized urgent window can't be seen: the tag isn't urgent.
+        f.clients[1].minimized = true;
+        apply(&svc, &f);
+        assert!(!ws(&svc, urgent_tag).urgent.get());
+        assert_eq!(svc.tag_masks.get().urgent, 0);
     }
 
     #[test]

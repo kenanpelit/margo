@@ -1,12 +1,14 @@
 // MargoTag — one pill per tag in the bar's workspace row.
 //
-// Material-3 "active indicator" idiom, digit-only (no dot). Two
-// orthogonal CSS classes:
-//   .tag-active       → filled --primary capsule  (you are here)
-//   .tag-has-windows  → the digit tints --primary  (has content)
-// They compose: a focused tag is the filled capsule with an
-// on-primary digit; an occupied-but-unfocused tag shows an accent
-// (--primary) digit; an empty unfocused tag stays dim.
+// Material-3 "active indicator" idiom, digit-only (no dot). State
+// classes (one per pill, see margo_tag.rs):
+//   .tag-active       → filled capsule            (you are here)
+//   .tag-urgent       → filled capsule            (wants attention)
+//   .tag-has-windows  → the digit is tinted       (has content)
+// plus `.tag-accent-<role>` naming the state's theme colour (primary /
+// error / primary by default): a focused tag is the filled capsule with
+// an on-<role> digit; an occupied-but-unfocused tag a tinted digit; an
+// empty unfocused tag stays dim.
 //
 //   inactive empty     1   dim digit
 //   inactive occupied  2   accent (--primary) digit
@@ -60,32 +62,100 @@
               color var(--motion-medium) var(--ease-standard);
 }
 
-// ── has-windows: accent (theme-coloured) digit ──────────────
-.margo-tag.tag-has-windows .margo-tag-label {
-  color: var(--primary);
-  opacity: 1;
+// ── State colours ───────────────────────────────────────────
+// The pill carries one `.tag-accent-<role>` class for its current state
+// (bars.widgets.margo_tags.accent_*; primary / error / primary by
+// default), so every colour is a matugen token:
+//   occupied → the digit / glyph tints --<role>
+//   focused  → filled --<role> capsule, --on-<role> digit
+//   urgent   → the same filled capsule (a window wants attention)
+$tag-accent-roles: primary, secondary, tertiary, error;
+
+@each $role in $tag-accent-roles {
+  .margo-tag.tag-has-windows.tag-accent-#{$role}:not(.tag-active):not(.tag-urgent) .margo-tag-label {
+    color: var(--#{$role});
+    opacity: 1;
+  }
+
+  .margo-tag.tag-active.tag-accent-#{$role},
+  .margo-tag.tag-urgent.tag-accent-#{$role} {
+    background-color: var(--#{$role});
+  }
+
+  // Already filled, so the state layer lightens with --on-<role> instead
+  // of doubling the accent (state-layer-selected).
+  .margo-tag.tag-active.tag-accent-#{$role}:hover,
+  .margo-tag.tag-urgent.tag-accent-#{$role}:hover {
+    background-color: unquote("color-mix(in srgb, var(--on-#{$role}) 10%, var(--#{$role}))");
+  }
+
+  // The on-<role> digit wins over the occupied tint (the capsule already
+  // says "here", so the digit must read against the fill).
+  .margo-tag.tag-active.tag-accent-#{$role} .margo-tag-label,
+  .margo-tag.tag-urgent.tag-accent-#{$role} .margo-tag-label {
+    color: var(--on-#{$role});
+    opacity: 1;
+  }
+
+  .margo-tag.tag-active.tag-accent-#{$role} .margo-tag-mini-win,
+  .margo-tag.tag-urgent.tag-accent-#{$role} .margo-tag-mini-win {
+    background-color: unquote("color-mix(in srgb, var(--on-#{$role}) 45%, transparent)");
+  }
+
+  .margo-tag.tag-active.tag-accent-#{$role} .margo-tag-mini-win.focused {
+    background-color: var(--on-#{$role});
+  }
 }
 
-// ── hover (non-active): the canonical primary state-layer ────
+.margo-tag.tag-active .margo-tag-label {
+  font-weight: 700;
+}
+
+// ── hover (unfilled pills): the canonical primary state-layer ─
 // Same 14 % primary wash every bar pill and menu row uses, so the
 // workspace tags hover with one shared identity (DESIGN.md §7).
-.margo-tag:not(.tag-active):hover {
+.margo-tag:not(.tag-active):not(.tag-urgent):hover {
   background-color: unquote("color-mix(in srgb, var(--primary) var(--bar-hover-strength), transparent)");
 }
 
-// ── active: filled accent capsule ───────────────────────────
-.margo-tag.tag-active {
-  background-color: var(--primary);
+// ── Minimap (bars.widgets.margo_tags.minimap) ───────────────
+// A tag drawn as a tiny map of its windows; the sizes are set in
+// margo_tag.rs from the tag's aspect ratio. Tiles are on-surface at low
+// alpha, the focused window --primary, an urgent one --error, floating
+// windows --tertiary; the screen outline appears when a scroller strip
+// runs past the screen.
+.margo-tag.tag-minimap > * {
+  padding: 2px var(--space-1);
 }
-// Already filled with --primary, so its state layer lightens with
-// --on-primary instead of doubling the accent (state-layer-selected).
-.margo-tag.tag-active:hover {
-  background-color: unquote("color-mix(in srgb, var(--on-primary) 10%, var(--primary))");
+
+.margo-tag-minimap {
+  min-width: 0;
+  min-height: 0;
 }
-// On-primary digit wins over the has-windows accent tint (the capsule
-// already conveys "here", so the digit must read against --primary).
-.margo-tag.tag-active .margo-tag-label {
-  color: var(--on-primary);
-  font-weight: 700;
-  opacity: 1;
+
+.margo-tag-mini-win,
+.margo-tag-mini-viewport {
+  min-width: 0;
+  min-height: 0;
+  border-radius: 1px;
+}
+
+.margo-tag-mini-win {
+  background-color: unquote("color-mix(in srgb, var(--on-surface) 40%, transparent)");
+
+  &.floating {
+    background-color: var(--tertiary);
+  }
+
+  &.focused {
+    background-color: var(--primary);
+  }
+
+  &.urgent {
+    background-color: var(--error);
+  }
+}
+
+.margo-tag-mini-viewport {
+  border: 1px solid unquote("color-mix(in srgb, var(--on-surface) 70%, transparent)");
 }

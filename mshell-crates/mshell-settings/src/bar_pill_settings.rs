@@ -20,7 +20,9 @@ use mshell_config::schema::config::{
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::glib;
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
-use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
+
+use crate::margo_tags_settings::MargoTagsSettingsModel;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BarPillKind {
@@ -84,7 +86,7 @@ impl BarPillKind {
             }
             Self::Logout => "Logs out of the session. Confirms with a dialog.",
             Self::MargoTags => {
-                "1–9 tag pills with focus / occupied / urgent states. Click to switch tags, scroll to cycle. Optionally followed by the active tag's windows as clickable app icons."
+                "1–9 tag pills with focus / occupied / urgent states. Click to switch tags, scroll to cycle. Optionally shows only the tags in use, a glyph and theme colour per state, a tiny map of each tag's windows, and the active tag's windows as clickable app icons."
             }
             Self::ScrollerRibbon => {
                 "One small segment per column of the focused output's scroller strip: lit inside the viewport, accented for the focused column, dim when scrolled off, with ‹N / N› counts of the columns hidden on each side. Click a segment to focus that column; scroll over the pill to move focus left / right. Hidden outside the scroller layout."
@@ -105,6 +107,8 @@ pub(crate) struct BarPillSettingsModel {
     kind: BarPillKind,
     /// `bars.widgets.margo_tags.window_icons` (Margo Tags page only).
     tag_window_icons: bool,
+    /// Margo Tags' display / glyph / accent / minimap rows.
+    tags_options: Option<Controller<MargoTagsSettingsModel>>,
     _effects: EffectScope,
 }
 
@@ -233,6 +237,13 @@ impl Component for BarPillSettingsModel {
                     },
                 },
 
+                // Filled in `init` on the Margo Tags page.
+                #[name = "tags_options"]
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_visible: model.kind == BarPillKind::MargoTags,
+                },
+
                 gtk::Separator {},
 
                 gtk::Label {
@@ -272,8 +283,9 @@ impl Component for BarPillSettingsModel {
                 s.input(BarPillSettingsInput::TagWindowIconsEffect(v));
             });
         }
-        let model = BarPillSettingsModel {
+        let mut model = BarPillSettingsModel {
             kind: params.kind,
+            tags_options: None,
             tag_window_icons: config_manager()
                 .config()
                 .bars()
@@ -284,6 +296,11 @@ impl Component for BarPillSettingsModel {
             _effects: effects,
         };
         let widgets = view_output!();
+        if params.kind == BarPillKind::MargoTags {
+            let options = MargoTagsSettingsModel::builder().launch(()).detach();
+            widgets.tags_options.append(options.widget());
+            model.tags_options = Some(options);
+        }
         ComponentParts { model, widgets }
     }
 
