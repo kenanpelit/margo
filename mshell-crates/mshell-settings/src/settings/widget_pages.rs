@@ -111,6 +111,30 @@ fn notes_parts() -> Vec<PagePart> {
     ]
 }
 
+/// AI Agents: the agents knobs above the menu geometry.
+fn agents_parts() -> Vec<PagePart> {
+    vec![
+        page_part!(crate::agents_settings::AgentsSettingsModel => crate::agents_settings::AgentsSettingsInit {}),
+        page_part!(WidgetMenuSettingsModel => WidgetMenuSettingsInit { kind: MenuKind::Agents }),
+    ]
+}
+
+/// GitHub: the account / PR rules above the menu geometry.
+fn github_parts() -> Vec<PagePart> {
+    vec![
+        page_part!(crate::github_settings::GithubSettingsModel => crate::github_settings::GithubSettingsInit {}),
+        page_part!(WidgetMenuSettingsModel => WidgetMenuSettingsInit { kind: MenuKind::Github }),
+    ]
+}
+
+/// Discord Voice: saved channels / mic options above the menu geometry.
+fn discord_voice_parts() -> Vec<PagePart> {
+    vec![
+        page_part!(crate::discord_settings::DiscordSettingsModel => crate::discord_settings::DiscordSettingsInit {}),
+        page_part!(WidgetMenuSettingsModel => WidgetMenuSettingsInit { kind: MenuKind::DiscordVoice }),
+    ]
+}
+
 /// Eye Care: the reminder's rules (a bar-only pill, no menu geometry).
 fn eyecare_parts() -> Vec<PagePart> {
     vec![
@@ -235,23 +259,19 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
             icon: "notes-symbolic",
             parts: notes_parts,
         },
-        WidgetEntry::Menu {
-            kind: MenuKind::Agents,
+        // AI Agents = the agents knobs above the menu geometry.
+        WidgetEntry::Composite {
             stack_name: "agents",
             label: "AI Agents",
             icon: "ai-agents-symbolic",
+            parts: agents_parts,
         },
-        WidgetEntry::MenuWith {
-            kind: MenuKind::Github,
+        // GitHub = the account / PR rules above the menu geometry.
+        WidgetEntry::Composite {
             stack_name: "github",
             label: "GitHub",
             icon: "github-symbolic",
-            extra: || {
-                let c = crate::github_settings::GithubSettingsModel::builder()
-                    .launch(crate::github_settings::GithubSettingsInit {})
-                    .detach();
-                (c.widget().clone(), Box::new(c))
-            },
+            parts: github_parts,
         },
         WidgetEntry::Menu {
             kind: MenuKind::HostMonitor,
@@ -376,17 +396,12 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
             label: "Shelf",
             icon: "folder-download-symbolic",
         },
-        WidgetEntry::MenuWith {
-            kind: MenuKind::DiscordVoice,
+        // Discord Voice = saved channels / mic options above the menu geometry.
+        WidgetEntry::Composite {
             stack_name: "discord_voice",
             label: "Discord Voice",
             icon: "call-start-symbolic",
-            extra: || {
-                let c = crate::discord_settings::DiscordSettingsModel::builder()
-                    .launch(crate::discord_settings::DiscordSettingsInit {})
-                    .detach();
-                (c.widget().clone(), Box::new(c))
-            },
+            parts: discord_voice_parts,
         },
         WidgetEntry::Menu {
             kind: MenuKind::Crashes,
@@ -540,12 +555,7 @@ pub(super) fn register_widget_entries(
                     group_anchor = Some(btn.clone());
                 }
                 widgets_sub_sidebar_box.append(&btn);
-                // AI Agents has its own knobs above the generic menu page.
-                let factory = if matches!(kind, MenuKind::Agents) {
-                    agents_page()
-                } else {
-                    page_factory!(WidgetMenuSettingsModel => WidgetMenuSettingsInit { kind })
-                };
+                let factory = page_factory!(WidgetMenuSettingsModel => WidgetMenuSettingsInit { kind });
                 widget_registry
                     .borrow_mut()
                     .insert(stack_name.to_string(), factory);
@@ -1026,44 +1036,4 @@ pub(super) fn register_widget_entries(
             }
         }
     }
-}
-
-/// Settings → Widgets → AI Agents: the agents knobs, then the generic
-/// per-menu geometry page (composed the same way as Lyrics).
-fn agents_page() -> PageFactory {
-    Rc::new(|| {
-        let top = crate::agents_settings::AgentsSettingsModel::builder()
-            .launch(crate::agents_settings::AgentsSettingsInit {})
-            .detach();
-        let menu_ctrl = WidgetMenuSettingsModel::builder()
-            .launch(WidgetMenuSettingsInit {
-                kind: MenuKind::Agents,
-            })
-            .detach();
-        let ts = top.widget().clone();
-        let ms = menu_ctrl.widget().clone();
-        for sw in [&ts, &ms] {
-            sw.set_vscrollbar_policy(gtk::PolicyType::Never);
-            sw.set_propagate_natural_height(true);
-            sw.set_vexpand(false);
-        }
-        let inner = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        inner.append(&ts);
-        inner.append(&ms);
-        let outer = gtk::ScrolledWindow::builder()
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .vscrollbar_policy(gtk::PolicyType::Automatic)
-            .hexpand(true)
-            .vexpand(true)
-            .child(&inner)
-            .build();
-        let widget: gtk::Widget = outer.into();
-        (
-            widget,
-            vec![
-                Box::new(top) as Box<dyn std::any::Any>,
-                Box::new(menu_ctrl) as Box<dyn std::any::Any>,
-            ],
-        )
-    })
 }
