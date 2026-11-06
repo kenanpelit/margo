@@ -241,8 +241,10 @@ mod bundle_tests {
 
     #[test]
     fn from_current_captures_the_look_in_use() {
-        let mut theme = Theme::default();
-        theme.theme = Themes::TokyoNight;
+        let mut theme = Theme {
+            theme: Themes::TokyoNight,
+            ..Theme::default()
+        };
         theme.matugen.mode = MatugenMode::Light;
         let b = ThemeBundle::from_current("Now", &theme, Some("/w/x.jpg"));
         assert_eq!(b.theme, Themes::TokyoNight);
@@ -257,8 +259,10 @@ mod bundle_tests {
 
     #[test]
     fn lookup_is_exact_first_then_case_insensitive() {
-        let mut theme = Theme::default();
-        theme.bundles = vec![bundle("night"), bundle("Night")];
+        let mut theme = Theme {
+            bundles: vec![bundle("night"), bundle("Night")],
+            ..Theme::default()
+        };
         assert_eq!(
             theme.bundle("Night").map(|b| b.name.as_str()),
             Some("Night")
@@ -313,8 +317,10 @@ mod bundle_tests {
 
     #[test]
     fn save_rejects_empty_and_duplicate_names() {
-        let mut theme = Theme::default();
-        theme.bundles = vec![bundle("Day"), bundle("Night")];
+        let mut theme = Theme {
+            bundles: vec![bundle("Day"), bundle("Night")],
+            ..Theme::default()
+        };
         assert_eq!(
             theme.save_bundle(None, bundle("  ")),
             Err(BundleError::EmptyName)
@@ -332,9 +338,11 @@ mod bundle_tests {
 
     #[test]
     fn deleting_the_active_bundle_ends_scoping() {
-        let mut theme = Theme::default();
-        theme.bundles = vec![bundle("Day"), bundle("Night")];
-        theme.active_bundle = "Night".into();
+        let mut theme = Theme {
+            bundles: vec![bundle("Day"), bundle("Night")],
+            active_bundle: "Night".into(),
+            ..Theme::default()
+        };
         theme.delete_bundle("Day");
         assert_eq!(theme.active_bundle, "Night");
         theme.delete_bundle("Night");

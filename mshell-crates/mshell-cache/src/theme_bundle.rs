@@ -204,7 +204,7 @@ mod tests {
             ],
             ..ThemeBundle::default()
         };
-        assert_eq!(existing_wallpapers(&bundle), [a.clone()]);
+        assert_eq!(existing_wallpapers(&bundle), std::slice::from_ref(&a));
         assert_eq!(
             preview_image(&bundle),
             Some(a.clone()),
@@ -247,19 +247,21 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let a = tmp.path().join("a.png");
         std::fs::write(&a, b"x").expect("write");
-        let mut theme = Theme::default();
-        theme.bundles = vec![
-            ThemeBundle {
-                name: "Has".into(),
-                wallpapers: vec![a.display().to_string()],
-                ..ThemeBundle::default()
-            },
-            ThemeBundle {
-                name: "Empty".into(),
-                wallpapers: vec!["/nope.png".into()],
-                ..ThemeBundle::default()
-            },
-        ];
+        let mut theme = Theme {
+            bundles: vec![
+                ThemeBundle {
+                    name: "Has".into(),
+                    wallpapers: vec![a.display().to_string()],
+                    ..ThemeBundle::default()
+                },
+                ThemeBundle {
+                    name: "Empty".into(),
+                    wallpapers: vec!["/nope.png".into()],
+                    ..ThemeBundle::default()
+                },
+            ],
+            ..Theme::default()
+        };
         assert_eq!(active_bundle_wallpapers(&theme), None, "none active");
         theme.active_bundle = "has".into();
         assert_eq!(active_bundle_wallpapers(&theme), Some(vec![a]));
