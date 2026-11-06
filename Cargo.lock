@@ -4559,7 +4559,7 @@ dependencies = [
 
 [[package]]
 name = "margo"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "accesskit",
  "accesskit_unix",
@@ -4602,7 +4602,7 @@ dependencies = [
 
 [[package]]
 name = "margo-config"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "bitflags 2.13.2",
@@ -4620,14 +4620,14 @@ dependencies = [
 
 [[package]]
 name = "margo-fs"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "tempfile",
 ]
 
 [[package]]
 name = "margo-layouts"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "criterion",
  "proptest",
@@ -4635,7 +4635,7 @@ dependencies = [
 
 [[package]]
 name = "margo-logging"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "chrono",
  "dirs",
@@ -4647,7 +4647,7 @@ dependencies = [
 
 [[package]]
 name = "margo-portal"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "futures-util",
@@ -4685,7 +4685,7 @@ dependencies = [
 
 [[package]]
 name = "mcal"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "base64",
  "chrono",
@@ -4707,7 +4707,7 @@ dependencies = [
 
 [[package]]
 name = "mctl"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4725,7 +4725,7 @@ dependencies = [
 
 [[package]]
 name = "mdots"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4794,7 +4794,7 @@ dependencies = [
 
 [[package]]
 name = "mgreet"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "glib-unix",
  "grass",
@@ -4850,7 +4850,7 @@ dependencies = [
 
 [[package]]
 name = "mkeys"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "clap",
  "ctrlc",
@@ -4874,7 +4874,7 @@ dependencies = [
 
 [[package]]
 name = "mlayout"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -4884,7 +4884,7 @@ dependencies = [
 
 [[package]]
 name = "mlock"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "cairo-rs",
@@ -4904,7 +4904,7 @@ dependencies = [
 
 [[package]]
 name = "mlogind"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "chrono",
  "crossterm",
@@ -4929,7 +4929,7 @@ dependencies = [
 
 [[package]]
 name = "mlogind-proto"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "libc",
  "zeroize",
@@ -5000,7 +5000,7 @@ dependencies = [
 
 [[package]]
 name = "mpicker"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -5012,7 +5012,7 @@ dependencies = [
 
 [[package]]
 name = "mpower"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -5034,7 +5034,7 @@ dependencies = [
 
 [[package]]
 name = "mscreenshot"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -5049,7 +5049,7 @@ dependencies = [
 
 [[package]]
 name = "mshell"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "clap",
  "mimalloc",
@@ -5059,7 +5059,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-ai"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "keyring",
  "margo-fs",
@@ -5073,7 +5073,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-auth"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "futures",
  "libc",
@@ -5085,7 +5085,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-cache"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "gtk4",
  "margo-fs",
@@ -5102,14 +5102,14 @@ dependencies = [
 
 [[package]]
 name = "mshell-cli-style"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "clap",
 ]
 
 [[package]]
 name = "mshell-clipboard"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "image",
  "libc",
@@ -5125,14 +5125,14 @@ dependencies = [
 
 [[package]]
 name = "mshell-clut-gen"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "mshell-image",
 ]
 
 [[package]]
 name = "mshell-common"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "futures",
  "gtk4",
@@ -5150,7 +5150,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-config"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "figment",
  "margo-fs",
@@ -5170,7 +5170,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-core"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "any_spawner",
  "dirs",
@@ -5216,7 +5216,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-frame"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -5280,7 +5280,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-gamma"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "libc",
@@ -5291,7 +5291,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-idle"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "libc",
@@ -5306,7 +5306,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-image"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "image",
  "lutgen",
@@ -5319,14 +5319,14 @@ dependencies = [
 
 [[package]]
 name = "mshell-ipc"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "zbus",
 ]
 
 [[package]]
 name = "mshell-launcher"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "dirs",
  "emojis",
@@ -5344,7 +5344,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-lockscreen"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "gtk4",
  "gtk4-layer-shell",
@@ -5365,14 +5365,14 @@ dependencies = [
 
 [[package]]
 name = "mshell-logging"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "margo-logging",
 ]
 
 [[package]]
 name = "mshell-margo-client"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -5388,7 +5388,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-matugen"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "margo-fs",
@@ -5403,7 +5403,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-notification-popups"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "gtk4-layer-shell",
  "mshell-common",
@@ -5419,7 +5419,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-osd"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "futures",
  "gtk4",
@@ -5441,7 +5441,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-plugin-host"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "dirs",
@@ -5454,7 +5454,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-plugin-ui"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "gtk4",
@@ -5465,7 +5465,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-plugins"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "dirs",
  "keyring",
@@ -5478,7 +5478,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-polkit"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "gtk4",
@@ -5493,7 +5493,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-privileged"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "libc",
  "tempfile",
@@ -5501,7 +5501,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-process"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "margo-fs",
  "notify-rust",
@@ -5511,7 +5511,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-screenshot"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "dirs",
@@ -5533,7 +5533,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-services"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -5566,7 +5566,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-session"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "gtk4-session-lock",
  "libc",
@@ -5577,7 +5577,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-settings"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "dirs",
  "fontconfig",
@@ -5626,7 +5626,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-sounds"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "rodio",
  "tracing",
@@ -5634,7 +5634,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-style"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "grass",
@@ -5653,7 +5653,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-translate"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "chrono",
  "keyring",
@@ -5672,7 +5672,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-utils"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -5712,7 +5712,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-wallpaper"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "gtk4",
  "gtk4-layer-shell",
@@ -5730,7 +5730,7 @@ dependencies = [
 
 [[package]]
 name = "mshellctl"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -5757,7 +5757,7 @@ dependencies = [
 
 [[package]]
 name = "mshellshare"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "mshell-ipc",
@@ -5766,7 +5766,7 @@ dependencies = [
 
 [[package]]
 name = "mtm"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -5778,7 +5778,7 @@ dependencies = [
 
 [[package]]
 name = "mtune"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -5823,7 +5823,7 @@ checksum = "956787520e75e9bd233246045d19f42fb73242759cc57fba9611d940ae96d4b0"
 
 [[package]]
 name = "mvisual"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "gtk4",
  "margo-layouts",
@@ -5831,7 +5831,7 @@ dependencies = [
 
 [[package]]
 name = "mvpn"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "async-channel",
  "clap",
@@ -5846,7 +5846,7 @@ dependencies = [
 
 [[package]]
 name = "mvpn-proto"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -5854,7 +5854,7 @@ dependencies = [
 
 [[package]]
 name = "mwizard"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -8466,7 +8466,7 @@ dependencies = [
 
 [[package]]
 name = "start-margo"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "clap",

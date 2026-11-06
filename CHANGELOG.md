@@ -5,6 +5,76 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.0] – 2026-11-07
+
+**A richer native desktop: radio and podcasts in Tune, a redesigned Tune
+panel with a built-in radio browser, deeper Claude Code integration,
+Mullvad account and city controls, and new tools for focus, notes,
+network monitoring and file sharing.**
+
+### Added
+
+- **Radio and podcasts in mtune:** station discovery, saved stations and
+  custom stream URLs, podcast search and RSS subscriptions, episode resume
+  and played state. The native shell Tune panel now has Queue, Library and
+  Radio tabs with search, preview, save, remove and direct playback.
+- **AI Agents:** richer Claude Code session details, terminal navigation,
+  prompt and reply history, multiple accounts, usage and estimated-cost
+  charts, optional waiting/finished notifications and a read-only Plugins
+  tab. Launcher `cc` searches sessions; `ai` asks Claude Code.
+- **Mullvad:** country/city selection, multihop entry locations, My country,
+  account/device management, vouchers, actionable error explanations and
+  trusted-network auto-connect. Also available in the standalone mvpn panel.
+- **Focus and time:** Pomodoro, the Eye Care break reminder and world clocks
+  with timezone differences and working-hour comparisons.
+- **Notes and sharing:** richer sticky notes, todo pages and export,
+  Markdown-folder editing with optional AI actions and local Git history,
+  a drag-and-drop file Shelf, RSS notifications and text/Wi-Fi QR sharing.
+- **Networking:** Host Monitor, managed SSH port forwards, optional timed
+  rollback for IP changes, and browser shortcuts for local/container ports.
+- **System controls:** SMART health history and self-tests, AI-assisted
+  crash/journal investigation, one-shot UEFI boot selection, ThinkPad logo
+  LED controls/automation and a configurable Control Center shortcut tile.
+- **Compositor:** window minimization and restore, per-tag application
+  restore, internal-keyboard controls, live cursor-theme reload and richer
+  tag displays with state glyphs, colours and window minimaps.
+- **Media and capture:** word-synced and local lyrics, timing adjustment,
+  optional NetEase fallback, line seeking, webcam overlays in recordings,
+  screenshot pinning, a screen ruler and OCR-to-translation.
+- **Personalization:** theme bundles, cursor/icon theme pickers, editable
+  colour formats and history, configurable wallpaper-pill actions, daily
+  wallpaper descriptions and Tune scroll-to-skip.
+- Launcher `case` converts naming styles, `nv` opens Neovim projects, `yt`
+  explores YouTube, and `pass` supports configurable login autotyping.
+- GitHub contribution views and PR search rules; Discord Voice saved
+  channels, microphone volume, latency and launch controls.
+
+### Changed
+
+- The Tune panel keeps music transport and library controls while showing
+  live-radio status instead of an unusable seek timeline. Its lists follow
+  the configured menu height and support compact layouts.
+- Game mode can coordinate power profiles, bar/dock visibility, OSD,
+  wallpaper activity and user hooks. CPU Dashboard metrics are configurable.
+- Radio failures stop advertising Playing and trigger at most three
+  reconnects with 1/2/4-second backoff; selection changes, pause and stop
+  cancel pending reconnects. Live-stream EOF retains the selected station.
+
+### Fixed
+
+- Station changes no longer issue invalid seek-to-zero requests or retain
+  another track's deferred resume position. Stale stream events cannot
+  control a newly selected station; successful reconnection clears errors.
+- Mullvad account numbers and Wi-Fi passwords no longer travel in command
+  arguments. Stream error messages are cleaned before display.
+- Leaving game mode releases its idle inhibitor and preserves the user's
+  previous Do Not Disturb state.
+- Translate and Privacy menus honour their configured positions; Bing
+  daily wallpaper caches respect region changes.
+- mtune toasts display literal `&` and `<` characters correctly.
+- CI includes the GStreamer libav codecs required by live-radio test
+  fixtures; the panic-ratchet baseline is synchronized.
+
 ## [5.0.0] – 2026-11-05
 
 **The fifth deep review: margo now draws the shell's wallpaper (about
