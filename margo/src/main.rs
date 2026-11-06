@@ -1197,28 +1197,10 @@ fn start_xwayland(
                                 // XCURSOR_SIZE / XCURSOR_THEME let XWayland
                                 // apps pick up the native cursor instead of
                                 // libxcursor's 16-px default (the "Steam /
-                                // Discord cursor shrinks on hover" bug). An
-                                // explicit `env = XCURSOR_SIZE, …` / an
-                                // inherited XCURSOR_THEME wins (mango
-                                // f919134d).
-                                let cursor_size = state.config.cursor_size.max(8);
-                                if !state
-                                    .config
-                                    .envs
-                                    .iter()
-                                    .any(|(name, _)| name == "XCURSOR_SIZE")
-                                {
-                                    utils::set_child_env("XCURSOR_SIZE", cursor_size.to_string());
-                                }
-                                if std::env::var_os("XCURSOR_THEME").is_none()
-                                    && let Some(theme) = state
-                                        .config
-                                        .cursor_theme
-                                        .as_deref()
-                                        .filter(|s| !s.is_empty())
-                                {
-                                    utils::set_child_env("XCURSOR_THEME", theme);
-                                }
+                                // Discord cursor shrinks on hover" bug). The
+                                // values follow `cursor_theme` /
+                                // `cursor_size` (cursor/settings.rs).
+                                state.sync_cursor_child_env();
                                 info!(
                                     "XWayland ready on :{display_number} \
                                      XCURSOR_SIZE={} XCURSOR_THEME={}",
@@ -1240,7 +1222,10 @@ fn start_xwayland(
                                     x11_socket,
                                     client.clone(),
                                 ) {
-                                    Ok(wm) => state.xwm = Some(wm),
+                                    Ok(wm) => {
+                                        state.xwm = Some(wm);
+                                        state.push_cursor_to_xwayland();
+                                    }
                                     Err(e) => error!("X11Wm::start_wm: {e}"),
                                 }
                             }
@@ -1372,6 +1357,9 @@ fn main() -> Result<()> {
         let _ = margo_config::generations::save(&raw, 20);
     }
 
+    // Before the `env` lines land in the process env: a reload that drops
+    // `env = XCURSOR_*` must fall back to the launch environment.
+    cursor::settings::capture_inherited_env();
     for (name, value) in &config.envs {
         // SAFETY: no other thread exists yet (backend, D-Bus, PipeWire and
         // the config watcher all start later).
@@ -1615,7 +1603,13 @@ fn main() -> Result<()> {
     // ── Push compositor environment into systemd/dbus activation ──────────────
     // User services and XDG autostart entries such as noctalia need these before
     // the session target starts them, otherwise they can select the wrong backend.
-    utils::import_session_environment(&["XDG_SESSION_DESKTOP", "DESKTOP_SESSION"]);
+    margo.sync_cursor_child_env();
+    utils::import_session_environment(&[
+        "XDG_SESSION_DESKTOP",
+        "DESKTOP_SESSION",
+        "XCURSOR_THEME",
+        "XCURSOR_SIZE",
+    ]);
 
     start_xwayland(&args, &mut event_loop, &mut margo)?;
 

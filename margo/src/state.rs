@@ -880,7 +880,7 @@ impl MargoState {
             next_render_retry_id: 0,
             enable_gaps: config.enable_gaps,
             cursor_status: CursorImageStatus::default_named(),
-            cursor_manager: CursorManager::new(),
+            cursor_manager: CursorManager::for_config(&config),
             animation_presented_since_tick: false,
             animating_at_last_tick: false,
             animation_last_tick_ms: 0,

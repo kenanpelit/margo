@@ -41,6 +41,7 @@ mod bootstrap;
 mod client_removal;
 mod color_management;
 mod compositor_indicators;
+mod cursor_reload;
 mod cursor_repaint;
 mod disabled_output;
 mod dispatch;

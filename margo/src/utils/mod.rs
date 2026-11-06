@@ -28,6 +28,11 @@ pub fn set_child_env(key: &str, value: impl Into<String>) {
     }
 }
 
+/// Stop overriding `key`: children see margo's own environment again.
+pub fn remove_child_env(key: &str) {
+    child_env().retain(|(k, _)| k != key);
+}
+
 /// `key` as a spawned child would see it: the child-env overlay first,
 /// then margo's own process environment.
 pub fn child_env_var(key: &str) -> Option<String> {

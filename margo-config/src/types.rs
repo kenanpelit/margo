@@ -1135,8 +1135,17 @@ pub struct Config {
     pub drag_corner: i32,
     pub drag_warp_cursor: bool,
     pub cursor_hide_timeout: u32,
+    /// Pointer theme for margo's cursor, children's `XCURSOR_THEME` and
+    /// XWayland. `None`: an `env = XCURSOR_THEME` line, else the inherited
+    /// env. Applied at startup and on reload (`margo/src/cursor/settings.rs`).
     pub cursor_theme: Option<String>,
+    /// Pointer size (logical px). Applied at startup and on reload.
     pub cursor_size: u32,
+    /// `cursor_size` was set in the config (not the built-in 24): only then
+    /// does it win over an `env = XCURSOR_SIZE` line / the inherited env.
+    /// Not serialized, so `cursor_size = 24` still reads as the default.
+    #[serde(skip)]
+    pub cursor_size_set: bool,
     pub focus_on_activate: bool,
     pub idleinhibit_ignore_visible: bool,
     /// Keep idle timers inhibited while the focused window is fullscreen —
@@ -1501,6 +1510,7 @@ impl Default for Config {
             cursor_hide_timeout: 0,
             cursor_theme: None,
             cursor_size: 24,
+            cursor_size_set: false,
             focus_on_activate: true,
             idleinhibit_ignore_visible: false,
             idle_inhibit_when_fullscreen: false,

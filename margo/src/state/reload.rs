@@ -4,6 +4,8 @@
 
 use super::*;
 
+mod cursor;
+
 impl MargoState {
     /// Decode the overview backdrop image off the event loop. A large image
     /// takes long enough to decode that doing it inside `reload_config`
@@ -341,6 +343,9 @@ impl MargoState {
         // The device loop above re-enabled every keyboard; re-assert the
         // built-in keyboard's off-state against the new pattern / auto.
         self.internal_keyboard_after_reload(internal_keyboard_auto_was);
+        // `cursor_theme` / `cursor_size` (or their `env` lines) changed:
+        // new pointer theme, children's XCURSOR_*, XWayland.
+        self.apply_cursor_settings();
         // A keymode the new config no longer declares has no binds left:
         // return to `default` instead of stranding the keyboard there (the
         // state push below updates the keymode pill).

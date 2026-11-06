@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 //! Software cursor loading and rendering.
 
+pub mod settings;
+
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::io::Read;
@@ -58,6 +60,14 @@ pub struct CursorImage {
 }
 
 impl CursorImage {
+    /// The pixels as `[R, G, B, A]` (what X11 / XWayland expect).
+    pub fn pixels_rgba(&self) -> Vec<u8> {
+        self.pixels
+            .chunks_exact(4)
+            .flat_map(|c| [c[2], c[1], c[0], c[3]])
+            .collect()
+    }
+
     pub fn to_memory_buffer(&self, buffer_scale: i32) -> MemoryRenderBuffer {
         MemoryRenderBuffer::from_slice(
             &self.pixels,
@@ -160,26 +170,88 @@ pub struct CursorManager {
     current: String,
     /// Nominal cursor size in logical px (closest theme image is picked).
     size: u32,
+    /// The theme + size this manager was built for.
+    settings: settings::CursorSettings,
+    /// The 1× `default` image, kept for XWayland's root-window cursor.
+    default_image: CursorImage,
 }
 
 impl CursorManager {
-    pub fn new() -> Self {
-        let size = std::env::var("XCURSOR_SIZE")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .filter(|n| *n > 0)
-            .unwrap_or(24);
-        let theme_name = std::env::var("XCURSOR_THEME").unwrap_or_else(|_| "default".into());
-        let theme = Rc::new(xcursor::CursorTheme::load(&theme_name));
+    /// Manager for the cursor theme / size `config` resolves to (see
+    /// [`settings`]).
+    pub fn for_config(config: &margo_config::Config) -> Self {
+        Self::new(&settings::for_config(config))
+    }
+
+    pub fn new(wanted: &settings::CursorSettings) -> Self {
+        let theme = Rc::new(xcursor::CursorTheme::load(wanted.theme_name()));
         let loader_theme = theme.clone();
-        Self::build(size, theme, &mut |name, size| {
+        Self::build(wanted.clone(), theme, &mut |name, size| {
             load_from_theme(&loader_theme, name, size)
         })
     }
 
+    /// The theme + size in use.
+    pub fn settings(&self) -> &settings::CursorSettings {
+        &self.settings
+    }
+
+    /// The `default` cursor at 1× (embedded arrow when the theme has none).
+    pub fn default_image(&self) -> &CursorImage {
+        &self.default_image
+    }
+
+    /// Name of the cursor being drawn.
+    pub fn current_name(&self) -> &str {
+        &self.current
+    }
+
+    /// Switch to another theme / size. Every cached image belongs to the
+    /// old one, so the manager is rebuilt from scratch (fresh `default` +
+    /// preloads, empty per-scale and missing caches) and the shape being
+    /// drawn is resolved again in the new theme. Returns `false` when
+    /// `wanted` is what is already loaded.
+    pub fn reconfigure(&mut self, wanted: &settings::CursorSettings) -> bool {
+        if *wanted == self.settings {
+            return false;
+        }
+        let theme = Rc::new(xcursor::CursorTheme::load(wanted.theme_name()));
+        let loader_theme = theme.clone();
+        self.rebuild(wanted.clone(), theme, &mut |name, size| {
+            load_from_theme(&loader_theme, name, size)
+        });
+        true
+    }
+
+    /// [`Self::reconfigure`]'s rebuild through `load`, keeping the shape a
+    /// client asked for when the new theme has it.
+    fn rebuild(
+        &mut self,
+        wanted: settings::CursorSettings,
+        theme: Rc<xcursor::CursorTheme>,
+        load: &mut Loader<'_>,
+    ) {
+        let current = std::mem::take(&mut self.current);
+        *self = Self::build(wanted, theme, load);
+        if current.is_empty() || current == "default" {
+            return;
+        }
+        let icon = current.parse::<CursorIcon>().ok();
+        let alts = icon.as_ref().map_or(&[][..], |icon| icon.alt_names());
+        self.resolve(&current, alts, load);
+        if self.resolved.contains_key(&current) {
+            self.current = current;
+        }
+    }
+
     /// Load `default` (embedded arrow when the theme has none) and the
     /// [`PRELOAD`] shapes through `load`.
-    fn build(size: u32, theme: Rc<xcursor::CursorTheme>, load: &mut Loader<'_>) -> Self {
+    fn build(
+        wanted: settings::CursorSettings,
+        theme: Rc<xcursor::CursorTheme>,
+        load: &mut Loader<'_>,
+    ) -> Self {
+        let size = wanted.size;
         let (theme_name, image) = match load("default", size) {
             Some(image) => (Some("default".to_string()), image),
             None => (None, embedded_arrow()),
@@ -198,6 +270,8 @@ impl CursorManager {
             theme,
             current: "default".to_string(),
             size,
+            settings: wanted,
+            default_image: image,
         };
         for icon in PRELOAD {
             manager.resolve(icon.name(), icon.alt_names(), load);
@@ -236,13 +310,18 @@ impl CursorManager {
     /// (common shapes are preloaded); keeps drawing `default` if no variant
     /// resolves in the active theme.
     pub fn set_named(&mut self, primary: &str, alts: &[&str]) {
+        let theme = self.theme.clone();
+        self.set_named_with(primary, alts, &mut |name, size| {
+            load_from_theme(&theme, name, size)
+        });
+    }
+
+    /// [`Self::set_named`] through `load`.
+    fn set_named_with(&mut self, primary: &str, alts: &[&str], load: &mut Loader<'_>) {
         if self.current == primary && self.resolved.contains_key(primary) {
             return;
         }
-        let theme = self.theme.clone();
-        self.resolve(primary, alts, &mut |name, size| {
-            load_from_theme(&theme, name, size)
-        });
+        self.resolve(primary, alts, load);
         self.current = if self.resolved.contains_key(primary) {
             primary.to_string()
         } else {
@@ -432,6 +511,13 @@ mod tests {
         }
     }
 
+    fn test_settings() -> settings::CursorSettings {
+        settings::CursorSettings {
+            theme: None,
+            size: 24,
+        }
+    }
+
     fn fake_image() -> CursorImage {
         CursorImage {
             pixels: vec![0; 4],
@@ -451,7 +537,7 @@ mod tests {
             (name != "bogus").then(fake_image)
         };
         let theme = Rc::new(xcursor::CursorTheme::load("margo-test-no-such-theme"));
-        let mut m = CursorManager::build(24, theme, &mut load);
+        let mut m = CursorManager::build(test_settings(), theme, &mut load);
         assert!(m.resolved.contains_key(CursorIcon::Pointer.name()));
         assert!(m.resolved.contains_key(CursorIcon::Text.name()));
 
@@ -480,7 +566,7 @@ mod tests {
     fn a_missing_scale_falls_back_to_1x_and_is_cached_under_its_name() {
         let mut load = |name: &str, _size: u32| (name == "default").then(fake_image);
         let theme = Rc::new(xcursor::CursorTheme::load("margo-test-no-such-theme"));
-        let m = CursorManager::build(24, theme, &mut load);
+        let m = CursorManager::build(test_settings(), theme, &mut load);
         assert_eq!(m.sprite(1).buffer_scale, 1);
         // No theme to load a 2× image from: the 1× sprite, remembered for
         // 2× so the next frame is a plain lookup.
@@ -512,5 +598,63 @@ mod tests {
         // A bigger image than asked for never exceeds the wanted scale.
         assert_eq!(effective_buffer_scale(24, 96, 2), 2);
         assert_eq!(effective_buffer_scale(0, 48, 2), 1);
+    }
+
+    #[test]
+    fn reconfigure_drops_every_cached_image_and_keeps_the_shape() {
+        let mut load = |name: &str, _size: u32| (name != "bogus").then(fake_image);
+        let theme = || Rc::new(xcursor::CursorTheme::load("margo-test-no-such-theme"));
+        let mut m = CursorManager::build(test_settings(), theme(), &mut load);
+        m.set_named_with("text", &[], &mut load);
+        let _ = m.sprite(3);
+        m.resolve("bogus", &[], &mut load);
+        assert!(m.sprites.borrow()["text"].contains_key(&3));
+
+        let bigger = settings::CursorSettings {
+            theme: Some("Other".into()),
+            size: 48,
+        };
+        m.rebuild(bigger.clone(), theme(), &mut load);
+        assert_eq!(m.settings(), &bigger);
+        assert_eq!(m.size, 48);
+        assert_eq!(m.current_name(), "text", "the shape being drawn survives");
+        // Only freshly loaded 1x images: nothing from the old theme/size.
+        for (name, by_scale) in m.sprites.borrow().iter() {
+            assert_eq!(by_scale.keys().copied().collect::<Vec<_>>(), [1], "{name}");
+        }
+        assert!(m.missing.is_empty(), "misses belong to the old theme");
+    }
+
+    #[test]
+    fn reconfigure_falls_back_to_default_when_the_new_theme_lacks_the_shape() {
+        let mut old = |_: &str, _: u32| Some(fake_image());
+        let theme = || Rc::new(xcursor::CursorTheme::load("margo-test-no-such-theme"));
+        let mut m = CursorManager::build(test_settings(), theme(), &mut old);
+        m.set_named_with("zoom-in", &[], &mut old);
+        assert_eq!(m.current_name(), "zoom-in");
+        let mut new = |name: &str, _: u32| (name == "default").then(fake_image);
+        let wanted = settings::CursorSettings {
+            theme: Some("Sparse".into()),
+            size: 24,
+        };
+        m.rebuild(wanted, theme(), &mut new);
+        assert_eq!(m.current_name(), "default");
+    }
+
+    #[test]
+    fn reconfigure_to_the_same_settings_is_a_no_op() {
+        let mut m = CursorManager::new(&test_settings());
+        let _ = m.sprite(2);
+        assert!(!m.reconfigure(&test_settings()));
+        assert!(m.sprites.borrow()["default"].contains_key(&2), "cache kept");
+    }
+
+    #[test]
+    fn pixels_rgba_swaps_red_and_blue_back() {
+        let img = CursorImage {
+            pixels: vec![1, 2, 3, 4],
+            ..fake_image()
+        };
+        assert_eq!(img.pixels_rgba(), [3, 2, 1, 4]);
     }
 }

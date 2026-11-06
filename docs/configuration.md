@@ -69,6 +69,26 @@ bind = $mod, e,       spawn, $term -e nvim
 
 Define with `var = name, value` (names: `[A-Za-z_][A-Za-z0-9_]*`), reference with `$name` or `${name}` — anywhere a value appears, including in `source`/`include`d files (define before use). Only names you've actually defined this way get substituted; `$HOME`, `$(date …)`, `$1`, `$$` and an undefined `$foo` are left exactly as written, so shell commands in `spawn`/`spawn_shell` keep working untouched. Pick distinctive names — `var = HOME, …` would also expand `$HOME` inside `spawn_shell` commands, before the shell ever sees it.
 
+## Cursor theme and size
+
+```ini
+cursor_theme = Bibata-Modern-Ice   # a theme dir in ~/.icons, ~/.local/share/icons or /usr/share/icons
+cursor_size  = 32                  # logical px, 8–256
+```
+
+Both keys apply at startup **and on `mctl reload`**: margo reloads the theme
+and redraws its own pointer, sets `XCURSOR_THEME` / `XCURSOR_SIZE` for every
+app it starts from then on (and pushes them to the systemd / D-Bus activation
+environment), and tells XWayland (XSETTINGS `Gtk/CursorThemeName` /
+`Gtk/CursorThemeSize` plus the root-window cursor), so a cursor picker only
+has to write the two keys and run `mctl reload`. Apps that are already
+running keep the cursor they loaded, except Wayland apps that use the
+cursor-shape protocol (margo draws those) and GTK apps on XWayland.
+
+Each value comes from the first of: the key; an `env = XCURSOR_THEME,…` /
+`env = XCURSOR_SIZE,…` line; the `XCURSOR_*` margo was started with; no theme
+(libXcursor's `default`) and 24 px. A key left empty counts as unset.
+
 ## Startup apps on background tags
 
 Windows on hidden tags normally receive no frame callbacks until their tag is

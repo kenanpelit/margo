@@ -436,8 +436,11 @@ pub(super) fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()>
         "warpcursor" => cfg.warpcursor = parse_bool(val),
         "drag_corner" => cfg.drag_corner = parse_i32(val),
         "drag_warp_cursor" => cfg.drag_warp_cursor = parse_bool(val),
-        "cursor_theme" => cfg.cursor_theme = Some(val.to_string()),
-        "cursor_size" => cfg.cursor_size = parse_u32(val),
+        "cursor_theme" => cfg.cursor_theme = Some(val.trim().to_string()).filter(|s| !s.is_empty()),
+        "cursor_size" => {
+            cfg.cursor_size = parse_u32(val);
+            cfg.cursor_size_set = cfg.cursor_size > 0;
+        }
         "focus_on_activate" => cfg.focus_on_activate = parse_bool(val),
         "idleinhibit_ignore_visible" => cfg.idleinhibit_ignore_visible = parse_bool(val),
         "idle_inhibit_when_fullscreen" => cfg.idle_inhibit_when_fullscreen = parse_bool(val),
@@ -803,6 +806,19 @@ mod tests {
     use super::*;
     use crate::parser::tests::parse_conf;
     use crate::parser::{parse_config, parse_config_str};
+
+    #[test]
+    fn cursor_keys_record_whether_they_were_set() {
+        let unset = parse_config_str("", None).unwrap();
+        assert_eq!((unset.cursor_size, unset.cursor_size_set), (24, false));
+        assert_eq!(unset.cursor_theme, None);
+        let set = parse_config_str("cursor_size = 24\ncursor_theme = Bibata\n", None).unwrap();
+        assert_eq!((set.cursor_size, set.cursor_size_set), (24, true));
+        assert_eq!(set.cursor_theme.as_deref(), Some("Bibata"));
+        let blank = parse_config_str("cursor_theme =\ncursor_size = 0\n", None).unwrap();
+        assert_eq!(blank.cursor_theme, None, "an empty theme is unset");
+        assert!(!blank.cursor_size_set, "0 is unset");
+    }
 
     #[test]
     fn env_tilde_expands_at_word_starts_only() {
