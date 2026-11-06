@@ -55,7 +55,9 @@
 }
 
 // Per-program mute: a quiet icon button; muted = selected fill.
-.crashes-mute {
+// Diagnose (AI agent in a terminal): the same quiet icon button.
+.crashes-mute,
+.crashes-diagnose {
   min-width: 0;
   padding: var(--space-1);
 }

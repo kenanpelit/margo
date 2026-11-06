@@ -1,8 +1,9 @@
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
-    ConfigStoreFields, CrashesConfigStoreFields, JOURNAL_PRIORITIES, MenuStoreFields,
-    MenusStoreFields, NotificationsStoreFields, known_journal_priority,
+    AGENT_ORDER_CHOICES, ConfigStoreFields, CrashesConfigStoreFields, JOURNAL_PRIORITIES,
+    MenuStoreFields, MenusStoreFields, NotificationsStoreFields, agent_order_index,
+    known_journal_priority,
 };
 use mshell_config::schema::position::NotificationPosition;
 use reactive_graph::prelude::{Get, GetUntracked};
@@ -32,6 +33,11 @@ pub(crate) struct NotificationSettingsModel {
     /// Index into `JOURNAL_PRIORITIES` (Crashes menu → Errors tab level).
     journal_priority: u32,
     journal_priority_model: gtk::StringList,
+    /// Index into `AGENT_ORDER_CHOICES` (Crashes menu → diagnose button).
+    agent_order: u32,
+    agent_order_model: gtk::StringList,
+    agent_probe: bool,
+    agent_instructions: String,
     sound_enabled: bool,
     sound_low: bool,
     sound_normal: bool,
@@ -77,6 +83,11 @@ pub(crate) enum NotificationSettingsInput {
     CrashNotifyEffect(bool),
     JournalPriorityPicked(u32),
     JournalPriorityEffect(u32),
+    AgentOrderPicked(u32),
+    AgentOrderEffect(u32),
+    AgentProbeChanged(bool),
+    AgentProbeEffect(bool),
+    AgentInstructionsChanged(String),
     SoundEnabledChanged(bool),
     SoundLowChanged(bool),
     SoundNormalChanged(bool),
@@ -661,6 +672,118 @@ impl Component for NotificationSettingsModel {
                             connect_selected_notify[sender] => move |dd| {
                                 sender.input(NotificationSettingsInput::JournalPriorityPicked(dd.selected()));
                             } @journal_priority_handler,
+                        },
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/crashes/agent_order",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Crash diagnosis agent",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "The AI agent the Crashes menu's diagnose button opens in a terminal on a crash or journal error.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.agent_order_model),
+                            #[watch]
+                            #[block_signal(agent_order_handler)]
+                            set_selected: model.agent_order,
+                            connect_selected_notify[sender] => move |dd| {
+                                sender.input(NotificationSettingsInput::AgentOrderPicked(dd.selected()));
+                            } @agent_order_handler,
+                        },
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/crashes/agent_probe",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Skip an agent that can't answer",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Ask each agent a one-word question first and move on to the next when it is out of quota, logged out or offline.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(agent_probe_handler)]
+                            set_active: model.agent_probe,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(NotificationSettingsInput::AgentProbeChanged(s.is_active()));
+                            } @agent_probe_handler,
+                        },
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/crashes/agent_instructions",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Diagnosis instructions",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Appended to every diagnosis prompt, e.g. the language to answer in.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::Entry {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 240,
+                            set_placeholder_text: Some("none"),
+                            set_text: &model.agent_instructions,
+                            connect_changed[sender] => move |e| {
+                                sender.input(NotificationSettingsInput::AgentInstructionsChanged(e.text().to_string()));
+                            },
                         },
                     },
 
@@ -1301,6 +1424,22 @@ impl Component for NotificationSettingsModel {
                 journal_priority_index(&v),
             ));
         });
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let v = config_manager().config().crashes().agent_order().get();
+            sender_clone.input(NotificationSettingsInput::AgentOrderEffect(
+                agent_order_index(&v),
+            ));
+        });
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let v = config_manager().config().crashes().agent_probe().get();
+            sender_clone.input(NotificationSettingsInput::AgentProbeEffect(v));
+        });
+        let agent_order_labels: Vec<&str> = AGENT_ORDER_CHOICES
+            .iter()
+            .map(|(_, label)| *label)
+            .collect();
         let journal_priority_labels: Vec<&str> =
             JOURNAL_PRIORITIES.iter().map(|(_, label)| *label).collect();
 
@@ -1318,6 +1457,24 @@ impl Component for NotificationSettingsModel {
                     .get_untracked(),
             ),
             journal_priority_model: gtk::StringList::new(&journal_priority_labels),
+            agent_order: agent_order_index(
+                &config_manager()
+                    .config()
+                    .crashes()
+                    .agent_order()
+                    .get_untracked(),
+            ),
+            agent_order_model: gtk::StringList::new(&agent_order_labels),
+            agent_probe: config_manager()
+                .config()
+                .crashes()
+                .agent_probe()
+                .get_untracked(),
+            agent_instructions: config_manager()
+                .config()
+                .crashes()
+                .agent_instructions()
+                .get_untracked(),
             auto_dnd_release_ms: config_manager()
                 .config()
                 .notifications()
@@ -1606,6 +1763,33 @@ impl Component for NotificationSettingsModel {
             }
             NotificationSettingsInput::JournalPriorityEffect(idx) => {
                 self.journal_priority = idx;
+            }
+            NotificationSettingsInput::AgentOrderPicked(idx) => {
+                if let Some((names, _)) = AGENT_ORDER_CHOICES.get(idx as usize)
+                    && self.agent_order != idx
+                {
+                    self.agent_order = idx;
+                    let order: Vec<String> = names.iter().map(|n| n.to_string()).collect();
+                    config_manager().update_config(move |c| c.crashes.agent_order = order);
+                }
+            }
+            NotificationSettingsInput::AgentOrderEffect(idx) => {
+                self.agent_order = idx;
+            }
+            NotificationSettingsInput::AgentProbeChanged(v) => {
+                if self.agent_probe != v {
+                    self.agent_probe = v;
+                    config_manager().update_config(move |c| c.crashes.agent_probe = v);
+                }
+            }
+            NotificationSettingsInput::AgentProbeEffect(v) => {
+                self.agent_probe = v;
+            }
+            NotificationSettingsInput::AgentInstructionsChanged(v) => {
+                if self.agent_instructions != v {
+                    self.agent_instructions = v.clone();
+                    config_manager().update_config(move |c| c.crashes.agent_instructions = v);
+                }
             }
             NotificationSettingsInput::CrashNotifyEffect(v) => {
                 self.crash_notify = v;

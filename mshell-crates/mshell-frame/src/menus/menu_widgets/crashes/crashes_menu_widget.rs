@@ -4,9 +4,14 @@
 //! core dumps from systemd-coredump, newest first, each row with a
 //! per-program notification mute) and **Errors** (this boot's journal at
 //! `crashes.journal_priority` and above). Data is fetched when the menu is
-//! revealed and on the header's refresh button — never while hidden. See
-//! [`crate::crashes`] for the parsers and the notification watcher.
+//! revealed and on the header's refresh button — never while hidden. Every
+//! row has a diagnose button that opens Claude Code / Codex in a terminal
+//! on it ([`crate::crashes::diagnose`]). See [`crate::crashes`] for the
+//! parsers and the notification watcher.
 
+use std::collections::HashSet;
+
+use crate::crashes::diagnose::{self, AgentSettings, Target};
 use crate::crashes::{
     self, Crash, Fetch, JournalEntry, format_time, is_muted, journal_priority, signal_name,
 };
@@ -30,6 +35,8 @@ pub(crate) struct CrashesMenuWidgetModel {
     journal: Option<Fetch<Vec<JournalEntry>>>,
     visible: bool,
     content: gtk::Box,
+    /// Rows whose diagnosis is being launched (button disabled meanwhile).
+    diagnosing: HashSet<String>,
 }
 
 #[derive(Debug)]
@@ -38,6 +45,7 @@ pub(crate) enum CrashesMenuWidgetInput {
     SelectTab(CrashesTab),
     Refresh,
     ToggleMute(String),
+    Diagnose(String, Target),
 }
 
 #[derive(Debug)]
@@ -49,6 +57,7 @@ pub(crate) struct CrashesMenuWidgetInit {}
 pub(crate) enum CrashesMenuWidgetCommandOutput {
     Crashes(Fetch<Vec<Crash>>),
     Journal(Fetch<Vec<JournalEntry>>),
+    Diagnosed(String, Result<(), String>),
 }
 
 #[relm4::component(pub(crate))]
@@ -138,6 +147,7 @@ impl Component for CrashesMenuWidgetModel {
             journal: None,
             visible: false,
             content: content.clone(),
+            diagnosing: HashSet::new(),
         };
         let widgets = view_output!();
         crate::menus::list_fit::mark_menu_list(&widgets.fill_list, 480);
@@ -173,6 +183,17 @@ impl Component for CrashesMenuWidgetModel {
                 });
                 self.render(&sender);
             }
+            CrashesMenuWidgetInput::Diagnose(key, target) => {
+                if !self.diagnosing.insert(key.clone()) {
+                    return;
+                }
+                let settings = AgentSettings::from_config();
+                sender.oneshot_command(async move {
+                    let r = diagnose::diagnose(target, settings).await;
+                    CrashesMenuWidgetCommandOutput::Diagnosed(key, r)
+                });
+                self.render(&sender);
+            }
         }
     }
 
@@ -185,6 +206,18 @@ impl Component for CrashesMenuWidgetModel {
         match message {
             CrashesMenuWidgetCommandOutput::Crashes(f) => self.crashes = Some(f),
             CrashesMenuWidgetCommandOutput::Journal(f) => self.journal = Some(f),
+            CrashesMenuWidgetCommandOutput::Diagnosed(key, r) => {
+                self.diagnosing.remove(&key);
+                if let Err(e) = r {
+                    tracing::warn!("crashes: diagnosis: {e}");
+                    mshell_config::toast::push_toast(mshell_config::toast::ToastEvent {
+                        icon: "ai-agents-symbolic".to_string(),
+                        title: "Couldn't start the diagnosis".to_string(),
+                        body: Some(e),
+                        severity: mshell_config::toast::ToastSeverity::Warn,
+                    });
+                }
+            }
         }
         self.render(&sender);
     }
@@ -219,6 +252,8 @@ impl CrashesMenuWidgetModel {
             list.remove(&child);
         }
         list.set_css_classes(&[]);
+        let agents = AgentSettings::from_config().agents;
+        let can_diagnose = diagnose::any_agent_installed(&agents);
         match self.tab {
             CrashesTab::Crashes => match &self.crashes {
                 None => status_line(list, "Loading…"),
@@ -232,7 +267,13 @@ impl CrashesMenuWidgetModel {
                     list.set_css_classes(&["ok-boxed-list", "compact", "crashes-list"]);
                     let muted = config_manager().config().crashes().muted().get_untracked();
                     for c in v {
-                        list.append(&crash_row(c, is_muted(&muted, c.program()), sender));
+                        let key = crash_key(c);
+                        let diag = DiagnoseButton {
+                            available: can_diagnose,
+                            busy: self.diagnosing.contains(&key),
+                            key,
+                        };
+                        list.append(&crash_row(c, is_muted(&muted, c.program()), diag, sender));
                     }
                 }
             },
@@ -248,7 +289,13 @@ impl CrashesMenuWidgetModel {
                 Some(Fetch::Ok(v)) => {
                     list.set_css_classes(&["ok-boxed-list", "compact", "crashes-list"]);
                     for e in v {
-                        list.append(&journal_row(e));
+                        let key = journal_key(e);
+                        let diag = DiagnoseButton {
+                            available: can_diagnose,
+                            busy: self.diagnosing.contains(&key),
+                            key,
+                        };
+                        list.append(&journal_row(e, diag, sender));
                     }
                 }
             },
@@ -295,7 +342,62 @@ fn text_column(title: &str, subtitle: &str) -> gtk::Box {
     col
 }
 
-fn crash_row(c: &Crash, muted: bool, sender: &ComponentSender<CrashesMenuWidgetModel>) -> gtk::Box {
+/// Diagnosis state for one row's button.
+struct DiagnoseButton {
+    key: String,
+    /// An agent is installed.
+    available: bool,
+    /// Launching right now.
+    busy: bool,
+}
+
+fn crash_key(c: &Crash) -> String {
+    format!("c{}-{}", c.time_us, c.pid)
+}
+
+fn journal_key(e: &JournalEntry) -> String {
+    format!("j{}-{}", e.time_us, e.ident)
+}
+
+/// The diagnose button (`what` names the row for the tooltip / a11y).
+fn diagnose_button(
+    diag: DiagnoseButton,
+    what: &str,
+    target: Target,
+    sender: &ComponentSender<CrashesMenuWidgetModel>,
+) -> gtk::Button {
+    let b = gtk::Button::new();
+    b.set_css_classes(&["ok-button-surface", "crashes-diagnose"]);
+    b.set_valign(gtk::Align::Center);
+    b.set_child(Some(&gtk::Image::from_icon_name("ai-agents-symbolic")));
+    let label = format!("Diagnose {what} with an AI agent");
+    let tip = if !diag.available {
+        "Install Claude Code or Codex to diagnose".to_string()
+    } else if diag.busy {
+        "Opening the agent…".to_string()
+    } else {
+        format!("{label} (opens a terminal)")
+    };
+    b.set_tooltip_text(Some(&tip));
+    mshell_common::a11y::name(&b, &label);
+    b.set_sensitive(diag.available && !diag.busy);
+    let sender = sender.clone();
+    let key = diag.key;
+    b.connect_clicked(move |_| {
+        sender.input(CrashesMenuWidgetInput::Diagnose(
+            key.clone(),
+            target.clone(),
+        ));
+    });
+    b
+}
+
+fn crash_row(
+    c: &Crash,
+    muted: bool,
+    diag: DiagnoseButton,
+    sender: &ComponentSender<CrashesMenuWidgetModel>,
+) -> gtk::Box {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     row.add_css_class("crashes-row");
     row.set_tooltip_text(Some(&c.exe));
@@ -310,6 +412,12 @@ fn crash_row(c: &Crash, muted: bool, sender: &ComponentSender<CrashesMenuWidgetM
         sub.push_str(" · core file gone");
     }
     row.append(&text_column(c.program(), &sub));
+    row.append(&diagnose_button(
+        diag,
+        &format!("the {} crash", c.program()),
+        Target::Crash(c.clone()),
+        sender,
+    ));
 
     let program = c.program().to_string();
     let mute = gtk::Button::new();
@@ -355,7 +463,11 @@ fn priority_label(priority: u8) -> &'static str {
         .unwrap_or("info")
 }
 
-fn journal_row(e: &JournalEntry) -> gtk::Box {
+fn journal_row(
+    e: &JournalEntry,
+    diag: DiagnoseButton,
+    sender: &ComponentSender<CrashesMenuWidgetModel>,
+) -> gtk::Box {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     row.add_css_class("crashes-row");
     let title = format!("{} · {}", e.ident, format_time(e.time_us));
@@ -365,6 +477,12 @@ fn journal_row(e: &JournalEntry) -> gtk::Box {
     chip.add_css_class(priority_class(e.priority));
     chip.set_valign(gtk::Align::Center);
     row.append(&chip);
+    row.append(&diagnose_button(
+        diag,
+        &format!("this {} message", e.ident),
+        Target::Journal(e.clone(), priority_label(e.priority)),
+        sender,
+    ));
     row
 }
 

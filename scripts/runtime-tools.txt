@@ -131,6 +131,7 @@ mvpn                        -                          this package
 askpass                     -                          the user's SUDO_ASKPASS helper, probed
 helium-browser              -                          the user's browser, probed for yt-dlp cookies
 claude                      -                          the user's AI agent CLI, probed
+codex                       -                          the user's AI agent CLI (crash diagnosis), probed
 alacritty                   -                          the user's terminal, probed
 kitty                       -                          the user's terminal, probed
 bat                         -                          the user's pager, probed

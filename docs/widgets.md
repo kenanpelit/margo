@@ -292,6 +292,25 @@ a dropped link, binds `127.0.0.1` only and never starts on its own. It uses
 (connect once from the Hosts tab first); the shell never asks for or stores
 a password. Needs `openssh` and systemd user services.
 
+**AI diagnosis.** Every crash and journal row has an agent button
+(`ai-agents-symbolic`) that opens your terminal (`$TERMINAL`, else the first
+installed emulator) running Claude Code or Codex on that row. The prompt —
+the recorded facts, `coredumpctl info` (first 16 KiB), an evidence-first
+investigation guide (rule out OOM / disk / updates, read the journal around
+the crash, symbolise with gdb + debuginfod, report proven vs inferred,
+change nothing) — is written to a private file
+(`$XDG_RUNTIME_DIR/mshell/crash-diagnose/*.md`, mode 0600, deleted after a
+day); only its path reaches the agent's command line. Agents are tried in
+`crashes.agent_order` (**Settings → Notifications → Crash diagnosis
+agent**: Claude Code then Codex by default). With `crashes.agent_probe`
+on (**Skip an agent that can't answer**, default) each one is first asked a
+one-word question, and one that fails or reports a usage / rate limit or
+quota is skipped for the next — the terminal says which and why.
+`crashes.agent_instructions` (**Diagnosis instructions**) is appended to
+every prompt, e.g. “Answer in Turkish”. The button is disabled when neither
+`claude` nor `codex` is found on PATH or in `~/.local/bin`, the npm or bun
+bin directories. Nothing runs an agent without a click.
+
 ## Reboot into… (session menu)
 
 Turn on **Settings → Session → Reboot into… → Show “Reboot into…”**

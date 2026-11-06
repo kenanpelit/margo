@@ -1,7 +1,8 @@
 //! Crash watcher core — systemd-coredump crashes of the user's own
 //! processes, plus this boot's journal errors. Port of the noctalia
-//! `crashes` plugin (minus its AI-agent diagnosis), used by the Crashes
-//! menu and the crash-notification watcher.
+//! `crashes` plugin, used by the Crashes menu and the crash-notification
+//! watcher. [`diagnose`] opens an AI agent (Claude Code / Codex) in a
+//! terminal on a crash or a journal error.
 //!
 //! * `coredumpctl list --json=short` → [`parse_coredumps`] → [`own_crashes`]
 //!   (newest first, only our uid: a system daemon dumping core is a
@@ -32,6 +33,8 @@ use reactive_graph::prelude::GetUntracked;
 use relm4::gtk::gio::prelude::{FileExt, FileMonitorExt};
 use relm4::gtk::{gio, glib};
 use serde_json::Value;
+
+pub(crate) mod diagnose;
 
 /// Where systemd-coredump stores dumps (world-readable directory).
 const COREDUMP_DIR: &str = "/var/lib/systemd/coredump";

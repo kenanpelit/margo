@@ -1,0 +1,40 @@
+           PID: 1642539 (rust-lld)
+           TID: 1642734 (rust-lld)
+           UID: 1000 (kenan)
+           GID: 1000 (kenan)
+        Signal: 7 (BUS) si_code: BUS_ADRERR
+     Timestamp: Wed 2026-11-04 12:56:46 +03 (1 day 19h ago)
+  Command Line: /home/kenan/.rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/bin/rust-lld -flavor gnu -plugin /usr/lib/gcc/x86_64-pc-linux-gnu/16/liblto_plugin.so …
+    Executable: /home/kenan/.rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/bin/rust-lld
+ Control Group: /user.slice/user-1000.slice/user@1000.service/app.slice/run-p1641361-i1529983.scope
+          Unit: user@1000.service
+     User Unit: run-p1641361-i1529983.scope
+         Slice: user-1000.slice
+     Owner UID: 1000 (kenan)
+       Boot ID: <redacted>
+    Machine ID: <redacted>
+      Hostname: hay
+       Storage: /var/lib/systemd/coredump/core.rust-lld.1000.<boot-id>.1642539.1793786206000000.zst (present)
+  Size on Disk: 29.3M
+       Message: Process 1642539 (rust-lld) of user 1000 dumped core.
+                
+                Module libLLVM.so.22.1-rust-1.95.0-stable without build-id.
+                Module rust-lld without build-id.
+                Stack trace of thread 1642734:
+                #0  0x00007f24a7fb19ec n/a (libc.so.6 + 0x1b19ec)
+                #1  0x00005616663be19e _ZN3lld3elf14EhFrameSection7writeToEPh (rust-lld + 0x51d19e)
+                #2  0x000056166635781a _ZZN3lld3elf13OutputSection7writeToIN4llvm6object7ELFTypeILNS3_10endiannessE1ELb1EEEEEvRNS0_3CtxEPhRNS3_8parallel9TaskGroupEENKUlmmE_clEmm (rust-lld + 0x4b681a)
+                #3  0x00007f24ae1013b2 _ZNSt17_Function_handlerIFvvEZN4llvm8parallel9TaskGroup5spawnESt8functionIS0_EE3$_0E9_M_invokeERKSt9_Any_data (libLLVM.so.22.1-rust-1.95.0-stable + 0x5f013b2)
+                #4  0x00007f24ae100b6a _ZN4llvm8parallel6detail12_GLOBAL__N_118ThreadPoolExecutor4workENS_18ThreadPoolStrategyEj (libLLVM.so.22.1-rust-1.95.0-stable + 0x5f00b6a)
+                #5  0x00007f24ae0662f0 execute_native_thread_routine (libLLVM.so.22.1-rust-1.95.0-stable + 0x5e662f0)
+                #6  0x00007f24a7eac93f n/a (libc.so.6 + 0xac93f)
+                #7  0x00007f24a7f4eeec n/a (libc.so.6 + 0x14eeec)
+                
+                Stack trace of thread 1642746:
+                #0  0x00007f24a7eb5a22 n/a (libc.so.6 + 0xb5a22)
+                #1  0x00007f24a7ea908a n/a (libc.so.6 + 0xa908a)
+                #2  0x00007f24a7eabc70 pthread_cond_wait (libc.so.6 + 0xabc70)
+                #3  0x00007f24adffe0ac _ZNSt18condition_variable4waitERSt11unique_lockISt5mutexE (libLLVM.so.22.1-rust-1.95.0-stable + 0x5dfe0ac)
+                #4  0x00007f24ae100ac4 _ZN4llvm8parallel6detail12_GLOBAL__N_118ThreadPoolExecutor4workENS_18ThreadPoolStrategyEj (libLLVM.so.22.1-rust-1.95.0-stable + 0x5f00ac4)
+                #5  0x00007f24ae0662f0 execute_native_thread_routine (libLLVM.so.22.1-rust-1.95.0-stable + 0x5e662f0)
+                #6  0x00007f24a7eac93f n/a (libc.so.6 + 0xac93f)
