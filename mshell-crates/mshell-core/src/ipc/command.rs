@@ -138,6 +138,12 @@ pub(super) enum IPCCommand {
     ThemeSet(mshell_config::schema::themes::Themes),
     /// `mshellctl theme get` — reply with the active scheme's canonical name.
     ThemeGet(tokio::sync::oneshot::Sender<String>),
+    /// `mshellctl theme bundle list` (`None`: reply with the list) /
+    /// `apply <name>` (`Some`: apply it; reply `Err` for an unknown name).
+    ThemeBundle(
+        Option<String>,
+        tokio::sync::oneshot::Sender<Result<String, String>>,
+    ),
     OpenSettings,
     OpenWizard,
     CloseSettings,

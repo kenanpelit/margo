@@ -103,6 +103,14 @@ separators, so
 all resolve;
 .B theme list
 prints the valid names.
+.B theme bundle list
+prints the saved theme bundles (Settings \(-> Theme \(-> Bundles) as
+tab-separated name, scheme and wallpaper count, marking the active one;
+.B theme bundle apply \fINAME\fR
+applies one (scheme, matugen settings and wallpaper) in one step. While a
+bundle is active,
+.B wallpaper next\fR|\fBprevious\fR|\fBrandom
+step through its wallpapers only.
 .SS "Session and notifications"
 .TP
 .B session \fISUBCOMMAND\fR

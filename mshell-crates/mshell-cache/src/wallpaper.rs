@@ -257,9 +257,15 @@ pub fn current_wallpaper_path() -> Option<PathBuf> {
     }
 }
 
-/// Every image file in the configured `wallpaper_dir`, sorted by
-/// filename for a stable next/prev order.
+/// The wallpapers next/prev/random and the rotation step through: the
+/// active theme bundle's wallpapers (in bundle order) while one is active
+/// and has wallpapers on disk, else every image file in the configured
+/// `wallpaper_dir`, sorted by filename for a stable next/prev order.
 pub fn list_wallpapers() -> Vec<PathBuf> {
+    let theme = config_manager().config().theme().get_untracked();
+    if let Some(list) = crate::theme_bundle::active_bundle_wallpapers(&theme) {
+        return list;
+    }
     let dir = config_manager()
         .config()
         .wallpaper()

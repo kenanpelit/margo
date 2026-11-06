@@ -16,3 +16,44 @@
     transform: scale(1.02);
   }
 }
+
+// Saved theme bundle (theme_picker/bundle_card.rs): the same selectable
+// media tile as `.theme-card`, as a real button so it takes keyboard focus.
+// The caption sits on a --surface scrim so the name reads over any preview.
+.theme-bundle-section {
+  padding: 0 var(--space-6) var(--space-3) var(--space-6);
+}
+
+.theme-bundle-card {
+  all: unset;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--outline-variant);
+  transition:
+    border var(--motion-medium) var(--ease-standard),
+    transform var(--motion-medium) var(--ease-standard);
+
+  &:hover,
+  &.active {
+    border: 2px solid var(--primary);
+  }
+
+  &:hover {
+    transform: scale(1.02);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+}
+
+.theme-bundle-preview {
+  border-radius: var(--radius-md);
+}
+
+.theme-bundle-caption {
+  padding: var(--space-1) var(--space-2);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  background-color: unquote("color-mix(in srgb, var(--surface) 80%, transparent)");
+  color: var(--on-surface);
+}

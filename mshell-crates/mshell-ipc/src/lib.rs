@@ -40,6 +40,8 @@ pub trait Shell {
     fn theme_list(&self) -> zbus::Result<String>;
     fn theme_get(&self) -> zbus::Result<String>;
     fn theme_set(&self, name: &str) -> zbus::Result<()>;
+    fn theme_bundle_list(&self) -> zbus::Result<String>;
+    fn theme_bundle_apply(&self, name: &str) -> zbus::Result<()>;
     fn version(&self) -> zbus::Result<String>;
     fn notifications(&self) -> zbus::Result<()>;
     fn notifications_clear_all(&self) -> zbus::Result<()>;

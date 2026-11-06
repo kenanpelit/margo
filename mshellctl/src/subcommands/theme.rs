@@ -7,6 +7,8 @@
 //! mshellctl theme list [--names-only]   # name<TAB>label, one per scheme
 //! mshellctl theme get                   # the scheme currently in use
 //! mshellctl theme set <name>            # switch live (case/-_ insensitive)
+//! mshellctl theme bundle list           # saved bundles: name<TAB>scheme<TAB>wallpapers[<TAB>active]
+//! mshellctl theme bundle apply <name>   # apply a saved bundle (scheme + wallpaper)
 //! ```
 //!
 //! `set` matching is forgiving: `kenp`, `Kenp`, `tokyo-night`,
@@ -30,6 +32,23 @@ pub enum ThemeCommands {
     /// ignores case and `-`/`_`/space separators (e.g. `kenp`,
     /// `tokyo-night`). Use `theme list` to see the valid names.
     Set { name: String },
+    /// Saved theme bundles (Settings → Theme → Bundles): a scheme plus its
+    /// wallpapers, applied together.
+    Bundle {
+        #[command(subcommand)]
+        command: BundleCommands,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum BundleCommands {
+    /// List the saved bundles as `name<TAB>scheme<TAB>wallpapers`, with a
+    /// fourth `active` column on the active one.
+    List,
+    /// Apply a bundle by name (exact, then case-insensitive). While it is
+    /// active, `mshellctl wallpaper next|previous|random` step through its
+    /// wallpapers only.
+    Apply { name: String },
 }
 
 pub async fn execute(command: ThemeCommands) -> anyhow::Result<()> {
@@ -54,6 +73,19 @@ pub async fn execute(command: ThemeCommands) -> anyhow::Result<()> {
         ThemeCommands::Set { name } => {
             // An unknown name comes back as a D-Bus error → non-zero exit.
             shell().await?.theme_set(&name).await?;
+        }
+        ThemeCommands::Bundle {
+            command: BundleCommands::List,
+        } => {
+            let raw: String = shell().await?.theme_bundle_list().await?;
+            if !raw.is_empty() {
+                println!("{raw}");
+            }
+        }
+        ThemeCommands::Bundle {
+            command: BundleCommands::Apply { name },
+        } => {
+            shell().await?.theme_bundle_apply(&name).await?;
         }
     }
     Ok(())

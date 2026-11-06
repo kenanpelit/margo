@@ -38,6 +38,7 @@ mod media;
 mod plugin_watch;
 mod screenshare;
 mod service;
+mod theme_bundle;
 use alarm::*;
 use audio::*;
 use command::*;
@@ -611,6 +612,9 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                         .ident()
                         .to_string();
                     let _ = reply.send(current);
+                }
+                IPCCommand::ThemeBundle(name, reply) => {
+                    let _ = reply.send(theme_bundle::reply(name));
                 }
                 IPCCommand::GameMode(target) => {
                     // Just flip the persisted `active` flag; the reactive

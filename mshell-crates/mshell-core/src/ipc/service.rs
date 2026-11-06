@@ -19,6 +19,15 @@ impl IPCService {
             .send(cmd)
             .map_err(|_| fdo::Error::Failed("mshell is shutting down".into()))
     }
+
+    /// Round-trip a theme-bundle list/apply through the GTK thread.
+    pub(super) async fn theme_bundle(&self, name: Option<String>) -> fdo::Result<String> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.send(IPCCommand::ThemeBundle(name, tx))?;
+        rx.await
+            .map_err(|_| no_reply())?
+            .map_err(fdo::Error::InvalidArgs)
+    }
 }
 
 /// The dispatch loop dropped a reply channel without answering.
@@ -238,6 +247,16 @@ impl IPCService {
             ))
         })?;
         self.send(IPCCommand::ThemeSet(theme))
+    }
+    /// `mshellctl theme bundle list` — one `name\tscheme\twallpapers[\tactive]`
+    /// line per saved theme bundle.
+    async fn theme_bundle_list(&self) -> fdo::Result<String> {
+        self.theme_bundle(None).await
+    }
+    /// `mshellctl theme bundle apply <name>` — apply a saved bundle (scheme,
+    /// matugen settings, wallpaper). Unknown names are `InvalidArgs`.
+    async fn theme_bundle_apply(&self, name: String) -> fdo::Result<()> {
+        self.theme_bundle(Some(name)).await.map(drop)
     }
     /// `mshellctl doctor` — the running shell's version (the workspace
     /// version baked in at build time). Lets the doctor flag a shell that

@@ -1,8 +1,9 @@
 //! The Theme group: the Theme container page (scheme, fonts, wallpaper,
-//! app themes) with its own sub-sidebar; sub-pages are built on first
+//! bundles, app themes) with its own sub-sidebar; sub-pages are built on first
 //! navigation.
 
 use super::*;
+use crate::theme_bundle_settings::{ThemeBundleSettingsInit, ThemeBundleSettingsModel};
 
 /// Build the Theme container (sub-sidebar + lazily filled sub-stack), seed
 /// its routes into the deep-link and search maps, and add it to `stack` as
@@ -135,15 +136,20 @@ pub(super) fn add_theme_group(
             page_factory!(WallpaperSettingsModel => WallpaperSettingsInit {}),
         ),
         (
+            "bundles".to_string(),
+            page_factory!(ThemeBundleSettingsModel => ThemeBundleSettingsInit {}),
+        ),
+        (
             "apps".to_string(),
             page_factory!(HeliumThemeSettingsModel => HeliumThemeSettingsInit {}),
         ),
     ]);
 
-    let theme_entries: [(&str, &str, &'static str); 4] = [
+    let theme_entries: [(&str, &str, &'static str); 5] = [
         ("Scheme", "palette-symbolic", "scheme"),
         ("Fonts", "xsi-font-symbolic", "fonts"),
         ("Wallpaper", "wallpaper-symbolic", "wallpaper"),
+        ("Bundles", "view-grid-symbolic", "bundles"),
         ("Apps", "web-browser-symbolic", "apps"),
     ];
     let mut theme_anchor: Option<gtk::ToggleButton> = None;

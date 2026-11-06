@@ -298,6 +298,8 @@ pub(super) const SEARCH_ALIASES: &[(&str, &str)] = &[
     ("scheme", "theme/scheme"),
     ("wallpaper", "theme/wallpaper"),
     ("theme wallpaper", "theme/wallpaper"),
+    ("theme bundles", "theme/bundles"),
+    ("bundles", "theme/bundles"),
     ("app themes", "theme/apps"),
     ("apps theme", "theme/apps"),
     ("theme apps", "theme/apps"),

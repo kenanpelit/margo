@@ -1,9 +1,10 @@
+use crate::menus::menu_widgets::theme_picker::bundle_card::bundle_card;
 use crate::menus::menu_widgets::theme_picker::theme_card::{
     ThemeCardInput, ThemeCardModel, ThemeCardOutput,
 };
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{ConfigStoreFields, ThemeStoreFields};
+use mshell_config::schema::config::{ConfigStoreFields, ThemeBundle, ThemeStoreFields};
 use mshell_config::schema::themes::Themes;
 use mshell_matugen::static_theme_mapping::static_theme;
 use mshell_utils::scroll_extensions::wire_vertical_to_horizontal;
@@ -47,6 +48,9 @@ pub(crate) enum ThemePickerMenuWidgetInput {
     ThemeSelected(Themes),
     ThemeEffect(Themes),
     ThemeFilterSelected(ThemeFilter),
+    /// The saved bundles or the active one changed: rebuild the strip.
+    BundlesChanged(Vec<ThemeBundle>, String),
+    ApplyBundle(String),
 }
 
 #[derive(Debug)]
@@ -111,6 +115,36 @@ impl Component for ThemePickerMenuWidgetModel {
                 },
             },
 
+            // Saved theme bundles (Settings → Theme → Bundles); hidden
+            // until one exists.
+            #[name = "bundle_section"]
+            gtk::Box {
+                add_css_class: "theme-bundle-section",
+                set_orientation: gtk::Orientation::Vertical,
+                set_spacing: 8,
+                set_visible: false,
+
+                gtk::Label {
+                    add_css_class: "label-small-bold",
+                    set_label: "Bundles",
+                    set_halign: gtk::Align::Start,
+                },
+
+                #[name = "bundle_scroll"]
+                gtk::ScrolledWindow {
+                    set_hexpand: true,
+                    set_vscrollbar_policy: gtk::PolicyType::Never,
+                    set_hscrollbar_policy: gtk::PolicyType::External,
+                    set_propagate_natural_height: true,
+
+                    #[name = "bundle_row"]
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 8,
+                    }
+                },
+            },
+
             gtk::Overlay {
                 add_overlay = &gtk::Box {
                     add_css_class: "wallpaper-shadow",
@@ -152,6 +186,14 @@ impl Component for ThemePickerMenuWidgetModel {
             sender_clone.input(ThemePickerMenuWidgetInput::ThemeEffect(value));
         });
 
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
+            let bundles = config.clone().theme().bundles().get();
+            let active = config.theme().active_bundle().get();
+            sender_clone.input(ThemePickerMenuWidgetInput::BundlesChanged(bundles, active));
+        });
+
         let theme_filters = gtk::StringList::new(
             &ThemeFilter::all()
                 .iter()
@@ -186,6 +228,7 @@ impl Component for ThemePickerMenuWidgetModel {
         model.theme_cards = Some(theme_cards);
 
         wire_vertical_to_horizontal(&widgets.scroll_window, 64.0);
+        wire_vertical_to_horizontal(&widgets.bundle_scroll, 64.0);
 
         ComponentParts { model, widgets }
     }
@@ -216,6 +259,25 @@ impl Component for ThemePickerMenuWidgetModel {
                     for i in 0..guard.len() {
                         guard.send(i, ThemeCardInput::SelectionChanged(theme));
                     }
+                }
+            }
+            ThemePickerMenuWidgetInput::BundlesChanged(bundles, active) => {
+                while let Some(child) = widgets.bundle_row.first_child() {
+                    widgets.bundle_row.remove(&child);
+                }
+                for bundle in &bundles {
+                    let sender = sender.clone();
+                    widgets.bundle_row.append(&bundle_card(
+                        bundle,
+                        bundle.name == active,
+                        move |name| sender.input(ThemePickerMenuWidgetInput::ApplyBundle(name)),
+                    ));
+                }
+                widgets.bundle_section.set_visible(!bundles.is_empty());
+            }
+            ThemePickerMenuWidgetInput::ApplyBundle(name) => {
+                if let Err(e) = mshell_cache::theme_bundle::apply_theme_bundle(&name) {
+                    tracing::warn!(error = %e, "theme picker: bundle not applied");
                 }
             }
             ThemePickerMenuWidgetInput::ThemeFilterSelected(filter) => {
