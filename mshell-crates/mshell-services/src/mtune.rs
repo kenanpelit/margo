@@ -7,6 +7,8 @@
 //! goes back to `running = false` when it disappears, so the pill just
 //! shows a "launch Tune" affordance in the meantime.
 
+mod radio;
+
 use mshell_process::SpawnReaped;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
@@ -31,6 +33,11 @@ const IFACE: &str = "org.margo.Tune";
 pub struct MtunePlayer {
     /// `mtune` is running and owns `org.margo.Tune`.
     pub running: Property<bool>,
+    pub radio_stations: Property<Vec<(String, String, String, String)>>,
+    pub is_live: Property<bool>,
+    pub stream_error: Property<String>,
+    pub station_name: Property<String>,
+    pub volume: Property<f64>,
     pub playing: Property<bool>,
     pub has_song: Property<bool>,
     pub title: Property<String>,
@@ -69,6 +76,11 @@ impl MtunePlayer {
     fn new() -> Self {
         Self {
             running: Property::new(false),
+            radio_stations: Property::new(Vec::new()),
+            is_live: Property::new(false),
+            stream_error: Property::new(String::new()),
+            station_name: Property::new(String::new()),
+            volume: Property::new(1.0),
             playing: Property::new(false),
             has_song: Property::new(false),
             title: Property::new(String::new()),
@@ -239,6 +251,11 @@ pub fn spawn_mtune_watcher() {
 
 fn reset(p: &MtunePlayer) {
     p.running.set(false);
+    p.radio_stations.set(Vec::new());
+    p.is_live.set(false);
+    p.stream_error.set(String::new());
+    p.station_name.set(String::new());
+    p.volume.set(1.0);
     p.playing.set(false);
     p.has_song.set(false);
     p.scanning.set(false);
@@ -327,6 +344,17 @@ async fn refresh(proxy: &zbus::Proxy<'_>, p: &MtunePlayer) {
             proxy.get_property::<$ty>($name).await.ok()
         };
     }
+
+    // Older Tune versions lack these properties: clear defaults rather
+    // than carrying radio state over from a previous/newer owner.
+    p.radio_stations
+        .set(get!("RadioStations", Vec<(String, String, String, String)>).unwrap_or_default());
+    p.is_live.set(get!("IsLive", bool).unwrap_or(false));
+    p.stream_error
+        .set(get!("StreamError", String).unwrap_or_default());
+    p.station_name
+        .set(get!("StationName", String).unwrap_or_default());
+    p.volume.set(get!("Volume", f64).unwrap_or(1.0));
 
     if let Some(v) = get!("Playing", bool) {
         p.playing.set(v);

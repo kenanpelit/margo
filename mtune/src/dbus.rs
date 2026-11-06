@@ -4,6 +4,10 @@
 //! dedicated bar pill + menu; MPRIS (via `mpris-server`) stays the interop
 //! path for everything else.
 
+pub(crate) mod radio;
+#[cfg(test)]
+mod tests;
+
 use crate::audio::RepeatMode;
 use crate::bridge::{AppCommand, CommandSender, SharedSnapshot};
 use std::path::PathBuf;
@@ -19,6 +23,18 @@ struct TuneService {
 }
 
 impl TuneService {
+    async fn radio_request(&self, command: crate::bridge::RadioCommand) -> zbus::fdo::Result<()> {
+        let (tx, rx) = async_channel::bounded(1);
+        self.tx
+            .send(AppCommand::Radio(command, tx))
+            .await
+            .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?;
+        rx.recv()
+            .await
+            .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?
+            .map_err(zbus::fdo::Error::Failed)
+    }
+
     fn send(&self, cmd: AppCommand) {
         let _ = self.tx.send_blocking(cmd);
     }
@@ -26,6 +42,82 @@ impl TuneService {
 
 #[interface(name = "org.margo.Tune")]
 impl TuneService {
+    #[zbus(property)]
+    async fn radio_stations(&self) -> Vec<crate::bridge::RadioStation> {
+        self.snap
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .radio_stations
+            .clone()
+    }
+
+    #[zbus(property)]
+    async fn is_live(&self) -> bool {
+        self.snap
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_live
+    }
+
+    #[zbus(property)]
+    async fn stream_error(&self) -> String {
+        self.snap
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .stream_error
+            .clone()
+    }
+
+    #[zbus(property)]
+    async fn station_name(&self) -> String {
+        self.snap
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .station_name
+            .clone()
+    }
+
+    async fn search_radio(
+        &self,
+        query: &str,
+        country: &str,
+    ) -> zbus::fdo::Result<Vec<crate::bridge::RadioStation>> {
+        let query = radio::query(query, country).map_err(zbus::fdo::Error::InvalidArgs)?;
+        let (tx, rx) = async_channel::bounded(1);
+        self.tx
+            .send(AppCommand::SearchRadio(query, tx))
+            .await
+            .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?;
+        rx.recv()
+            .await
+            .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?
+            .map_err(zbus::fdo::Error::Failed)
+    }
+
+    async fn add_radio_station(&self, name: &str, url: &str) -> zbus::fdo::Result<()> {
+        let station = radio::station(name, url).map_err(zbus::fdo::Error::InvalidArgs)?;
+        self.radio_request(crate::bridge::RadioCommand::Add(station))
+            .await
+    }
+
+    async fn remove_radio_station(&self, key: &str) -> zbus::fdo::Result<()> {
+        radio::text(key, 4100).map_err(zbus::fdo::Error::InvalidArgs)?;
+        self.radio_request(crate::bridge::RadioCommand::Remove(key.into()))
+            .await
+    }
+
+    async fn play_radio_station(&self, key: &str) -> zbus::fdo::Result<()> {
+        radio::text(key, 4100).map_err(zbus::fdo::Error::InvalidArgs)?;
+        self.radio_request(crate::bridge::RadioCommand::Play(key.into()))
+            .await
+    }
+
+    async fn preview_radio_station(&self, name: &str, url: &str) -> zbus::fdo::Result<()> {
+        let station = radio::station(name, url).map_err(zbus::fdo::Error::InvalidArgs)?;
+        self.radio_request(crate::bridge::RadioCommand::Preview(station))
+            .await
+    }
+
     // ── Now-playing (so a consumer needs only this one interface) ────
 
     #[zbus(property)]
@@ -250,8 +342,14 @@ impl TuneService {
         self.send(AppCommand::SeekAbs(position_secs));
     }
 
-    async fn set_volume(&self, volume: f64) {
+    async fn set_volume(&self, volume: f64) -> zbus::fdo::Result<()> {
+        if !volume.is_finite() || !(0.0..=1.0).contains(&volume) {
+            return Err(zbus::fdo::Error::InvalidArgs(
+                "Volume must be finite and between 0 and 1".into(),
+            ));
+        }
         self.send(AppCommand::SetVolume(volume));
+        Ok(())
     }
 
     async fn set_rate(&self, rate: f64) {

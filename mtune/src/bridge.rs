@@ -14,6 +14,10 @@ use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone)]
 pub struct Snapshot {
+    pub radio_stations: Vec<RadioStation>,
+    pub is_live: bool,
+    pub stream_error: String,
+    pub station_name: String,
     pub has_song: bool,
     pub playing: bool,
     pub title: String,
@@ -52,6 +56,10 @@ pub struct Snapshot {
 impl Default for Snapshot {
     fn default() -> Self {
         Self {
+            radio_stations: Vec::new(),
+            is_live: false,
+            stream_error: String::new(),
+            station_name: String::new(),
             has_song: false,
             playing: false,
             title: String::new(),
@@ -89,6 +97,11 @@ pub fn new_shared() -> SharedSnapshot {
 /// main context by `Application`.
 #[derive(Debug, Clone)]
 pub enum AppCommand {
+    SearchRadio(
+        crate::radio::api::Query,
+        async_channel::Sender<Result<Vec<RadioStation>, String>>,
+    ),
+    Radio(RadioCommand, async_channel::Sender<Result<(), String>>),
     PlayPause,
     Next,
     Previous,
@@ -116,6 +129,17 @@ pub enum AppCommand {
     OpenPlaylist(PathBuf),
     /// Save the current queue to the library under this name.
     SavePlaylist(String),
+}
+
+/// Stable shell wire representation: key, name, playable URL, subtitle.
+pub type RadioStation = (String, String, String, String);
+
+#[derive(Debug, Clone)]
+pub enum RadioCommand {
+    Add(crate::radio::Station),
+    Remove(String),
+    Play(String),
+    Preview(crate::radio::Station),
 }
 
 pub type CommandSender = async_channel::Sender<AppCommand>;

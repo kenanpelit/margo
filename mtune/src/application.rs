@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022  Emmanuele Bassi
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod radio;
+
 use std::{cell::RefCell, rc::Rc};
 
 use adw::prelude::AdwDialogExt;
@@ -555,6 +557,7 @@ impl Application {
         for (obj, sig) in [
             (state.upcast_ref::<glib::Object>(), "playing"),
             (state.upcast_ref::<glib::Object>(), "song"),
+            (state.upcast_ref::<glib::Object>(), "stream-error"),
             // A radio programme title / episode length changing in place.
             (state.upcast_ref::<glib::Object>(), "title"),
             (state.upcast_ref::<glib::Object>(), "duration"),
@@ -574,6 +577,11 @@ impl Application {
             );
         }
 
+        crate::discover::shared::listen(clone!(
+            #[weak(rename_to = this)]
+            self,
+            move |_| this.refresh_bridge()
+        ));
         self.refresh_bridge();
     }
 
@@ -603,6 +611,19 @@ impl Application {
         let next = {
             let song = state.current_song();
             crate::bridge::Snapshot {
+                radio_stations: crate::discover::shared::radio()
+                    .data
+                    .borrow()
+                    .stations
+                    .iter()
+                    .map(radio::wire)
+                    .collect(),
+                is_live: song.as_ref().is_some_and(|s| s.is_live()),
+                stream_error: state.stream_error(),
+                station_name: song
+                    .as_ref()
+                    .and_then(|s| s.station_name())
+                    .unwrap_or_default(),
                 has_song: song.is_some(),
                 playing: state.playing(),
                 title: state.title().unwrap_or_default(),
@@ -660,6 +681,27 @@ impl Application {
         let imp = self.imp();
         let player = imp.player.clone();
         match cmd {
+            AppCommand::SearchRadio(query, reply) => {
+                glib::spawn_future_local(async move {
+                    let result = crate::net::off_main(move || crate::radio::api::search(&query))
+                        .await
+                        .ok_or_else(|| "Radio search worker failed".to_string())
+                        .and_then(|r| r.map_err(|e| e.to_string()))
+                        .map(|stations| {
+                            stations
+                                .iter()
+                                .take(crate::radio::api::PAGE as usize)
+                                .map(radio::wire)
+                                .collect()
+                        });
+                    let _ = reply.send(result).await;
+                });
+            }
+            AppCommand::Radio(command, reply) => {
+                let result = self.radio_command(command);
+                self.refresh_bridge();
+                let _ = reply.try_send(result);
+            }
             AppCommand::PlayPause => player.toggle_play(),
             AppCommand::Next => player.skip_next(),
             AppCommand::Previous => player.skip_previous(),
