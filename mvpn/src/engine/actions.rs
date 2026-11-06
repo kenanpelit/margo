@@ -24,15 +24,6 @@ pub fn toggle() -> bool {
     }
 }
 
-/// Set relay location (country, optional city) then connect.
-pub fn set_location(country: &str, city: Option<&str>) -> bool {
-    let mut args = vec!["relay", "set", "location", country];
-    if let Some(c) = city {
-        args.push(c);
-    }
-    sys::mullvad_ok(&args) && connect()
-}
-
 /// Set a specific relay by id (`relay set location <cc> <city> <id>` form
 /// accepts the full hostname as a single location token) then connect.
 pub fn set_relay(id: &str) -> bool {

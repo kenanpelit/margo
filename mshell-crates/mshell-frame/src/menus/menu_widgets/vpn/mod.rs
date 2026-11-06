@@ -7,7 +7,6 @@
 
 pub(crate) mod account;
 pub(crate) mod locations;
-pub(crate) mod multihop;
 pub(crate) mod problem;
 pub(crate) mod throughput;
 pub(crate) mod vpn_menu_widget;

@@ -1,13 +1,14 @@
-//! The VPN menu's multihop controls: a switch plus the entry location
-//! (country, then optionally a city), from `mvpn toggles` (`multihop=`,
-//! `entry=`) and set with `mvpn multihop on|off` / `mvpn entry …`.
+//! Multihop entry pickers (country, then optionally a city), shared by
+//! the shell VPN menu and the `mvpn menu` panel: the entry as `mvpn
+//! toggles` prints it (`entry=`), dropdown labels and indices, and the
+//! `mvpn entry …` argv that sets what the dropdowns show.
 
-use mshell_utils::mvpn::locations::Country;
+use crate::locations::Country;
 
 /// The entry location as `mvpn toggles` prints it (`entry=`): `any`,
 /// `se`, `se got`, `se got se-got-wg-001`, or a custom list's name.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct Entry {
+pub struct Entry {
     /// Empty = any country.
     pub country: String,
     /// Empty = any city.
@@ -15,7 +16,7 @@ pub(crate) struct Entry {
 }
 
 impl Entry {
-    pub(crate) fn parse(value: &str) -> Self {
+    pub fn parse(value: &str) -> Self {
         let mut it = value.split_whitespace();
         match (it.next(), it.next()) {
             (None | Some("any"), _) => Self::default(),
@@ -28,14 +29,14 @@ impl Entry {
 }
 
 /// Dropdown labels: "Any country" + country names.
-pub(crate) fn country_labels(tree: &[Country]) -> Vec<String> {
+pub fn country_labels(tree: &[Country]) -> Vec<String> {
     std::iter::once("Any country".to_string())
         .chain(tree.iter().map(|c| c.name.clone()))
         .collect()
 }
 
 /// Dropdown labels for a country's cities: "Any city" + city names.
-pub(crate) fn city_labels(tree: &[Country], country_index: u32) -> Vec<String> {
+pub fn city_labels(tree: &[Country], country_index: u32) -> Vec<String> {
     let cities = country_at(tree, country_index).map_or(&[][..], |c| c.cities.as_slice());
     std::iter::once("Any city".to_string())
         .chain(cities.iter().map(|c| c.name.clone()))
@@ -50,7 +51,7 @@ fn country_at(tree: &[Country], index: u32) -> Option<&Country> {
 /// Dropdown indices showing `entry`: (country, city), 0 = any. An entry
 /// the tree does not know (a custom list, a relay list not loaded yet)
 /// shows as any.
-pub(crate) fn selection(tree: &[Country], entry: &Entry) -> (u32, u32) {
+pub fn selection(tree: &[Country], entry: &Entry) -> (u32, u32) {
     let Some(ci) = tree.iter().position(|c| c.code == entry.country) else {
         return (0, 0);
     };
@@ -63,7 +64,7 @@ pub(crate) fn selection(tree: &[Country], entry: &Entry) -> (u32, u32) {
 }
 
 /// The `mvpn` argv that sets the entry the dropdowns show.
-pub(crate) fn entry_args(tree: &[Country], country_index: u32, city_index: u32) -> Vec<String> {
+pub fn entry_args(tree: &[Country], country_index: u32, city_index: u32) -> Vec<String> {
     let Some(country) = country_at(tree, country_index) else {
         return vec!["entry".into(), "any".into()];
     };
@@ -80,7 +81,7 @@ pub(crate) fn entry_args(tree: &[Country], country_index: u32, city_index: u32) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mshell_utils::mvpn::locations::City;
+    use crate::locations::City;
 
     fn tree() -> Vec<Country> {
         let city = |code: &str, name: &str| City {

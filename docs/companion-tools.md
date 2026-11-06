@@ -456,6 +456,12 @@ mvpn ensure                            # drive the blocky DNS guard from VPN sta
   guard and DNS presets), right-click toggles the tunnel. Open it from a
   terminal with `mshellctl menu vpn`. Full relay management also lives in
   **Settings → VPN**.
+- **Standalone panel.** `mvpn menu` opens the same controls as its own
+  layer-shell panel (for setups without the shell's pill): the error header
+  with its fixes, Random / Fastest / My country, multihop with its entry
+  country and city, countries opening to their cities, and the Account
+  section. It runs the same `mvpn` commands as the shell menu, so both
+  behave and word things alike.
 - **Account.** The menu's **Account** section shows this device and the
   paid-until date, lists the other devices with **Revoke** (click twice),
   redeems a voucher, logs out (click twice) and opens the account page; when

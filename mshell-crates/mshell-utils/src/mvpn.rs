@@ -12,10 +12,14 @@ use std::time::Duration;
 /// `summary()` for the hero / Settings line.
 pub type VpnStatus = mvpn_proto::Status;
 
+/// The Account section's click / confirm / outcome logic.
+pub use mvpn_proto::account;
 /// `mvpn health --json` and its diagnosis (the VPN menu's error header).
 pub use mvpn_proto::health;
 /// `mvpn locations` — the relay list as a country → city tree.
 pub use mvpn_proto::locations;
+/// The multihop entry pickers.
+pub use mvpn_proto::multihop;
 
 /// What the shared VPN poll reports: the tunnel plus the blocky DNS guard.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

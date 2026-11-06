@@ -142,6 +142,26 @@ pub enum Severity {
     Danger,
 }
 
+impl Severity {
+    /// The DESIGN.md §2 severity class both error headers carry.
+    pub fn class(self) -> &'static str {
+        match self {
+            Severity::Calm => "calm",
+            Severity::Warn => "warn",
+            Severity::Danger => "danger",
+        }
+    }
+
+    /// The header's symbolic icon.
+    pub fn icon(self) -> &'static str {
+        match self {
+            Severity::Calm => "dialog-information-symbolic",
+            Severity::Warn => "dialog-warning-symbolic",
+            Severity::Danger => "dialog-error-symbolic",
+        }
+    }
+}
+
 /// What is wrong, in one sentence, and what fixes it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Problem {
@@ -308,6 +328,14 @@ pub fn parse(json: &str) -> Option<Health> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn severity_maps_to_the_shared_ladder() {
+        assert_eq!(Severity::Calm.class(), "calm");
+        assert_eq!(Severity::Warn.class(), "warn");
+        assert_eq!(Severity::Danger.class(), "danger");
+        assert_eq!(Severity::Danger.icon(), "dialog-error-symbolic");
+    }
 
     fn ok() -> Health {
         Health {

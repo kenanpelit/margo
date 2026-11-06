@@ -170,6 +170,17 @@ row.mvpn-row:hover {{ background-color: alpha({primary}, 0.12); }}
 list.mvpn-list {{ background: transparent; }}
 .mvpn-ping {{ color: {success}; font-family: monospace; font-size: 12px; }}
 entry.mvpn-search {{ border-radius: 9px; }}
+/* Error header (DESIGN.md §2 severity ladder: calm / warn / danger). */
+.mvpn-problem {{ border-radius: 12px; padding: 12px; background-color: {surface}; }}
+.mvpn-problem.calm {{ border-left: 3px solid {surface_hi}; }}
+.mvpn-problem.warn {{ border-left: 3px solid {primary}; background-color: alpha({primary}, 0.12); }}
+.mvpn-problem.danger {{ border-left: 3px solid {danger}; background-color: alpha({danger}, 0.14); }}
+.mvpn-problem.danger image {{ color: {danger}; }}
+.mvpn-error {{ color: {danger}; opacity: 1; }}
+.mvpn-ok {{ color: {success}; opacity: 1; }}
+/* A city under its country, indented past the chevron. */
+button.mvpn-city {{ margin-left: 38px; }}
+button.mvpn-chevron {{ min-width: 34px; padding: 4px; }}
 "#,
         bg = p.bg,
         text = p.text,

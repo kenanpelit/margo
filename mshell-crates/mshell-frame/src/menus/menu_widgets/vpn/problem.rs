@@ -2,7 +2,7 @@
 //! sentence, with a button per fix (`mvpn health --json`, diagnosed by
 //! `mvpn_proto::health::diagnose`). Hidden while all is well.
 
-use mshell_utils::mvpn::health::{Fix, Problem, Severity};
+use mshell_utils::mvpn::health::{Fix, Problem};
 use relm4::gtk;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, WidgetExt};
 use std::rc::Rc;
@@ -64,8 +64,8 @@ impl ProblemBanner {
         for class in ["calm", "warn", "danger"] {
             self.root.remove_css_class(class);
         }
-        self.root.add_css_class(severity_class(p.severity));
-        self.icon.set_icon_name(Some(icon_for(p.severity)));
+        self.root.add_css_class(p.severity.class());
+        self.icon.set_icon_name(Some(p.severity.icon()));
         self.message.set_label(&p.message);
         while let Some(c) = self.fixes.first_child() {
             self.fixes.remove(&c);
@@ -80,34 +80,5 @@ impl ProblemBanner {
         self.fixes.set_visible(!p.fixes.is_empty());
         self.root.set_visible(true);
         self.shown = problem;
-    }
-}
-
-/// The DESIGN.md §2 class for a severity.
-pub(crate) fn severity_class(s: Severity) -> &'static str {
-    match s {
-        Severity::Calm => "calm",
-        Severity::Warn => "warn",
-        Severity::Danger => "danger",
-    }
-}
-
-fn icon_for(s: Severity) -> &'static str {
-    match s {
-        Severity::Calm => "dialog-information-symbolic",
-        Severity::Warn => "dialog-warning-symbolic",
-        Severity::Danger => "dialog-error-symbolic",
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn severity_maps_to_the_shared_ladder() {
-        assert_eq!(severity_class(Severity::Calm), "calm");
-        assert_eq!(severity_class(Severity::Warn), "warn");
-        assert_eq!(severity_class(Severity::Danger), "danger");
     }
 }

@@ -17,13 +17,14 @@ use super::super::dns::dns_menu_widget::{
     DnsMenuWidgetInit, DnsMenuWidgetInput, DnsMenuWidgetModel,
 };
 use super::super::dns::state::{Mode, probe_dns_state};
-use super::account::{self, AccountAction, AccountState};
+use super::account;
 use super::locations::{self, LocationAction, LocationList};
-use super::multihop::{self, Entry};
 use super::problem::ProblemBanner;
 use super::throughput::{VpnThroughputInput, VpnThroughputModel};
 use crate::menus::reveal_poll::RevealGate;
+use mshell_utils::mvpn::account::{AccountAction, AccountState, Click};
 use mshell_utils::mvpn::health::{self, Fix, Problem};
+use mshell_utils::mvpn::multihop::{self, Entry};
 use relm4::gtk::prelude::{BoxExt, ButtonExt, EditableExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::time::Duration;
@@ -206,7 +207,7 @@ pub(crate) enum VpnMenuWidgetCommandOutput {
         devices: Result<Vec<mshell_utils::mvpn::health::Device>, String>,
     },
     /// An account action finished: (worked, the sentence to show).
-    AccountDone(bool, String),
+    AccountDone(bool, String, String),
     /// What `mvpn health` diagnosed (`None` = all well).
     Health(Option<Problem>),
     /// A connection change from the shared VPN feed (no `mvpn` spawn).
@@ -963,11 +964,7 @@ impl Component for VpnMenuWidgetModel {
             }
             VpnMenuWidgetInput::Account(action) => self.account_action(action, &sender),
             VpnMenuWidgetInput::AccountDisarm(arm) => {
-                if arm == self.account_arm
-                    && (self.account.confirm_logout || self.account.confirm_revoke.is_some())
-                {
-                    self.account.confirm_logout = false;
-                    self.account.confirm_revoke = None;
+                if arm == self.account_arm && self.account.disarm() {
                     self.rebuild_account(&sender);
                 }
             }
@@ -1008,9 +1005,8 @@ impl Component for VpnMenuWidgetModel {
                 self.rebuild_account(&sender);
                 return;
             }
-            VpnMenuWidgetCommandOutput::AccountDone(ok, text) => {
-                self.account.busy = false;
-                self.account.notice = Some((ok, text));
+            VpnMenuWidgetCommandOutput::AccountDone(ok, stdout, stderr) => {
+                self.account.finish(ok, &stdout, &stderr);
                 self.rebuild_account(&sender);
                 load_account(&sender);
                 reload(&sender);
@@ -1199,32 +1195,17 @@ impl VpnMenuWidgetModel {
 
     /// Run (or arm) an Account-section action.
     fn account_action(&mut self, action: AccountAction, sender: &ComponentSender<Self>) {
-        if action == AccountAction::OpenPage {
-            open_account_page();
-            return;
-        }
-        match account::command(&action, &self.account) {
-            Some((args, stdin)) => {
-                self.account.confirm_logout = false;
-                self.account.confirm_revoke = None;
-                self.account.busy = true;
-                self.account.notice = None;
+        match self.account.click(action) {
+            Click::OpenPage => open_account_page(),
+            Click::Run { args, stdin } => {
                 self.rebuild_account(sender);
                 sender.command(|out, _shutdown| async move {
                     let (ok, stdout, stderr) = run_mvpn(&args, stdin).await;
-                    let _ = out.send(VpnMenuWidgetCommandOutput::AccountDone(
-                        ok,
-                        account::outcome(ok, &stdout, &stderr),
-                    ));
+                    let _ = out.send(VpnMenuWidgetCommandOutput::AccountDone(ok, stdout, stderr));
                 });
             }
-            None => {
+            Click::Armed => {
                 // The first click on Log out / Revoke arms it for a few seconds.
-                match action {
-                    AccountAction::Logout => self.account.confirm_logout = true,
-                    AccountAction::Revoke(name) => self.account.confirm_revoke = Some(name),
-                    _ => return,
-                }
                 self.account_arm += 1;
                 let arm = self.account_arm;
                 self.rebuild_account(sender);
@@ -1233,6 +1214,7 @@ impl VpnMenuWidgetModel {
                     s.input(VpnMenuWidgetInput::AccountDisarm(arm));
                 });
             }
+            Click::None => {}
         }
     }
 
