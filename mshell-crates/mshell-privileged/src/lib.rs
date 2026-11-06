@@ -3,7 +3,8 @@
 //! Every privileged action the shell offers (pacnew review, rollback,
 //! the background upgrade, signalling another user's process, a SMART
 //! read, a ThinkPad fan level, the battery charge limit, the logind
-//! power-key/lid drop-in, the one-shot UEFI `BootNext`, a ThinkPad LED)
+//! power-key/lid drop-in, the one-shot UEFI `BootNext`, a ThinkPad LED,
+//! a SMART self-test)
 //! is one fixed subcommand of this binary,
 //! with its own polkit action (`org.margo.mshell.privileged.<sub>`,
 //! matched on `exec.path` + `exec.argv1`), so the password dialog says
@@ -23,7 +24,7 @@ pub mod validate;
 
 use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
-pub use validate::{BootTarget, FanLevel, Signal};
+pub use validate::{BootTarget, FanLevel, SelfTest, Signal};
 
 /// Where the packages install the helper. Nix builds point it at the
 /// store path with `MSHELL_PRIVILEGED_HELPER` at compile time; the
@@ -47,12 +48,13 @@ pub fn installed() -> bool {
 }
 
 /// Every subcommand, in policy order.
-pub const SUBCOMMANDS: [&str; 12] = [
+pub const SUBCOMMANDS: [&str; 13] = [
     "pacnew-install",
     "pacnew-merge",
     "pacnew-remove",
     "kill",
     "smart-read",
+    "smart-selftest",
     "fan-set",
     "charge-limit",
     "logind-dropin",
@@ -132,6 +134,11 @@ pub enum Request {
     /// Write `value` to `/sys/class/leds/<name>/brightness` for a
     /// thinkpad_acpi LED (`tpacpi::…`), at most its `max_brightness`.
     LedSet { name: String, value: u8 },
+    /// Start a SMART self-test (`smartctl -t short|long`) on one drive,
+    /// then print a `smartctl -a` document every poll (compact JSON, one
+    /// per line) so the caller can follow its progress; stops when the
+    /// caller closes the pipe, or after [`run::SELFTEST_WATCH_MAX`].
+    SmartSelfTest { device: String, test: SelfTest },
 }
 
 impl Request {
@@ -149,6 +156,7 @@ impl Request {
             Request::Rollback { .. } => "rollback",
             Request::BootNext { .. } => "boot-next",
             Request::LedSet { .. } => "led-set",
+            Request::SmartSelfTest { .. } => "smart-selftest",
         }
     }
 
@@ -176,6 +184,9 @@ impl Request {
             Request::Rollback { package } => vec![p(package)],
             Request::BootNext { target } => vec![target.keyword().into()],
             Request::LedSet { name, value } => vec![name.into(), value.to_string().into()],
+            Request::SmartSelfTest { device, test } => {
+                vec![device.into(), test.keyword().into()]
+            }
         }
     }
 
@@ -278,6 +289,13 @@ impl Request {
                 Request::LedSet {
                     name: validate::led_name(a(0))?,
                     value: validate::led_value(a(1))?,
+                }
+            }
+            "smart-selftest" => {
+                arity(2)?;
+                Request::SmartSelfTest {
+                    device: validate::device(a(0))?,
+                    test: SelfTest::parse(a(1))?,
                 }
             }
             "boot-next" => {
@@ -391,6 +409,14 @@ mod tests {
             name: "tpacpi::lid_logo_dot".into(),
             value: 255,
         });
+        round_trip(Request::SmartSelfTest {
+            device: "/dev/nvme0".into(),
+            test: SelfTest::Short,
+        });
+        round_trip(Request::SmartSelfTest {
+            device: "/dev/sda".into(),
+            test: SelfTest::Long,
+        });
     }
 
     #[test]
@@ -450,6 +476,19 @@ mod tests {
             p(&["led-set", "input3::capslock", "1"]).unwrap_err().code(),
             2
         );
+        for bad in [
+            &["smart-selftest", "/dev/nvme0"][..],
+            &["smart-selftest", "/dev/nvme0", "short", "x"],
+            &["smart-selftest", "/dev/nvme0", "offline"],
+            &["smart-selftest", "/dev/nvme0", "select,0-max"],
+            &["smart-selftest", "/dev/nvme0", "force"],
+            &["smart-selftest", "/dev/nvme0", "SHORT"],
+            &["smart-selftest", "/dev/../etc/shadow", "short"],
+            &["smart-selftest", "/dev/sda;id", "long"],
+            &["smart-selftest", "-X", "short"],
+        ] {
+            assert_eq!(p(bad).unwrap_err().code(), 2, "{bad:?}");
+        }
         assert!(Request::ChargeLimit { limit: 0 }.validated().is_err());
         let many: Vec<String> = (0..17).map(|i| format!("/dev/sd{i}")).collect();
         let mut v = vec!["smart-read"];

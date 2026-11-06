@@ -622,6 +622,118 @@ fn smart_read_runs_smartctl_per_validated_drive() {
     assert!(stderr(&o).contains("smartctl is not installed"));
 }
 
+/// A block device this test can see (`/dev/<alnum>`), if any.
+fn visible_block_device() -> Option<String> {
+    use std::os::unix::fs::FileTypeExt;
+    std::fs::read_dir("/dev").ok()?.flatten().find_map(|e| {
+        let name = e.file_name().into_string().ok()?;
+        let ok = name.bytes().all(|b| b.is_ascii_alphanumeric()) && name.len() <= 32;
+        (ok && e.file_type().ok()?.is_block_device()).then(|| format!("/dev/{name}"))
+    })
+}
+
+/// A fake smartctl printing its argv as one JSON line; `-t` exits `start`.
+fn fake_smartctl(f: &Fixture, start: i32) {
+    let p = f.write(
+        "/usr/bin/smartctl",
+        &format!(
+            "#!/bin/sh\nprintf '{{\"argv\":\"%s\"}}\\n' \"$*\"\n[ \"$2\" = -t ] && exit {start}\nexit 0\n"
+        ),
+    );
+    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+}
+
+fn spawn_selftest(f: &Fixture, dev: &str, test: &str) -> std::process::Child {
+    assert!(!as_root(), "never run the helper fixtures as root");
+    Command::new(BIN)
+        .args(["smart-selftest", dev, test])
+        .env("MSHELL_PRIVILEGED_SYSROOT", &f.root)
+        .env("MSHELL_PRIVILEGED_POLL_MS", "20")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn helper")
+}
+
+#[test]
+fn smart_selftest_validates_the_drive_before_smartctl() {
+    skip_as_root!();
+    let f = Fixture::new();
+    fake_smartctl(&f, 0);
+    for bad in [
+        &["smart-selftest", "/dev/sda;id", "short"][..],
+        &["smart-selftest", "/dev/nvme0", "offline"],
+        &["smart-selftest", "/dev/nvme0", "short", "force"],
+        &["smart-selftest", "/dev/nvme0"],
+    ] {
+        let o = f.run(bad);
+        assert_eq!(code(&o), 2, "{bad:?}");
+        assert!(o.stdout.is_empty());
+    }
+    for bad in ["/dev/stdin", "/dev/shm", "/dev/null", "/dev/nosuch0"] {
+        let o = f.run(&["smart-selftest", bad, "short"]);
+        assert_eq!(code(&o), 3, "{bad:?}: {}", stderr(&o));
+        assert!(o.stdout.is_empty(), "smartctl not run for {bad}");
+    }
+}
+
+#[test]
+fn smart_selftest_starts_then_reports_until_the_reader_leaves() {
+    skip_as_root!();
+    use std::io::BufRead;
+    let Some(dev) = visible_block_device() else {
+        return;
+    };
+    let f = Fixture::new();
+    fake_smartctl(&f, 0);
+    let mut child = spawn_selftest(&f, &dev, "long");
+    let mut lines = std::io::BufReader::new(child.stdout.take().expect("stdout")).lines();
+    let mut next = || lines.next().expect("a line").expect("utf-8");
+    assert_eq!(next(), format!("{{\"argv\":\"--json=c -t long {dev}\"}}"));
+    for _ in 0..3 {
+        assert_eq!(next(), format!("{{\"argv\":\"--json=c -a {dev}\"}}"));
+    }
+    // The shell saw the test finish and closed the pipe: the helper stops
+    // at its next report instead of polling for a day.
+    drop(lines);
+    let end = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let status = loop {
+        if let Some(s) = child.try_wait().expect("wait") {
+            break s;
+        }
+        assert!(std::time::Instant::now() < end, "helper kept polling");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    };
+    assert_eq!(status.code(), Some(0));
+}
+
+#[test]
+fn smart_selftest_reports_a_refused_start() {
+    skip_as_root!();
+    let Some(dev) = visible_block_device() else {
+        return;
+    };
+    // smartctl status bit 2: the drive refused (a test already running).
+    let f = Fixture::new();
+    fake_smartctl(&f, 4);
+    let o = spawn_selftest(&f, &dev, "short")
+        .wait_with_output()
+        .expect("wait");
+    assert_eq!(code(&o), 1, "{}", stderr(&o));
+    assert_eq!(
+        String::from_utf8_lossy(&o.stdout),
+        format!("{{\"argv\":\"--json=c -t short {dev}\"}}\n"),
+        "only the start, no progress polling"
+    );
+    assert!(stderr(&o).contains("could not start the short self-test"));
+    // No smartctl at all.
+    let g = Fixture::new();
+    let o = g.run(&["smart-selftest", &dev, "short"]);
+    assert_eq!(code(&o), 1);
+    assert!(stderr(&o).contains("smartctl is not installed"));
+}
+
 #[test]
 fn upgrade_and_rollback_exec_pacman_with_a_fixed_argv() {
     skip_as_root!();

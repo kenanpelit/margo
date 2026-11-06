@@ -9,6 +9,7 @@ use std::ffi::OsString;
 use std::io::Read;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 /// Test hook: an unprivileged run may point the logical paths at a
 /// fixture tree. Never honoured when any uid is 0 (pkexec also drops it
@@ -38,6 +39,14 @@ const EFIBOOTMGR: [&str; 3] = [
     "/usr/sbin/efibootmgr",
     "/run/current-system/sw/bin/efibootmgr",
 ];
+/// How often `smart-selftest` reports progress.
+const SELFTEST_POLL: Duration = Duration::from_secs(15);
+/// A self-test watch ends after this even if the reader stays (an HDD's
+/// long test takes hours; none takes a day).
+pub const SELFTEST_WATCH_MAX: Duration = Duration::from_secs(24 * 3600);
+/// Test hook (fixture sysroot only, like [`SYSROOT_ENV`]): the poll
+/// interval in milliseconds.
+pub const POLL_MS_ENV: &str = "MSHELL_PRIVILEGED_POLL_MS";
 /// pacman's non-interactive flags, shared by upgrade and rollback.
 const QUIET: [&str; 4] = ["--noconfirm", "--noprogressbar", "--color", "never"];
 
@@ -88,12 +97,7 @@ pub fn drive_node(dev: &str, block: bool, chr: bool) -> bool {
 /// smartctl's own status is a bitmask, so the JSON decides.
 fn smart_read(root: &Sysroot, devices: &[String]) -> Result<(), Error> {
     for d in devices {
-        let m = std::fs::symlink_metadata(d).map_err(|e| Error::Refused(format!("{d}: {e}")))?;
-        use std::os::unix::fs::FileTypeExt;
-        let ft = m.file_type();
-        if !drive_node(d, ft.is_block_device(), ft.is_char_device()) {
-            return Err(Error::Refused(format!("refusing {d}: not a drive")));
-        }
+        require_drive(d)?;
     }
     let smartctl = program(root, &SMARTCTL, "smartctl")?;
     for d in devices {
@@ -103,6 +107,94 @@ fn smart_read(root: &Sysroot, devices: &[String]) -> Result<(), Error> {
             .map_err(|e| Error::Io(format!("{}: {e}", smartctl.display())))?;
     }
     Ok(())
+}
+
+/// `dev` must be a [`drive_node`] right under `/dev`, never a symlink.
+fn require_drive(dev: &str) -> Result<(), Error> {
+    use std::os::unix::fs::FileTypeExt;
+    let m = std::fs::symlink_metadata(dev).map_err(|e| Error::Refused(format!("{dev}: {e}")))?;
+    let ft = m.file_type();
+    if !drive_node(dev, ft.is_block_device(), ft.is_char_device()) {
+        return Err(Error::Refused(format!("refusing {dev}: not a drive")));
+    }
+    Ok(())
+}
+
+/// The fixed smartctl argv (after the binary) for a self-test step:
+/// starting it, or one progress read. Compact JSON, one document per line.
+pub fn selftest_args(device: &str, test: Option<validate::SelfTest>) -> Vec<OsString> {
+    let mut v: Vec<OsString> = vec!["--json=c".into()];
+    match test {
+        Some(t) => {
+            v.push("-t".into());
+            v.push(t.keyword().into());
+        }
+        None => v.push("-a".into()),
+    }
+    v.push(device.into());
+    v
+}
+
+/// Run smartctl with `args`, then copy its JSON to our stdout as one
+/// line. The flag is `false` once the reader closed the pipe (stop
+/// quietly); the code is smartctl's exit status.
+fn smartctl_line(smartctl: &Path, args: &[OsString]) -> Result<(bool, Option<i32>), Error> {
+    use std::io::Write;
+    let out = std::process::Command::new(smartctl)
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map_err(|e| Error::Io(format!("{}: {e}", smartctl.display())))?;
+    let mut doc: Vec<u8> = out
+        .stdout
+        .into_iter()
+        .filter(|b| *b != b'\n' && *b != b'\r')
+        .collect();
+    doc.push(b'\n');
+    let mut stdout = std::io::stdout().lock();
+    let alive = stdout.write_all(&doc).and_then(|()| stdout.flush()).is_ok();
+    Ok((alive, out.status.code()))
+}
+
+/// `smart-selftest`: start the test, then report a `smartctl -a`
+/// document every poll until the reader goes away (the shell closes the
+/// pipe once it sees the test finish) or [`SELFTEST_WATCH_MAX`] passes.
+/// A refused start (smartctl status bits 0-2: bad argument, open failed,
+/// or the drive refused, e.g. a test already running) ends it with an
+/// error after printing smartctl's own JSON.
+fn smart_selftest(root: &Sysroot, device: &str, test: validate::SelfTest) -> Result<(), Error> {
+    require_drive(device)?;
+    let smartctl = program(root, &SMARTCTL, "smartctl")?;
+    let (mut alive, code) = smartctl_line(&smartctl, &selftest_args(device, Some(test)))?;
+    match code {
+        Some(c) if c & 0b111 == 0 => {}
+        Some(c) => {
+            return Err(Error::Io(format!(
+                "smartctl could not start the {} self-test on {device} (status {c})",
+                test.keyword()
+            )));
+        }
+        None => return Err(Error::Io("smartctl was killed".to_string())),
+    }
+    let poll = poll_interval(root);
+    let end = Instant::now() + SELFTEST_WATCH_MAX;
+    while alive && Instant::now() < end {
+        std::thread::sleep(poll);
+        alive = smartctl_line(&smartctl, &selftest_args(device, None))?.0;
+    }
+    Ok(())
+}
+
+/// [`SELFTEST_POLL`], or [`POLL_MS_ENV`] on a fixture sysroot (tests).
+fn poll_interval(root: &Sysroot) -> Duration {
+    if root.is_real() {
+        return SELFTEST_POLL;
+    }
+    std::env::var(POLL_MS_ENV)
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .map(Duration::from_millis)
+        .unwrap_or(SELFTEST_POLL)
 }
 
 /// The efibootmgr argv (after the binary) that applies `target` to the
@@ -191,6 +283,7 @@ pub fn execute(root: &Sysroot, req: Request, stdin: &mut dyn std::io::Read) -> R
         }
         Request::BootNext { target } => boot_next(root, *target),
         Request::LedSet { name, value } => fsops::led_set(root, name, *value),
+        Request::SmartSelfTest { device, test } => smart_selftest(root, device, *test),
     }
 }
 
@@ -273,6 +366,23 @@ mod tests {
                 .unwrap()
                 .unwrap(),
             ["--quiet", "--delete-bootnext"]
+        );
+    }
+
+    #[test]
+    fn selftest_argv_is_fixed() {
+        use validate::SelfTest;
+        assert_eq!(
+            selftest_args("/dev/nvme0", Some(SelfTest::Short)),
+            ["--json=c", "-t", "short", "/dev/nvme0"]
+        );
+        assert_eq!(
+            selftest_args("/dev/sda", Some(SelfTest::Long)),
+            ["--json=c", "-t", "long", "/dev/sda"]
+        );
+        assert_eq!(
+            selftest_args("/dev/sda", None),
+            ["--json=c", "-a", "/dev/sda"]
         );
     }
 

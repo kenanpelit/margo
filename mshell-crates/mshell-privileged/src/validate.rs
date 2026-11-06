@@ -159,6 +159,33 @@ pub fn device(arg: &OsStr) -> Result<String, Error> {
 /// At most this many drives per SMART read.
 pub const MAX_DEVICES: usize = 16;
 
+/// A SMART self-test the drive's firmware runs (`smartctl -t`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelfTest {
+    /// A couple of minutes: electrical/mechanical checks and a sample read.
+    Short,
+    /// Minutes (NVMe) to hours (HDD): reads the whole surface.
+    Long,
+}
+
+impl SelfTest {
+    pub fn keyword(self) -> &'static str {
+        match self {
+            SelfTest::Short => "short",
+            SelfTest::Long => "long",
+        }
+    }
+
+    /// `short` or `long`; nothing else (no `offline`, `select,…`, `force`).
+    pub fn parse(arg: &OsStr) -> Result<SelfTest, Error> {
+        match arg.as_bytes() {
+            b"short" => Ok(SelfTest::Short),
+            b"long" => Ok(SelfTest::Long),
+            _ => Err(invalid("self-test (short or long)", arg)),
+        }
+    }
+}
+
 /// A ThinkPad fan level `thinkpad_acpi` takes after `level `.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FanLevel {

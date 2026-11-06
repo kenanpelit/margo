@@ -73,6 +73,18 @@
     <annotate key="org.freedesktop.policykit.exec.argv1">smart-read</annotate>
   </action>
 
+  <action id="org.margo.mshell.privileged.smart-selftest">
+    <description>Start a drive self-test</description>
+    <message>Authentication is required to start a SMART self-test on a drive (run by the drive's firmware; the long test reads the whole drive)</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/mshell/mshell-privileged</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">smart-selftest</annotate>
+  </action>
+
   <action id="org.margo.mshell.privileged.fan-set">
     <description>Change the fan level</description>
     <message>Authentication is required to change the ThinkPad fan level</message>
