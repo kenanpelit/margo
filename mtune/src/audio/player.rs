@@ -27,7 +27,7 @@ use crate::{
 pub enum PlaybackAction {
     UpdatePosition(u64, bool),
     VolumeChanged(f64),
-    PlayNext,
+    StreamEnded(String),
     /// The pipeline reached PAUSED/PLAYING — a deferred resume seek can
     /// be applied.
     PipelineReady,
@@ -35,8 +35,13 @@ pub enum PlaybackAction {
     StreamTitle(String),
     /// The pipeline learnt the media's real length (secs).
     DurationChanged(u64),
-    /// Playback failed (a dead stream, an unreachable host, a bad file).
-    Error(String),
+    /// Playback failed; retain the originating URI to ignore old selections.
+    StreamFailed {
+        uri: String,
+        message: String,
+    },
+    StreamPlaying(String),
+    RetryRadio(u64),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
@@ -120,6 +125,10 @@ pub struct AudioPlayer {
     /// ready — issuing it straight after `set_song_uri` is too early and
     /// `gst_play` drops it. Consumed on `PlaybackAction::PipelineReady`.
     pending_seek: std::cell::Cell<Option<u64>>,
+    retry_sender: Sender<PlaybackAction>,
+    retry_generation: std::cell::Cell<u64>,
+    retry_count: std::cell::Cell<u32>,
+    play_requested: std::cell::Cell<bool>,
 }
 
 impl fmt::Debug for AudioPlayer {
@@ -148,7 +157,7 @@ impl AudioPlayer {
         let waveform_generator = WaveformGenerator::new();
         controllers.push(Box::new(waveform_generator.clone()));
 
-        let backend = GstBackend::new(sender);
+        let backend = GstBackend::new(sender.clone());
 
         let queue = Queue::default();
         let state = PlayerState::default();
@@ -163,6 +172,10 @@ impl AudioPlayer {
             state,
             waveform_generator,
             pending_seek: std::cell::Cell::new(None),
+            retry_sender: sender,
+            retry_generation: std::cell::Cell::new(0),
+            retry_count: std::cell::Cell::new(0),
+            play_requested: std::cell::Cell::new(false),
         });
 
         res.clone().setup_channel();
@@ -205,17 +218,45 @@ impl AudioPlayer {
         match action {
             PlaybackAction::UpdatePosition(pos, notify) => self.update_position(pos, notify),
             PlaybackAction::VolumeChanged(vol) => self.update_volume(vol),
-            PlaybackAction::PlayNext => self.play_next(),
+            PlaybackAction::StreamEnded(uri) => {
+                if self.play_requested.get() && self.current_uri_is(&uri) {
+                    self.play_next();
+                }
+            }
             PlaybackAction::PipelineReady => self.apply_pending_seek(),
             PlaybackAction::StreamTitle(title) => self.update_stream_title(&title),
             PlaybackAction::DurationChanged(secs) => self.update_stream_duration(secs),
-            PlaybackAction::Error(msg) => self.report_stream_error(msg),
+            PlaybackAction::StreamFailed { uri, message } => {
+                if self.play_requested.get() && self.current_uri_is(&uri) {
+                    self.report_stream_error(message);
+                }
+            }
+            PlaybackAction::StreamPlaying(uri) => {
+                if self.play_requested.get() && self.current_uri_is(&uri) {
+                    self.state.set_stream_error("");
+                    self.publish_playback_state(PlaybackState::Playing);
+                }
+            }
+            PlaybackAction::RetryRadio(generation) => self.retry_radio(generation),
         }
 
         glib::ControlFlow::Continue
     }
 
+    fn load_uri(&self, uri: Option<&str>) {
+        // A resume target belongs only to the media for which it was queued.
+        self.cancel_radio_retry();
+        self.retry_count.set(0);
+        self.pending_seek.set(None);
+        self.backend.set_song_uri(uri);
+    }
+
     fn set_playback_state(&self, state: PlaybackState) {
+        self.cancel_radio_retry();
+        self.play_requested.set(state == PlaybackState::Playing);
+        if state == PlaybackState::Playing {
+            self.retry_count.set(0);
+        }
         if let Some(current_song) = self.state.current_song() {
             debug!("Current song: {}", current_song.uri());
 
@@ -241,7 +282,7 @@ impl AudioPlayer {
 
                 next_song.set_playing(true);
 
-                self.backend.set_song_uri(Some(&next_song.uri()));
+                self.load_uri(Some(&next_song.uri()));
                 self.state.set_current_song(Some(next_song));
                 self.state.set_playback_state(&state);
 
@@ -256,7 +297,7 @@ impl AudioPlayer {
                 }
             } else {
                 debug!("No songs left");
-                self.backend.set_song_uri(None);
+                self.load_uri(None);
                 self.state.set_current_song(None);
                 self.state.set_playback_state(&PlaybackState::Stopped);
 
@@ -294,8 +335,14 @@ impl AudioPlayer {
     }
 
     pub fn pause(&self) {
+        self.cancel_radio_retry();
+        self.play_requested.set(false);
         if self.state.playing() {
             self.set_playback_state(PlaybackState::Paused);
+        } else {
+            // A reconnect can already be loading while advertised Stopped.
+            self.backend.stop();
+            self.publish_playback_state(PlaybackState::Stopped);
         }
     }
 
@@ -337,8 +384,7 @@ impl AudioPlayer {
                 c.set_song(&prev_song);
             }
 
-            self.backend.set_song_uri(Some(&prev_song.uri()));
-            self.backend.seek_start();
+            self.load_uri(Some(&prev_song.uri()));
 
             debug!("Marking '{}' as playing", prev_song.uri());
             prev_song.set_playing(true);
@@ -360,7 +406,11 @@ impl AudioPlayer {
 
     /// A track ended on its own — honour `RepeatOne` (replay it).
     fn play_next(&self) {
-        self.advance(false);
+        if self.state.current_song().is_some_and(|song| song.is_live()) {
+            self.report_stream_error("Live radio stream ended.".into());
+        } else {
+            self.advance(false);
+        }
     }
 
     fn advance(&self, manual: bool) {
@@ -384,8 +434,7 @@ impl AudioPlayer {
                 c.set_song(&next_song);
             }
 
-            self.backend.set_song_uri(Some(&next_song.uri()));
-            self.backend.seek_start();
+            self.load_uri(Some(&next_song.uri()));
 
             next_song.set_playing(true);
 
@@ -424,8 +473,7 @@ impl AudioPlayer {
                 c.set_song(&song);
             }
 
-            self.backend.set_song_uri(Some(&song.uri()));
-            self.backend.seek_start();
+            self.load_uri(Some(&song.uri()));
 
             song.set_playing(true);
 
@@ -435,7 +483,7 @@ impl AudioPlayer {
                 self.set_playback_state(PlaybackState::Playing);
             }
         } else {
-            self.backend.set_song_uri(None);
+            self.load_uri(None);
             self.state.set_current_song(None);
             self.set_playback_state(PlaybackState::Stopped);
         }
@@ -527,6 +575,7 @@ impl AudioPlayer {
     }
 
     pub fn set_current_song(&self, song: Option<Song>) {
+        self.cancel_radio_retry();
         self.state.set_current_song(song);
     }
 
@@ -548,13 +597,16 @@ impl AudioPlayer {
     /// Arm a resume seek to `secs`, applied once the current track's
     /// pipeline reaches PAUSED/PLAYING (see [`PlaybackAction::PipelineReady`]).
     pub fn queue_resume_seek(&self, secs: u64) {
-        self.pending_seek.set(Some(secs));
+        self.pending_seek.set(self.seekable().then_some(secs));
     }
 
     fn apply_pending_seek(&self) {
         let Some(target) = self.pending_seek.take() else {
             return;
         };
+        if !self.seekable() {
+            return;
+        }
         let dur = self.state.duration();
         let target = if dur > 0 {
             target.min(dur.saturating_sub(1))
@@ -596,13 +648,73 @@ impl AudioPlayer {
         }
     }
 
+    fn current_uri_is(&self, uri: &str) -> bool {
+        self.state
+            .current_song()
+            .is_some_and(|song| song.uri() == uri)
+    }
+
+    fn cancel_radio_retry(&self) {
+        self.retry_generation
+            .set(self.retry_generation.get().wrapping_add(1));
+    }
+
+    // Publish an observed state without issuing a new command to GstPlay.
+    fn publish_playback_state(&self, state: PlaybackState) {
+        self.state.set_playback_state(&state);
+        for controller in &self.controllers {
+            controller.set_playback_state(&state);
+        }
+        let _ = self
+            .app_sender
+            .send_blocking(ApplicationAction::BackgroundHold(
+                self.play_requested.get() || state != PlaybackState::Stopped,
+            ));
+    }
+
     fn report_stream_error(&self, msg: String) {
-        // Local files keep today's behaviour (logged only); a stream that
-        // fails is worth telling the user about.
-        if let Some(song) = self.state.current_song()
-            && song.is_stream()
+        self.pending_seek.set(None);
+        self.cancel_radio_retry();
+        self.backend.stop();
+        let retry = self.play_requested.get()
+            && self.state.current_song().is_some_and(|song| song.is_live())
+            && self.retry_count.get() < 3;
+        if !retry {
+            self.play_requested.set(false);
+        }
+        self.publish_playback_state(PlaybackState::Stopped);
+        if self
+            .state
+            .current_song()
+            .is_some_and(|song| song.is_stream())
         {
             self.state.set_stream_error(&msg);
+        }
+        if retry {
+            // Bounded per explicit playback request, not per successful packet:
+            // a station that repeatedly drops must not reconnect forever.
+            let delay = 1 << self.retry_count.get();
+            self.retry_count.set(self.retry_count.get() + 1);
+            let generation = self.retry_generation.get();
+            let sender = self.retry_sender.clone();
+            log::warn!(
+                "Radio stream failed; reconnect {}/3 in {delay}s",
+                self.retry_count.get()
+            );
+            glib::timeout_add_once(std::time::Duration::from_secs(delay), move || {
+                let _ = sender.send_blocking(PlaybackAction::RetryRadio(generation));
+            });
+        }
+    }
+
+    fn retry_radio(&self, generation: u64) {
+        if generation != self.retry_generation.get() || !self.play_requested.get() {
+            return;
+        }
+        if let Some(song) = self.state.current_song().filter(|song| song.is_live()) {
+            self.backend.set_song_uri(Some(&song.uri()));
+            self.backend.play();
+            // Keep Stopped/error visible until GstPlay really reaches Playing.
         }
     }
 
@@ -690,7 +802,296 @@ impl AudioPlayer {
 
 #[cfg(test)]
 mod tests {
-    use super::ReplayGainMode;
+    mod radio_recovery {
+        include!("radio_recovery_tests.rs");
+    }
+    use super::*;
+    use crate::audio::stream::{StreamInfo, StreamKind};
+
+    // No window, session bus, inhibitors or real audio device in these tests.
+    fn test_player() -> AudioPlayer {
+        gst::init().unwrap();
+        let (app_sender, _) = async_channel::unbounded();
+        let (sender, receiver) = async_channel::unbounded();
+        AudioPlayer {
+            app_sender,
+            receiver: RefCell::new(Some(receiver)),
+            backend: GstBackend::new(sender.clone()),
+            controllers: Vec::new(),
+            mpris: MprisController::new(),
+            queue: Queue::default(),
+            state: PlayerState::default(),
+            waveform_generator: WaveformGenerator::new(),
+            pending_seek: std::cell::Cell::new(None),
+            retry_sender: sender,
+            retry_generation: std::cell::Cell::new(0),
+            retry_count: std::cell::Cell::new(0),
+            play_requested: std::cell::Cell::new(false),
+        }
+    }
+
+    fn radio(key: &str) -> Song {
+        Song::from_stream(StreamInfo {
+            kind: StreamKind::Radio,
+            uri: format!("http://127.0.0.1:9/{key}"),
+            key: key.to_string(),
+            ..StreamInfo::default()
+        })
+    }
+
+    #[test]
+    fn a_failed_station_stops_playback_and_can_be_retried() {
+        let _guard = crate::audio::gst_backend::tests::GST_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let player = test_player();
+        let song = radio("failed");
+        player.queue.add_song(&song);
+        player.state.set_current_song(Some(song.clone()));
+        player.state.set_playback_state(&PlaybackState::Playing);
+        player.queue_resume_seek(42);
+        player.report_stream_error("not-negotiated".into());
+        assert!(
+            !player.state.playing(),
+            "failed station still advertises Playing"
+        );
+        assert_eq!(player.state.stream_error(), "not-negotiated");
+        assert_eq!(player.state.current_song(), Some(song));
+        assert_eq!(player.pending_seek.get(), None);
+    }
+
+    #[test]
+    fn changing_station_discards_the_previous_tracks_resume_seek() {
+        let _guard = crate::audio::gst_backend::tests::GST_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let player = test_player();
+        for key in ["one", "two", "three"] {
+            player.queue.add_song(&radio(key));
+        }
+        player.skip_to(0);
+        for target in [1, 2, 0] {
+            player.pending_seek.set(Some(42));
+            player.skip_to(target);
+            assert_eq!(
+                player.pending_seek.get(),
+                None,
+                "skip_to retained a stale seek"
+            );
+        }
+        player.queue_resume_seek(42);
+        player.skip_next();
+        assert_eq!(
+            player.pending_seek.get(),
+            None,
+            "next retained a stale seek"
+        );
+        player.queue_resume_seek(42);
+        player.skip_previous();
+        assert_eq!(
+            player.pending_seek.get(),
+            None,
+            "previous retained a stale seek"
+        );
+    }
+
+    #[test]
+    fn station_navigation_never_seeks_the_live_pipeline() {
+        let _guard = crate::audio::gst_backend::tests::GST_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        use gst::prelude::*;
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        use std::time::{Duration, Instant};
+        let fixture = crate::audio::gst_backend::tests::RadioFixture::new();
+        let player = test_player();
+        let sink = gst::ElementFactory::make("fakesink")
+            .property("sync", true)
+            .property("signal-handoffs", true)
+            .build()
+            .unwrap();
+        let buffers = Arc::new(AtomicUsize::new(0));
+        let count = buffers.clone();
+        sink.connect("handoff", false, move |_| {
+            count.fetch_add(1, Ordering::Relaxed);
+            None
+        });
+        let seeks = Arc::new(AtomicUsize::new(0));
+        let count = seeks.clone();
+        sink.static_pad("sink").unwrap().add_probe(
+            gst::PadProbeType::EVENT_UPSTREAM,
+            move |_, info| {
+                if info
+                    .event()
+                    .is_some_and(|e| e.type_() == gst::EventType::Seek)
+                {
+                    count.fetch_add(1, Ordering::Relaxed);
+                }
+                gst::PadProbeReturn::Ok
+            },
+        );
+        player
+            .backend
+            .test_player()
+            .pipeline()
+            .set_property("audio-sink", &sink);
+        let warnings = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let observed = warnings.clone();
+        player
+            .backend
+            .test_player()
+            .message_bus()
+            .set_sync_handler(move |_, msg| {
+                if let Ok(message) = gst_play::PlayMessage::parse(msg) {
+                    match message {
+                        gst_play::PlayMessage::Warning(w) => {
+                            observed.lock().unwrap().push(w.error().to_string())
+                        }
+                        gst_play::PlayMessage::Error(e) => {
+                            observed.lock().unwrap().push(e.error().to_string())
+                        }
+                        _ => {}
+                    }
+                }
+                gst::BusSyncReply::Drop
+            });
+        for name in ["paradise", "lowmp3", "mp3"] {
+            let song = Song::from_stream(StreamInfo {
+                kind: StreamKind::Radio,
+                key: name.into(),
+                uri: fixture.uri(name),
+                ..StreamInfo::default()
+            });
+            player.queue.add_song(&song);
+        }
+        // Adding a station selects it before Play, as window/streams does.
+        player.skip_to(0);
+        player.play();
+        // Public-station formats: Paradise AAC, Virgin 22.05kHz MP3,
+        // Dance 44.1kHz MP3; repeat the exact failing native E2E order.
+        for (navigation, target) in [0, 1, 2, 0, 2, 1].into_iter().enumerate() {
+            let before = buffers.load(Ordering::Relaxed);
+            if navigation == 1 {
+                player.skip_next();
+            } else if navigation == 5 {
+                player.skip_previous();
+            } else {
+                player.skip_to(target);
+            }
+            let deadline = Instant::now() + Duration::from_secs(8);
+            while buffers.load(Ordering::Relaxed) < before + 10 {
+                while let Ok(action) = player.receiver.borrow().as_ref().unwrap().try_recv() {
+                    assert!(
+                        !matches!(action, PlaybackAction::StreamFailed { .. }),
+                        "{action:?}"
+                    );
+                    player.process_action(action);
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "station navigation {navigation} stalled"
+                );
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            // A saved listening position must never turn a live station into
+            // a seek, even if a late PipelineReady arrives after selection.
+            player.queue_resume_seek(42);
+            assert_eq!(
+                player.pending_seek.get(),
+                None,
+                "a live station must not arm a deferred resume seek"
+            );
+            player.process_action(PlaybackAction::PipelineReady);
+            let deadline = Instant::now() + Duration::from_secs(8);
+            while buffers.load(Ordering::Relaxed) < before + 20 {
+                assert!(
+                    Instant::now() < deadline,
+                    "radio resume seek stalled playback"
+                );
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            assert_eq!(
+                seeks.load(Ordering::Relaxed),
+                0,
+                "station navigation {navigation} issued a seek"
+            );
+            assert!(
+                warnings.lock().unwrap().is_empty(),
+                "station navigation {navigation}: {:?}",
+                warnings.lock().unwrap()
+            );
+        }
+        crate::audio::gst_backend::tests::stop_player(player.backend.test_player());
+    }
+
+    #[test]
+    fn a_broken_http_station_can_be_replaced_without_restarting_the_player() {
+        let _guard = crate::audio::gst_backend::tests::GST_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        use gst::prelude::*;
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        use std::time::{Duration, Instant};
+        let fixture = crate::audio::gst_backend::tests::RadioFixture::new();
+        let player = test_player();
+        let sink = gst::ElementFactory::make("fakesink")
+            .property("sync", true)
+            .property("signal-handoffs", true)
+            .build()
+            .unwrap();
+        let buffers = Arc::new(AtomicUsize::new(0));
+        let count = buffers.clone();
+        sink.connect("handoff", false, move |_| {
+            count.fetch_add(1, Ordering::Relaxed);
+            None
+        });
+        player
+            .backend
+            .test_player()
+            .pipeline()
+            .set_property("audio-sink", &sink);
+        for name in ["broken", "aac"] {
+            player.queue.add_song(&Song::from_stream(StreamInfo {
+                kind: StreamKind::Radio,
+                key: name.into(),
+                uri: fixture.uri(name),
+                ..StreamInfo::default()
+            }));
+        }
+        player.skip_to(0);
+        player.play();
+        let deadline = Instant::now() + Duration::from_secs(8);
+        while player.state.stream_error().is_empty() {
+            while let Ok(action) = player.receiver.borrow().as_ref().unwrap().try_recv() {
+                player.process_action(action);
+            }
+            assert!(Instant::now() < deadline, "HTTP failure was not reported");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(!player.state.playing());
+        player.skip_to(1);
+        player.play();
+        let deadline = Instant::now() + Duration::from_secs(8);
+        while buffers.load(Ordering::Relaxed) < 10 {
+            while let Ok(action) = player.receiver.borrow().as_ref().unwrap().try_recv() {
+                assert!(
+                    !matches!(action, PlaybackAction::StreamFailed { .. }),
+                    "{action:?}"
+                );
+                player.process_action(action);
+            }
+            assert!(Instant::now() < deadline, "replacement station stalled");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(player.state.playing());
+        crate::audio::gst_backend::tests::stop_player(player.backend.test_player());
+    }
 
     #[test]
     fn an_unknown_replaygain_key_means_off() {

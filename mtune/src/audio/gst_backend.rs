@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: 2022  Emmanuele Bassi
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#[cfg(test)]
+#[path = "gst_backend_tests.rs"]
+pub(super) mod tests;
+
 use std::cell::Cell;
 
 use async_channel::Sender;
@@ -149,6 +153,9 @@ impl GstBackend {
 
     fn setup_signals(&self) {
         let bus = self.gst_player.message_bus();
+        // UriLoaded is ordered on GstPlay's bus, unlike reading Play::uri()
+        // after the UI has already requested a different selection.
+        let loaded_uri = std::sync::Mutex::new(String::new());
         bus.set_sync_handler(clone!(
             #[strong(rename_to = sender)]
             self.sender,
@@ -158,11 +165,24 @@ impl GstBackend {
                 };
 
                 match play_msg {
+                    gst_play::PlayMessage::UriLoaded(message) => {
+                        *loaded_uri.lock().unwrap() = message.uri().to_string();
+                    }
                     gst_play::PlayMessage::Error(message) => {
-                        error!("GStreamer error: {}", message.error());
-                        let _ = sender.send_blocking(PlaybackAction::Error(
-                            crate::audio::stream::clean_gst_error(message.error().message()),
-                        ));
+                        error!(
+                            "GStreamer error: {} (details: {:?})",
+                            message.error(),
+                            msg.structure()
+                        );
+                        let _ = sender.send_blocking(PlaybackAction::StreamFailed {
+                            uri: message
+                                .details()
+                                .and_then(|s| s.get::<String>("uri").ok())
+                                .unwrap_or_else(|| loaded_uri.lock().unwrap().clone()),
+                            message: crate::audio::stream::clean_gst_error(
+                                message.error().message(),
+                            ),
+                        });
                     }
                     gst_play::PlayMessage::MediaInfoUpdated(message) => {
                         // A live stream's `StreamTitle` arrives as the audio
@@ -182,11 +202,23 @@ impl GstBackend {
                         warn!("GStreamer warning: {}", message.error());
                     }
                     gst_play::PlayMessage::EndOfStream(_) => {
-                        if let Err(e) = sender.send_blocking(PlaybackAction::PlayNext) {
-                            error!("Failed to send PlayNext: {e}");
+                        if let Err(e) = sender.send_blocking(PlaybackAction::StreamEnded(
+                            loaded_uri.lock().unwrap().clone(),
+                        )) {
+                            error!("Failed to send StreamEnded: {e}");
                         }
                     }
                     gst_play::PlayMessage::StateChanged(message) => {
+                        debug!(
+                            "GstPlay state {:?}, details {:?}",
+                            message.state(),
+                            msg.structure()
+                        );
+                        if message.state() == gst_play::PlayState::Playing {
+                            let _ = sender.send_blocking(PlaybackAction::StreamPlaying(
+                                loaded_uri.lock().unwrap().clone(),
+                            ));
+                        }
                         // Preroll finished — a queued resume seek can land now.
                         if matches!(
                             message.state(),
@@ -230,6 +262,11 @@ impl GstBackend {
         if uri.is_some() && (self.rate.get() - 1.0).abs() > f64::EPSILON {
             self.gst_player.set_rate(self.rate.get());
         }
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_player(&self) -> &gst_play::Play {
+        &self.gst_player
     }
 
     pub fn rate(&self) -> f64 {
