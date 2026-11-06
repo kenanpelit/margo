@@ -21,9 +21,24 @@ use once_cell::sync::Lazy;
 use sha2::{Digest, Sha256};
 
 use crate::{
-    audio::cover_cache::{CoverArt, CoverCache},
+    audio::{
+        cover_cache::{CoverArt, CoverCache},
+        stream::{self, StreamInfo, StreamKind},
+    },
     i18n::i18n,
 };
+
+/// Where a network song came from, and what it reports while playing.
+#[derive(Debug, Clone, Default)]
+struct StreamMeta {
+    key: String,
+    /// Radio: the station name / its description (country, genres).
+    station: String,
+    description: String,
+    /// Radio: the current programme from the stream's `StreamTitle`.
+    now_playing: Option<String>,
+    art_url: String,
+}
 
 #[derive(Debug, Clone)]
 pub struct SongData {
@@ -36,6 +51,8 @@ pub struct SongData {
     uuid: Option<String>,
     duration: u64,
     file: gio::File,
+    kind: StreamKind,
+    stream: Option<StreamMeta>,
 }
 
 /// Embedded lyrics text, if the file's tag carries any. `ItemKey::Lyrics`
@@ -223,6 +240,37 @@ impl SongData {
             uuid,
             duration,
             file,
+            kind: StreamKind::File,
+            stream: None,
+        }
+    }
+
+    /// A radio station or podcast episode: metadata from the directory /
+    /// feed, no tag probing (the file is remote).
+    pub fn from_stream(info: StreamInfo) -> Self {
+        let (title, artist) = match info.kind {
+            StreamKind::Radio => stream::radio_display(&info.title, &info.artist, None),
+            _ => (info.title.clone(), info.artist.clone()),
+        };
+        let some = |s: String| (!s.trim().is_empty()).then_some(s);
+        SongData {
+            artist: some(artist),
+            title: some(title),
+            album: some(info.album.clone()),
+            lyrics: None,
+            cover_art: None,
+            cover_uuid: None,
+            uuid: Some(stream::stream_uuid(info.kind, &info.key)),
+            duration: info.duration,
+            file: gio::File::for_uri(&info.uri),
+            kind: info.kind,
+            stream: Some(StreamMeta {
+                key: info.key,
+                station: info.title,
+                description: info.artist,
+                now_playing: None,
+                art_url: info.art_url,
+            }),
         }
     }
 
@@ -247,6 +295,8 @@ impl Default for SongData {
             uuid: None,
             duration: 0,
             file: gio::File::for_path("/does-not-exist"),
+            kind: StreamKind::File,
+            stream: None,
         }
     }
 }
@@ -352,6 +402,114 @@ impl Song {
 
     pub fn empty() -> Self {
         glib::Object::new()
+    }
+
+    /// A radio station or podcast episode (see [`StreamInfo`]).
+    pub fn from_stream(info: StreamInfo) -> Self {
+        let song = Self::empty();
+        song.imp().data.replace(SongData::from_stream(info));
+        song
+    }
+
+    pub fn kind(&self) -> StreamKind {
+        self.imp().data.borrow().kind
+    }
+
+    /// Radio or podcast: played over the network, never tag-probed, no
+    /// waveform, not written to `.pls`/`.m3u` playlists.
+    pub fn is_stream(&self) -> bool {
+        self.kind() != StreamKind::File
+    }
+
+    /// A live radio stream: no duration, nothing to seek.
+    pub fn is_live(&self) -> bool {
+        self.kind() == StreamKind::Radio
+    }
+
+    /// The station / episode key the stream was queued with.
+    pub fn stream_key(&self) -> Option<String> {
+        self.imp()
+            .data
+            .borrow()
+            .stream
+            .as_ref()
+            .map(|m| m.key.clone())
+    }
+
+    /// The logo / cover URL from the directory or feed (may be empty).
+    pub fn art_url(&self) -> Option<String> {
+        let data = self.imp().data.borrow();
+        let url = data.stream.as_ref()?.art_url.clone();
+        (!url.is_empty()).then_some(url)
+    }
+
+    /// The station name of a radio entry (its title before any programme
+    /// title arrived).
+    pub fn station_name(&self) -> Option<String> {
+        let data = self.imp().data.borrow();
+        (data.kind == StreamKind::Radio)
+            .then(|| data.stream.as_ref().map(|m| m.station.clone()))
+            .flatten()
+    }
+
+    /// Feed a live stream's `StreamTitle`. Returns `true` when what the
+    /// entry shows changed (the caller re-announces it over MPRIS).
+    pub fn set_now_playing(&self, raw: &str) -> bool {
+        let changed = {
+            let mut data = self.imp().data.borrow_mut();
+            if data.kind != StreamKind::Radio {
+                return false;
+            }
+            let Some(meta) = data.stream.as_mut() else {
+                return false;
+            };
+            let np = stream::clean_stream_title(raw, &meta.station);
+            if np == meta.now_playing {
+                false
+            } else {
+                meta.now_playing = np;
+                let (title, artist) = stream::radio_display(
+                    &meta.station,
+                    &meta.description,
+                    meta.now_playing.as_deref(),
+                );
+                data.title = Some(title);
+                data.artist = (!artist.is_empty()).then_some(artist);
+                true
+            }
+        };
+        if changed {
+            self.notify("title");
+            self.notify("artist");
+        }
+        changed
+    }
+
+    /// The real length of a podcast episode once GStreamer knows it (feeds
+    /// round it, or omit it). Returns `true` when it changed.
+    pub fn set_stream_duration(&self, secs: u64) -> bool {
+        {
+            let mut data = self.imp().data.borrow_mut();
+            if data.kind != StreamKind::Episode || secs == 0 || data.duration == secs {
+                return false;
+            }
+            data.duration = secs;
+        }
+        self.notify("duration");
+        true
+    }
+
+    /// Artwork fetched for a stream (station logo, podcast cover).
+    pub fn set_stream_cover(&self, cover: CoverArt, cover_uuid: String) {
+        {
+            let mut data = self.imp().data.borrow_mut();
+            if data.kind == StreamKind::File {
+                return;
+            }
+            data.cover_art = Some(cover);
+            data.cover_uuid = Some(cover_uuid);
+        }
+        self.notify("cover");
     }
 
     pub fn equals(&self, other: &Self) -> bool {
@@ -525,6 +683,63 @@ mod tests {
         // Display runs in log lines; an invalid song has no uuid.
         let shown = format!("{}", Song::empty());
         assert!(shown.starts_with("Song { uuid: , uri: "), "{shown}");
+    }
+
+    fn station() -> Song {
+        Song::from_stream(StreamInfo {
+            kind: StreamKind::Radio,
+            uri: "https://icecast.walmradio.com:8443/jazz".into(),
+            key: "rb:ea8059be-d119-4de3-b27b-0d9bd6aedb17".into(),
+            title: "Adroit Jazz Underground".into(),
+            artist: "The United States Of America · jazz".into(),
+            album: "Internet radio".into(),
+            ..Default::default()
+        })
+    }
+
+    #[test]
+    fn a_station_is_a_valid_live_song() {
+        let s = station();
+        assert!(s.is_stream() && s.is_live());
+        assert_eq!(s.uri(), "https://icecast.walmradio.com:8443/jazz");
+        assert_eq!(s.title(), "Adroit Jazz Underground");
+        assert_eq!(s.artist(), "The United States Of America · jazz");
+        assert_eq!(s.duration(), 0);
+        assert!(s.uuid().is_some());
+        assert!(s.file().path().is_none(), "never written to a .pls");
+        assert!(s.equals(&station()), "the same station is one queue entry");
+    }
+
+    #[test]
+    fn the_stream_title_moves_the_station_to_the_artist_line() {
+        let s = station();
+        assert!(s.set_now_playing("My Foolish Heart by Bill Watrous"));
+        assert_eq!(s.title(), "My Foolish Heart by Bill Watrous");
+        assert_eq!(s.artist(), "Adroit Jazz Underground");
+        assert!(
+            !s.set_now_playing(" My Foolish  Heart by Bill Watrous "),
+            "same title"
+        );
+        assert!(s.set_now_playing(""), "programme ended");
+        assert_eq!(s.title(), "Adroit Jazz Underground");
+        assert_eq!(s.station_name().as_deref(), Some("Adroit Jazz Underground"));
+    }
+
+    #[test]
+    fn only_episodes_take_a_reported_duration() {
+        let ep = Song::from_stream(StreamInfo {
+            kind: StreamKind::Episode,
+            uri: "https://example.invalid/e.mp3".into(),
+            key: "feed#1".into(),
+            title: "Episode".into(),
+            duration: 3900,
+            ..Default::default()
+        });
+        assert!(ep.set_stream_duration(3944));
+        assert_eq!(ep.duration(), 3944);
+        assert!(!ep.set_stream_duration(0));
+        assert!(!ep.set_now_playing("x"), "episodes have no StreamTitle");
+        assert!(!station().set_stream_duration(10));
     }
 
     #[test]

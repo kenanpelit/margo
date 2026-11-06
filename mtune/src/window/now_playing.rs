@@ -50,14 +50,22 @@ impl Window {
     pub(super) fn update_position_labels(&self) {
         if let Some(player) = self.player() {
             let state = player.state();
-            if state.current_song().is_some() {
+            if let Some(song) = state.current_song() {
                 let elapsed = state.position();
                 let duration = state.duration();
                 let remaining = duration.saturating_sub(elapsed);
                 self.set_song_time(Some(elapsed), Some(remaining));
 
-                let position = state.position() as f64 / state.duration() as f64;
-                self.set_song_position(position);
+                if duration == 0 {
+                    // A live station (or a length not known yet): no
+                    // progress to draw, and no NaN fraction.
+                    self.set_song_position(0.0);
+                    if song.is_live() {
+                        self.imp().remaining_label.set_text(&i18n("Live"));
+                    }
+                } else {
+                    self.set_song_position(elapsed as f64 / duration as f64);
+                }
             } else {
                 self.set_song_time(None, None);
                 self.set_song_position(0.0);

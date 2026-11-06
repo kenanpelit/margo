@@ -72,8 +72,9 @@ The GTK4 + relm4 shell hosting the bars, menus, settings, and dashboard.
 - **WASM plugins** — capability-sandboxed plugin runtime (wasmtime). See
   [WASM plugins](mplugins-wasm-design.md).
 - **Music player (`mtune`)** — a folder-first player with its own bar pill +
-  menu (seek bar, transport, speed, playlists), MPRIS + tray, and a
-  `mshellctl mtune` CLI. See [Companion tools → mtune](companion-tools.md#mtune).
+  menu (seek bar, transport, speed, playlists), MPRIS + tray, internet
+  radio (radio-browser.info, starred + custom stations) and podcasts
+  (iTunes / RSS, played state, resume), and a `mshellctl mtune` CLI. See [Companion tools → mtune](companion-tools.md#mtune).
 
 ## Companion binaries
 

@@ -12,3 +12,12 @@ src/audio/song.rs
 src/cover_picture.rs
 src/playback_control.rs
 src/window.rs
+src/discover/episodes_page.rs
+src/discover/mod.rs
+src/discover/play.rs
+src/discover/podcasts_page.rs
+src/discover/radio_page.rs
+src/discover/rows.rs
+src/discover/stations_page.rs
+src/window/now_playing.rs
+src/window/streams.rs

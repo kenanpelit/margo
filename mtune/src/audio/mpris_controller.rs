@@ -69,7 +69,11 @@ fn metadata_for(song: &Song, index: usize) -> Metadata {
     if !album.is_empty() {
         m.set_album(Some(album));
     }
-    m.set_length(Some(Time::from_secs(song.duration() as i64)));
+    // A live station has no length: leave `mpris:length` out so clients
+    // show it as a stream, not as a 0:00 track.
+    if song.duration() > 0 {
+        m.set_length(Some(Time::from_secs(song.duration() as i64)));
+    }
     if let Some(cache) = song.cover_cache() {
         let file = gio::File::for_path(&cache);
         if file
@@ -150,6 +154,8 @@ impl mpris_server::LocalRootInterface for TuneMpris {
     async fn supported_uri_schemes(&self) -> fdo::Result<Vec<String>> {
         Ok(vec!["file".into()])
     }
+    // (Radio / podcast streams are queued from Tune's own browser, not via
+    // `OpenUri`, so only `file` is advertised.)
     async fn supported_mime_types(&self) -> fdo::Result<Vec<String>> {
         Ok(vec![
             "audio/mpeg".into(),
@@ -511,6 +517,32 @@ impl Controller for MprisController {
 
     fn set_repeat_mode(&self, repeat: RepeatMode) {
         self.emit_props(vec![Property::LoopStatus(loop_status(repeat))]);
+    }
+
+    fn song_metadata_changed(&self, song: &Song) {
+        // Only the now-playing entry's metadata is a property; the rest is
+        // read on demand through `GetTracksMetadata`.
+        let uri = song.uri();
+        self.with_server(move |server| {
+            let Some(player) = server.imp().player.upgrade() else {
+                return;
+            };
+            let q = player.queue();
+            let (Some(cur), Some(index)) = (q.current_song_index(), q.position_of_uri(&uri)) else {
+                return;
+            };
+            if cur != index {
+                return;
+            }
+            let Some(meta) = q.song_at(index).map(|s| metadata_for(&s, index as usize)) else {
+                return;
+            };
+            glib::spawn_future_local(async move {
+                let _ = server
+                    .properties_changed(vec![Property::Metadata(meta)])
+                    .await;
+            });
+        });
     }
 
     fn set_playback_rate(&self, rate: f64) {

@@ -23,6 +23,8 @@ mod imp {
         pub current_song: RefCell<Option<Song>>,
         pub volume: Cell<f64>,
         pub playback_rate: Cell<f64>,
+        /// The last stream playback failure, for the window's toast.
+        pub stream_error: RefCell<String>,
     }
 
     #[glib::object_subclass]
@@ -37,6 +39,7 @@ mod imp {
                 current_song: RefCell::new(None),
                 volume: Cell::new(1.0),
                 playback_rate: Cell::new(1.0),
+                stream_error: RefCell::new(String::new()),
             }
         }
     }
@@ -51,6 +54,7 @@ mod imp {
                     ParamSpecString::builder("title").read_only().build(),
                     ParamSpecString::builder("artist").read_only().build(),
                     ParamSpecString::builder("album").read_only().build(),
+                    ParamSpecString::builder("stream-error").read_only().build(),
                     ParamSpecUInt64::builder("duration").read_only().build(),
                     ParamSpecObject::builder::<gdk::Texture>("cover")
                         .read_only()
@@ -81,6 +85,7 @@ mod imp {
                 "song" => self.current_song.borrow().to_value(),
                 "volume" => obj.volume().to_value(),
                 "playback-rate" => obj.playback_rate().to_value(),
+                "stream-error" => self.stream_error.borrow().to_value(),
 
                 // These are proxies for Song properties
                 "title" => obj.title().to_value(),
@@ -180,6 +185,26 @@ impl PlayerState {
         self.notify("duration");
         self.notify("cover");
         self.notify("position");
+    }
+
+    /// The current song's title/artist/album/length/cover changed in place.
+    pub fn notify_song_metadata(&self) {
+        self.notify("title");
+        self.notify("artist");
+        self.notify("album");
+        self.notify("duration");
+        self.notify("cover");
+    }
+
+    pub fn stream_error(&self) -> String {
+        self.imp().stream_error.borrow().clone()
+    }
+
+    /// Record a stream failure; notifies even when the message repeats
+    /// (the same dead station tried twice is two failures).
+    pub fn set_stream_error(&self, msg: &str) {
+        self.imp().stream_error.replace(msg.to_string());
+        self.notify("stream-error");
     }
 
     pub fn position(&self) -> u64 {

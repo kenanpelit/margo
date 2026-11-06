@@ -83,6 +83,12 @@
             <property name="action-name">queue.save-playlist</property>
           </object>
         </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes" context="shortcut window">Browse radio stations and podcasts</property>
+            <property name="action-name">win.radio-podcasts</property>
+          </object>
+        </child>
       </object>
     </child>
     <child>

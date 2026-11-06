@@ -296,3 +296,14 @@ volume > scale trough slider { opacity: 0; }
 .compact-view scale trough highlight {
   background: var(--tune-primary);
 }
+
+/* ── Radio & Podcasts dialog ─────────────────────────────────── */
+.discover image.discover-art {
+  border-radius: var(--tune-radius-sm);
+  min-width: 40px;
+  min-height: 40px;
+}
+
+.discover row.played .title {
+  opacity: 0.55;
+}

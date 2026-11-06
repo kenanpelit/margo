@@ -46,6 +46,12 @@ pretty_env_logger = "0.5"
 # Library subsystem
 ignore = "0.4"
 
+# Radio & podcasts: radio-browser.info / iTunes / RSS over HTTP (blocking,
+# always on a gio worker thread) and a pull parser for feeds.
+ureq = { workspace = true }
+quick-xml = "0.39"
+margo-fs = { workspace = true }
+
 # Shared with margo — pinned to the workspace
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -15,6 +15,12 @@
     </section>
     <section>
       <item>
+        <attribute name="label" translatable="yes">_Radio &amp; Podcasts…</attribute>
+        <attribute name="action">win.radio-podcasts</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
         <attribute name="label" translatable="yes">_Keyboard Shortcuts</attribute>
         <attribute name="action">app.shortcuts</attribute>
       </item>

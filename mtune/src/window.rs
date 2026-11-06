@@ -38,6 +38,8 @@ mod now_playing;
 mod playlist;
 mod queue;
 mod signals;
+mod streams;
+mod toasts;
 mod view_mode;
 
 pub enum WindowMode {
@@ -206,6 +208,9 @@ mod imp {
         /// folder/library load or loading a different playlist. Drives
         /// live resume-index persistence (see `persist_resume` call sites).
         pub active_playlist: RefCell<Option<PathBuf>>,
+
+        /// PlayerState handlers of `bind_streams`, dropped on close.
+        pub stream_handlers: RefCell<Vec<glib::SignalHandlerId>>,
     }
 
     #[glib::object_subclass]
@@ -400,6 +405,9 @@ mod imp {
                     }
                 },
             );
+            klass.install_action("win.radio-podcasts", None, move |win, _, _| {
+                crate::discover::present(win);
+            });
             klass.install_action("win.cycle-view", None, move |win, _, _| {
                 win.set_view_mode(win.imp().view_mode.get().next());
             });
@@ -462,6 +470,7 @@ mod imp {
                 notify_peaks_id: RefCell::new(None),
                 pending_start: RefCell::new(None),
                 active_playlist: RefCell::new(None),
+                stream_handlers: RefCell::new(Vec::new()),
             }
         }
     }
@@ -542,6 +551,7 @@ impl Window {
         win.bind_state();
         win.bind_queue();
         win.connect_signals();
+        win.bind_streams();
         win.restore_window_state();
         win.set_initial_state();
 
@@ -710,19 +720,6 @@ impl Window {
         }
         self.update_selected_count();
         self.update_playlist_time();
-    }
-
-    pub fn add_toast(&self, msg: String) {
-        let toast = adw::Toast::new(&msg);
-        self.imp().toast_overlay.add_toast(toast);
-    }
-
-    pub fn add_skip_to_toast(&self, msg: String, button: String, pos: u32) {
-        let toast = adw::Toast::new(&msg);
-        toast.set_button_label(Some(&button));
-        toast.set_action_name(Some("win.skip-to"));
-        toast.set_action_target_value(Some(&pos.to_variant()));
-        self.imp().toast_overlay.add_toast(toast);
     }
 
     fn copy_song(&self) {

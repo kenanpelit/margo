@@ -12,4 +12,8 @@ pub trait Controller {
 
     /// Playback rate changed (default: nothing — only MPRIS cares).
     fn set_playback_rate(&self, _rate: f64) {}
+
+    /// A queued song's metadata changed in place — a radio programme
+    /// title, an episode's real length, fetched artwork (default: nothing).
+    fn song_metadata_changed(&self, _song: &Song) {}
 }

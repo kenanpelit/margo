@@ -40,7 +40,7 @@
 mod controller;
 pub use controller::Controller;
 
-mod cover_cache;
+pub(crate) mod cover_cache;
 pub use cover_cache::CoverCache;
 
 mod inhibit_controller;
@@ -56,6 +56,7 @@ mod queue;
 mod shuffle;
 mod song;
 mod state;
+pub mod stream;
 mod waveform_generator;
 
 pub use player::{
@@ -65,4 +66,5 @@ pub use queue::Queue;
 pub use shuffle::ShuffleListModel;
 pub use song::Song;
 pub use state::PlayerState;
+pub use stream::{StreamInfo, StreamKind};
 pub use waveform_generator::WaveformGenerator;

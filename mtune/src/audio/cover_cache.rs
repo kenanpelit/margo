@@ -202,6 +202,28 @@ impl CoverCache {
         }
     }
 
+    /// Artwork for a stream (station logo, podcast cover), already decoded
+    /// and scaled off the GTK thread, keyed by `uuid` (a hash of its URL).
+    pub fn cover_from_pixbuf(
+        &mut self,
+        uuid: &str,
+        pixbuf: &gdk_pixbuf::Pixbuf,
+    ) -> Option<CoverArt> {
+        if let Some(c) = self.lookup(&uuid.to_string()) {
+            return Some(c.clone());
+        }
+        let cache = utils::cache_cover_art(uuid, pixbuf);
+        let texture = utils::texture_from_pixbuf(pixbuf);
+        let palette = utils::load_palette(pixbuf)?;
+        let res = CoverArt {
+            texture,
+            palette,
+            cache,
+        };
+        self.add_entry(uuid, res.clone());
+        Some(res)
+    }
+
     pub fn clear(&mut self) {
         self.entries.clear();
     }

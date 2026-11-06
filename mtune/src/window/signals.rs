@@ -294,6 +294,7 @@ impl Window {
             }
 
             window.unbind_queue();
+            window.unbind_streams();
             window.unbind_state();
             window.unbind_waveform();
 

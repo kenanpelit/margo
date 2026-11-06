@@ -5792,10 +5792,12 @@ dependencies = [
  "libadwaita",
  "lofty",
  "log",
+ "margo-fs",
  "mpris-server",
  "notify",
  "once_cell",
  "pretty_env_logger",
+ "quick-xml 0.39.2",
  "rand 0.10.2",
  "regex",
  "serde",
@@ -5803,6 +5805,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "toml",
+ "ureq",
  "zbus",
 ]
 

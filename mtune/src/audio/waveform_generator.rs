@@ -72,6 +72,14 @@ impl Controller for WaveformGenerator {
 
     fn set_song(&self, song: &Song) {
         self.imp().song.replace(Some(song.clone()));
+        if song.is_stream() {
+            // Decoding a remote stream for peaks would download a whole
+            // episode twice — or a live station forever. No waveform.
+            self.stop_pipeline();
+            self.imp().peaks.replace(None);
+            self.notify("has-peaks");
+            return;
+        }
         self.load_peaks();
     }
 
@@ -165,6 +173,15 @@ impl WaveformGenerator {
                 self,
                 async move { this.load_peaks_cache(&cache).await }
             ));
+        }
+    }
+
+    fn stop_pipeline(&self) {
+        if let Some((pipeline, _bus_watch)) = self.imp().pipeline.take() {
+            pipeline.send_event(gst::event::Eos::new());
+            if let Err(err) = pipeline.set_state(gst::State::Null) {
+                warn!("Unable to set existing pipeline to Null state: {}", err);
+            }
         }
     }
 

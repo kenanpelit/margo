@@ -188,7 +188,7 @@ optdepends=(
   # MP3 / Ogg / Opus / FLAC / WAV; these add the rest of a
   # typical library.
   "gst-libav: mtune playback of AAC / M4A / ALAC / WMA and other ffmpeg-only codecs"
-  "gst-plugins-bad: mtune playback of extra containers / codecs (M4A via faad, etc.)"
+  "gst-plugins-bad: mtune playback of extra containers / codecs (M4A via faad, etc.) and HLS radio streams"
 )
 # `provides` exposes the legacy compositor- and mshell-only package
 # names that older AUR helpers may pin. `conflicts` makes the

@@ -307,6 +307,21 @@ media` *controls* other players, `mtune` *is* one.
   (cycled with `Ctrl+M`), and desktop notifications on track / setting
   change. Repeat modes: off / all / one / **each** (repeat a track N times,
   then advance — `[playback] repeat_count`, default 3).
+- **Radio & Podcasts** (main menu → *Radio & Podcasts…*, `Ctrl+Shift+R`).
+  *Radio* searches the [radio-browser.info](https://www.radio-browser.info)
+  directory by name, country and genre (most voted / trending / name);
+  *My Stations* keeps starred stations and your own stream URLs (Icecast,
+  Shoutcast, HLS); *Podcasts* finds shows through iTunes search or a pasted
+  RSS feed URL, subscribes, and lists episodes with played state and resume
+  points. Everything plays through the normal queue: a station plays with
+  its list queued, so next / previous (window, MPRIS, the Tune pill) step
+  through stations, and the stream's own *now playing* title (Icecast
+  `StreamTitle`) reaches MPRIS — the shell's media widgets show the station,
+  the programme and its logo. Episodes are added to the queue and resume
+  where you left them; one counts as played in its last 30 s (or past 95 %).
+  Stored in `~/.local/share/mtune/radio.json` and `podcasts.json` (a file
+  that does not parse is kept, never overwritten); logos and covers are
+  cached under `~/.cache/mtune/art/`.
 - **Start hidden.** `mtune --hidden`, `[behaviour] start_hidden = true`, or the
   Settings toggle — runs in the tray with no window. Show / hide it with the
   tray icon or `mshellctl mtune toggle-window`.
@@ -329,9 +344,10 @@ mshellctl mtune status --json  # now-playing + queue state
 mshellctl mtune toggle-window  # show / hide the window
 ```
 
-Runtime deps: `gstreamer` + `gst-plugins-base` / `gst-plugins-good`; optional
-`gst-libav` / `gst-plugins-bad` for AAC / M4A / ALAC / WMA and extra
-containers.
+Runtime deps: `gstreamer` + `gst-plugins-base` / `gst-plugins-good` (which
+also carries the HTTP source radio and podcasts stream through); optional
+`gst-libav` / `gst-plugins-bad` for AAC / M4A / ALAC / WMA, extra containers
+and HLS radio streams.
 
 ## `mlogind`
 

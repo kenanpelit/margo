@@ -31,6 +31,12 @@ pub enum PlaybackAction {
     /// The pipeline reached PAUSED/PLAYING — a deferred resume seek can
     /// be applied.
     PipelineReady,
+    /// The audio stream's `title` tag (a live station's `StreamTitle`).
+    StreamTitle(String),
+    /// The pipeline learnt the media's real length (secs).
+    DurationChanged(u64),
+    /// Playback failed (a dead stream, an unreachable host, a bad file).
+    Error(String),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
@@ -201,6 +207,9 @@ impl AudioPlayer {
             PlaybackAction::VolumeChanged(vol) => self.update_volume(vol),
             PlaybackAction::PlayNext => self.play_next(),
             PlaybackAction::PipelineReady => self.apply_pending_seek(),
+            PlaybackAction::StreamTitle(title) => self.update_stream_title(&title),
+            PlaybackAction::DurationChanged(secs) => self.update_stream_duration(secs),
+            PlaybackAction::Error(msg) => self.report_stream_error(msg),
         }
 
         glib::ControlFlow::Continue
@@ -302,8 +311,8 @@ impl AudioPlayer {
         if let Some(current_song) = self.state.current_song() {
             // We only skip to the previous song if we are
             // within a seek backward step, otherwise we just
-            // restart the song
-            if self.state.position() >= 10 {
+            // restart the song (a live stream has no start to go back to)
+            if self.state.position() >= 10 && !current_song.is_live() {
                 self.backend.seek_start();
                 return;
             }
@@ -432,7 +441,16 @@ impl AudioPlayer {
         }
     }
 
+    /// Whether the current entry can seek at all (a live radio stream
+    /// cannot; asking GStreamer to just stalls it).
+    fn seekable(&self) -> bool {
+        !self.state.current_song().is_some_and(|s| s.is_live())
+    }
+
     fn seek(&self, offset: u64, direction: SeekDirection) {
+        if !self.seekable() {
+            return;
+        }
         self.backend.seek(
             self.state.position(),
             self.state.duration(),
@@ -442,6 +460,9 @@ impl AudioPlayer {
     }
 
     pub fn seek_start(&self) {
+        if !self.seekable() {
+            return;
+        }
         let position = self.state.position() + 1;
         self.backend.seek(
             position,
@@ -469,12 +490,18 @@ impl AudioPlayer {
     }
 
     pub fn seek_position_rel(&self, position: f64) {
+        if !self.seekable() {
+            return;
+        }
         let duration = self.state.duration() as f64;
         let pos = (duration * position).clamp(0.0, duration);
         self.backend.seek_position(pos as u64);
     }
 
     pub fn seek_position_abs(&self, position: u64) {
+        if !self.seekable() {
+            return;
+        }
         let duration = self.state.duration();
         // Clamp *below* the duration (seeking exactly to the end just
         // fires EOS); `max` here was a long-standing bug — it sent every
@@ -536,6 +563,46 @@ impl AudioPlayer {
         };
         if target > 0 {
             self.backend.seek_position(target);
+        }
+    }
+
+    fn update_stream_title(&self, raw: &str) {
+        if let Some(song) = self.state.current_song()
+            && song.is_live()
+            && song.set_now_playing(raw)
+        {
+            self.announce_metadata(&song);
+        }
+    }
+
+    fn update_stream_duration(&self, secs: u64) {
+        if let Some(song) = self.state.current_song()
+            && song.set_stream_duration(secs)
+        {
+            self.announce_metadata(&song);
+        }
+    }
+
+    /// Re-publish `song`'s metadata after it changed in place (a new
+    /// programme title, the real length, fetched artwork): the window, the
+    /// `org.margo.Tune` bridge and MPRIS — so the shell's media widget
+    /// follows the station.
+    pub fn announce_metadata(&self, song: &Song) {
+        if self.state.current_song().as_ref() == Some(song) {
+            self.state.notify_song_metadata();
+        }
+        for c in &self.controllers {
+            c.song_metadata_changed(song);
+        }
+    }
+
+    fn report_stream_error(&self, msg: String) {
+        // Local files keep today's behaviour (logged only); a stream that
+        // fails is worth telling the user about.
+        if let Some(song) = self.state.current_song()
+            && song.is_stream()
+        {
+            self.state.set_stream_error(&msg);
         }
     }
 

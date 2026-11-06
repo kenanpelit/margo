@@ -57,6 +57,18 @@ fn send_update_position(sender: &Sender<PlaybackAction>, clock: gst::ClockTime, 
     }
 }
 
+/// The `title` tag of the first audio stream that has one (an Icecast
+/// `StreamTitle`, or a file's own title — the player only uses it for
+/// radio entries).
+fn stream_title(info: &gst_play::PlayMediaInfo) -> Option<String> {
+    use gst_play::prelude::*;
+    info.audio_streams().iter().find_map(|a| {
+        let tags = a.tags()?;
+        let title = tags.get::<gst::tags::Title>()?;
+        Some(title.get().to_string())
+    })
+}
+
 impl GstReplayGain {
     pub fn new() -> Result<GstReplayGain, Box<dyn std::error::Error>> {
         let plain = tempo_element("tempo-plain")?;
@@ -148,6 +160,23 @@ impl GstBackend {
                 match play_msg {
                     gst_play::PlayMessage::Error(message) => {
                         error!("GStreamer error: {}", message.error());
+                        let _ = sender.send_blocking(PlaybackAction::Error(
+                            crate::audio::stream::clean_gst_error(message.error().message()),
+                        ));
+                    }
+                    gst_play::PlayMessage::MediaInfoUpdated(message) => {
+                        // A live stream's `StreamTitle` arrives as the audio
+                        // stream's `title` tag, re-sent on every bitrate
+                        // update — the player drops repeats.
+                        if let Some(title) = stream_title(message.media_info()) {
+                            let _ = sender.send_blocking(PlaybackAction::StreamTitle(title));
+                        }
+                    }
+                    gst_play::PlayMessage::DurationChanged(message) => {
+                        if let Some(d) = message.duration() {
+                            let _ =
+                                sender.send_blocking(PlaybackAction::DurationChanged(d.seconds()));
+                        }
                     }
                     gst_play::PlayMessage::Warning(message) => {
                         warn!("GStreamer warning: {}", message.error());

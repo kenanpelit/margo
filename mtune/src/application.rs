@@ -159,6 +159,7 @@ mod imp {
             obj.set_accels_for_action("win.cycle-view", &["<primary>m"]);
             obj.set_accels_for_action("queue.open-playlist", &["<primary>o"]);
             obj.set_accels_for_action("queue.save-playlist", &["<primary><shift>s"]);
+            obj.set_accels_for_action("win.radio-podcasts", &["<primary><shift>r"]);
             obj.set_accels_for_action("app.shortcuts", &["<primary>question", "<primary>slash"]);
         }
     }
@@ -169,6 +170,9 @@ mod imp {
 
             gtk::Window::set_default_icon_name(APPLICATION_ID);
             self.obj().setup_matugen_palette();
+            // Podcast resume points / played state and stream artwork follow
+            // playback whether or not the Radio & Podcasts dialog is open.
+            crate::discover::tracker::attach(&self.obj().player());
 
             // Checkpoint the resume position while running, so a crash /
             // SIGKILL still leaves a recent spot to come back to.
@@ -189,6 +193,7 @@ mod imp {
 
         fn shutdown(&self) {
             self.obj().persist_resume();
+            crate::discover::flush();
             self.parent_shutdown();
         }
 
@@ -550,6 +555,9 @@ impl Application {
         for (obj, sig) in [
             (state.upcast_ref::<glib::Object>(), "playing"),
             (state.upcast_ref::<glib::Object>(), "song"),
+            // A radio programme title / episode length changing in place.
+            (state.upcast_ref::<glib::Object>(), "title"),
+            (state.upcast_ref::<glib::Object>(), "duration"),
             (state.upcast_ref::<glib::Object>(), "volume"),
             (queue.upcast_ref::<glib::Object>(), "current"),
             (queue.upcast_ref::<glib::Object>(), "n-songs"),

@@ -165,10 +165,16 @@ impl Window {
             move |st: &crate::audio::PlayerState| {
                 let imp = win.imp();
                 let pos = st.position();
-                let dur = st.duration().max(1);
+                let dur = st.duration();
+                // A live station has no length: an empty, inert bar.
+                imp.mini_seek.set_sensitive(dur > 0);
+                let frac = if dur == 0 {
+                    0.0
+                } else {
+                    (pos as f64 / dur as f64).clamp(0.0, 1.0)
+                };
                 imp.mini_seek_guard.set(true);
-                imp.mini_seek_adjustment
-                    .set_value((pos as f64 / dur as f64).clamp(0.0, 1.0));
+                imp.mini_seek_adjustment.set_value(frac);
                 imp.mini_seek_guard.set(false);
                 imp.mini_time.set_label(&utils::format_time(pos as i64));
             }
