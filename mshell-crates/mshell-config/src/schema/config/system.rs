@@ -211,6 +211,34 @@ impl Default for LoginNetworkConfig {
     }
 }
 
+/// Trusted networks (Settings → VPN): bring Mullvad up when joining a
+/// Wi-Fi network that is not on the trusted list, and optionally take a
+/// tunnel it started down again on a trusted one. Off by default.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct TrustedNetworksConfig {
+    /// Connect the VPN (`mvpn connect`) on joining an untrusted network.
+    pub auto_connect: bool,
+    /// Disconnect a tunnel this rule connected once back on a trusted
+    /// network (a tunnel you started yourself is never touched).
+    pub disconnect_on_trusted: bool,
+    /// Treat any wired connection as trusted.
+    pub trust_wired: bool,
+    /// Trusted Wi-Fi network names (SSIDs, exact and case-sensitive).
+    pub trusted_ssids: Vec<String>,
+}
+
+impl Default for TrustedNetworksConfig {
+    fn default() -> Self {
+        Self {
+            auto_connect: false,
+            disconnect_on_trusted: false,
+            trust_wired: true,
+            trusted_ssids: Vec::new(),
+        }
+    }
+}
+
 /// Shell file-logging (Settings → Logging). Mirrors margo's compositor knobs:
 /// the shell writes per-session files to ~/.local/state/margo/logs (mshell-*.log,
 /// last `keep_sessions` kept), driven by the shared `margo-logging` engine.

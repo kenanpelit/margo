@@ -10,7 +10,10 @@ use crate::row::Row;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
+use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{ConfigStoreFields, TrustedNetworksConfig};
 use mshell_utils::mvpn::{VpnFav as Fav, VpnStatus, parse_fav_list, toggle_value};
+use reactive_graph::traits::GetUntracked;
 
 pub struct VpnSettingsInit {}
 
@@ -24,6 +27,8 @@ pub struct VpnSettingsModel {
     multihop: bool,
     obf: String,
     obf_model: gtk::StringList,
+    /// `trusted_networks` (shell config), mirrored for the switches + list.
+    trust: TrustedNetworksConfig,
 }
 
 /// Obfuscation modes offered in the dropdown (index ↔ string).
@@ -43,6 +48,14 @@ pub enum VpnSettingsInput {
     SetQuantum(bool),
     SetMultihop(bool),
     SetObf(u32),
+    SetTrustAutoConnect(bool),
+    SetTrustDisconnect(bool),
+    SetTrustWired(bool),
+    /// Add a typed SSID to the trusted list.
+    TrustAdd(String),
+    /// Add the Wi-Fi network the machine is on.
+    TrustCurrent,
+    TrustRemove(String),
 }
 
 #[derive(Debug)]
@@ -224,6 +237,100 @@ impl Component for VpnSettingsModel {
 
                 gtk::Label {
                     add_css_class: "label-large-bold",
+                    set_label: "Trusted networks",
+                    set_halign: gtk::Align::Start,
+                },
+                gtk::Label {
+                    add_css_class: "label-small",
+                    add_css_class: "dim-label",
+                    set_label: "Bring the VPN up when this machine joins a Wi-Fi network that is not on the list below.",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                },
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Connect on untrusted networks" },
+                        #[template_child] desc { set_label: "Connect Mullvad when joining a network that isn't trusted." },
+                        gtk::Switch {
+                            set_widget_name: "setting:/trusted_networks/auto_connect",
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            set_active: model.trust.auto_connect,
+                            connect_state_set[sender] => move |_, on| {
+                                sender.input(VpnSettingsInput::SetTrustAutoConnect(on));
+                                gtk::glib::Propagation::Proceed
+                            },
+                        },
+                    },
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Disconnect on trusted networks" },
+                        #[template_child] desc { set_label: "Take a tunnel this rule started down again on a trusted network. A tunnel you started is never touched." },
+                        gtk::Switch {
+                            set_widget_name: "setting:/trusted_networks/disconnect_on_trusted",
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            set_active: model.trust.disconnect_on_trusted,
+                            connect_state_set[sender] => move |_, on| {
+                                sender.input(VpnSettingsInput::SetTrustDisconnect(on));
+                                gtk::glib::Propagation::Proceed
+                            },
+                        },
+                    },
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Trust wired connections" },
+                        #[template_child] desc { set_label: "Treat any Ethernet connection as trusted." },
+                        gtk::Switch {
+                            set_widget_name: "setting:/trusted_networks/trust_wired",
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            set_active: model.trust.trust_wired,
+                            connect_state_set[sender] => move |_, on| {
+                                sender.input(VpnSettingsInput::SetTrustWired(on));
+                                gtk::glib::Propagation::Proceed
+                            },
+                        },
+                    },
+                },
+                #[name="trust_box"]
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 4,
+                },
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 8,
+                    #[name="trust_entry"]
+                    gtk::Entry {
+                        set_hexpand: true,
+                        set_placeholder_text: Some("Wi-Fi network name (SSID)"),
+                        connect_activate[sender] => move |e| {
+                            sender.input(VpnSettingsInput::TrustAdd(e.text().to_string()));
+                            e.set_text("");
+                        },
+                    },
+                    gtk::Button {
+                        set_label: "Add",
+                        connect_clicked[sender, trust_entry] => move |_| {
+                            sender.input(VpnSettingsInput::TrustAdd(trust_entry.text().to_string()));
+                            trust_entry.set_text("");
+                        },
+                    },
+                    gtk::Button {
+                        set_label: "Trust this network",
+                        set_tooltip_text: Some("Add the Wi-Fi network this machine is on"),
+                        connect_clicked => VpnSettingsInput::TrustCurrent,
+                    },
+                },
+
+                gtk::Label {
+                    add_css_class: "label-large-bold",
                     set_label: "Favourites",
                     set_halign: gtk::Align::Start,
                 },
@@ -252,13 +359,107 @@ impl Component for VpnSettingsModel {
             multihop: false,
             obf: "auto".to_string(),
             obf_model: gtk::StringList::new(OBF_MODES),
+            trust: config_manager().config().trusted_networks().get_untracked(),
         };
         let widgets = view_output!();
+        rebuild_trusted(&widgets.trust_box, &model.trust.trusted_ssids, &sender);
         reload(&sender);
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
+    fn update_with_view(
+        &mut self,
+        widgets: &mut Self::Widgets,
+        message: Self::Input,
+        sender: ComponentSender<Self>,
+        _root: &Self::Root,
+    ) {
+        match message {
+            VpnSettingsInput::SetTrustAutoConnect(on) => {
+                if on != self.trust.auto_connect {
+                    self.trust.auto_connect = on;
+                    config_manager().update_config(|c| c.trusted_networks.auto_connect = on);
+                }
+            }
+            VpnSettingsInput::SetTrustDisconnect(on) => {
+                if on != self.trust.disconnect_on_trusted {
+                    self.trust.disconnect_on_trusted = on;
+                    config_manager()
+                        .update_config(|c| c.trusted_networks.disconnect_on_trusted = on);
+                }
+            }
+            VpnSettingsInput::SetTrustWired(on) => {
+                if on != self.trust.trust_wired {
+                    self.trust.trust_wired = on;
+                    config_manager().update_config(|c| c.trusted_networks.trust_wired = on);
+                }
+            }
+            VpnSettingsInput::TrustAdd(ssid) => self.edit_trusted(widgets, &sender, |list| {
+                add_ssid(list, &ssid);
+            }),
+            VpnSettingsInput::TrustCurrent => {
+                if let Some(ssid) = mshell_services::vpn_trust::current_ssid() {
+                    self.edit_trusted(widgets, &sender, |list| {
+                        add_ssid(list, &ssid);
+                    });
+                }
+            }
+            VpnSettingsInput::TrustRemove(ssid) => {
+                self.edit_trusted(widgets, &sender, |list| list.retain(|s| *s != ssid));
+            }
+            other => self.update_vpn(other, &sender),
+        }
+        self.update_view(widgets, sender);
+    }
+
+    fn update_cmd_with_view(
+        &mut self,
+        widgets: &mut Self::Widgets,
+        message: Self::CommandOutput,
+        sender: ComponentSender<Self>,
+        _root: &Self::Root,
+    ) {
+        let VpnSettingsCmd::Loaded {
+            status,
+            connected,
+            favs,
+            lockdown,
+            autoconnect,
+            quantum,
+            multihop,
+            obf,
+        } = message;
+        self.status = status;
+        self.connected = connected;
+        self.favs = favs;
+        self.lockdown = lockdown;
+        self.autoconnect = autoconnect;
+        self.quantum = quantum;
+        self.multihop = multihop;
+        self.obf = obf;
+        rebuild_favs(&widgets.fav_box, &self.favs, &sender);
+    }
+}
+
+impl VpnSettingsModel {
+    /// Change the trusted SSID list, save it, and redraw it.
+    fn edit_trusted(
+        &mut self,
+        widgets: &VpnSettingsModelWidgets,
+        sender: &ComponentSender<Self>,
+        edit: impl FnOnce(&mut Vec<String>),
+    ) {
+        let mut list = self.trust.trusted_ssids.clone();
+        edit(&mut list);
+        if list != self.trust.trusted_ssids {
+            self.trust.trusted_ssids = list.clone();
+            config_manager().update_config(|c| c.trusted_networks.trusted_ssids = list);
+        }
+        rebuild_trusted(&widgets.trust_box, &self.trust.trusted_ssids, sender);
+    }
+
+    fn update_vpn(&mut self, message: VpnSettingsInput, sender: &ComponentSender<Self>) {
+        let sender = sender.clone();
         match message {
             VpnSettingsInput::Refresh => reload(&sender),
             VpnSettingsInput::Toggle => act(&sender, vec!["toggle".into()]),
@@ -299,35 +500,54 @@ impl Component for VpnSettingsModel {
                     act(&sender, vec!["obf".into(), mode.into()]);
                 }
             }
+            // Handled in `update_with_view`.
+            VpnSettingsInput::SetTrustAutoConnect(_)
+            | VpnSettingsInput::SetTrustDisconnect(_)
+            | VpnSettingsInput::SetTrustWired(_)
+            | VpnSettingsInput::TrustAdd(_)
+            | VpnSettingsInput::TrustCurrent
+            | VpnSettingsInput::TrustRemove(_) => {}
         }
     }
+}
 
-    fn update_cmd_with_view(
-        &mut self,
-        widgets: &mut Self::Widgets,
-        message: Self::CommandOutput,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
-        let VpnSettingsCmd::Loaded {
-            status,
-            connected,
-            favs,
-            lockdown,
-            autoconnect,
-            quantum,
-            multihop,
-            obf,
-        } = message;
-        self.status = status;
-        self.connected = connected;
-        self.favs = favs;
-        self.lockdown = lockdown;
-        self.autoconnect = autoconnect;
-        self.quantum = quantum;
-        self.multihop = multihop;
-        self.obf = obf;
-        rebuild_favs(&widgets.fav_box, &self.favs, &sender);
+/// Add `ssid` (trimmed) unless it is empty or already listed.
+fn add_ssid(list: &mut Vec<String>, ssid: &str) {
+    let ssid = ssid.trim();
+    if !ssid.is_empty() && !list.iter().any(|s| s == ssid) {
+        list.push(ssid.to_string());
+    }
+}
+
+/// Clear + repopulate the trusted-network list.
+fn rebuild_trusted(b: &gtk::Box, ssids: &[String], sender: &ComponentSender<VpnSettingsModel>) {
+    while let Some(c) = b.first_child() {
+        b.remove(&c);
+    }
+    if ssids.is_empty() {
+        let l = gtk::Label::new(Some(
+            "No trusted networks yet: every Wi-Fi counts as untrusted.",
+        ));
+        l.add_css_class("dim-label");
+        l.set_halign(gtk::Align::Start);
+        b.append(&l);
+        return;
+    }
+    for ssid in ssids {
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+        row.add_css_class("ok-button-surface");
+        let icon = gtk::Image::from_icon_name("network-wireless-symbolic");
+        let name = gtk::Label::new(Some(ssid));
+        name.set_halign(gtk::Align::Start);
+        name.set_hexpand(true);
+        let remove = gtk::Button::from_icon_name("user-trash-symbolic");
+        mshell_common::a11y::name(&remove, &format!("Stop trusting {ssid}"));
+        let (s, n) = (sender.clone(), ssid.clone());
+        remove.connect_clicked(move |_| s.input(VpnSettingsInput::TrustRemove(n.clone())));
+        row.append(&icon);
+        row.append(&name);
+        row.append(&remove);
+        b.append(&row);
     }
 }
 
@@ -422,4 +642,18 @@ async fn capture(args: &[&str]) -> String {
         .await
         .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::add_ssid;
+
+    #[test]
+    fn adding_a_trusted_ssid_trims_and_dedupes() {
+        let mut list = vec!["Ken_5".to_string()];
+        add_ssid(&mut list, "  Office ");
+        add_ssid(&mut list, "Ken_5");
+        add_ssid(&mut list, "   ");
+        assert_eq!(list, ["Ken_5", "Office"]);
+    }
 }

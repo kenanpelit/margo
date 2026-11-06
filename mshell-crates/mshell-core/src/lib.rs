@@ -298,6 +298,10 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     // fallback). Native replacement for the external home-net-vpn script.
     mshell_services::login_net::spawn_login_net_startup();
 
+    // Trusted networks: connect Mullvad on joining an untrusted Wi-Fi
+    // (Settings → VPN; idles while off).
+    mshell_services::vpn_trust::spawn_trusted_networks_watch();
+
     // Audio-backend health watchdog: wayle-audio's PulseAudio backend can lose
     // its connection at login (Bluetooth/pipewire churn) and never reconnect,
     // silently killing volume keys + the volume OSD. Probe it and, on a

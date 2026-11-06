@@ -468,6 +468,22 @@ mvpn ensure                            # drive the blocky DNS guard from VPN sta
   lockdown**), you are logged out (**Log in**), the account expired (**Open
   account page**), or another tunnel error — one plain sentence each
   (`mvpn health`). Service actions go through systemd's own polkit prompt.
+- **Trusted networks.** Settings → VPN → *Trusted networks* brings the
+  tunnel up when the machine joins a Wi-Fi network that is not on your
+  trusted list (wired counts as trusted unless you say otherwise), and can
+  take a tunnel it started down again once you are back on a trusted one — a
+  tunnel you started yourself is never touched, and one you turned off stays
+  off until you join another network. A network counts as joined after two
+  samples four seconds apart; the shell checks the network in memory and asks
+  `mvpn` only when it is about to act. Off by default; in the shell profile:
+
+  ```yaml
+  trusted_networks:
+    auto_connect: true          # connect on joining an untrusted network
+    disconnect_on_trusted: true # drop a tunnel this rule started on a trusted one
+    trust_wired: true           # Ethernet counts as trusted (default)
+    trusted_ssids: [Ken_5, Office]
+  ```
 - **osc-mullvad compatible.** Reads the existing `favorites.txt` / `slot.state`
   unchanged and honours the `OSC_MULLVAD_*` env overrides.
 

@@ -11,6 +11,7 @@ license.workspace = true
 margo-fs.workspace = true
 anyhow.workspace = true
 mshell-config.workspace = true
+mvpn-proto.workspace = true
 mpd_client.workspace = true
 mshell-process.workspace = true
 notify-rust.workspace = true

@@ -5541,6 +5541,7 @@ dependencies = [
  "mshell-config",
  "mshell-margo-client",
  "mshell-process",
+ "mvpn-proto",
  "notify-rust",
  "reactive_graph",
  "serde",

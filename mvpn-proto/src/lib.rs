@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod health;
 pub mod locations;
+pub mod trust;
 
 /// One tunnel status (`mvpn status --json`, one line per change with
 /// `--follow`). Every field defaults, so an older or newer `mvpn` that

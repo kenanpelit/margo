@@ -44,6 +44,7 @@ pub mod login_net;
 pub mod mpd;
 pub mod mtune;
 pub mod systemd;
+pub mod vpn_trust;
 
 use mshell_margo_client::MargoService;
 use wayle_audio::AudioService;

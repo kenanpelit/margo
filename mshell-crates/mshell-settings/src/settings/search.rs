@@ -22,6 +22,10 @@ pub(super) const PAGE_KEYWORDS: &[(&str, &str)] = &[
     ),
     ("bluetooth", "bt pair pairing device headset"),
     (
+        "vpn",
+        "mullvad relay favourite lockdown multihop trusted network wifi ssid untrusted auto connect",
+    ),
+    (
         "display",
         "monitor screen resolution scale scaling brightness refresh rate hidpi",
     ),
