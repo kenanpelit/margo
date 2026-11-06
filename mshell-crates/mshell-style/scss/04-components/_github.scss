@@ -101,3 +101,20 @@
   &.l3 { background-color: unquote("color-mix(in srgb, var(--primary) 78%, var(--surface-container-high))"); }
   &.l4 { background-color: var(--primary); }
 }
+
+// ── PRs grouped by repository ────────────────────────────────
+.github-group-label {
+  margin-top: var(--space-2);
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--on-surface-variant);
+}
+.github-pr-card {
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container-high);
+
+  .github-row-main {
+    border-radius: var(--radius-md);
+  }
+}

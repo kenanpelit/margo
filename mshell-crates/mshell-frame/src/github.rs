@@ -4,8 +4,11 @@
 //!
 //! - Inbox: `gh api notifications` (unread threads), mark one read with
 //!   `PATCH notifications/threads/<id>`, all with `PUT notifications`.
-//! - My PRs: one `gh api graphql` search (`is:pr is:open author:@me`) with
-//!   each PR's review decision and the CI rollup of its last commit.
+//! - PRs: one `gh api graphql` search per configured rule (default
+//!   `author:@me`; e.g. `review-requested:@me`, `org:acme label:bug`), each
+//!   as `is:pr is:open <rule> archived:false`, merged + de-duplicated by
+//!   URL, with excluded-repository globs applied; each PR carries its
+//!   review decision and the CI rollup of its last commit.
 //!
 //! `gh` may be missing or logged out; both are reported, never fatal.
 
@@ -276,12 +279,156 @@ pub(crate) struct PullRequest {
     pub(crate) updated_ms: i64,
 }
 
-/// The GraphQL search for the user's open PRs.
-pub(crate) const PR_QUERY: &str = "query($q: String!) { search(query: $q, type: ISSUE, first: 50) { nodes { ... on PullRequest { number title url isDraft reviewDecision updatedAt repository { nameWithOwner } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } } } }";
-pub(crate) const PR_SEARCH: &str = "is:pr is:open author:@me archived:false";
+/// The GraphQL search for one PR rule.
+pub(crate) const PR_QUERY: &str = "query($q: String!) { search(query: $q, type: ISSUE, first: 50) { issueCount nodes { ... on PullRequest { number title url isDraft reviewDecision updatedAt repository { nameWithOwner } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } } } }";
+/// One search returns at most this many PRs.
+pub(crate) const PR_PAGE: u64 = 50;
+/// At most this many rules run per poll (each is one `gh` call).
+pub(crate) const MAX_PR_RULES: usize = 8;
 
-/// Parse the `gh api graphql` response for [`PR_QUERY`].
-pub(crate) fn parse_prs(body: &str) -> Result<Vec<PullRequest>, GhError> {
+/// The PR rules + exclusions the poll uses (set from the config on the GTK
+/// thread by [`set_pr_rules`], read by the poll on the runtime).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PrRules {
+    pub(crate) rules: Vec<String>,
+    pub(crate) excluded: Vec<String>,
+}
+
+static PR_RULES: std::sync::RwLock<Option<PrRules>> = std::sync::RwLock::new(None);
+
+/// Publish the configured rules; returns whether they changed.
+pub(crate) fn set_pr_rules(rules: PrRules) -> bool {
+    let mut cur = PR_RULES.write().unwrap_or_else(|e| e.into_inner());
+    if cur.as_ref() == Some(&rules) {
+        return false;
+    }
+    *cur = Some(rules);
+    true
+}
+
+fn pr_rules() -> PrRules {
+    PR_RULES
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+        .unwrap_or_else(|| PrRules {
+            rules: vec!["author:@me".into()],
+            excluded: Vec::new(),
+        })
+}
+
+/// The search string for one rule: `is:pr is:open <rule>`, plus
+/// `archived:false` unless the rule picks archive state itself. A blank
+/// rule is skipped; newlines can't sneak in a second query.
+pub(crate) fn search_query(rule: &str) -> Option<String> {
+    let rule = rule.split_whitespace().collect::<Vec<_>>().join(" ");
+    if rule.is_empty() {
+        return None;
+    }
+    let lower = rule.to_lowercase();
+    let mut q = String::new();
+    if !lower.split(' ').any(|t| t == "is:pr") {
+        q.push_str("is:pr ");
+    }
+    if !lower.split(' ').any(|t| t == "is:open") {
+        q.push_str("is:open ");
+    }
+    q.push_str(&rule);
+    if !lower.contains("archived:") {
+        q.push_str(" archived:false");
+    }
+    Some(q)
+}
+
+/// The rules to run: trimmed, de-duplicated, at most [`MAX_PR_RULES`];
+/// none configured = `author:@me` (the original search).
+pub(crate) fn effective_rules(rules: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for q in rules.iter().filter_map(|r| search_query(r)) {
+        if !out.contains(&q) {
+            out.push(q);
+        }
+    }
+    if out.is_empty() {
+        out.extend(search_query("author:@me"));
+    }
+    out.truncate(MAX_PR_RULES);
+    out
+}
+
+/// Case-insensitive glob with `*` (any run of characters).
+pub(crate) fn glob_match(pattern: &str, text: &str) -> bool {
+    let p: Vec<char> = pattern.to_lowercase().chars().collect();
+    let t: Vec<char> = text.to_lowercase().chars().collect();
+    let (mut pi, mut ti) = (0, 0);
+    let (mut star, mut mark) = (None, 0);
+    while ti < t.len() {
+        if pi < p.len() && p[pi] != '*' && p[pi] == t[ti] {
+            pi += 1;
+            ti += 1;
+        } else if pi < p.len() && p[pi] == '*' {
+            star = Some(pi);
+            mark = ti;
+            pi += 1;
+        } else if let Some(sp) = star {
+            pi = sp + 1;
+            mark += 1;
+            ti = mark;
+        } else {
+            return false;
+        }
+    }
+    p[pi..].iter().all(|c| *c == '*')
+}
+
+/// `repo` (`owner/name`) matches an exclusion: a pattern with a `/` is
+/// matched against the full name, a bare one against the name in any
+/// owner.
+pub(crate) fn repo_excluded(repo: &str, patterns: &[String]) -> bool {
+    let name = repo.rsplit('/').next().unwrap_or(repo);
+    patterns
+        .iter()
+        .map(|p| p.trim())
+        .filter(|p| !p.is_empty())
+        .any(|p| {
+            if p.contains('/') {
+                glob_match(p, repo)
+            } else {
+                glob_match(p, name)
+            }
+        })
+}
+
+/// Merge the per-rule results: de-duplicated by URL, excluded repos
+/// dropped, newest activity first.
+pub(crate) fn merge_prs(lists: Vec<Vec<PullRequest>>, excluded: &[String]) -> Vec<PullRequest> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out: Vec<PullRequest> = lists
+        .into_iter()
+        .flatten()
+        .filter(|p| !repo_excluded(&p.repo, excluded))
+        .filter(|p| seen.insert(p.url.clone()))
+        .collect();
+    out.sort_by_key(|e| std::cmp::Reverse(e.updated_ms));
+    out
+}
+
+/// PRs grouped by repository, groups ordered by their newest PR (the input
+/// is already newest-first, so each group stays newest-first too).
+pub(crate) fn group_by_repo(prs: &[PullRequest]) -> Vec<(String, Vec<&PullRequest>)> {
+    let mut groups: Vec<(String, Vec<&PullRequest>)> = Vec::new();
+    for p in prs {
+        match groups.iter_mut().find(|(r, _)| *r == p.repo) {
+            Some((_, v)) => v.push(p),
+            None => groups.push((p.repo.clone(), vec![p])),
+        }
+    }
+    groups
+}
+
+/// Parse the `gh api graphql` response for [`PR_QUERY`]: the PRs plus
+/// GitHub's total match count (to spot truncation).
+pub(crate) fn parse_pr_search(body: &str) -> Result<(Vec<PullRequest>, u64), GhError> {
     let v: Value = serde_json::from_str(body).map_err(|e| GhError::Failed(e.to_string()))?;
     if let Some(msg) = v.pointer("/errors/0/message").and_then(Value::as_str) {
         return Err(GhError::Failed(msg.to_string()));
@@ -318,7 +465,11 @@ pub(crate) fn parse_prs(body: &str) -> Result<Vec<PullRequest>, GhError> {
         })
         .collect();
     out.sort_by_key(|e| std::cmp::Reverse(e.updated_ms));
-    Ok(out)
+    let total = v
+        .pointer("/data/search/issueCount")
+        .and_then(Value::as_u64)
+        .unwrap_or(out.len() as u64);
+    Ok((out, total))
 }
 
 // ── gh calls ───────────────────────────────────────────────────────────
@@ -327,6 +478,8 @@ pub(crate) fn parse_prs(body: &str) -> Result<Vec<PullRequest>, GhError> {
 pub(crate) struct GithubSnapshot {
     pub(crate) notifications: Result<Vec<Notification>, GhError>,
     pub(crate) prs: Result<Vec<PullRequest>, GhError>,
+    /// Partial PR problems worth showing (a failed rule, a truncated one).
+    pub(crate) pr_notes: Vec<String>,
 }
 
 impl GithubSnapshot {
@@ -363,24 +516,54 @@ pub(crate) async fn fetch() -> GithubSnapshot {
         Ok(body) => parse_notifications(&body),
         Err(e) => Err(e),
     };
-    // Don't spawn a second doomed call when gh is missing / logged out.
-    let prs = match &notifications {
-        Err(e @ (GhError::Missing | GhError::LoggedOut)) => Err(e.clone()),
-        _ => match gh(&[
+    // Don't spawn more doomed calls when gh is missing / logged out.
+    let (prs, pr_notes) = match &notifications {
+        Err(e @ (GhError::Missing | GhError::LoggedOut)) => (Err(e.clone()), Vec::new()),
+        _ => fetch_prs(&pr_rules()).await,
+    };
+    GithubSnapshot {
+        notifications,
+        prs,
+        pr_notes,
+    }
+}
+
+/// Run every rule, merge the hits. Fails only when every rule failed; a
+/// partial failure or a truncated rule is reported in the notes.
+async fn fetch_prs(rules: &PrRules) -> (Result<Vec<PullRequest>, GhError>, Vec<String>) {
+    let mut lists = Vec::new();
+    let mut notes = Vec::new();
+    let mut first_err = None;
+    for q in effective_rules(&rules.rules) {
+        let res = gh(&[
             "api",
             "graphql",
             "-f",
-            &format!("q={PR_SEARCH}"),
+            &format!("q={q}"),
             "-f",
             &format!("query={PR_QUERY}"),
         ])
         .await
-        {
-            Ok(body) => parse_prs(&body),
-            Err(e) => Err(e),
-        },
-    };
-    GithubSnapshot { notifications, prs }
+        .and_then(|body| parse_pr_search(&body));
+        match res {
+            Ok((prs, total)) => {
+                if total > PR_PAGE {
+                    notes.push(format!(
+                        "\u{201c}{q}\u{201d} matched {total}; showing {PR_PAGE}"
+                    ));
+                }
+                lists.push(prs);
+            }
+            Err(e) => {
+                notes.push(format!("\u{201c}{q}\u{201d}: {}", e.message()));
+                first_err.get_or_insert(e);
+            }
+        }
+    }
+    match (lists.is_empty(), first_err) {
+        (true, Some(e)) => (Err(e), Vec::new()),
+        _ => (Ok(merge_prs(lists, &rules.excluded)), notes),
+    }
 }
 
 // ── Contribution calendar ──────────────────────────────────────────────
@@ -578,6 +761,10 @@ pub(crate) fn ago(now_ms: i64, then_ms: i64) -> String {
 mod tests {
     use super::*;
 
+    fn parse_prs(body: &str) -> Result<Vec<PullRequest>, GhError> {
+        parse_pr_search(body).map(|(prs, _)| prs)
+    }
+
     /// Real `gh api 'notifications?all=true'` threads from this machine,
     /// trimmed to the fields GitHub sends that the parser reads, plus an
     /// unread one.
@@ -609,6 +796,7 @@ mod tests {
         let snap = GithubSnapshot {
             notifications: Ok(n),
             prs: Ok(vec![]),
+            pr_notes: vec![],
         };
         assert_eq!(snap.unread(), 2);
         assert_eq!(parse_notifications("[]").unwrap(), vec![]);
@@ -674,6 +862,90 @@ mod tests {
             parse_prs(r#"{"errors":[{"message":"Bad credentials"}]}"#),
             Err(GhError::Failed(m)) if m == "Bad credentials"
         ));
+    }
+
+    fn pr(url: &str, repo: &str, updated: i64) -> PullRequest {
+        PullRequest {
+            number: 1,
+            title: "t".into(),
+            url: url.into(),
+            repo: repo.into(),
+            draft: false,
+            review: Review::None,
+            ci: CiState::None,
+            updated_ms: updated,
+        }
+    }
+
+    #[test]
+    fn rules_become_open_pr_searches() {
+        assert_eq!(
+            search_query(" review-requested:@me\n org:acme ").as_deref(),
+            Some("is:pr is:open review-requested:@me org:acme archived:false")
+        );
+        assert_eq!(
+            search_query("is:pr author:@me archived:true").as_deref(),
+            Some("is:open is:pr author:@me archived:true")
+        );
+        assert_eq!(search_query("   "), None);
+        assert_eq!(
+            effective_rules(&[]),
+            ["is:pr is:open author:@me archived:false"]
+        );
+        let many: Vec<String> = (0..20).map(|i| format!("label:l{i}")).collect();
+        assert_eq!(effective_rules(&many).len(), MAX_PR_RULES);
+        let dupes = vec!["author:@me".to_string(), " author:@me ".to_string()];
+        assert_eq!(effective_rules(&dupes).len(), 1);
+    }
+
+    #[test]
+    fn globs_and_repo_exclusions() {
+        assert!(glob_match("legacy-*", "Legacy-API"));
+        assert!(glob_match("*", ""));
+        assert!(glob_match("a*b*c", "axxbyyc"));
+        assert!(!glob_match("a*b", "ac"));
+        assert!(!glob_match("dotfiles", "dotfiles2"));
+        let ex = vec![
+            "acme/private-*".to_string(),
+            "dotfiles".to_string(),
+            " ".to_string(),
+        ];
+        assert!(repo_excluded("acme/private-x", &ex));
+        assert!(!repo_excluded("other/private-x", &ex));
+        assert!(repo_excluded("kenan/dotfiles", &ex));
+        assert!(!repo_excluded("kenan/margo", &ex));
+    }
+
+    #[test]
+    fn merge_dedupes_excludes_and_groups() {
+        let a = vec![pr("u1", "o/a", 10), pr("u2", "o/b", 30)];
+        let b = vec![
+            pr("u2", "o/b", 30),
+            pr("u3", "o/a", 20),
+            pr("u4", "x/skip", 99),
+        ];
+        let merged = merge_prs(vec![a, b], &["skip".to_string()]);
+        let urls: Vec<&str> = merged.iter().map(|p| p.url.as_str()).collect();
+        assert_eq!(urls, ["u2", "u3", "u1"]);
+        let groups = group_by_repo(&merged);
+        let shape: Vec<(&str, Vec<&str>)> = groups
+            .iter()
+            .map(|(r, v)| (r.as_str(), v.iter().map(|p| p.url.as_str()).collect()))
+            .collect();
+        assert_eq!(shape, [("o/b", vec!["u2"]), ("o/a", vec!["u3", "u1"])]);
+    }
+
+    #[test]
+    fn pr_search_reports_the_total_for_truncation() {
+        // Real `gh api graphql` reply for `review-requested:@me` on this
+        // machine (no pending reviews), plus GitHub's issueCount.
+        let (prs, total) =
+            parse_pr_search(r#"{"data":{"search":{"issueCount":0,"nodes":[]}}}"#).unwrap();
+        assert!(prs.is_empty());
+        assert_eq!(total, 0);
+        let (_, total) =
+            parse_pr_search(r#"{"data":{"search":{"issueCount":120,"nodes":[]}}}"#).unwrap();
+        assert!(total > PR_PAGE);
     }
 
     #[test]

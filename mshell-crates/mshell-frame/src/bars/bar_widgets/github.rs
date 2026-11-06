@@ -5,7 +5,9 @@
 //! "Read / unread markers", the `.notif-dot` the notifications bell uses)
 //! and a count beside it: unread notifications by default, or — per
 //! Settings → Widgets → GitHub → *Pill shows* — today's contributions, the
-//! current streak or the year total. The data comes from the shared
+//! current streak, the year total, or the open PRs the search rules
+//! match. *Hide when zero* hides the pill while that count is 0. The data
+//! comes from the shared
 //! [`GITHUB_POLL`] (every two minutes) and [`CONTRIB_POLL`] (every 30
 //! minutes, only while a contribution metric or the Activity tab is
 //! shown), active while a pill or the menu is mapped. Click opens
@@ -45,7 +47,11 @@ pub(crate) struct GithubModel {
     snapshot: Option<GithubSnapshot>,
     contrib: Option<ContribResult>,
     metric: GithubPillMetric,
+    hide_when_zero: bool,
     mapped: Rc<std::cell::Cell<bool>>,
+    /// The pill hid itself (zero count): its unmap must not stop the polls
+    /// that will bring it back.
+    self_hidden: Rc<std::cell::Cell<bool>>,
     _poll: Rc<PollSubscription<GithubSnapshot>>,
     contrib_poll: PollSubscription<ContribResult>,
     _effects: EffectScope,
@@ -132,16 +138,23 @@ impl Component for GithubModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        let mut effects = EffectScope::new();
+        // Rules first, so the very first poll already uses them.
+        watch_pr_rules(&mut effects);
         let poll = Rc::new(GITHUB_POLL.subscribe());
         let mapped = Rc::new(std::cell::Cell::new(false));
+        let self_hidden = Rc::new(std::cell::Cell::new(false));
         {
             let (p, s) = (poll.clone(), sender.clone());
             root.connect_map(move |_| {
                 p.set_active(true);
                 s.input(GithubInput::Mapped(true));
             });
-            let (p, s) = (poll.clone(), sender.clone());
+            let (p, s, hidden) = (poll.clone(), sender.clone(), self_hidden.clone());
             root.connect_unmap(move |_| {
+                if hidden.get() {
+                    return;
+                }
                 p.set_active(false);
                 s.input(GithubInput::Mapped(false));
             });
@@ -162,12 +175,13 @@ impl Component for GithubModel {
                 }
             }
         });
-        let mut effects = EffectScope::new();
         let s = sender.clone();
         effects.push(move |_| {
-            let _ = config_manager().config().github().pill_metric().get();
+            let gh = config_manager().config().github();
+            let _ = (gh.clone().pill_metric().get(), gh.hide_when_zero().get());
             s.input(GithubInput::MetricChanged);
         });
+
         let mut rx = poll.receiver();
         sender.command(|out, shutdown| async move {
             let shutdown_fut = shutdown.wait();
@@ -200,7 +214,13 @@ impl Component for GithubModel {
                 .github()
                 .pill_metric()
                 .get_untracked(),
+            hide_when_zero: config_manager()
+                .config()
+                .github()
+                .hide_when_zero()
+                .get_untracked(),
             mapped,
+            self_hidden,
             _poll: poll,
             contrib_poll,
             _effects: effects,
@@ -228,11 +248,9 @@ impl Component for GithubModel {
                 }
             }
             GithubInput::MetricChanged => {
-                self.metric = config_manager()
-                    .config()
-                    .github()
-                    .pill_metric()
-                    .get_untracked();
+                let gh = config_manager().config().github().get_untracked();
+                self.metric = gh.pill_metric;
+                self.hide_when_zero = gh.hide_when_zero;
                 self.sync_contrib_poll();
                 self.apply_visual(widgets, root);
             }
@@ -311,7 +329,33 @@ impl GithubModel {
             );
         }
         root.set_tooltip_text(Some(&text));
+        // Hide on a known zero only — never while loading or on an error.
+        let hide = self.hide_when_zero && value == Some(0) && !failed;
+        self.self_hidden.set(hide);
+        root.set_visible(!hide);
     }
+}
+
+/// Publish the PR rules now and whenever Settings changes them (a change
+/// re-polls at once). Every pill and menu calls it; duplicates are no-ops.
+pub(crate) fn watch_pr_rules(effects: &mut EffectScope) {
+    publish_pr_rules();
+    effects.push(move |_| {
+        let gh = config_manager().config().github();
+        let _ = (gh.clone().pr_rules().get(), gh.excluded_repos().get());
+        if publish_pr_rules() {
+            GITHUB_POLL.refresh_now();
+        }
+    });
+}
+
+/// Copy the PR rules from the config into the poll; true when they changed.
+pub(crate) fn publish_pr_rules() -> bool {
+    let gh = config_manager().config().github().get_untracked();
+    github::set_pr_rules(github::PrRules {
+        rules: gh.pr_rules,
+        excluded: gh.excluded_repos,
+    })
 }
 
 /// The number the pill shows for `metric`, `None` while its data hasn't
@@ -328,6 +372,9 @@ pub(crate) fn pill_value(
     };
     match metric {
         GithubPillMetric::Unread => snap.map(|s| s.unread() as u32),
+        GithubPillMetric::OpenPrs => snap
+            .and_then(|s| s.prs.as_ref().ok())
+            .map(|p| p.len() as u32),
         GithubPillMetric::ContribToday => stats().map(|s| s.today),
         GithubPillMetric::ContribStreak => stats().map(|s| s.current_streak),
         GithubPillMetric::ContribTotal => stats().map(|s| s.total),
@@ -352,7 +399,7 @@ pub(crate) fn tooltip(s: Option<&GithubSnapshot>) -> String {
                     .iter()
                     .filter(|p| p.ci == github::CiState::Failure)
                     .count();
-                let mut line = format!("My open PRs: {}", prs.len());
+                let mut line = format!("Open PRs: {}", prs.len());
                 if failing > 0 {
                     line.push_str(&format!(" ({failing} failing CI)"));
                 }
@@ -374,11 +421,13 @@ mod tests {
         let s = GithubSnapshot {
             notifications: Err(GhError::Missing),
             prs: Err(GhError::Missing),
+            pr_notes: vec![],
         };
         assert!(tooltip(Some(&s)).contains("github-cli"));
         let s = GithubSnapshot {
             notifications: Ok(vec![]),
             prs: Ok(vec![]),
+            pr_notes: vec![],
         };
         assert!(tooltip(Some(&s)).starts_with("GitHub: no unread"));
     }
@@ -406,9 +455,11 @@ mod tests {
         let snap = GithubSnapshot {
             notifications: Ok(vec![]),
             prs: Ok(vec![]),
+            pr_notes: vec![],
         };
         let v = |m| pill_value(m, Some(&snap), Some(&contrib), day);
         assert_eq!(v(GithubPillMetric::Unread), Some(0));
+        assert_eq!(v(GithubPillMetric::OpenPrs), Some(0));
         assert_eq!(v(GithubPillMetric::ContribToday), Some(7));
         assert_eq!(v(GithubPillMetric::ContribStreak), Some(2));
         assert_eq!(v(GithubPillMetric::ContribTotal), Some(900));

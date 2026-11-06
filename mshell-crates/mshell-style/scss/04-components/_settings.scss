@@ -821,3 +821,12 @@
   border-radius: var(--radius-sm);
   background-color: var(--surface-container);
 }
+
+// Multi-line list editors (one item per line), e.g. GitHub PR rules.
+.settings-textview {
+    border-radius: var(--entry-radius);
+    background-color: var(--surface-container-high);
+}
+.settings-textview text {
+    background-color: transparent;
+}

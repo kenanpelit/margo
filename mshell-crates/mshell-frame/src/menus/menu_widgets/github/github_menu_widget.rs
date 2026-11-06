@@ -4,8 +4,10 @@
 //! - **Inbox**: unread notification threads, newest first. Clicking a row
 //!   opens it in the browser and marks it read; the trailing check marks
 //!   it read without opening; the header's check marks everything read.
-//! - **My PRs**: the user's open pull requests with their CI rollup and
-//!   review decision as chips; clicking opens the PR.
+//! - **PRs**: the open pull requests the search rules match (Settings →
+//!   Widgets → GitHub; default `author:@me`), grouped by repository with
+//!   their CI rollup and review decision as chips; clicking opens the PR.
+//!   A failed or truncated rule is noted under the list.
 //! - **Activity**: the contribution heat-map for the last year with
 //!   today / current streak / best streak / year total
 //!   ([`super::activity`]); the calendar ([`CONTRIB_POLL`]) is fetched
@@ -44,7 +46,7 @@ pub(crate) struct GithubMenuWidgetModel {
     /// Threads marked read here whose refresh hasn't landed yet; hidden
     /// so the row goes away at once.
     marked: HashSet<String>,
-    /// Inbox | My PRs, built once.
+    /// Inbox | PRs | Activity, built once.
     tabs: Segmented,
     meta: gtk::Label,
     /// "Loading…" / "All caught up" / "No open pull requests".
@@ -53,13 +55,16 @@ pub(crate) struct GithubMenuWidgetModel {
     inbox_box: gtk::Box,
     inbox: KeyedList<NotificationRow>,
     prs_box: gtk::Box,
-    prs: KeyedList<PrRow>,
+    prs: KeyedList<PrListRow>,
+    /// Partial-failure / truncation notes for the PR rules.
+    pr_notes: gtk::Label,
     poll: PollSubscription<GithubSnapshot>,
     contrib: Option<ContribResult>,
     contrib_poll: PollSubscription<ContribResult>,
     activity: ActivityView,
     revealed: bool,
     footer: gtk::Button,
+    _effects: mshell_common::scoped_effects::EffectScope,
 }
 
 #[derive(Debug)]
@@ -141,6 +146,8 @@ impl Component for GithubMenuWidgetModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        let mut effects = mshell_common::scoped_effects::EffectScope::new();
+        crate::bars::bar_widgets::github::watch_pr_rules(&mut effects);
         let poll = GITHUB_POLL.subscribe();
         let mut rx = poll.receiver();
         sender.command(|out, shutdown| async move {
@@ -179,7 +186,7 @@ impl Component for GithubMenuWidgetModel {
         let content = gtk::Box::new(gtk::Orientation::Vertical, 8);
         let s = sender.clone();
         let tabs = Segmented::new(
-            &["Inbox", "My PRs", "Activity"],
+            &["Inbox", "PRs", "Activity"],
             0,
             SegmentedStyle::Capsule,
             move |i| {
@@ -198,20 +205,25 @@ impl Component for GithubMenuWidgetModel {
             });
         let header_root = header.root().clone();
         let meta = header.meta().cloned().unwrap_or_default();
-        let hint = hint("");
+        let status = hint("");
         let error = gtk::Label::new(None);
         error.set_css_classes(&["label-small-error"]);
         error.set_halign(gtk::Align::Start);
         error.set_xalign(0.0);
         error.set_wrap(true);
         let inbox_box = boxed_list();
-        let prs_box = boxed_list();
+        let prs_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        prs_box.add_css_class("github-pr-groups");
+        let pr_notes = hint("");
+        pr_notes.set_wrap(true);
+        pr_notes.set_xalign(0.0);
         let activity = ActivityView::new();
         for w in [
-            hint.upcast_ref::<gtk::Widget>(),
+            status.upcast_ref::<gtk::Widget>(),
             error.upcast_ref(),
             inbox_box.upcast_ref(),
             prs_box.upcast_ref(),
+            pr_notes.upcast_ref(),
             activity.root.upcast_ref(),
         ] {
             content.append(w);
@@ -223,18 +235,20 @@ impl Component for GithubMenuWidgetModel {
             marked: HashSet::new(),
             tabs,
             meta: meta.clone(),
-            hint,
+            hint: status,
             error,
             inbox: KeyedList::new(inbox_box.clone()),
             inbox_box,
             prs: KeyedList::new(prs_box.clone()),
             prs_box,
+            pr_notes,
             poll,
             contrib: None,
             contrib_poll,
             activity,
             revealed: false,
             footer: footer.clone(),
+            _effects: effects,
         };
         let widgets = view_output!();
         crate::menus::list_fit::mark_menu_list(&widgets.fill_list, 520);
@@ -361,7 +375,7 @@ impl GithubMenuWidgetModel {
         });
         // The §12 segmented control: one capsule, the active segment filled.
         self.tabs.set_label(0, &format!("Inbox · {}", unread.len()));
-        self.tabs.set_label(1, &format!("My PRs · {pr_count}"));
+        self.tabs.set_label(1, &format!("PRs · {pr_count}"));
         self.tabs.set_active(match self.tab {
             Tab::Inbox => 0,
             Tab::Prs => 1,
@@ -409,9 +423,18 @@ impl GithubMenuWidgetModel {
                     Err(e) => error = Some(e.message()),
                     Ok(prs) if prs.is_empty() => hint = Some("No open pull requests"),
                     Ok(prs) => {
-                        let items: Vec<(PullRequest, i64)> =
-                            prs.iter().map(|p| (p.clone(), now)).collect();
-                        self.prs.sync(&items, |item| PrRow::new(item, sender));
+                        let mut items: Vec<(PrItem, i64)> = Vec::new();
+                        for (repo, group) in github::group_by_repo(prs) {
+                            items.push((
+                                PrItem::Repo {
+                                    repo,
+                                    count: group.len(),
+                                },
+                                now,
+                            ));
+                            items.extend(group.into_iter().map(|p| (PrItem::Pr(p.clone()), now)));
+                        }
+                        self.prs.sync(&items, |item| PrListRow::new(item, sender));
                         show_prs = true;
                     }
                 },
@@ -423,6 +446,12 @@ impl GithubMenuWidgetModel {
         self.error.set_visible(error.is_some());
         self.inbox_box.set_visible(show_inbox);
         self.prs_box.set_visible(show_prs);
+        let notes = match (&self.tab, &self.snapshot) {
+            (Tab::Prs, Some(s)) => s.pr_notes.join("\n"),
+            _ => String::new(),
+        };
+        self.pr_notes.set_label(&notes);
+        self.pr_notes.set_visible(!notes.is_empty());
         self.activity.root.set_visible(show_activity);
     }
 }
@@ -558,7 +587,68 @@ fn chip(text: &str, state: &str) -> gtk::Label {
     l
 }
 
-/// One of the user's open PRs, with CI and review chips; click opens it.
+/// A PR-tab entry: a repository heading or one of its PRs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PrItem {
+    Repo { repo: String, count: usize },
+    Pr(PullRequest),
+}
+
+/// The keyed row for a [`PrItem`] (keys `repo:<name>` / the PR URL never
+/// collide, so a key always maps to the same variant).
+enum PrListRow {
+    Repo(gtk::Label),
+    Pr(PrRow),
+}
+
+impl PrListRow {
+    fn new(item: &(PrItem, i64), sender: &ComponentSender<GithubMenuWidgetModel>) -> Self {
+        match &item.0 {
+            PrItem::Repo { .. } => {
+                let l = gtk::Label::new(None);
+                l.set_css_classes(&["github-group-label"]);
+                l.set_halign(gtk::Align::Start);
+                l.set_xalign(0.0);
+                l.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+                let r = PrListRow::Repo(l);
+                r.update(item);
+                r
+            }
+            PrItem::Pr(p) => PrListRow::Pr(PrRow::new(&(p.clone(), item.1), sender)),
+        }
+    }
+}
+
+impl KeyedRow for PrListRow {
+    type Item = (PrItem, i64);
+    type Key = String;
+
+    fn key(item: &Self::Item) -> String {
+        match &item.0 {
+            PrItem::Repo { repo, .. } => format!("repo:{repo}"),
+            PrItem::Pr(p) => p.url.clone(),
+        }
+    }
+
+    fn widget(&self) -> gtk::Widget {
+        match self {
+            PrListRow::Repo(l) => l.clone().upcast(),
+            PrListRow::Pr(r) => r.widget(),
+        }
+    }
+
+    fn update(&self, (item, now): &Self::Item) {
+        match (self, item) {
+            (PrListRow::Repo(l), PrItem::Repo { repo, count }) => {
+                l.set_label(&format!("{repo} · {count}"));
+            }
+            (PrListRow::Pr(r), PrItem::Pr(p)) => r.update(&(p.clone(), *now)),
+            _ => {}
+        }
+    }
+}
+
+/// One open PR, with CI and review chips; click opens it.
 struct PrRow {
     row: gtk::Box,
     title: gtk::Label,
@@ -572,7 +662,7 @@ impl PrRow {
     fn new(item: &(PullRequest, i64), sender: &ComponentSender<GithubMenuWidgetModel>) -> Self {
         let p = &item.0;
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-        row.add_css_class("github-row");
+        row.set_css_classes(&["github-row", "github-pr-card"]);
         let open = gtk::Button::new();
         open.set_css_classes(&["github-row-main"]);
         open.set_hexpand(true);
@@ -624,9 +714,9 @@ impl KeyedRow for PrRow {
 
     fn update(&self, (p, now): &Self::Item) {
         self.title.set_label(&p.title);
+        // The repository is the group heading above.
         self.subtitle.set_label(&format!(
-            "{} #{} · {}",
-            p.repo,
+            "#{} · {}",
             p.number,
             github::ago(*now, p.updated_ms)
         ));

@@ -42,6 +42,8 @@ pub enum GithubPillMetric {
     /// Unread notifications (with the corner dot) — the original pill.
     #[default]
     Unread,
+    /// Open pull requests matched by the PR search rules.
+    OpenPrs,
     /// Contributions made today.
     ContribToday,
     /// The current contribution streak, in days.
@@ -54,6 +56,7 @@ impl GithubPillMetric {
     pub fn all() -> &'static [Self] {
         &[
             Self::Unread,
+            Self::OpenPrs,
             Self::ContribToday,
             Self::ContribStreak,
             Self::ContribTotal,
@@ -63,6 +66,7 @@ impl GithubPillMetric {
     pub fn label(self) -> &'static str {
         match self {
             Self::Unread => "Unread notifications",
+            Self::OpenPrs => "Open pull requests",
             Self::ContribToday => "Contributions today",
             Self::ContribStreak => "Contribution streak",
             Self::ContribTotal => "Contributions this year",
@@ -94,13 +98,31 @@ impl PatchField for GithubPillMetric {
 }
 
 /// GitHub pill + menu settings (Settings → Widgets → GitHub).
-#[derive(
-    Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize, Store, Patch, JsonSchema,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
 pub struct GithubConfig {
     /// What the bar pill counts.
     pub pill_metric: GithubPillMetric,
+    /// Hide the bar pill while its count is zero.
+    pub hide_when_zero: bool,
+    /// GitHub search qualifiers, one search per entry (`is:pr is:open` is
+    /// added), e.g. `author:@me`, `review-requested:@me`, `org:x label:y`.
+    /// The results are merged and deduplicated; at most 8 rules run.
+    pub pr_rules: Vec<String>,
+    /// Repositories (`owner/name`, `*` wildcards allowed) left out of the
+    /// PR list and count.
+    pub excluded_repos: Vec<String>,
+}
+
+impl Default for GithubConfig {
+    fn default() -> Self {
+        Self {
+            pill_metric: GithubPillMetric::default(),
+            hide_when_zero: false,
+            pr_rules: vec!["author:@me".to_owned()],
+            excluded_repos: Vec::new(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -123,5 +145,8 @@ mod tests {
         assert_eq!(cfg.github.pill_metric, GithubPillMetric::Unread);
         let cfg: Config = yaml_serde::from_str("github:\n  pill_metric: ContribStreak\n").unwrap();
         assert!(cfg.github.pill_metric.uses_contributions());
+        // A profile saved before the PR rules existed keeps today's search.
+        assert_eq!(cfg.github.pr_rules, ["author:@me"]);
+        assert!(!cfg.github.hide_when_zero && cfg.github.excluded_repos.is_empty());
     }
 }
