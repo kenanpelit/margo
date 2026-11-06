@@ -96,6 +96,7 @@ pub(crate) fn valid_device(dev: &str) -> bool {
 pub(crate) struct SmartReport {
     pub dev: String,
     pub model: String,
+    pub serial: String,
     pub passed: Option<bool>,
     pub temp_c: Option<i64>,
     /// NVMe "Percentage Used" — vendor estimate of rated endurance spent.
@@ -111,6 +112,9 @@ pub(crate) struct SmartReport {
     pub written_tb: Option<f64>,
     /// ATA: reallocated + pending + offline-uncorrectable sectors.
     pub bad_sectors: Option<u64>,
+    /// The drive can run SMART self-tests.
+    pub self_test_supported: bool,
+    pub self_test: super::selftest::SelfTestInfo,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -164,6 +168,7 @@ pub(crate) fn parse_smart_value(v: &Value) -> SmartRead {
     SmartRead::Report(SmartReport {
         dev,
         model: v["model_name"].as_str().unwrap_or_default().to_string(),
+        serial: v["serial_number"].as_str().unwrap_or_default().to_string(),
         passed: v["smart_status"]["passed"].as_bool(),
         temp_c: v["temperature"]["current"]
             .as_i64()
@@ -178,6 +183,9 @@ pub(crate) fn parse_smart_value(v: &Value) -> SmartRead {
         power_on_hours: u(&v["power_on_time"]["hours"]).or_else(|| u(&nv["power_on_hours"])),
         written_tb: u(&nv["data_units_written"]).map(|d| d as f64 * 512_000.0 / 1e12),
         bad_sectors: (!bad.is_empty()).then(|| bad.iter().sum()),
+        self_test_supported: v["nvme_self_test_log"].is_object()
+            || v["ata_smart_data"]["capabilities"]["self_tests_supported"].as_bool() == Some(true),
+        self_test: super::selftest::parse_self_test(v),
     })
 }
 
@@ -211,12 +219,52 @@ impl Health {
     }
 }
 
-/// Wear at or above this is a warning (vendor endurance nearly spent).
-const WEAR_WARN_PCT: u64 = 80;
-/// NVMe composite temperature warning threshold.
-const TEMP_WARN_C: i64 = 70;
+/// The user's thresholds (`drive_health.*`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Limits {
+    pub temp_warn_c: i64,
+    pub temp_crit_c: i64,
+    /// Wear at or above this is a warning (vendor endurance nearly spent).
+    pub wear_warn_pct: u64,
+}
 
-pub(crate) fn assess(r: &SmartReport) -> Health {
+impl Default for Limits {
+    fn default() -> Self {
+        Self::from_config(&mshell_config::schema::config::DriveHealthConfig::default())
+    }
+}
+
+impl Limits {
+    pub(crate) fn from_config(c: &mshell_config::schema::config::DriveHealthConfig) -> Self {
+        let (temp_warn_c, temp_crit_c) = c.temp_thresholds();
+        Self {
+            temp_warn_c,
+            temp_crit_c,
+            wear_warn_pct: u64::from(c.wear_warning_pct),
+        }
+    }
+
+    /// The current `drive_health` thresholds (GTK thread).
+    pub(crate) fn current() -> Self {
+        use mshell_config::config_manager::config_manager;
+        use mshell_config::schema::config::ConfigStoreFields;
+        use reactive_graph::prelude::GetUntracked;
+        Self::from_config(&config_manager().config().drive_health().get_untracked())
+    }
+
+    /// The dashboard's temperature tier class for `c` °C.
+    pub(crate) fn temp_class(&self, c: i64) -> &'static str {
+        if c >= self.temp_crit_c {
+            "metric-critical"
+        } else if c >= self.temp_warn_c {
+            "metric-warning"
+        } else {
+            ""
+        }
+    }
+}
+
+pub(crate) fn assess(r: &SmartReport, limits: &Limits) -> Health {
     let mut bad = Vec::new();
     let mut warn = Vec::new();
     if r.passed == Some(false) {
@@ -236,10 +284,10 @@ pub(crate) fn assess(r: &SmartReport) -> Health {
     if let Some(b) = r.bad_sectors.filter(|b| *b > 0) {
         warn.push(format!("{b} bad sectors"));
     }
-    if let Some(w) = r.wear_pct.filter(|w| *w >= WEAR_WARN_PCT) {
+    if let Some(w) = r.wear_pct.filter(|w| *w >= limits.wear_warn_pct) {
         warn.push(format!("{w}% of rated endurance used"));
     }
-    if let Some(t) = r.temp_c.filter(|t| *t >= TEMP_WARN_C) {
+    if let Some(t) = r.temp_c.filter(|t| *t >= limits.temp_warn_c) {
         warn.push(format!("running hot ({t}°C)"));
     }
     if !bad.is_empty() {
@@ -313,7 +361,12 @@ mod tests {
         let tb = r.written_tb.expect("written");
         assert!((tb - 15.647).abs() < 0.01, "{tb}");
         assert_eq!(r.bad_sectors, None);
-        assert_eq!(assess(&r), Health::Good);
+        assert_eq!(r.serial, "QY250310F2T0001");
+        assert!(
+            !r.self_test_supported,
+            "the schema fixture has no self-test log"
+        );
+        assert_eq!(assess(&r, &Limits::default()), Health::Good);
     }
 
     #[test]
@@ -352,7 +405,11 @@ mod tests {
             panic!("bit 2 alone still yields a report");
         };
         assert_eq!(r.bad_sectors, Some(9));
-        assert_eq!(assess(&r), Health::Warn(vec!["9 bad sectors".to_string()]));
+        let l = Limits::default();
+        assert_eq!(
+            assess(&r, &l),
+            Health::Warn(vec!["9 bad sectors".to_string()])
+        );
 
         let failing = SmartReport {
             passed: Some(false),
@@ -363,11 +420,24 @@ mod tests {
             temp_c: Some(75),
             ..SmartReport::default()
         };
-        let Health::Bad(why) = assess(&failing) else {
+        let Health::Bad(why) = assess(&failing, &l) else {
             panic!("failing drive must be Bad");
         };
         assert_eq!(why.len(), 5);
-        assert_eq!(assess(&failing).class(), "metric-critical");
+        assert_eq!(assess(&failing, &l).class(), "metric-critical");
+        // The user's thresholds move the warnings.
+        let lax = Limits {
+            temp_warn_c: 80,
+            temp_crit_c: 90,
+            wear_warn_pct: 95,
+        };
+        let Health::Bad(why) = assess(&failing, &lax) else {
+            panic!("still Bad");
+        };
+        assert_eq!(why.len(), 3, "no wear / temperature warning: {why:?}");
+        assert_eq!(lax.temp_class(85), "metric-warning");
+        assert_eq!(lax.temp_class(90), "metric-critical");
+        assert_eq!(l.temp_class(69), "");
         assert_eq!(Health::Good.class(), "");
     }
 

@@ -20,6 +20,7 @@ mod bars;
 mod crashes;
 mod dock;
 mod launcher;
+mod drive_health;
 mod menus;
 mod notifications;
 mod session;
@@ -31,6 +32,7 @@ pub use bars::*;
 pub use crashes::*;
 pub use dock::*;
 pub use launcher::*;
+pub use drive_health::*;
 pub use menus::*;
 pub use notifications::*;
 pub use session::*;
@@ -49,6 +51,7 @@ pub struct Config {
     pub menus: Menus,
     pub notifications: Notifications,
     pub crashes: CrashesConfig,
+    pub drive_health: DriveHealthConfig,
     pub wallpaper: Wallpaper,
     pub tempo: Tempo,
     pub idle: Idle,

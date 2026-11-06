@@ -1,4 +1,5 @@
 pub(crate) mod cpu_dashboard_menu_widget;
+pub(crate) mod drive_chart;
 pub(crate) mod drives;
 pub(crate) mod drives_tab;
 pub(crate) mod fan;
@@ -10,6 +11,7 @@ pub(crate) mod ports;
 pub(crate) mod ports_tab;
 pub(crate) mod processes_tab;
 pub(crate) mod procs;
+pub(crate) mod selftest;
 pub(crate) mod ui;
 
 /// Map a finished `pkexec` run to the user-facing outcome. 126 = the

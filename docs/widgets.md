@@ -42,7 +42,7 @@ parameter and use YAML tag syntax:
 
 | Token | Widget | What it does |
 | --- | --- | --- |
-| `CpuDashboard` | CPU Dashboard | A system-monitor capsule: by default live CPU load + package temperature; Settings → Widgets → CPU Dashboard (`bars.widgets.cpu_dashboard`) adds Intel iGPU busy % (`show_gpu`, sampled only while on), RAM, swap, the usage of the filesystem holding `disk_path` (default `/`) and network down / up over the physical interfaces (`show_network`). Each metric tints on its own thresholds (accent when high, red when critical; `highlight`); a missing sensor shows "—", or is left out with `hide_unavailable`, never a fake 0. Hover shows a two-column table — used / total per metric, CPU frequency, load average, the top CPU and memory processes (`detailed_tooltip`; read only while the pointer is on the pill). Click opens the dashboard (per-core bars, RAM, load averages) plus Intel iGPU busy % / frequency per GT (xe / i915 sysfs) and the processes using the GPU (DRM fdinfo), and on ThinkPads the fan level / RPM with manual levels (Auto · 0–7 · Max) when `thinkpad_acpi fan_control=1` is set (otherwise a hint how to enable it), with a **Processes** tab: a `/proc` process table sortable by CPU / RAM / swap / disk IO, searchable by name, command or PID, optionally grouped under the app window each process belongs to, with a confirmed terminate / force-kill (other users' processes through the `mshell-privileged kill` polkit action, which re-checks the process start time as root). A **Ports** tab lists listening TCP/UDP sockets (`ss -tulpn`) grouped by exposure (all interfaces / specific address / this machine only), with search, copy-PID, a confirmed kill and, on TCP listeners, an **Open** button that launches `http://localhost:<port>` (the bound address when it is a specific one; `https` on 443) in the default browser. A **Drives** tab shows each NVMe drive's temperature (sysfs, no root) and, on request, full SMART health — verdict, wear, spare, error counters, data written, power-on hours — from `smartctl` behind one polkit prompt (`mshell-privileged smart-read`; needs `smartmontools`). Right-click shows / hides RAM in the capsule for the session. |
+| `CpuDashboard` | CPU Dashboard | A system-monitor capsule: by default live CPU load + package temperature; Settings → Widgets → CPU Dashboard (`bars.widgets.cpu_dashboard`) adds Intel iGPU busy % (`show_gpu`, sampled only while on), RAM, swap, the usage of the filesystem holding `disk_path` (default `/`) and network down / up over the physical interfaces (`show_network`). Each metric tints on its own thresholds (accent when high, red when critical; `highlight`); a missing sensor shows "—", or is left out with `hide_unavailable`, never a fake 0. Hover shows a two-column table — used / total per metric, CPU frequency, load average, the top CPU and memory processes (`detailed_tooltip`; read only while the pointer is on the pill). Click opens the dashboard (per-core bars, RAM, load averages) plus Intel iGPU busy % / frequency per GT (xe / i915 sysfs) and the processes using the GPU (DRM fdinfo), and on ThinkPads the fan level / RPM with manual levels (Auto · 0–7 · Max) when `thinkpad_acpi fan_control=1` is set (otherwise a hint how to enable it), with a **Processes** tab: a `/proc` process table sortable by CPU / RAM / swap / disk IO, searchable by name, command or PID, optionally grouped under the app window each process belongs to, with a confirmed terminate / force-kill (other users' processes through the `mshell-privileged kill` polkit action, which re-checks the process start time as root). A **Ports** tab lists listening TCP/UDP sockets (`ss -tulpn`) grouped by exposure (all interfaces / specific address / this machine only), with search, copy-PID, a confirmed kill and, on TCP listeners, an **Open** button that launches `http://localhost:<port>` (the bound address when it is a specific one; `https` on 443) in the default browser. A **Drives** tab shows each NVMe drive's temperature (sysfs, no root) and, on request, full SMART health — verdict, wear, spare, error counters, data written, power-on hours — from `smartctl` behind one polkit prompt (`mshell-privileged smart-read`; needs `smartmontools`). Once SMART is loaded, a drive that supports it offers a **Short** / **Long** self-test (`mshell-privileged smart-selftest`, one prompt) with live progress and a notification with the result; with drive-health history on, each drive gets temperature (and wear) trend charts — see [Drive health](#drive-health). Right-click shows / hides RAM in the capsule for the session. |
 | `AudioDashboard` | Audio Dashboard | Default output **and** input volume in one cluster (`🔊 42% · 🎙 5%`). Right-click cycles which side shows; click opens the mixer menu (sliders, mute, per-app streams, device + port pickers, and a Noise suppression switch — an RNNoise virtual mic via a private PipeWire filter-chain, needs `noise-suppression-for-voice`; the switch is remembered, survives a shell restart and comes back after a reboot). |
 | `DiscordVoice` | Discord Voice | Your current Discord voice call via Discord's local RPC socket: call glyph tinted while in a channel, channel name + how many are speaking. Click opens the call panel (one-time Authorize, Mute / Deafen / Leave, participants with speaking dot and per-user volume 0–200 %). Needs the Discord desktop app; also `mshellctl menu discord-voice`. |
 | `AudioVisualizer` | Audio Visualizer | Live audio spectrum — a strip of bars driven by the `cava` CLI. Pulses with whatever is playing; flat strip on silence. Needs `cava` installed. |
@@ -310,6 +310,45 @@ quota is skipped for the next — the terminal says which and why.
 every prompt, e.g. “Answer in Turkish”. The button is disabled when neither
 `claude` nor `codex` is found on PATH or in `~/.local/bin`, the npm or bun
 bin directories. Nothing runs an agent without a click.
+
+## Drive health
+
+Settings → Widgets → CPU Dashboard → **Drive health** (`drive_health.*`,
+everything off by default):
+
+- **Drive alerts** (`alerts`): a minute scan of sysfs (no root; SATA
+  temperatures only with the `drivetemp` module) watches the internal drives — NVMe controllers and
+  non-removable SATA disks not behind USB — and notifies when one runs hot
+  (**Hot at** / **Critical at**, `temp_warning_c` 70 / `temp_critical_c`
+  85, with 3 °C hysteresis) or, with **Missing-drive alerts**
+  (`missing_alerts`), when a drive that was established (seen in three
+  scans) has been absent for **Missing-drive grace** minutes
+  (`missing_grace_scans`, 3). Full SMART needs root and is never polled:
+  every full read the Drives tab makes (**Read SMART health…**, or a
+  self-test's progress reads) is compared with the last one, and a new or
+  worse issue — failed self-assessment, critical-warning flags, media
+  errors, spare below threshold, bad sectors, wear at **Wear warning**
+  (`wear_warning_pct`, 80; then every further 5 points) — raises a
+  notification. **Notify when an issue clears** (`notify_recovery`) also
+  announces recoveries. The thresholds also colour the Drives tab.
+- **Trend history** (`history`): a temperature sample every
+  `history_interval_minutes` (60, 15–1440) plus every full SMART read,
+  kept for `history_retention_days` (30, 1–365) and at most 20 000
+  samples per drive; the Drives tab charts temperature (dashed line at the
+  hot threshold) and wear once it has moved.
+- **Self-tests**: in the Drives tab, after a full SMART read, **Short** /
+  **Long** start `smartctl -t` through `mshell-privileged smart-selftest`
+  (its own polkit action). The helper reports a `smartctl -a` read every
+  15 s, so one password prompt gives a progress bar and the final result
+  (notified — a long test on a hard disk takes hours); closing the shell
+  stops the watching, never the test. A test the drive is already running
+  shows its progress without buttons.
+
+State and history live in `$XDG_STATE_HOME/mshell/drive-health/`
+(`alerts.json`, `history.json`; a file that doesn't parse is kept as
+`.bak` and never overwritten). Not ported from the plugin: a root
+systemd-timer collector (SMART is only as fresh as your last read),
+per-drive aliases / thresholds and mounted-space per drive.
 
 ## Reboot into… (session menu)
 

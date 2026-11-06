@@ -59,6 +59,7 @@ mod page_defaults;
 /// Fire a startup toast when a keybind is bound twice across active sources.
 pub use keybinds_settings::warn_conflicts_toast;
 mod agents_settings;
+mod drive_health_settings;
 mod keyboard_settings;
 mod launcher_settings;
 mod layer_rules_settings;

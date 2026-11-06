@@ -374,6 +374,8 @@ pub(crate) struct WidgetMenuSettingsModel {
     /// Valent-only: keeps the screen-mirroring section's config mirror.
     _valent_effects: Option<EffectScope>,
     _host_monitor_effects: Option<EffectScope>,
+    /// CpuDashboard-only: keeps the drive-health section's config mirror.
+    _drive_health_effects: Option<EffectScope>,
     _effects: EffectScope,
 }
 
@@ -718,6 +720,9 @@ impl Component for WidgetMenuSettingsModel {
         // Host Monitor-only: interval, timeout and notifications.
         let host_monitor_section = (kind == MenuKind::HostMonitor)
             .then(crate::net::host_monitor_settings::build_host_monitor_section);
+        // CpuDashboard-only: drive-health alerts, history and thresholds.
+        let drive_health_section = (kind == MenuKind::CpuDashboard)
+            .then(crate::drive_health_settings::build_drive_health_section);
 
         let model = WidgetMenuSettingsModel {
             kind,
@@ -736,6 +741,7 @@ impl Component for WidgetMenuSettingsModel {
             _mdash_buttons_controller: mdash_buttons_controller,
             _valent_effects: None,
             _host_monitor_effects: None,
+            _drive_health_effects: None,
             _effects: effects,
         };
 
@@ -757,6 +763,10 @@ impl Component for WidgetMenuSettingsModel {
         if let Some((section, effects)) = host_monitor_section {
             widgets.page_box.append(&section);
             model._host_monitor_effects = Some(effects);
+        }
+        if let Some((section, effects)) = drive_health_section {
+            widgets.page_box.append(&section);
+            model._drive_health_effects = Some(effects);
         }
 
         ComponentParts { model, widgets }

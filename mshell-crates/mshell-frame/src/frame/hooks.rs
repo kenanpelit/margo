@@ -42,4 +42,10 @@ pub(super) fn push_background_hooks(effects: &mut EffectScope) {
     effects.push(move |_| {
         crate::crashes::set_watcher(config_manager().config().crashes().notify().get());
     });
+
+    // Drive health (alerts / trend history): a minute sysfs scan while
+    // either is on; nothing runs while both are off.
+    effects.push(move |_| {
+        crate::drive_health::configure(&config_manager().config().drive_health().get());
+    });
 }
