@@ -555,7 +555,8 @@ pub(super) fn register_widget_entries(
                     group_anchor = Some(btn.clone());
                 }
                 widgets_sub_sidebar_box.append(&btn);
-                let factory = page_factory!(WidgetMenuSettingsModel => WidgetMenuSettingsInit { kind });
+                let factory =
+                    page_factory!(WidgetMenuSettingsModel => WidgetMenuSettingsInit { kind });
                 widget_registry
                     .borrow_mut()
                     .insert(stack_name.to_string(), factory);
