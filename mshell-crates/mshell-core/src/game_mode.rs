@@ -17,10 +17,13 @@ use mshell_services::notification_service;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-/// The idle-inhibitor state to restore when game mode turns off — captured when
-/// it turns on, so we hand control back instead of clobbering a manual hold
-/// (the keep-awake widget). Mirrors the audio-inhibit remember/restore pattern.
-static IDLE_RESTORE: Mutex<Option<bool>> = Mutex::new(None);
+mod plan;
+
+/// What game mode holds right now (see [`plan::Held`]). GTK thread only.
+static HELD: Mutex<plan::Held> = Mutex::new(plan::Held {
+    dnd_before: None,
+    idle_before: None,
+});
 
 fn margo_dir() -> PathBuf {
     let base = margo_fs::xdg::config_home();
@@ -107,41 +110,36 @@ fn spawn_idle(enable: bool) {
     });
 }
 
-/// Apply game mode on/off. Writes the effects fragment + reloads margo, toggles
-/// DND, and holds/releases the idle inhibitor — each gated on its config
-/// switch. Idempotent.
+/// The session state [`plan::reconcile`] reads.
+fn live() -> plan::Live {
+    plan::Live {
+        dnd: notification_service().is_some_and(|svc| svc.dnd.get()),
+        idle_held: IdleInhibitor::global().get(),
+    }
+}
+
+/// Apply game mode on/off. Writes the effects fragment + reloads margo, and
+/// engages or releases DND and the idle inhibitor — each gated on its config
+/// switch, each putting back the state it found. Idempotent: called on every
+/// `game_mode` change, it only acts on what differs.
 pub fn apply(cfg: &GameMode, on: bool) {
     match write_fragment(cfg, on) {
         Ok(()) => reload(),
         Err(e) => tracing::warn!(error = %e, "game mode: writing effects fragment failed"),
     }
 
-    if cfg.enable_dnd
-        && let Some(svc) = notification_service()
-    {
-        svc.set_dnd(on);
-    }
-
-    if cfg.inhibit_idle {
-        if on {
-            let restore = IdleInhibitor::global().get();
-            if let Ok(mut g) = IDLE_RESTORE.lock() {
-                *g = Some(restore);
+    let steps = match HELD.lock() {
+        Ok(mut held) => plan::reconcile(&mut held, cfg, on, &live()),
+        Err(_) => return,
+    };
+    for step in steps {
+        match step {
+            plan::Step::Dnd(v) => {
+                if let Some(svc) = notification_service() {
+                    svc.set_dnd(v);
+                }
             }
-            // Only engage if it wasn't already held (by the user).
-            if !restore {
-                spawn_idle(true);
-            }
-        } else {
-            // Restore the pre-game-mode state; default to releasing.
-            let restore = IDLE_RESTORE
-                .lock()
-                .ok()
-                .and_then(|mut g| g.take())
-                .unwrap_or(false);
-            if !restore {
-                spawn_idle(false);
-            }
+            plan::Step::IdleInhibit(v) => spawn_idle(v),
         }
     }
 }
