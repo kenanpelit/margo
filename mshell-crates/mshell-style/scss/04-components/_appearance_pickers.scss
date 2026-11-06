@@ -1,0 +1,43 @@
+// Settings → Theme → Cursor / Icons: theme cards with real previews.
+//
+// The cards are `.ok-button-surface` buttons; the chosen one takes the same
+// tonal "selected" treatment as the animation preset cards (a soft
+// --primary-container fill, --on-primary-container text) so the name stays
+// readable.
+.asset-picker-grid {
+  background-color: transparent;
+}
+
+.asset-picker-grid > flowboxchild {
+  padding: 0;
+  background: transparent;
+}
+
+.asset-picker-card {
+  padding: var(--space-3);
+
+  &.active {
+    background-color: var(--primary-container);
+
+    label {
+      color: var(--on-primary-container);
+    }
+  }
+}
+
+.asset-picker-preview {
+  padding: var(--space-1) 0;
+}
+
+// Places that disagree (cursor) — the error-container role, as a calm
+// card rather than a red flood.
+.asset-picker-warning {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background-color: var(--error-container);
+  color: var(--on-error-container);
+
+  label {
+    color: var(--on-error-container);
+  }
+}

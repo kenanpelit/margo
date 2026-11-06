@@ -5613,6 +5613,7 @@ dependencies = [
  "wayle-bluetooth",
  "wayle-network",
  "wayle-power-profiles",
+ "xcursor",
  "zeroize",
 ]
 

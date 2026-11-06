@@ -34,6 +34,7 @@ mod cc_tiles_settings;
 mod clipboard_settings;
 mod color_input;
 mod compositor_conf;
+mod cursor_settings;
 mod date_time_settings;
 mod default_apps_settings;
 mod display_settings;
@@ -93,6 +94,7 @@ mod system_update_settings;
 mod tag_layout_settings;
 mod tag_rules_settings;
 mod theme_bundle_settings;
+mod theme_files;
 mod theme_settings;
 /// Theme palette preview shared with the frame's theme picker.
 pub mod theme_swatch;
