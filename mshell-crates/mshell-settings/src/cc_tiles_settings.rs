@@ -406,6 +406,8 @@ impl Component for CcTilesSettingsModel {
 
         root.append(&build_custom_tile_section());
         root.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+        root.append(&crate::logo_led_settings::build_logo_led_section());
+        root.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
 
         let header_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
         let header_label = gtk::Label::new(Some("Tiles"));

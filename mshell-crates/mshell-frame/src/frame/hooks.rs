@@ -43,6 +43,14 @@ pub(super) fn push_background_hooks(effects: &mut EffectScope) {
         crate::crashes::set_watcher(config_manager().config().crashes().notify().get());
     });
 
+    // ThinkPad logo LED automation (off while locked / during DND, blink
+    // on notifications): runs only while a rule is on and the LED is
+    // writable without a prompt.
+    effects.push(move |_| {
+        let rules = config_manager().config().control_center().logo_led().get();
+        crate::menus::menu_widgets::control_center::tiles::led_auto::configure(rules);
+    });
+
     // Drive health (alerts / trend history): a minute sysfs scan while
     // either is on; nothing runs while both are off.
     effects.push(move |_| {

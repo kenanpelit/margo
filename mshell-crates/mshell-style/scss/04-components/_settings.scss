@@ -812,3 +812,12 @@
         @include buttons.state-layers("--tertiary-container", "--on-tertiary-container");
     }
 }
+
+// A config snippet the user copies (e.g. the logo-LED udev rule):
+// monospace, selectable, on the recessed surface.
+.settings-code {
+  font-family: var(--font-family-monospace);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-container);
+}

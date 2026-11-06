@@ -479,6 +479,28 @@ pub struct ControlCenterConfig {
     /// What the `custom_shortcut` tile shows and runs.
     #[serde(default)]
     pub custom_shortcut_tile: CustomShortcutTile,
+    /// Automatic ThinkPad logo LED behaviour (needs a writable LED).
+    #[serde(default)]
+    pub logo_led: LogoLedAutomation,
+}
+
+/// Automatic behaviour for the ThinkPad lid logo LED
+/// (`tpacpi::lid_logo_dot`). It only runs when the user can write the
+/// LED's `brightness` (a udev rule, see docs/widgets.md): a password
+/// prompt per lock or notification would be absurd, so without that it
+/// stays inert. All off by default.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize, Store, Patch, JsonSchema,
+)]
+#[serde(default)]
+pub struct LogoLedAutomation {
+    /// Turn the LED off while the screen is locked; restore it on unlock.
+    pub off_while_locked: bool,
+    /// Turn the LED off while Do Not Disturb is on; restore it after.
+    pub off_while_dnd: bool,
+    /// Blink the LED when a notification arrives (not during Do Not
+    /// Disturb or while locked).
+    pub blink_on_notification: bool,
 }
 
 /// The user-defined Control Center tile. Blank `label` / `icon` fall back
@@ -553,6 +575,7 @@ impl Default for ControlCenterConfig {
             show_power_profile: true,
             show_media: true,
             custom_shortcut_tile: CustomShortcutTile::default(),
+            logo_led: LogoLedAutomation::default(),
         }
     }
 }

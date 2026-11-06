@@ -37,6 +37,7 @@
 mod custom;
 mod grid;
 mod led;
+pub(crate) mod led_auto;
 mod pollers;
 mod registry;
 // The live system-state readers (battery, disk, twilight, UFW, podman,
