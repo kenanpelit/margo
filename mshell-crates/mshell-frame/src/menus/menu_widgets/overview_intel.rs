@@ -4,7 +4,8 @@
 //! anything else.
 //!
 //! The widget pulls from data sources mshell already wires:
-//!   - notification_service().notifications — pending count
+//!   - unread notifications — what arrived since the centre was last
+//!     opened (`crate::notification_unread`), not the stored history
 //!   - battery_service().device — % + state
 //!   - pending package updates — the shared system-update cache when
 //!     fresh, else a cheap repo-only `checkupdates` probe this widget
@@ -28,14 +29,12 @@
 #![allow(clippy::needless_borrow)]
 
 use crate::menus::reveal_poll::RevealPoll;
-use crate::system_update::{self, ProbeConfig};
+use crate::system_update;
 use mshell_common::scoped_effects::EffectScope;
-use mshell_services::notification_service;
 use mshell_utils::battery::spawn_battery_watcher;
 use mshell_utils::notifications::spawn_notifications_watcher;
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
@@ -45,17 +44,6 @@ const POLL_INTERVAL: Duration = Duration::from_secs(5);
 // genuinely worth a look.
 const BATTERY_LOW_PERCENT: i32 = 25;
 const BATTERY_CRITICAL_PERCENT: i32 = 10;
-
-// Pending-update sourcing. Prefer a fresh shared cache (the full
-// repo+AUR+flatpak report the System Update widget writes) when it's
-// younger than this; otherwise run our own cheap repo-only probe
-// (`checkupdates` — no sudo, no AUR helper) so the count still shows
-// even when that widget isn't on the bar.
-const CACHE_FRESH_SECS: u64 = 1800;
-const OWN_PROBE_THROTTLE_SECS: u64 = 900;
-/// Last time *this widget* ran its own repo probe (Unix secs), shared
-/// across monitor instances so they don't all probe at once.
-static LAST_OWN_PROBE: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) struct OverviewIntelModel {
     notification_count: usize,
@@ -249,6 +237,22 @@ impl Component for OverviewIntelModel {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         spawn_notifications_watcher(&sender, || OverviewIntelCommandOutput::NotificationsChanged);
+        // …and when the centre is opened (the read line moves).
+        sender.command(|out, shutdown| {
+            shutdown
+                .register(async move {
+                    let mut rx = crate::notification_unread::changes();
+                    while rx.changed().await.is_ok() {
+                        if out
+                            .send(OverviewIntelCommandOutput::NotificationsChanged)
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                })
+                .drop_on_shutdown()
+        });
         spawn_battery_watcher(&sender, || OverviewIntelCommandOutput::BatteryChanged);
 
         // 5 s tick for the cached update count + date refresh (date
@@ -268,9 +272,7 @@ impl Component for OverviewIntelModel {
         let has_battery = battery.present;
         let battery_percent = battery.percentage.round().clamp(0.0, 100.0) as i32;
         let battery_charging = current_battery_charging();
-        let notification_count = notification_service()
-            .map(|s| s.notifications.get().len())
-            .unwrap_or(0);
+        let notification_count = crate::notification_unread::unread();
 
         let model = OverviewIntelModel {
             notification_count,
@@ -314,9 +316,7 @@ impl Component for OverviewIntelModel {
                 self.has_battery = battery.present;
                 self.battery_percent = battery.percentage.round().clamp(0.0, 100.0) as i32;
                 self.battery_charging = current_battery_charging();
-                self.notification_count = notification_service()
-                    .map(|s| s.notifications.get().len())
-                    .unwrap_or(0);
+                self.notification_count = crate::notification_unread::unread();
             }
             OverviewIntelInput::Tick => {
                 refresh_updates(&sender);
@@ -340,8 +340,8 @@ impl Component for OverviewIntelModel {
 fn notification_line(count: usize) -> String {
     match count {
         0 => "No new notifications".to_string(),
-        1 => "1 notification waiting".to_string(),
-        n => format!("{n} notifications waiting"),
+        1 => "1 new notification".to_string(),
+        n => format!("{n} new notifications"),
     }
 }
 
@@ -374,30 +374,11 @@ fn updates_line(count: usize) -> String {
 /// count alive even when the System Update bar widget isn't present (the
 /// reason the line previously stayed empty).
 fn refresh_updates(sender: &ComponentSender<OverviewIntelModel>) {
-    if let Some((checked_at, report)) = system_update::load_cache()
-        && system_update::now_secs().saturating_sub(checked_at) < CACHE_FRESH_SECS
-    {
-        sender.input(OverviewIntelInput::UpdateCountProbed(report.total()));
-        return;
-    }
-
-    let now = system_update::now_secs();
-    let last = LAST_OWN_PROBE.load(Ordering::Relaxed);
-    if now.saturating_sub(last) < OWN_PROBE_THROTTLE_SECS {
-        // Someone probed recently — keep the last known count.
-        return;
-    }
-    LAST_OWN_PROBE.store(now, Ordering::Relaxed);
-
     let sender = sender.clone();
     relm4::spawn(async move {
-        let report = system_update::probe(ProbeConfig {
-            repo: true,
-            aur: false,
-            flatpak: false,
-        })
-        .await;
-        sender.input(OverviewIntelInput::UpdateCountProbed(report.total()));
+        if let Some(report) = system_update::glance_report().await {
+            sender.input(OverviewIntelInput::UpdateCountProbed(report.total()));
+        }
     });
 }
 

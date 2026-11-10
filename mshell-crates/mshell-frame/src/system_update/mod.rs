@@ -140,6 +140,40 @@ pub(crate) fn load_cache() -> Option<(u64, UpdateReport)> {
     Some((c.checked_at, c.report))
 }
 
+/// How old the shared cache may be before a glance surface probes itself.
+const GLANCE_CACHE_FRESH_SECS: u64 = 1800;
+/// A glance surface's own probe runs at most this often (all monitors and
+/// surfaces together).
+const GLANCE_PROBE_THROTTLE_SECS: u64 = 900;
+static LAST_GLANCE_PROBE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Pending updates for the glance surfaces (the Overview card, mdash's chip
+/// and Updates card): the full report the System Update widget cached when
+/// it is fresh, else a cheap repo-only `checkupdates` probe (no sudo, no
+/// AUR helper) so the count shows without that widget on the bar. When
+/// someone probed recently the (stale) cache answers; `None` without one.
+pub(crate) async fn glance_report() -> Option<UpdateReport> {
+    use std::sync::atomic::Ordering;
+    if let Some((checked_at, report)) = load_cache()
+        && now_secs().saturating_sub(checked_at) < GLANCE_CACHE_FRESH_SECS
+    {
+        return Some(report);
+    }
+    let now = now_secs();
+    if now.saturating_sub(LAST_GLANCE_PROBE.load(Ordering::Relaxed)) < GLANCE_PROBE_THROTTLE_SECS {
+        return load_cache().map(|(_, r)| r);
+    }
+    LAST_GLANCE_PROBE.store(now, Ordering::Relaxed);
+    Some(
+        probe(ProbeConfig {
+            repo: true,
+            aur: false,
+            flatpak: false,
+        })
+        .await,
+    )
+}
+
 /// Persist the report stamped with the current time (best-effort).
 pub(crate) fn save_cache(report: &UpdateReport) {
     let path = cache_path();

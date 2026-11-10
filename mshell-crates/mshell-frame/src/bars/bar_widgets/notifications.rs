@@ -6,9 +6,10 @@ use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
 /// Bar bell with a read/unread corner dot.
 ///
-/// `total` is the size of the notification history; `seen` is how many
-/// the user had already acknowledged the last time they opened the
-/// centre (clicking the bell). Anything beyond `seen` is **unread**.
+/// `total` is the size of the notification history; `unread` is what
+/// arrived since the user last opened the centre — the shared read line
+/// in [`crate::notification_unread`], so the bell, mdash's chip and the
+/// Overview card always agree.
 /// The dot encodes three states:
 ///   - unread (`total > seen`) → solid accent dot ("new, look at me")
 ///   - read   (`total > 0`, all seen) → faint muted dot ("history here")
@@ -17,7 +18,7 @@ use relm4::{Component, ComponentParts, ComponentSender, gtk};
 pub(crate) struct NotificationsModel {
     orientation: Orientation,
     total: usize,
-    seen: usize,
+    unread: usize,
 }
 
 #[derive(Debug)]
@@ -43,7 +44,14 @@ pub(crate) enum NotificationsCommandOutput {
 
 impl NotificationsModel {
     fn unread(&self) -> usize {
-        self.total.saturating_sub(self.seen)
+        self.unread
+    }
+
+    fn refresh(&mut self) {
+        self.total = notification_service()
+            .map(|s| s.notifications.get().len())
+            .unwrap_or(0);
+        self.unread = crate::notification_unread::unread();
     }
 }
 
@@ -124,17 +132,31 @@ impl Component for NotificationsModel {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         spawn_notifications_watcher(&sender, || NotificationsCommandOutput::NotificationsChanged);
+        // The read line also moves when the centre is opened elsewhere.
+        sender.command(|out, shutdown| {
+            shutdown
+                .register(async move {
+                    let mut rx = crate::notification_unread::changes();
+                    while rx.changed().await.is_ok() {
+                        if out
+                            .send(NotificationsCommandOutput::NotificationsChanged)
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                })
+                .drop_on_shutdown()
+        });
 
-        // Treat whatever history already exists at startup as read, so a
-        // fresh login doesn't light up "unread" for old notifications.
-        let total = notification_service()
-            .map(|s| s.notifications.get().len())
-            .unwrap_or(0);
-        let model = NotificationsModel {
+        // The history present at startup counts as read (the shared line's
+        // first observation), so a fresh login doesn't light up old ones.
+        let mut model = NotificationsModel {
             orientation: params.orientation,
-            total,
-            seen: total,
+            total: 0,
+            unread: 0,
         };
+        model.refresh();
 
         let widgets = view_output!();
 
@@ -151,7 +173,8 @@ impl Component for NotificationsModel {
         match message {
             NotificationsInput::Opened => {
                 // Opening the centre acknowledges everything in history.
-                self.seen = self.total;
+                crate::notification_unread::mark_all_read();
+                self.refresh();
             }
         }
         self.update_view(widgets, sender);
@@ -165,17 +188,7 @@ impl Component for NotificationsModel {
         _root: &Self::Root,
     ) {
         match message {
-            NotificationsCommandOutput::NotificationsChanged => {
-                self.total = notification_service()
-                    .map(|s| s.notifications.get().len())
-                    .unwrap_or(0);
-                // History shrank (cleared / individual dismiss) — never let
-                // `seen` outrun it, or `unread` would underflow to a stale
-                // positive once it grows again.
-                if self.seen > self.total {
-                    self.seen = self.total;
-                }
-            }
+            NotificationsCommandOutput::NotificationsChanged => self.refresh(),
         }
 
         self.update_view(widgets, sender);

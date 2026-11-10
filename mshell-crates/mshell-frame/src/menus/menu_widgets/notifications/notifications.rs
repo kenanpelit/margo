@@ -394,6 +394,11 @@ impl Component for NotificationsModel {
             }
             NotificationsInput::ParentRevealChanged(revealed) => {
                 self.revealed = revealed;
+                // The centre is on screen: everything in it is read
+                // (the bell dot and mdash's chip follow).
+                if revealed {
+                    crate::notification_unread::mark_all_read();
+                }
                 // Only rebuild on open if something changed since last time
                 // (or the very first open) — reopening an unchanged history
                 // shouldn't re-splice the whole list model.
