@@ -65,5 +65,6 @@ pub fn screen_record(
 
 mod stopwatch;
 mod system_update;
+pub mod timers;
 mod twilight;
 mod valent;
