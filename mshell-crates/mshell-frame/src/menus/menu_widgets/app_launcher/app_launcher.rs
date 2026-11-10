@@ -537,7 +537,16 @@ impl Component for AppLauncherModel {
         runtime.register(Box::new(
             YoutubeProvider::new().with_search_setter(make_search_setter()),
         ));
-        runtime.register(Box::new(FileSearchProvider::new()));
+        // `fs`: scope / extra folders / USB disks follow Settings → Launcher
+        // → File search (re-read per query; launcher rows write back).
+        runtime.register(Box::new(
+            FileSearchProvider::new()
+                .with_settings(
+                    Box::new(super::fs_settings::read),
+                    Rc::new(super::fs_settings::save),
+                )
+                .with_search_setter(make_search_setter()),
+        ));
         // Same favicon switch as `web` sites (Settings → Launcher).
         runtime.register(Box::new(WebappProvider::new(|| {
             config_manager()

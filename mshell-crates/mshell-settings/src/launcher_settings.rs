@@ -12,10 +12,11 @@
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
-    ConfigStoreFields, LauncherStoreFields, MenuStoreFields, MenusStoreFields,
-    PassAutotypeSeparator, PassStoreFields,
+    ConfigStoreFields, FileSearch, FileSearchScope, LauncherStoreFields, MenuStoreFields,
+    MenusStoreFields, PassAutotypeSeparator, PassStoreFields,
 };
 use mshell_config::schema::position::Position;
+use mshell_launcher::providers::file_search::scope::{FolderError, validate_new_folder};
 use mshell_launcher::providers::websearch::parse_sites;
 use mshell_launcher::{frecency, history};
 use reactive_graph::prelude::{Get, GetUntracked};
@@ -30,6 +31,8 @@ pub(crate) struct LauncherSettingsModel {
     position_model: gtk::StringList,
     /// Mirror of `config.launcher.web_sites` (`Name|url` lines).
     web_sites: Vec<String>,
+    /// Mirror of `config.launcher.file_search`.
+    file_search: FileSearch,
     _effects: EffectScope,
 }
 
@@ -55,6 +58,16 @@ pub(crate) enum LauncherSettingsInput {
     WebSiteRemove(usize),
     /// Config changed externally (hand-edited YAML).
     WebSitesEffect(Vec<String>),
+    /// File search scope dropdown (Home only / Home + folders / Whole system).
+    FsScopePicked(u32),
+    FsUsbToggled(bool),
+    /// Validate (off the GTK thread) and append an extra search folder.
+    FsFolderAdd(String),
+    /// Pick an extra search folder with the folder chooser.
+    FsFolderBrowse,
+    FsFolderRemove(usize),
+    /// `launcher.file_search` changed (here, from the launcher, or YAML).
+    FsEffect(FileSearch),
     PositionPicked(u32),
     MinWidthChanged(i32),
     MaxHeightChanged(i32),
@@ -69,7 +82,10 @@ pub(crate) enum LauncherSettingsOutput {}
 pub(crate) struct LauncherSettingsInit {}
 
 #[derive(Debug)]
-pub(crate) enum LauncherSettingsCommandOutput {}
+pub(crate) enum LauncherSettingsCommandOutput {
+    /// An extra search folder after validation (stored form, or why not).
+    FsFolderChecked(Result<String, FolderError>),
+}
 
 #[relm4::component(pub)]
 impl Component for LauncherSettingsModel {
@@ -435,6 +451,144 @@ impl Component for LauncherSettingsModel {
                     set_orientation: gtk::Orientation::Vertical,
                 },
 
+                // File search (`fs`) ────────────────────────────
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "File search",
+                    set_halign: gtk::Align::Start,
+                    set_margin_top: 12,
+                },
+                gtk::Label {
+                    add_css_class: "label-small",
+                    set_label: "Where the launcher's `fs` prefix looks for files and folders. Each choice keeps its own index, so switching back is instant. An empty `fs` query offers the same switches and Rebuild search index.",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                },
+
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/launcher/file_search/scope",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_label: "Search in",
+                                set_halign: gtk::Align::Start,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_label: "Home only, your home plus the folders below, or the whole system (without /proc, /sys, /dev, /run, /tmp, network, FUSE and snapshot mounts).",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::DropDown {
+                            set_width_request: 180,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&gtk::StringList::new(&["Home only", "Home + folders", "Whole system"])),
+                            #[watch]
+                            #[block_signal(fs_scope_handler)]
+                            set_selected: scope_index(model.file_search.scope),
+                            connect_selected_notify[sender] => move |dd| {
+                                sender.input(LauncherSettingsInput::FsScopePicked(dd.selected()));
+                            } @fs_scope_handler,
+                        },
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_widget_name: "setting:/launcher/file_search/include_usb",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_label: "Include USB disks",
+                                set_halign: gtk::Align::Start,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_label: "Also search mounted USB and removable disks. They are walked only when you run Rebuild search index from `fs` — never on plug-in; until then the launcher says the index is out of date.",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(fs_usb_handler)]
+                            set_active: model.file_search.include_usb,
+                            connect_active_notify[sender] => move |sw| {
+                                sender.input(LauncherSettingsInput::FsUsbToggled(sw.is_active()));
+                            } @fs_usb_handler,
+                        },
+                    },
+                },
+
+                gtk::Label {
+                    add_css_class: "label-small",
+                    set_label: "Extra folders, searched in Home + folders mode — a second disk or a hidden folder such as ~/.config. The folder must exist; ~ works. In the launcher, `fs +<path>` adds one too.",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                    set_margin_top: 4,
+                },
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 8,
+                    set_widget_name: "setting:/launcher/file_search/folders",
+
+                    #[name = "fs_folder_entry"]
+                    gtk::Entry {
+                        set_hexpand: true,
+                        set_placeholder_text: Some("e.g. /media/data or ~/.config/app"),
+                        connect_activate[sender] => move |e| {
+                            let text = e.text().trim().to_string();
+                            if !text.is_empty() {
+                                sender.input(LauncherSettingsInput::FsFolderAdd(text));
+                            }
+                        },
+                    },
+                    gtk::Button {
+                        add_css_class: "ok-button-surface",
+                        set_valign: gtk::Align::Center,
+                        set_label: "Browse…",
+                        connect_clicked[sender] => move |_| {
+                            sender.input(LauncherSettingsInput::FsFolderBrowse);
+                        },
+                    },
+                    #[name = "fs_folder_add"]
+                    gtk::Button {
+                        add_css_class: "ok-button-primary",
+                        set_valign: gtk::Align::Center,
+                        set_label: "Add",
+                    },
+                },
+
+                #[name = "fs_folders_list"]
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+                },
+
                 // Cache ────────────────────────────────────────
                 gtk::Label {
                     add_css_class: "label-large-bold",
@@ -769,6 +923,12 @@ impl Component for LauncherSettingsModel {
 
         let sender_clone = sender.clone();
         effects.push(move |_| {
+            let fs = config_manager().config().launcher().file_search().get();
+            sender_clone.input(LauncherSettingsInput::FsEffect(fs));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
             let p = config_manager()
                 .config()
                 .menus()
@@ -823,6 +983,11 @@ impl Component for LauncherSettingsModel {
                 .launcher()
                 .web_sites()
                 .get_untracked(),
+            file_search: config_manager()
+                .config()
+                .launcher()
+                .file_search()
+                .get_untracked(),
             _effects: effects,
         };
 
@@ -848,6 +1013,24 @@ impl Component for LauncherSettingsModel {
                 .connect_activate(move |e| submit(e, &s));
         }
         rebuild_web_site_rows(&widgets.web_sites_list, &model.web_sites, &sender);
+
+        // Extra search folders: Add button (Enter in the entry is wired in
+        // the view), initial rows.
+        {
+            let entry = widgets.fs_folder_entry.clone();
+            let s = sender.clone();
+            widgets.fs_folder_add.connect_clicked(move |_| {
+                let text = entry.text().trim().to_string();
+                if !text.is_empty() {
+                    s.input(LauncherSettingsInput::FsFolderAdd(text));
+                }
+            });
+        }
+        rebuild_folder_rows(
+            &widgets.fs_folders_list,
+            &model.file_search.folders,
+            &sender,
+        );
 
         widgets.pass_store_entry.set_text(
             &config_manager()
@@ -938,6 +1121,76 @@ impl Component for LauncherSettingsModel {
                     rebuild_web_site_rows(&widgets.web_sites_list, &self.web_sites, &sender);
                 }
             }
+            LauncherSettingsInput::FsScopePicked(idx) => {
+                let scope = scope_from_index(idx);
+                if self.file_search.scope != scope {
+                    self.file_search.scope = scope;
+                    config_manager().update_config(move |c| c.launcher.file_search.scope = scope);
+                }
+            }
+            LauncherSettingsInput::FsUsbToggled(on) => {
+                if self.file_search.include_usb != on {
+                    self.file_search.include_usb = on;
+                    config_manager()
+                        .update_config(move |c| c.launcher.file_search.include_usb = on);
+                }
+            }
+            LauncherSettingsInput::FsFolderAdd(raw) => {
+                // Stat off the GTK thread: the path may be on a slow or
+                // network mount.
+                let existing = self.file_search.folders.clone();
+                let home = margo_fs::xdg::home()
+                    .map(|h| h.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "/".into());
+                sender.oneshot_command(async move {
+                    let checked = tokio::task::spawn_blocking(move || {
+                        validate_new_folder(&raw, &home, &existing, |p| {
+                            std::fs::metadata(p).ok().map(|m| m.is_dir())
+                        })
+                    })
+                    .await
+                    .unwrap_or(Err(FolderError::Empty));
+                    LauncherSettingsCommandOutput::FsFolderChecked(checked)
+                });
+            }
+            LauncherSettingsInput::FsFolderBrowse => {
+                let dialog = gtk::FileDialog::builder()
+                    .title("Add a search folder")
+                    .modal(true)
+                    .build();
+                let s = sender.clone();
+                dialog.select_folder(
+                    gtk::Window::NONE,
+                    gtk::gio::Cancellable::NONE,
+                    move |result| {
+                        if let Ok(file) = result
+                            && let Some(path) = file.path()
+                        {
+                            s.input(LauncherSettingsInput::FsFolderAdd(
+                                path.to_string_lossy().into_owned(),
+                            ));
+                        }
+                    },
+                );
+            }
+            LauncherSettingsInput::FsFolderRemove(idx) => {
+                if idx < self.file_search.folders.len() {
+                    self.file_search.folders.remove(idx);
+                    let list = self.file_search.folders.clone();
+                    config_manager().update_config(move |c| c.launcher.file_search.folders = list);
+                    rebuild_folder_rows(
+                        &widgets.fs_folders_list,
+                        &self.file_search.folders,
+                        &sender,
+                    );
+                }
+            }
+            LauncherSettingsInput::FsEffect(fs) => {
+                if fs.folders != self.file_search.folders {
+                    rebuild_folder_rows(&widgets.fs_folders_list, &fs.folders, &sender);
+                }
+                self.file_search = fs;
+            }
             LauncherSettingsInput::PositionPicked(idx) => {
                 let p = Position::from_index(idx);
                 if self.menu_position != p {
@@ -968,6 +1221,94 @@ impl Component for LauncherSettingsModel {
             LauncherSettingsInput::MaxHeightEffect(h) => self.menu_max_height = h,
         }
         self.update_view(widgets, sender);
+    }
+
+    fn update_cmd_with_view(
+        &mut self,
+        widgets: &mut Self::Widgets,
+        message: Self::CommandOutput,
+        sender: ComponentSender<Self>,
+        _root: &Self::Root,
+    ) {
+        match message {
+            LauncherSettingsCommandOutput::FsFolderChecked(Ok(stored)) => {
+                // Re-checked against the list as it is now (it may have
+                // changed while the stat ran).
+                if !self.file_search.folders.contains(&stored) {
+                    self.file_search.folders.push(stored);
+                    let list = self.file_search.folders.clone();
+                    config_manager().update_config(move |c| c.launcher.file_search.folders = list);
+                    rebuild_folder_rows(
+                        &widgets.fs_folders_list,
+                        &self.file_search.folders,
+                        &sender,
+                    );
+                }
+                widgets.fs_folder_entry.set_text("");
+            }
+            LauncherSettingsCommandOutput::FsFolderChecked(Err(err)) => {
+                mshell_launcher::notify::toast("Can't add search folder", err.to_string());
+            }
+        }
+        self.update_view(widgets, sender);
+    }
+}
+
+fn scope_index(scope: FileSearchScope) -> u32 {
+    match scope {
+        FileSearchScope::Home => 0,
+        FileSearchScope::HomeAndFolders => 1,
+        FileSearchScope::System => 2,
+    }
+}
+
+fn scope_from_index(idx: u32) -> FileSearchScope {
+    match idx {
+        1 => FileSearchScope::HomeAndFolders,
+        2 => FileSearchScope::System,
+        _ => FileSearchScope::Home,
+    }
+}
+
+/// Repaint the extra search folder rows: one action-row per folder with
+/// a trailing remove button (like the favourite websites).
+fn rebuild_folder_rows(
+    list: &gtk::Box,
+    folders: &[String],
+    sender: &ComponentSender<LauncherSettingsModel>,
+) {
+    while let Some(child) = list.first_child() {
+        list.remove(&child);
+    }
+    list.set_visible(!folders.is_empty());
+    for (idx, folder) in folders.iter().enumerate() {
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        row.add_css_class("action-row");
+
+        let icon = gtk::Image::from_icon_name("folder-symbolic");
+        icon.set_valign(gtk::Align::Center);
+        row.append(&icon);
+
+        let name = gtk::Label::new(Some(folder));
+        name.add_css_class("label-medium-bold");
+        name.set_halign(gtk::Align::Start);
+        name.set_hexpand(true);
+        name.set_xalign(0.0);
+        name.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+        row.append(&name);
+
+        let remove = gtk::Button::new();
+        remove.add_css_class("ok-button-surface");
+        remove.set_valign(gtk::Align::Center);
+        remove.set_child(Some(&gtk::Image::from_icon_name("user-trash-symbolic")));
+        mshell_common::a11y::name(&remove, &format!("Remove {folder}"));
+        let sender = sender.clone();
+        remove.connect_clicked(move |_| {
+            sender.input(LauncherSettingsInput::FsFolderRemove(idx));
+        });
+        row.append(&remove);
+
+        list.append(&row);
     }
 }
 
