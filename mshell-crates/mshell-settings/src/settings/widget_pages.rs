@@ -79,10 +79,12 @@ fn stack_parts(parts: Vec<PagePart>) -> (gtk::Widget, Vec<Box<dyn std::any::Any>
     (outer.into(), alive)
 }
 
-/// Alarm Clock: the Pomodoro rules above the menu geometry.
+/// Alarm Clock: the Pomodoro rules and how timers ring, above the menu
+/// geometry.
 fn alarm_clock_parts() -> Vec<PagePart> {
     vec![
         page_part!(crate::pomodoro_settings::PomodoroSettingsModel => crate::pomodoro_settings::PomodoroSettingsInit {}),
+        page_part!(crate::timer_settings::TimerSettingsModel => crate::timer_settings::TimerSettingsInit {}),
         page_part!(WidgetMenuSettingsModel => WidgetMenuSettingsInit { kind: MenuKind::AlarmClock }),
     ]
 }

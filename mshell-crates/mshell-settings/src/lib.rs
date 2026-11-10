@@ -111,6 +111,7 @@ mod theme_files;
 mod theme_settings;
 /// Theme palette preview shared with the frame's theme picker.
 pub mod theme_swatch;
+mod timer_settings;
 mod toast_settings;
 mod translate_settings;
 mod tune_bar_settings;

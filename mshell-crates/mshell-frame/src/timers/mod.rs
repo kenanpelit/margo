@@ -29,6 +29,7 @@ pub use book::{Fired, MISSED_GRACE_SECS, Timer, TimerBook};
 pub use parse::{ParseError, TimerKind};
 
 use chrono::{DateTime, Local, TimeZone};
+use std::cell::Cell;
 use std::path::PathBuf;
 use std::sync::{LazyLock, Mutex, MutexGuard, OnceLock, mpsc};
 use tokio::sync::watch;
@@ -369,6 +370,22 @@ pub fn run(cmd: Command) -> Result<String, String> {
             ))
         }
     }
+}
+
+// ── Menu tab request ────────────────────────────────────────────────────
+
+thread_local! {
+    static PENDING_TAB: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Ask the Alarm Clock menu to open on its Timers tab next reveal.
+pub(crate) fn request_tab() {
+    PENDING_TAB.with(|p| p.set(true));
+}
+
+/// Consume the pending Timers-tab request.
+pub(crate) fn take_tab_request() -> bool {
+    PENDING_TAB.with(|p| p.replace(false))
 }
 
 #[cfg(test)]

@@ -74,6 +74,11 @@ pub struct AlarmConfig {
     pub notifications: bool,
     /// Notification urgency: `low` | `normal` | `critical`.
     pub urgency: String,
+    /// While a one-shot timer / reminder (`mshellctl timer`, the Timers
+    /// tab, the launcher's `timer` prefix) is pending, the AlarmClock bar
+    /// pill shows the soonest one's time left. With none pending the pill
+    /// is unchanged, so this is on by default.
+    pub show_timer_on_pill: bool,
 }
 
 impl Default for AlarmConfig {
@@ -84,6 +89,7 @@ impl Default for AlarmConfig {
             snooze_minutes: 5,
             notifications: true,
             urgency: "normal".to_string(),
+            show_timer_on_pill: true,
         }
     }
 }

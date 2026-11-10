@@ -125,6 +125,39 @@
   color: var(--on-surface);
 }
 
+// ── Timers tab (one-line quick timers & reminders) ────────
+.alarm-timers {
+  padding: var(--space-1) 0;
+}
+
+// The live "Rings at 14:35 (in 10 min) — tea" line under the entry.
+.alarm-timer-preview {
+  color: var(--on-surface-variant);
+}
+// A line that doesn't parse, or an unreadable timers.json.
+.alarm-timer-error {
+  color: var(--error);
+}
+
+// A thin capsule under each countdown, as the Pomodoro tab's bar.
+.alarm-timer-progress {
+  min-height: 3px;
+  margin-top: var(--space-1);
+
+  trough {
+    min-height: 3px;
+    background-color: var(--surface-container-high);
+    border-radius: var(--radius-pill);
+    border: none;
+  }
+  progress {
+    min-height: 3px;
+    border-radius: var(--radius-pill);
+    background-color: var(--primary);
+    border: none;
+  }
+}
+
 // ── Pomodoro (bar pill + tab) ─────────────────────────────
 // A running focus session is "live" → primary tint (DESIGN.md §3); a
 // break reads calm with the stable success role; ready / paused stay

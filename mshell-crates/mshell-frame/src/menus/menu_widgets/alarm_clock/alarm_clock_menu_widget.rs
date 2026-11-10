@@ -7,6 +7,9 @@
 //!   summary, delete) plus an add row (hour/minute, name, repeat-day
 //!   toggles). A "Stop ringing" banner appears whenever the tone is
 //!   sounding.
+//! * **Timers** — one-line quick timers and reminders ("10m tea",
+//!   "14:30 meeting", "10 dk sonra çay"), presets and live countdowns,
+//!   backed by [`crate::timers`]; see `timers_tab.rs`.
 //! * **Stopwatch** — a start / pause / reset stopwatch backed by the
 //!   transient [`crate::stopwatch`] global.
 //! * **Countdown** — passive date countdowns (`alarm.countdowns`).
@@ -21,9 +24,11 @@
 //! scheduler disables after they fire.
 
 use super::pomodoro_tab::PomodoroTab;
+use super::timers_tab::TimersTab;
 use crate::countdown::{self, CountdownUnit};
 use crate::pomodoro;
 use crate::stopwatch::{self, StopwatchState};
+use crate::timers;
 use chrono::Local;
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
@@ -72,6 +77,7 @@ pub(crate) struct AlarmClockMenuWidgetModel {
     /// The tab stack, held so a countdown-pill click can jump to its tab.
     tabs: gtk::Stack,
     pomodoro: PomodoroTab,
+    timers: TimersTab,
     /// Menu revealed? The Pomodoro readout only ticks while it is.
     visible_tx: watch::Sender<bool>,
     /// Keeps the reactive subscriptions on `alarm.alarms`/`countdowns` alive.
@@ -236,6 +242,9 @@ impl Component for AlarmClockMenuWidgetModel {
                         },
                     },
                 },
+
+                // ───────────── Timers tab ─────────────
+                add_titled: (&model.timers.root, Some("timers"), "Timers"),
 
                 // ───────────── Stopwatch tab ─────────────
                 add_titled[Some("stopwatch"), "Stopwatch"] = &gtk::Box {
@@ -404,6 +413,7 @@ impl Component for AlarmClockMenuWidgetModel {
             cd_label: cd_label_widget.clone(),
             tabs: gtk::Stack::new(),
             pomodoro: PomodoroTab::new(),
+            timers: TimersTab::new(),
             visible_tx: watch::channel(false).0,
             _effects: effects,
         };
@@ -442,16 +452,28 @@ impl Component for AlarmClockMenuWidgetModel {
             tokio::pin!(shutdown_fut);
             let mut changes = stopwatch::changes();
             let mut pomodoro_changes = pomodoro::changes();
+            let mut timer_changes = timers::changes();
             loop {
                 let deadline = pomodoro_changes.borrow_and_update().deadline;
-                let pomodoro_tick = if *visible_rx.borrow_and_update() {
+                timer_changes.borrow_and_update();
+                let visible = *visible_rx.borrow_and_update();
+                let pomodoro_tick = if visible {
                     pomodoro::next_readout_change(deadline, Instant::now())
                 } else {
                     None
                 };
+                // The timer countdowns tick only while the menu is open.
+                let timers_tick = if visible {
+                    timers::next_readout_change()
+                } else {
+                    None
+                };
                 let tick = earliest(
-                    readout_tick(stopwatch::state() == StopwatchState::Running),
-                    pomodoro_tick,
+                    earliest(
+                        readout_tick(stopwatch::state() == StopwatchState::Running),
+                        pomodoro_tick,
+                    ),
+                    timers_tick,
                 );
                 tokio::select! {
                     () = &mut shutdown_fut => break,
@@ -461,6 +483,11 @@ impl Component for AlarmClockMenuWidgetModel {
                         }
                     }
                     changed = pomodoro_changes.changed() => {
+                        if changed.is_err() {
+                            break;
+                        }
+                    }
+                    changed = timer_changes.changed() => {
                         if changed.is_err() {
                             break;
                         }
@@ -586,13 +613,17 @@ impl Component for AlarmClockMenuWidgetModel {
                 // consume both on reveal so the menu lands on that tab.
                 let countdown_tab = countdown::take_countdown_tab_request();
                 let pomodoro_tab = pomodoro::take_tab_request();
+                let timers_tab = timers::take_tab_request();
                 if visible && pomodoro_tab {
                     self.tabs.set_visible_child_name("pomodoro");
+                } else if visible && timers_tab {
+                    self.tabs.set_visible_child_name("timers");
                 } else if visible && countdown_tab {
                     self.tabs.set_visible_child_name("countdown");
                 }
                 if visible {
                     self.pomodoro.sync();
+                    self.timers.sync();
                 }
                 self.visible_tx.send_replace(visible);
             }
@@ -610,6 +641,7 @@ impl Component for AlarmClockMenuWidgetModel {
             .set_label(&stopwatch::format_elapsed(stopwatch::elapsed()));
         sync_ringing(self);
         self.pomodoro.sync();
+        self.timers.sync();
     }
 }
 
