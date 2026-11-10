@@ -1,0 +1,85 @@
+{
+   "blockdevices": [
+      {
+         "name": "sda",
+         "rm": false,
+         "tran": "usb",
+         "mountpoints": [
+             null
+         ],
+         "children": [
+            {
+               "name": "sda1",
+               "rm": false,
+               "tran": "usb",
+               "mountpoints": [
+                   "/run/media/u/KINGSTON"
+               ]
+            },{
+               "name": "sda2",
+               "rm": false,
+               "tran": "usb",
+               "mountpoints": [
+                   null
+               ],
+               "children": [
+                  {
+                     "name": "luks-6b1f0c2e",
+                     "rm": false,
+                     "tran": null,
+                     "mountpoints": [
+                         "/run/media/u/Secure Disk"
+                     ]
+                  }
+               ]
+            }
+         ]
+      },{
+         "name": "mmcblk0",
+         "rm": true,
+         "tran": null,
+         "mountpoints": [
+             null
+         ],
+         "children": [
+            {
+               "name": "mmcblk0p1",
+               "rm": true,
+               "tran": null,
+               "mountpoints": [
+                   "/run/media/u/SDCARD"
+               ]
+            }
+         ]
+      },{
+         "name": "nvme1n1",
+         "rm": false,
+         "tran": "nvme",
+         "mountpoints": [],
+         "children": [
+            {
+               "name": "nvme1n1p1",
+               "rm": false,
+               "tran": "nvme",
+               "mountpoints": [
+                   "/boot/efi"
+               ]
+            },{
+               "name": "nvme1n1p2",
+               "rm": false,
+               "tran": "nvme",
+               "mountpoints": [
+                   "/var/tmp", "/home", "/"
+               ]
+            }
+         ]
+      },{
+         "name": "sdb",
+         "rm": true,
+         "tran": "usb",
+         "mountpoints": [
+             "/boot"
+         ]
+      }
+   ]
+}

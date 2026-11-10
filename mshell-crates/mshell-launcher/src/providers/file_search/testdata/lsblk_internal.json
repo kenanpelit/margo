@@ -1,0 +1,70 @@
+{
+   "blockdevices": [
+      {
+         "name": "zram0",
+         "rm": false,
+         "tran": null,
+         "mountpoints": [
+             "[SWAP]"
+         ]
+      },{
+         "name": "nvme0n1",
+         "rm": false,
+         "tran": "nvme",
+         "mountpoints": [],
+         "children": [
+            {
+               "name": "nvme0n1p1",
+               "rm": false,
+               "tran": "nvme",
+               "mountpoints": [
+                   "/cachy"
+               ]
+            },{
+               "name": "nvme0n1p2",
+               "rm": false,
+               "tran": "nvme",
+               "mountpoints": [
+                   "/others"
+               ]
+            }
+         ]
+      },{
+         "name": "nvme1n1",
+         "rm": false,
+         "tran": "nvme",
+         "mountpoints": [],
+         "children": [
+            {
+               "name": "nvme1n1p1",
+               "rm": false,
+               "tran": "nvme",
+               "mountpoints": [
+                   "/boot/efi"
+               ]
+            },{
+               "name": "nvme1n1p2",
+               "rm": false,
+               "tran": "nvme",
+               "mountpoints": [
+                   "/var/tmp", "/var/log", "/var/cache", "/home", "/srv", "/root", "/"
+               ]
+            },{
+               "name": "nvme1n1p3",
+               "rm": false,
+               "tran": "nvme",
+               "mountpoints": [
+                   "/repo"
+               ]
+            },{
+               "name": "nvme1n1p4",
+               "rm": false,
+               "tran": "nvme",
+               "mountpoints": [
+                   "/sun"
+               ]
+            }
+         ]
+      }
+   ]
+}
