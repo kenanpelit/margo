@@ -5,10 +5,15 @@
 //! (split as evenly as possible). Rendered as a sub-section inside the
 //! generic `WidgetMenuSettingsModel` page when `kind == MenuKind::Mdash`.
 //!
-//! mdash physically lays its buttons out in two dense rows; here the user
-//! edits one logical list and we redistribute it across whatever
-//! `QuickActions` slots the menu has, leaving every other widget
-//! (header, calendar, weather, …) untouched.
+//! A user's own (pre-tabs) mdash layout lays its buttons out in dense
+//! rows; here the user edits one logical list and we redistribute it
+//! across whatever `QuickActions` slots the menu has, leaving every other
+//! widget (header, calendar, weather, …) untouched.
+//!
+//! The tabbed dashboard (the default) has no button rows — its toggles are
+//! Controls tiles, its launchers the Tools tab, power the header — so the
+//! section only shows while the menu has `QuickActions` rows
+//! (`mdash_tabs_settings` edits the dashboard).
 
 use crate::menu_settings::quick_actions_list::{
     QuickActionListInput, QuickActionListModel, QuickActionListOutput,
@@ -44,15 +49,27 @@ fn read_buttons_untracked() -> Vec<QuickActionWidget> {
     )
 }
 
-fn read_buttons_tracked() -> Vec<QuickActionWidget> {
-    flatten(
-        config_manager()
-            .config()
-            .menus()
-            .mdash_menu()
-            .widgets()
-            .get(),
-    )
+/// The buttons, and whether the menu has any button row at all.
+fn read_buttons_tracked() -> (Vec<QuickActionWidget>, bool) {
+    let widgets = config_manager()
+        .config()
+        .menus()
+        .mdash_menu()
+        .widgets()
+        .get();
+    let rows = has_button_rows(&widgets);
+    (flatten(widgets), rows)
+}
+
+/// The section only applies to a layout with `QuickActions` rows, or to
+/// one without a tabbed dashboard (a row gets added there).
+fn has_button_rows(widgets: &[MenuWidget]) -> bool {
+    widgets
+        .iter()
+        .any(|w| matches!(w, MenuWidget::QuickActions(_)))
+        || !widgets
+            .iter()
+            .any(|w| matches!(w, MenuWidget::Dashboard(_)))
 }
 
 /// Split `items` into `n` near-equal chunks (front chunks take the remainder).
@@ -85,6 +102,16 @@ fn write_buttons(buttons: Vec<QuickActionWidget>) {
             .collect();
 
         if slots.is_empty() {
+            // Never bolt a button row onto the tabbed dashboard: that
+            // would turn it into a mixed layout.
+            if c.menus
+                .mdash_menu
+                .widgets
+                .iter()
+                .any(|w| matches!(w, MenuWidget::Dashboard(_)))
+            {
+                return;
+            }
             c.menus
                 .mdash_menu
                 .widgets
@@ -123,8 +150,9 @@ impl std::fmt::Debug for MdashButtonsSettingsModel {
 pub(crate) enum MdashButtonsSettingsInput {
     /// The embedded editor changed (user add / remove / reorder).
     Edited(Vec<QuickActionWidget>),
-    /// `mdash_menu` changed in config (e.g. external reload) — re-seed.
-    External(Vec<QuickActionWidget>),
+    /// `mdash_menu` changed in config (e.g. external reload) — re-seed;
+    /// `rows` = the menu has button rows (else the section hides).
+    External(Vec<QuickActionWidget>, bool),
 }
 
 #[derive(Debug)]
@@ -180,7 +208,8 @@ impl Component for MdashButtonsSettingsModel {
         {
             let s = sender.clone();
             effects.push(move |_| {
-                s.input(MdashButtonsSettingsInput::External(read_buttons_tracked()));
+                let (buttons, rows) = read_buttons_tracked();
+                s.input(MdashButtonsSettingsInput::External(buttons, rows));
             });
         }
 
@@ -192,7 +221,7 @@ impl Component for MdashButtonsSettingsModel {
         ComponentParts { model, widgets: () }
     }
 
-    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
+    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, root: &Self::Root) {
         match message {
             MdashButtonsSettingsInput::Edited(v) => {
                 if v != self.last {
@@ -200,12 +229,38 @@ impl Component for MdashButtonsSettingsModel {
                     write_buttons(v);
                 }
             }
-            MdashButtonsSettingsInput::External(v) => {
+            MdashButtonsSettingsInput::External(v, rows) => {
+                root.set_visible(rows);
                 if v != self.last {
                     self.last = v.clone();
                     self.list.emit(QuickActionListInput::ReplaceAll(v));
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mshell_config::schema::dashboard::DashboardConfig;
+
+    #[test]
+    fn the_buttons_editor_shows_only_for_button_layouts() {
+        let dash = MenuWidget::Dashboard(DashboardConfig::default());
+        let row = MenuWidget::QuickActions(QuickActionsConfig {
+            widgets: vec![QuickActionWidget::Lock],
+        });
+        assert!(!has_button_rows(std::slice::from_ref(&dash)));
+        assert!(has_button_rows(&[dash, row.clone()]));
+        assert!(has_button_rows(&[MenuWidget::Weather, row]));
+        assert!(has_button_rows(&[MenuWidget::Weather]));
+    }
+
+    #[test]
+    fn split_even_spreads_the_remainder_to_the_front() {
+        use QuickActionWidget as Q;
+        let rows = split_even(vec![Q::Lock, Q::Logout, Q::Reboot], 2);
+        assert_eq!(rows, vec![vec![Q::Lock, Q::Logout], vec![Q::Reboot]]);
     }
 }

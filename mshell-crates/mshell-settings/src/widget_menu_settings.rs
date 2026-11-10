@@ -377,6 +377,8 @@ pub(crate) struct WidgetMenuSettingsModel {
     /// Mdash-only: the quick-action buttons add/remove/reorder editor.
     /// `None` for every other menu kind.
     _mdash_buttons_controller: Option<Controller<MdashButtonsSettingsModel>>,
+    /// Mdash-only: keeps the Tabs section's config mirror.
+    _mdash_tabs_effects: Option<EffectScope>,
     /// Valent-only: keeps the screen-mirroring section's config mirror.
     _valent_effects: Option<EffectScope>,
     _host_monitor_effects: Option<EffectScope>,
@@ -720,6 +722,9 @@ impl Component for WidgetMenuSettingsModel {
             None
         };
 
+        // Mdash-only: the dashboard's tab / card editor.
+        let mdash_tabs_section =
+            (kind == MenuKind::Mdash).then(crate::mdash_tabs_settings::build_mdash_tabs_section);
         // Valent-only: the scrcpy (screen mirroring) options.
         let valent_section = (kind == MenuKind::Valent)
             .then(crate::valent_mirror_settings::build_valent_mirror_section);
@@ -745,6 +750,7 @@ impl Component for WidgetMenuSettingsModel {
             position_model,
             _cc_tiles_controller: cc_tiles_controller,
             _mdash_buttons_controller: mdash_buttons_controller,
+            _mdash_tabs_effects: None,
             _valent_effects: None,
             _host_monitor_effects: None,
             _drive_health_effects: None,
@@ -757,11 +763,15 @@ impl Component for WidgetMenuSettingsModel {
         if let Some(ctrl) = &model._cc_tiles_controller {
             widgets.page_box.append(ctrl.widget());
         }
-        // Append the Mdash buttons section widget to the page box when present.
+        let mut model = model;
+        // Mdash: the Tabs section, then the (layout-dependent) Buttons one.
+        if let Some((section, effects)) = mdash_tabs_section {
+            widgets.page_box.append(&section);
+            model._mdash_tabs_effects = Some(effects);
+        }
         if let Some(ctrl) = &model._mdash_buttons_controller {
             widgets.page_box.append(ctrl.widget());
         }
-        let mut model = model;
         if let Some((section, effects)) = valent_section {
             widgets.page_box.append(&section);
             model._valent_effects = Some(effects);

@@ -73,6 +73,7 @@ mod logo_led_settings;
 mod lyrics_settings;
 mod margo_tags_settings;
 mod mdash_buttons_settings;
+mod mdash_tabs_settings;
 mod media_player_settings;
 mod menu_settings;
 mod mlogind_conf;
