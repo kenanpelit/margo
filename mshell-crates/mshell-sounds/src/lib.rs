@@ -55,11 +55,29 @@ fn clear_ringing() {
 
 /// Start the alarm tone, looping until [`stop_alarm`]. No-op if already ringing.
 pub fn play_alarm_loop() {
+    play_loop(ALARM_SOUND, Duration::ZERO);
+}
+
+/// Ring a finished one-shot timer: the timer chime, looping until
+/// [`stop_alarm`]. It shares the alarm's ringing state, so every Stop
+/// (notification, menu banner, bar pill right-click) silences it. No-op if
+/// anything is already ringing.
+pub fn play_timer_loop() {
+    // The chime is short: a pause between repeats keeps it a chime.
+    play_loop(TIMER_SOUND, TIMER_LOOP_GAP);
+}
+
+/// Silence between two timer chimes while a timer rings.
+const TIMER_LOOP_GAP: Duration = Duration::from_millis(1200);
+
+/// Loop `clip`, with `gap` between repeats, until [`stop_alarm`]; one
+/// ringing tone at a time.
+fn play_loop(clip: &'static [u8], gap: Duration) {
     if ALARM_PLAYING.swap(true, Ordering::SeqCst) {
         return; // already ringing
     }
     alarm_state_changed();
-    std::thread::spawn(|| {
+    std::thread::spawn(move || {
         let Ok(mut handle) = rodio::DeviceSinkBuilder::open_default_sink() else {
             clear_ringing();
             return;
@@ -68,13 +86,18 @@ pub fn play_alarm_loop() {
         // Replay the clip until stopped; poll the flag so Stop is responsive
         // (≤120 ms) even mid-clip rather than waiting for the clip to end.
         while ALARM_PLAYING.load(Ordering::SeqCst) {
-            let Ok(player) = rodio::play(handle.mixer(), Cursor::new(ALARM_SOUND)) else {
+            let Ok(player) = rodio::play(handle.mixer(), Cursor::new(clip)) else {
                 break;
             };
             while ALARM_PLAYING.load(Ordering::SeqCst) && !player.empty() {
                 std::thread::sleep(Duration::from_millis(120));
             }
             player.stop();
+            let mut paused = Duration::ZERO;
+            while ALARM_PLAYING.load(Ordering::SeqCst) && paused < gap {
+                std::thread::sleep(Duration::from_millis(120));
+                paused += Duration::from_millis(120);
+            }
         }
         clear_ringing();
     });
