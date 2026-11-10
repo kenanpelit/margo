@@ -62,8 +62,10 @@ The GTK4 + relm4 shell hosting the bars, menus, settings, and dashboard.
 - **Launcher** — app / calc / ssh / sysinfo / emoji providers, plus prefix
   providers such as `yt` (YouTube search, Watch later, favourite channels,
   history and resume, played in the mpv companion), `case <text>`
-  (naming-convention converter) and `nv` (reopen Neovim sessions / projects
-  in the terminal); type `;` in
+  (naming-convention converter), `nv` (reopen Neovim sessions / projects
+  in the terminal) and `fs` (file search over home, home plus extra folders
+  or the whole system, optionally USB disks — see
+  [Configuration](configuration.md#launcher-file-search-fs)); type `;` in
   the launcher for the full prefix list.
 - **Material You theming** — matugen palette extraction from the wallpaper,
   applied across the shell, the compositor border, and the login screen.

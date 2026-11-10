@@ -616,6 +616,52 @@ Every action below can be bound to a key (`bind`), a mouse button (`mousebind`),
 
 <!-- END dispatch-actions -->
 
+## Launcher file search (`fs`)
+
+The shell launcher's `fs <text>` prefix fuzzy-searches file and folder
+names (Enter opens, Ctrl+Enter shows it in the file manager). Where it
+looks is set in **Settings → Launcher → File search**, stored in the shell
+profile (`~/.config/margo/mshell/profiles/<profile>.yaml`):
+
+```yaml
+launcher:
+  file_search:
+    scope: Home              # Home | HomeAndFolders | System
+    folders:                 # used by HomeAndFolders; absolute or ~/…
+      - /media/data
+      - ~/.config/app
+    include_usb: false       # also search mounted USB / removable disks
+```
+
+| Scope | Covers |
+|---|---|
+| `Home` *(default)* | your home folder |
+| `HomeAndFolders` | home plus `folders` (each must exist; one inside home is only accepted when the home walk skips it, e.g. a hidden folder) |
+| `System` | all of `/`, without `/proc`, `/sys`, `/dev`, `/run`, `/tmp`, tmpfs / network / FUSE / overlay mounts, btrfs snapshot subvolumes (`/.snapshots`, Timeshift) and the removable disks |
+
+- `include_usb` adds the mounted USB and removable volumes (USB transport
+  or the kernel's removable flag, as listed by `lsblk`; without util-linux,
+  the `/run/media/<user>/…` and `/media/…` mounts) to any scope. Nothing is
+  mounted for you.
+- Every combination (scope, folder list, USB on/off) keeps its own index in
+  `~/.cache/margo/file-search/` (private, newest 8 kept), so switching back
+  never walks again. Without USB disks the index rebuilds itself in the
+  background — every 5 minutes for home and folders, every 30 minutes for
+  the whole system. **With USB disks on it is built only by
+  *Rebuild search index*** (an empty `fs` query); plugging or removing a
+  disk marks it *out of date* instead of starting a walk.
+- An empty `fs` query also lists *Search scope* (Enter cycles it),
+  *USB disks* (Enter toggles) and *Add search folder…*; `fs +<path>` adds a
+  folder and switches to `HomeAndFolders`. While a walk runs,
+  *Cancel indexing* stops it; a walk is also stopped after 10 minutes
+  (30 with USB disks).
+- Backends: `fd` walks every root. With only `plocate`, roots come from the
+  updatedb database, except USB disks and roots under updatedb's
+  `PRUNEPATHS` (e.g. `/media`, `/mnt`), which the built-in walk covers; the
+  status line names the mix. The index holds at most 400 000 paths
+  (1 500 000 for the whole system); the status line says *capped* when the
+  limit cut the walk.
+
 ## See also
 
 - [**Full config reference**](config-reference.md) — every option with inline commentary, the complete `config.example.conf` rendered in-page.
