@@ -26,7 +26,23 @@ impl DiskUsage {
         } else {
             0
         };
-        format!("{used:.1}G / {total:.1}G ({pct}%)")
+        // The percentage first: a narrow tile ellipsizes the sizes, never it.
+        format!("{pct}% · {used:.0} / {total:.0} GiB")
+    }
+}
+
+#[cfg(test)]
+mod disk_tests {
+    use super::DiskUsage;
+
+    #[test]
+    fn disk_subtitle_leads_with_the_percentage() {
+        let d = DiskUsage {
+            used_bytes: 182 << 30,
+            total_bytes: 476 << 30,
+        };
+        assert_eq!(d.format(), "38% · 182 / 476 GiB");
+        assert_eq!(DiskUsage::default().format(), "0% · 0 / 0 GiB");
     }
 }
 

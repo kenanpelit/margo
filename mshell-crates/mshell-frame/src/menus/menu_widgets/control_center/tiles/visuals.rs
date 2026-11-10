@@ -10,6 +10,7 @@ use mshell_utils::battery::{get_battery_icon, get_charging_battery_icon};
 use mshell_utils::power_profile::get_power_profile_label;
 use relm4::gtk::prelude::WidgetExt;
 use wayle_battery::types::DeviceState;
+use wayle_power_profiles::types::profile::PowerProfile;
 
 pub(super) fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets) {
     // A tile's overlay is always visible in edit mode; in normal mode only
@@ -178,20 +179,55 @@ pub(super) fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTi
             get_battery_icon(bat.percent as f64)
         };
         battery.set_icon(icon);
-        let status = match bat.state {
-            DeviceState::Charging => "Charging",
-            DeviceState::Discharging => "Discharging",
-            DeviceState::FullyCharged => "Full",
-            DeviceState::Empty => "Empty",
-            DeviceState::PendingCharge | DeviceState::PendingDischarge => "Not charging",
-            DeviceState::Unknown => "",
-        };
-        let profile_label = get_power_profile_label(&model.power_profile);
-        let subtitle = if status.is_empty() {
-            format!("{profile_label} · {}%", bat.percent)
-        } else {
-            format!("{profile_label} · {}% · {}", bat.percent, status)
-        };
-        battery.set_subtitle(&subtitle);
+        battery.set_subtitle(&battery_subtitle(
+            bat.percent,
+            bat.state,
+            &model.power_profile,
+        ));
+    }
+}
+
+/// The Battery tile's subtitle, most useful part first so an ellipsized
+/// narrow tile still shows it: "76% · Discharging · Balanced". An unknown
+/// state or power profile is left out rather than printed as "Unknown".
+pub(super) fn battery_subtitle(percent: u8, state: DeviceState, profile: &PowerProfile) -> String {
+    let status = match state {
+        DeviceState::Charging => "Charging",
+        DeviceState::Discharging => "Discharging",
+        DeviceState::FullyCharged => "Full",
+        DeviceState::Empty => "Empty",
+        DeviceState::PendingCharge | DeviceState::PendingDischarge => "Not charging",
+        DeviceState::Unknown => "",
+    };
+    let profile = match profile {
+        PowerProfile::Unknown => "",
+        p => get_power_profile_label(p),
+    };
+    let percent = format!("{percent}%");
+    [percent.as_str(), status, profile]
+        .into_iter()
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join(" · ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn battery_subtitle_leads_with_the_charge() {
+        assert_eq!(
+            battery_subtitle(76, DeviceState::Discharging, &PowerProfile::Balanced),
+            "76% · Discharging · Balanced"
+        );
+        assert_eq!(
+            battery_subtitle(76, DeviceState::Discharging, &PowerProfile::Unknown),
+            "76% · Discharging"
+        );
+        assert_eq!(
+            battery_subtitle(100, DeviceState::Unknown, &PowerProfile::Unknown),
+            "100%"
+        );
     }
 }
