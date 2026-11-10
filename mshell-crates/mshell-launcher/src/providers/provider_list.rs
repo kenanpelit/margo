@@ -203,6 +203,12 @@ const ENTRIES: &[Entry] = &[
         icon: "system-run-symbolic",
     },
     Entry {
+        prefix: "timer <text>",
+        example: "timer 10m tea",
+        description: "Quick timer / reminder — 10m tea, 14:30 meeting, tomorrow 9am, 10 dk sonra çay (also `t 10m`; bare `timer` lists)",
+        icon: "timer-symbolic",
+    },
+    Entry {
         prefix: "tag [N]",
         example: "tag 3",
         description: "Switch the focused output to tag N (1-9)",
@@ -426,6 +432,7 @@ mod tests {
             ("ssh <host>", "ssh vhay"),
             ("tag [N]", "tag 3"),
             ("svc <unit>", "svc blocky"),
+            ("timer <text>", "timer 10m tea"),
         ] {
             let captured = Rc::new(RefCell::new(String::new()));
             let p = make(captured.clone());

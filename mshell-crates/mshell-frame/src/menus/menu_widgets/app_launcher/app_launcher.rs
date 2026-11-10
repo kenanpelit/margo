@@ -45,6 +45,7 @@ use crate::menus::menu_widgets::app_launcher::launcher_row::{
     SECTION_HEADER_PROVIDER, resolve_primary_var, set_match_accent,
 };
 use crate::menus::menu_widgets::app_launcher::tags_provider::TagsProvider;
+use crate::menus::menu_widgets::app_launcher::timers_provider::TimersProvider;
 use crate::menus::menu_widgets::app_launcher::windows_provider::WindowsProvider;
 use mshell_common::dynamic_box::dynamic_box::{
     DynamicBoxFactory, DynamicBoxInit, DynamicBoxInput, DynamicBoxModel,
@@ -521,6 +522,7 @@ impl Component for AppLauncherModel {
         runtime.register(Box::new(AppsProviderHandle(apps_provider.clone())));
         runtime.register(Box::new(WindowsProvider::new()));
         runtime.register(Box::new(TagsProvider::new()));
+        runtime.register(Box::new(TimersProvider::new()));
         runtime.register(Box::new(CalculatorProvider::new()));
         runtime.register(Box::new(SessionProvider::new()));
         runtime.register(Box::new(MctlProvider::new()));
