@@ -63,9 +63,11 @@ The GTK4 + relm4 shell hosting the bars, menus, settings, and dashboard.
   providers such as `yt` (YouTube search, Watch later, favourite channels,
   history and resume, played in the mpv companion), `case <text>`
   (naming-convention converter), `nv` (reopen Neovim sessions / projects
-  in the terminal) and `fs` (file search over home, home plus extra folders
+  in the terminal), `fs` (file search over home, home plus extra folders
   or the whole system, optionally USB disks — see
-  [Configuration](configuration.md#launcher-file-search-fs)); type `;` in
+  [Configuration](configuration.md#launcher-file-search-fs)) and `timer`
+  (one-line timers and reminders — `timer 10m tea`, `timer 14:30 meeting`,
+  `timer yarın 9:00 kahve` — with a live "Rings at …" preview); type `;` in
   the launcher for the full prefix list.
 - **Material You theming** — matugen palette extraction from the wallpaper,
   applied across the shell, the compositor border, and the login screen.

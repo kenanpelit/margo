@@ -34,6 +34,8 @@ bind = super,       q,      killclient
 bind = super,       space,  spawn, mshellctl menu app-launcher
 bind = super+ctrl,  s,      sticky_window
 bind = super+ctrl,  r,      reload_config
+# One-line timers / reminders (Alarm Clock tone + Stop / Snooze)
+bind = super+shift, t,      spawn, mshellctl timer add 25m focus
 
 # Screenshots — one front door through the shell's capture engine.
 bind = NONE,Print,spawn,mshellctl screenshot region   # region → file + clip
