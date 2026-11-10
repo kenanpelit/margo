@@ -752,3 +752,19 @@ pub(super) async fn start_shell_service(tx: mpsc::UnboundedSender<IPCCommand>) -
     std::future::pending::<()>().await;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::parse_mdash_tab;
+    use mshell_config::schema::dashboard::DashboardTab;
+
+    #[test]
+    fn mdash_tab_is_parsed_case_insensitively_or_rejected() {
+        assert_eq!(parse_mdash_tab("today"), Ok(DashboardTab::Today));
+        assert_eq!(parse_mdash_tab(" Controls "), Ok(DashboardTab::Controls));
+        assert_eq!(parse_mdash_tab("SYSTEM"), Ok(DashboardTab::System));
+        assert_eq!(parse_mdash_tab("tools"), Ok(DashboardTab::Tools));
+        let err = parse_mdash_tab("music").unwrap_err();
+        assert!(err.contains("today|controls|system|tools"), "{err}");
+    }
+}
