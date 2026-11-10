@@ -168,4 +168,64 @@
     <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/mshell/mshell-privileged</annotate>
     <annotate key="org.freedesktop.policykit.exec.argv1">led-set</annotate>
   </action>
+
+  <action id="org.margo.mshell.privileged.ufw-status">
+    <description>Read the firewall rules</description>
+    <message>Authentication is required to read the UFW firewall's rule files (/etc/ufw/user.rules, user6.rules)</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/mshell/mshell-privileged</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">ufw-status</annotate>
+  </action>
+
+  <action id="org.margo.mshell.privileged.ufw-switch">
+    <description>Turn the firewall on or off</description>
+    <message>Authentication is required to turn the UFW firewall on or off, or to reload its rules (ufw enable / disable / reload)</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/mshell/mshell-privileged</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">ufw-switch</annotate>
+  </action>
+
+  <action id="org.margo.mshell.privileged.ufw-add">
+    <description>Add a firewall rule</description>
+    <message>Authentication is required to add a rule to the UFW firewall (ufw allow / deny / reject / limit)</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/mshell/mshell-privileged</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">ufw-add</annotate>
+  </action>
+
+  <action id="org.margo.mshell.privileged.ufw-delete">
+    <description>Remove a firewall rule</description>
+    <message>Authentication is required to remove a rule from the UFW firewall (ufw delete)</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/mshell/mshell-privileged</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">ufw-delete</annotate>
+  </action>
+
+  <action id="org.margo.mshell.privileged.ufw-unit">
+    <description>Change the firewall service</description>
+    <message>Authentication is required to start, stop, or enable / disable at boot the UFW firewall service (ufw.service)</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/mshell/mshell-privileged</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">ufw-unit</annotate>
+  </action>
 </policyconfig>

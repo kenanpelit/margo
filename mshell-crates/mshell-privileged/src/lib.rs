@@ -4,7 +4,7 @@
 //! the background upgrade, signalling another user's process, a SMART
 //! read, a ThinkPad fan level, the battery charge limit, the logind
 //! power-key/lid drop-in, the one-shot UEFI `BootNext`, a ThinkPad LED,
-//! a SMART self-test)
+//! a SMART self-test, the UFW firewall's switch, rules and unit)
 //! is one fixed subcommand of this binary,
 //! with its own polkit action (`org.margo.mshell.privileged.<sub>`,
 //! matched on `exec.path` + `exec.argv1`), so the password dialog says
@@ -20,10 +20,12 @@ pub mod efiboot;
 pub mod fsops;
 pub mod procsig;
 pub mod run;
+pub mod ufw;
 pub mod validate;
 
 use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
+pub use ufw::UfwOp;
 pub use validate::{BootTarget, FanLevel, PAUSE_PROTECTED, SelfTest, Signal, pause_protected};
 
 /// Where the packages install the helper. Nix builds point it at the
@@ -48,7 +50,7 @@ pub fn installed() -> bool {
 }
 
 /// Every subcommand, in policy order.
-pub const SUBCOMMANDS: [&str; 13] = [
+pub const SUBCOMMANDS: [&str; 18] = [
     "pacnew-install",
     "pacnew-merge",
     "pacnew-remove",
@@ -62,6 +64,11 @@ pub const SUBCOMMANDS: [&str; 13] = [
     "rollback",
     "boot-next",
     "led-set",
+    "ufw-status",
+    "ufw-switch",
+    "ufw-add",
+    "ufw-delete",
+    "ufw-unit",
 ];
 
 /// Why the helper refused or failed. The exit code tells the caller
@@ -139,6 +146,11 @@ pub enum Request {
     /// per line) so the caller can follow its progress; stops when the
     /// caller closes the pipe, or after [`run::SELFTEST_WATCH_MAX`].
     SmartSelfTest { device: String, test: SelfTest },
+    /// A UFW firewall action ([`ufw::UfwOp`]): read the rule files, turn
+    /// the firewall on/off/reload, add or delete one rule, or start /
+    /// stop / enable / disable `ufw.service`. ufw and systemctl run with
+    /// an argv the helper builds from the validated fields.
+    Ufw(UfwOp),
 }
 
 impl Request {
@@ -157,6 +169,7 @@ impl Request {
             Request::BootNext { .. } => "boot-next",
             Request::LedSet { .. } => "led-set",
             Request::SmartSelfTest { .. } => "smart-selftest",
+            Request::Ufw(op) => op.subcommand(),
         }
     }
 
@@ -187,6 +200,7 @@ impl Request {
             Request::SmartSelfTest { device, test } => {
                 vec![device.into(), test.keyword().into()]
             }
+            Request::Ufw(op) => op.args(),
         }
     }
 
@@ -220,6 +234,9 @@ impl Request {
         };
         let a = |i: usize| rest[i].as_os_str();
         let sub_b: &OsStr = sub;
+        if let Some(op) = UfwOp::parse(sub_b.to_str().unwrap_or(""), rest) {
+            return op.map(Request::Ufw);
+        }
         Ok(match sub_b.to_str().unwrap_or("") {
             "pacnew-install" => {
                 arity(2)?;
@@ -419,6 +436,65 @@ mod tests {
             device: "/dev/sda".into(),
             test: SelfTest::Long,
         });
+        round_trip(Request::Ufw(UfwOp::Status));
+        round_trip(Request::Ufw(UfwOp::Switch(ufw::Switch::On)));
+        round_trip(Request::Ufw(UfwOp::Unit(ufw::UnitOp::Enable)));
+        let add = ufw::spec::AddForm {
+            action: ufw::spec::Action::Allow,
+            port: "22".into(),
+            proto: ufw::spec::Proto::Tcp,
+            from: String::new(),
+            comment: "SSH".into(),
+        }
+        .validate()
+        .unwrap();
+        round_trip(Request::Ufw(UfwOp::Delete(add.spec.clone())));
+        round_trip(Request::Ufw(UfwOp::Add(add)));
+    }
+
+    #[test]
+    fn ufw_argv_is_the_fixed_verb_and_fields() {
+        let add = ufw::spec::AddForm {
+            action: ufw::spec::Action::Limit,
+            port: "22".into(),
+            proto: ufw::spec::Proto::Tcp,
+            from: "192.168.0.0/24".into(),
+            comment: String::new(),
+        }
+        .validate()
+        .unwrap();
+        assert_eq!(
+            lossy(&Request::Ufw(UfwOp::Add(add)).argv()),
+            [
+                HELPER,
+                "ufw-add",
+                "limit",
+                "in",
+                "-",
+                "-",
+                "tcp",
+                "192.168.0.0/24",
+                "any",
+                "22",
+                "-"
+            ]
+        );
+        assert_eq!(
+            lossy(&Request::Ufw(UfwOp::Switch(ufw::Switch::Off)).argv()),
+            [HELPER, "ufw-switch", "off"]
+        );
+        assert_eq!(
+            Request::Ufw(UfwOp::Unit(ufw::UnitOp::Start)).action_id(),
+            "org.margo.mshell.privileged.ufw-unit"
+        );
+        let p = |v: &[&str]| Request::parse(&v.iter().map(OsString::from).collect::<Vec<_>>());
+        assert_eq!(p(&["ufw-switch", "--force"]).unwrap_err().code(), 2);
+        assert_eq!(
+            p(&["ufw-unit", "start", "sshd.service"])
+                .unwrap_err()
+                .code(),
+            2
+        );
     }
 
     #[test]

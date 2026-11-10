@@ -1,7 +1,7 @@
 //! The helper's `main`: parse + validate the argv ([`Request::parse`]),
 //! then run exactly one fixed operation. Programs it starts (pacman,
-//! smartctl) are absolute paths with a fixed argv; nothing goes through
-//! a shell.
+//! smartctl, efibootmgr, ufw, systemctl) are absolute paths with a fixed
+//! argv; nothing goes through a shell.
 
 use crate::fsops::{self, Source, Sysroot};
 use crate::{Error, Request, validate};
@@ -39,6 +39,22 @@ const EFIBOOTMGR: [&str; 3] = [
     "/usr/sbin/efibootmgr",
     "/run/current-system/sw/bin/efibootmgr",
 ];
+/// Root-owned places ufw is installed (Arch, Debian, NixOS).
+const UFW: [&str; 3] = [
+    "/usr/bin/ufw",
+    "/usr/sbin/ufw",
+    "/run/current-system/sw/bin/ufw",
+];
+/// Root-owned places systemctl is installed.
+const SYSTEMCTL: [&str; 3] = [
+    "/usr/bin/systemctl",
+    "/bin/systemctl",
+    "/run/current-system/sw/bin/systemctl",
+];
+/// The `PATH` ufw runs with (it starts iptables, sysctl, …): root's
+/// fixed directories only, never the caller's.
+const UFW_PATH: &str =
+    "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/run/current-system/sw/bin";
 /// How often `smart-selftest` reports progress.
 const SELFTEST_POLL: Duration = Duration::from_secs(15);
 /// A self-test watch ends after this even if the reader stays (an HDD's
@@ -246,6 +262,108 @@ fn boot_next(root: &Sysroot, target: validate::BootTarget) -> Result<(), Error> 
     }
 }
 
+/// Run `prog args…` with a fixed environment and stdin closed; echo its
+/// output to our stdout (a terminal caller sees ufw's own words) and
+/// return it with the exit status.
+fn run_captured(prog: &Path, args: &[String]) -> Result<(Option<i32>, String), Error> {
+    use std::io::Write;
+    let out = std::process::Command::new(prog)
+        .args(args)
+        .env_clear()
+        .env("PATH", UFW_PATH)
+        .env("LC_ALL", "C")
+        .env("LANG", "C")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map_err(|e| Error::Io(format!("{}: {e}", prog.display())))?;
+    let mut text = String::from_utf8_lossy(&out.stdout).into_owned();
+    text.push_str(&String::from_utf8_lossy(&out.stderr));
+    let _ = std::io::stdout().lock().write_all(text.as_bytes());
+    Ok((out.status.code(), text))
+}
+
+fn ufw_run(ufw: &Path, args: &[String]) -> Result<(), Error> {
+    let (code, text) = run_captured(ufw, args)?;
+    crate::ufw::argv::ufw_outcome(code, &text).map_err(Error::Io)
+}
+
+fn systemctl_run(systemctl: &Path, args: &[String]) -> Result<(), Error> {
+    let (code, text) = run_captured(systemctl, args)?;
+    match code {
+        Some(0) => Ok(()),
+        _ => Err(Error::Io(
+            text.lines()
+                .map(str::trim)
+                .rfind(|l| !l.is_empty())
+                .map_or_else(
+                    || format!("systemctl {} failed", args.join(" ")),
+                    str::to_string,
+                ),
+        )),
+    }
+}
+
+/// `ufw-status`: the four files' parsed lines ([`crate::ufw::rules::dump`]).
+fn ufw_status(root: &Sysroot) -> Result<(), Error> {
+    use crate::ufw::rules;
+    use std::io::Write;
+    let read = |logical: &str| match crate::ufw::read_text(&root.phys(Path::new(logical))) {
+        Ok(t) => Ok(Some(t)),
+        Err(crate::ufw::state::ReadError::Missing) => Ok(None),
+        Err(e) => Err(Error::Io(format!("{logical}: {e:?}"))),
+    };
+    let text = rules::dump(
+        read(rules::UFW_CONF)?.as_deref(),
+        read(rules::DEFAULTS)?.as_deref(),
+        read(rules::USER_RULES)?.as_deref(),
+        read(rules::USER6_RULES)?.as_deref(),
+    );
+    std::io::stdout()
+        .lock()
+        .write_all(text.as_bytes())
+        .map_err(|e| Error::Io(format!("writing the rules: {e}")))
+}
+
+/// `ufw-switch on`: `ufw --force enable`, then start `ufw.service` when
+/// systemd has it and it isn't running (so the rules load at boot and
+/// the state reads green). A unit state that can't be read is left alone.
+fn ufw_switch_on(root: &Sysroot, ufw: &Path) -> Result<(), Error> {
+    use crate::ufw::{argv, state};
+    ufw_run(ufw, &argv::switch_argv(argv::Switch::On))?;
+    let Ok(systemctl) = program(root, &SYSTEMCTL, "systemctl") else {
+        return Ok(());
+    };
+    let show: Vec<String> = argv::SHOW_ARGS.iter().map(|s| s.to_string()).collect();
+    let (code, text) = run_captured(&systemctl, &show)?;
+    let unit = state::parse_show(&text);
+    if code == Some(0) && unit.exists() && !unit.running() {
+        systemctl_run(&systemctl, &argv::unit_argv(argv::UnitOp::Start))?;
+    }
+    Ok(())
+}
+
+fn ufw_op(root: &Sysroot, op: &crate::UfwOp) -> Result<(), Error> {
+    use crate::UfwOp;
+    use crate::ufw::argv;
+    match op {
+        UfwOp::Status => ufw_status(root),
+        UfwOp::Unit(u) => {
+            let systemctl = program(root, &SYSTEMCTL, "systemctl")?;
+            systemctl_run(&systemctl, &argv::unit_argv(*u))
+        }
+        UfwOp::Switch(argv::Switch::On) => ufw_switch_on(root, &program(root, &UFW, "ufw")?),
+        UfwOp::Switch(s) => ufw_run(&program(root, &UFW, "ufw")?, &argv::switch_argv(*s)),
+        UfwOp::Add(add) => {
+            let ufw = program(root, &UFW, "ufw")?;
+            for args in argv::add_argvs(add) {
+                ufw_run(&ufw, &args)?;
+            }
+            Ok(())
+        }
+        UfwOp::Delete(spec) => ufw_run(&program(root, &UFW, "ufw")?, &argv::delete_argv(spec)),
+    }
+}
+
 /// Run one request. `stdin` feeds `pacnew-merge` and `logind-dropin`.
 pub fn execute(root: &Sysroot, req: Request, stdin: &mut dyn std::io::Read) -> Result<(), Error> {
     match &req {
@@ -284,6 +402,7 @@ pub fn execute(root: &Sysroot, req: Request, stdin: &mut dyn std::io::Read) -> R
         Request::BootNext { target } => boot_next(root, *target),
         Request::LedSet { name, value } => fsops::led_set(root, name, *value),
         Request::SmartSelfTest { device, test } => smart_selftest(root, device, *test),
+        Request::Ufw(op) => ufw_op(root, op),
     }
 }
 

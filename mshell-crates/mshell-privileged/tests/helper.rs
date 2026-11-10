@@ -1020,3 +1020,268 @@ fn visible_kernel_thread() -> Option<(i32, u64)> {
         (flags & PF_KTHREAD != 0).then_some((pid, start))
     })
 }
+
+// ── UFW ─────────────────────────────────────────────────────────────
+
+/// A fake program at `logical` that appends its argv (one line, words
+/// joined by `|`) to `<logical>.log` and prints `output`. `show` is
+/// what it prints for `systemctl show` (only the systemctl fake uses it).
+fn fake_logging(f: &Fixture, logical: &str, output: &str, show: &str) {
+    let log = f.p(&format!("{logical}.log"));
+    f.write(&format!("{logical}.out"), output);
+    f.write(&format!("{logical}.show"), show);
+    let script = format!(
+        "#!/bin/sh\nIFS='|'; printf '%s\\n' \"$*\" >> '{log}'\nif [ \"$1\" = show ]; then cat '{show}'; exit 0; fi\ncat '{out}'\n",
+        log = log.display(),
+        out = f.p(&format!("{logical}.out")).display(),
+        show = f.p(&format!("{logical}.show")).display(),
+    );
+    let p = f.write(logical, &script);
+    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+}
+
+fn calls(f: &Fixture, logical: &str) -> Vec<String> {
+    std::fs::read_to_string(f.p(&format!("{logical}.log")))
+        .unwrap_or_default()
+        .lines()
+        .map(str::to_string)
+        .collect()
+}
+
+const ADD_SSH: [&str; 10] = [
+    "ufw-add", "allow", "in", "-", "-", "tcp", "any", "any", "22", "SSH",
+];
+
+#[test]
+fn ufw_add_runs_ufw_with_the_fixed_argv() {
+    skip_as_root!();
+    let f = Fixture::new();
+    fake_logging(&f, "/usr/bin/ufw", "Rule added\nRule added (v6)\n", "");
+    let o = f.run(&ADD_SSH);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert_eq!(
+        calls(&f, "/usr/bin/ufw"),
+        ["allow|in|proto|tcp|from|any|to|any|port|22|comment|SSH"]
+    );
+    assert!(String::from_utf8_lossy(&o.stdout).contains("Rule added"));
+
+    // "Both" over a range: a TCP and a UDP rule, one prompt.
+    let o = f.run(&[
+        "ufw-add",
+        "allow",
+        "in",
+        "-",
+        "-",
+        "any",
+        "192.168.0.0/24",
+        "any",
+        "1714:1764",
+        "KDE Connect",
+    ]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert_eq!(
+        calls(&f, "/usr/bin/ufw")[1..],
+        [
+            "allow|in|proto|tcp|from|192.168.0.0/24|to|any|port|1714:1764|comment|KDE Connect",
+            "allow|in|proto|udp|from|192.168.0.0/24|to|any|port|1714:1764|comment|KDE Connect",
+        ]
+    );
+}
+
+#[test]
+fn ufw_reports_what_it_did_not_do() {
+    skip_as_root!();
+    let f = Fixture::new();
+    fake_logging(
+        &f,
+        "/usr/bin/ufw",
+        "Skipping adding existing rule\nSkipping adding existing rule (v6)\n",
+        "",
+    );
+    let o = f.run(&ADD_SSH);
+    assert_eq!(code(&o), 1);
+    assert_eq!(stderr(&o).trim(), "That rule already exists");
+    f.write("/usr/bin/ufw.out", "Could not delete non-existent rule\n");
+    let o = f.run(&[
+        "ufw-delete",
+        "allow",
+        "in",
+        "-",
+        "-",
+        "tcp",
+        "any",
+        "any",
+        "22",
+    ]);
+    assert_eq!(code(&o), 1);
+    assert_eq!(stderr(&o).trim(), "That rule doesn't exist (any more)");
+}
+
+#[test]
+fn ufw_delete_and_switch_argv_are_fixed() {
+    skip_as_root!();
+    let f = Fixture::new();
+    fake_logging(&f, "/usr/bin/ufw", "Rule deleted\n", "");
+    let o = f.run(&[
+        "ufw-delete",
+        "allow",
+        "in",
+        "-",
+        "-",
+        "tcp",
+        "192.168.0.0/24",
+        "0.0.0.0/0",
+        "1714:1764",
+    ]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert_eq!(
+        calls(&f, "/usr/bin/ufw"),
+        ["--force|delete|allow|in|proto|tcp|from|192.168.0.0/24|to|0.0.0.0/0|port|1714:1764"]
+    );
+    for (arg, want) in [("off", "disable"), ("reload", "reload")] {
+        f.write("/usr/bin/ufw.out", "Firewall stopped\n");
+        let o = f.run(&["ufw-switch", arg]);
+        assert_eq!(code(&o), 0, "{}", stderr(&o));
+        assert_eq!(
+            calls(&f, "/usr/bin/ufw").last().map(String::as_str),
+            Some(want)
+        );
+    }
+}
+
+#[test]
+fn ufw_switch_on_also_starts_a_stopped_unit() {
+    skip_as_root!();
+    let inactive = "LoadState=loaded\nActiveState=inactive\nSubState=dead\nUnitFileState=enabled\n";
+    let active = "LoadState=loaded\nActiveState=active\nSubState=exited\nUnitFileState=enabled\n";
+    for (show, started) in [(inactive, true), (active, false)] {
+        let f = Fixture::new();
+        fake_logging(
+            &f,
+            "/usr/bin/ufw",
+            "Firewall is active and enabled on system startup\n",
+            "",
+        );
+        fake_logging(&f, "/usr/bin/systemctl", "", show);
+        let o = f.run(&["ufw-switch", "on"]);
+        assert_eq!(code(&o), 0, "{}", stderr(&o));
+        assert_eq!(calls(&f, "/usr/bin/ufw"), ["--force|enable"]);
+        let mut want = vec![
+            "show|ufw.service|--property=LoadState,ActiveState,SubState,UnitFileState".to_string(),
+        ];
+        if started {
+            want.push("start|ufw.service".into());
+        }
+        assert_eq!(calls(&f, "/usr/bin/systemctl"), want);
+    }
+    // No systemctl at all: ufw alone.
+    let f = Fixture::new();
+    fake_logging(&f, "/usr/bin/ufw", "Firewall is active\n", "");
+    assert_eq!(code(&f.run(&["ufw-switch", "on"])), 0);
+}
+
+#[test]
+fn ufw_unit_touches_only_ufw_service() {
+    skip_as_root!();
+    let f = Fixture::new();
+    fake_logging(&f, "/usr/bin/systemctl", "", "");
+    for verb in ["start", "stop", "enable", "disable"] {
+        let o = f.run(&["ufw-unit", verb]);
+        assert_eq!(code(&o), 0, "{}", stderr(&o));
+    }
+    assert_eq!(
+        calls(&f, "/usr/bin/systemctl"),
+        [
+            "start|ufw.service",
+            "stop|ufw.service",
+            "enable|ufw.service",
+            "disable|ufw.service"
+        ]
+    );
+    for bad in [
+        &["ufw-unit", "mask"][..],
+        &["ufw-unit", "start", "sshd.service"],
+        &["ufw-unit", "--now"],
+        &["ufw-unit"],
+    ] {
+        assert_eq!(code(&f.run(bad)), 2, "{bad:?}");
+    }
+    assert_eq!(calls(&f, "/usr/bin/systemctl").len(), 4, "nothing else ran");
+}
+
+#[test]
+fn hostile_ufw_arguments_never_reach_ufw() {
+    skip_as_root!();
+    let f = Fixture::new();
+    fake_logging(&f, "/usr/bin/ufw", "Rule added\n", "");
+    let mut cases: Vec<Vec<&str>> = Vec::new();
+    for (i, bad) in [
+        (1, "default"),
+        (1, "--dry-run"),
+        (2, "both"),
+        (3, "-eth0"),
+        (3, "eth0;id"),
+        (4, "--force"),
+        (5, "icmp"),
+        (6, "$(id)"),
+        (6, "192.168.0.5/24"),
+        (7, "-"),
+        (8, "0"),
+        (8, "22;reboot"),
+        (8, "1:65536"),
+        (9, "in"),
+        (9, "a'b"),
+        (9, "--rootdir=/tmp"),
+    ] {
+        let mut v = ADD_SSH.to_vec();
+        v[i] = bad;
+        cases.push(v);
+    }
+    cases.push(vec!["ufw-switch", "reset"]);
+    cases.push(vec!["ufw-switch", "on", "--force"]);
+    cases.push(vec!["ufw-status", "/etc/shadow"]);
+    cases.push(vec![
+        "ufw-delete",
+        "allow",
+        "in",
+        "-",
+        "-",
+        "any",
+        "any",
+        "any",
+        "1714:1764",
+    ]);
+    for c in &cases {
+        let o = f.run(c);
+        assert_eq!(code(&o), 2, "{c:?}: {}", stderr(&o));
+    }
+    assert!(calls(&f, "/usr/bin/ufw").is_empty(), "ufw never ran");
+}
+
+#[test]
+fn ufw_status_prints_only_the_parsed_lines() {
+    skip_as_root!();
+    let f = Fixture::new();
+    f.write("/etc/ufw/ufw.conf", include_str!("data/ufw/ufw.conf"));
+    f.write("/etc/default/ufw", include_str!("data/ufw/default-ufw"));
+    f.write("/etc/ufw/user.rules", include_str!("data/ufw/user.rules"));
+    f.write("/etc/ufw/user6.rules", include_str!("data/ufw/user6.rules"));
+    let o = f.run(&["ufw-status"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    let out = String::from_utf8_lossy(&o.stdout);
+    assert!(!out.contains("-A ufw"), "no iptables lines: {out}");
+    assert!(!out.contains("MANAGE_BUILTINS"), "only the read keys");
+    let dump = mshell_privileged::ufw::rules::parse_dump(&out).expect("a whole dump");
+    let saved = mshell_privileged::ufw::saved_from_dump(&dump);
+    let set = saved.rules.expect("rules");
+    assert!(set.complete);
+    assert_eq!(set.rules.len(), 9);
+    assert_eq!(saved.conf.expect("conf").enabled, Some(true));
+    // A missing file is reported as such, not as an error.
+    std::fs::remove_file(f.p("/etc/ufw/user6.rules")).expect("rm");
+    let o = f.run(&["ufw-status"]);
+    assert_eq!(code(&o), 0);
+    let dump = mshell_privileged::ufw::rules::parse_dump(&String::from_utf8_lossy(&o.stdout))
+        .expect("dump");
+    assert_eq!(dump.v6, None);
+}

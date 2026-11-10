@@ -1,0 +1,65 @@
+*filter
+:ufw6-user-input - [0:0]
+:ufw6-user-output - [0:0]
+:ufw6-user-forward - [0:0]
+:ufw6-before-logging-input - [0:0]
+:ufw6-before-logging-output - [0:0]
+:ufw6-before-logging-forward - [0:0]
+:ufw6-user-logging-input - [0:0]
+:ufw6-user-logging-output - [0:0]
+:ufw6-user-logging-forward - [0:0]
+:ufw6-after-logging-input - [0:0]
+:ufw6-after-logging-output - [0:0]
+:ufw6-after-logging-forward - [0:0]
+:ufw6-logging-deny - [0:0]
+:ufw6-logging-allow - [0:0]
+### RULES ###
+
+### tuple ### allow tcp 22 ::/0 any ::/0 in comment=737368
+-A ufw6-user-input -p tcp --dport 22 -j ACCEPT
+
+### tuple ### reject tcp 8080 ::/0 any 2001:db8::/32 in comment=59617ac4b163c4b12061c49f
+-A ufw6-user-input -p tcp --dport 8080 -s 2001:db8::/32 -j REJECT --reject-with tcp-reset
+
+### tuple ### allow any 43117 ::/0 any ::/0 in_eth9
+-A ufw6-user-input -i eth9 -p tcp --dport 43117 -j ACCEPT
+-A ufw6-user-input -i eth9 -p udp --dport 43117 -j ACCEPT
+
+### tuple ### deny udp 53 ::/0 any ::/0 out
+-A ufw6-user-output -p udp --dport 53 -j DROP
+
+### tuple ### allow_log tcp 41001 ::/0 any ::/0 in
+-A ufw6-user-logging-input -p tcp --dport 41001 -m conntrack --ctstate NEW -m limit --limit 3/min --limit-burst 10 -j LOG --log-prefix "[UFW ALLOW] "
+-A ufw6-user-logging-input -p tcp --dport 41001 -j RETURN
+-A ufw6-user-input -p tcp --dport 41001 -j ufw6-user-logging-input
+-A ufw6-user-input -p tcp --dport 41001 -j ACCEPT
+
+### tuple ### allow_log-all any 41002 ::/0 any ::/0 in_eth9
+-A ufw6-user-logging-input -i eth9 -p tcp --dport 41002 -m limit --limit 3/min --limit-burst 10 -j LOG --log-prefix "[UFW ALLOW] "
+-A ufw6-user-logging-input -i eth9 -p tcp --dport 41002 -j RETURN
+-A ufw6-user-input -i eth9 -p tcp --dport 41002 -j ufw6-user-logging-input
+-A ufw6-user-input -i eth9 -p tcp --dport 41002 -j ACCEPT
+-A ufw6-user-logging-input -i eth9 -p udp --dport 41002 -m limit --limit 3/min --limit-burst 10 -j LOG --log-prefix "[UFW ALLOW] "
+-A ufw6-user-logging-input -i eth9 -p udp --dport 41002 -j RETURN
+-A ufw6-user-input -i eth9 -p udp --dport 41002 -j ufw6-user-logging-input
+-A ufw6-user-input -i eth9 -p udp --dport 41002 -j ACCEPT
+
+### tuple ### allow tcp 80,443 ::/0 any ::/0 in
+-A ufw6-user-input -p tcp -m multiport --dports 80,443 -j ACCEPT
+
+### tuple ### allow tcp 80,443 ::/0 any ::/0 WWW%20Full - in
+-A ufw6-user-input -p tcp -m multiport --dports 80,443 -j ACCEPT -m comment --comment 'dapp_WWW%20Full'
+
+### tuple ### route:allow any any ::/0 any ::/0 in_eth9!out_eth8
+-A ufw6-user-forward -i eth9 -o eth8 -j ACCEPT
+
+### END RULES ###
+
+### LOGGING ###
+-A ufw6-after-logging-input -j LOG --log-prefix "[UFW BLOCK] " -m limit --limit 3/min --limit-burst 10
+-A ufw6-after-logging-forward -j LOG --log-prefix "[UFW BLOCK] " -m limit --limit 3/min --limit-burst 10
+-I ufw6-logging-deny -m conntrack --ctstate INVALID -j RETURN -m limit --limit 3/min --limit-burst 10
+-A ufw6-logging-deny -j LOG --log-prefix "[UFW BLOCK] " -m limit --limit 3/min --limit-burst 10
+-A ufw6-logging-allow -j LOG --log-prefix "[UFW ALLOW] " -m limit --limit 3/min --limit-burst 10
+### END LOGGING ###
+COMMIT

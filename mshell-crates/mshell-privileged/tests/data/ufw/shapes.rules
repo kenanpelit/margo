@@ -1,0 +1,78 @@
+*filter
+:ufw-user-input - [0:0]
+:ufw-user-output - [0:0]
+:ufw-user-forward - [0:0]
+:ufw-before-logging-input - [0:0]
+:ufw-before-logging-output - [0:0]
+:ufw-before-logging-forward - [0:0]
+:ufw-user-logging-input - [0:0]
+:ufw-user-logging-output - [0:0]
+:ufw-user-logging-forward - [0:0]
+:ufw-after-logging-input - [0:0]
+:ufw-after-logging-output - [0:0]
+:ufw-after-logging-forward - [0:0]
+:ufw-logging-deny - [0:0]
+:ufw-logging-allow - [0:0]
+### RULES ###
+
+### tuple ### allow tcp 22 0.0.0.0/0 any 0.0.0.0/0 in comment=737368
+-A ufw-user-input -p tcp --dport 22 -j ACCEPT
+
+### tuple ### allow any 43117 0.0.0.0/0 any 0.0.0.0/0 in_eth9
+-A ufw-user-input -i eth9 -p tcp --dport 43117 -j ACCEPT
+-A ufw-user-input -i eth9 -p udp --dport 43117 -j ACCEPT
+
+### tuple ### deny udp 53 0.0.0.0/0 any 0.0.0.0/0 out
+-A ufw-user-output -p udp --dport 53 -j DROP
+
+### tuple ### allow_log tcp 41001 0.0.0.0/0 any 0.0.0.0/0 in
+-A ufw-user-logging-input -p tcp --dport 41001 -m conntrack --ctstate NEW -m limit --limit 3/min --limit-burst 10 -j LOG --log-prefix "[UFW ALLOW] "
+-A ufw-user-logging-input -p tcp --dport 41001 -j RETURN
+-A ufw-user-input -p tcp --dport 41001 -j ufw-user-logging-input
+-A ufw-user-input -p tcp --dport 41001 -j ACCEPT
+
+### tuple ### allow_log-all any 41002 0.0.0.0/0 any 0.0.0.0/0 in_eth9
+-A ufw-user-logging-input -i eth9 -p tcp --dport 41002 -m limit --limit 3/min --limit-burst 10 -j LOG --log-prefix "[UFW ALLOW] "
+-A ufw-user-logging-input -i eth9 -p tcp --dport 41002 -j RETURN
+-A ufw-user-input -i eth9 -p tcp --dport 41002 -j ufw-user-logging-input
+-A ufw-user-input -i eth9 -p tcp --dport 41002 -j ACCEPT
+-A ufw-user-logging-input -i eth9 -p udp --dport 41002 -m limit --limit 3/min --limit-burst 10 -j LOG --log-prefix "[UFW ALLOW] "
+-A ufw-user-logging-input -i eth9 -p udp --dport 41002 -j RETURN
+-A ufw-user-input -i eth9 -p udp --dport 41002 -j ufw-user-logging-input
+-A ufw-user-input -i eth9 -p udp --dport 41002 -j ACCEPT
+
+### tuple ### allow tcp 80,443 0.0.0.0/0 any 0.0.0.0/0 in
+-A ufw-user-input -p tcp -m multiport --dports 80,443 -j ACCEPT
+
+### tuple ### allow any any 0.0.0.0/0 any 198.51.100.7 in
+-A ufw-user-input -s 198.51.100.7 -j ACCEPT
+
+### tuple ### allow tcp 41007 10.0.0.0/8 41005 0.0.0.0/0 in
+-A ufw-user-input -p tcp -d 10.0.0.0/8 --dport 41007 --sport 41005 -j ACCEPT
+
+### tuple ### allow tcp 80,443 0.0.0.0/0 any 0.0.0.0/0 WWW%20Full - in
+-A ufw-user-input -p tcp -m multiport --dports 80,443 -j ACCEPT -m comment --comment 'dapp_WWW%20Full'
+
+### tuple ### route:allow any any 0.0.0.0/0 any 0.0.0.0/0 in_eth9!out_eth8
+-A ufw-user-forward -i eth9 -o eth8 -j ACCEPT
+
+### tuple ### allow esp any 0.0.0.0/0 any 192.0.2.1 in
+-A ufw-user-input -p esp -s 192.0.2.1 -j ACCEPT
+
+### tuple ### allow udp 1714:1764 0.0.0.0/0 any 192.0.2.0/24 in
+-A ufw-user-input -p udp -m multiport --dports 1714:1764 -s 192.0.2.0/24 -j ACCEPT
+
+### tuple ### limit tcp 22 0.0.0.0/0 any 0.0.0.0/0 in
+-A ufw-user-input -p tcp --dport 22 -m conntrack --ctstate NEW -m recent --update --seconds 30 --hitcount 6 -j ufw-user-limit
+-A ufw-user-input -p tcp --dport 22 -j ufw-user-limit-accept
+
+### END RULES ###
+
+### LOGGING ###
+-A ufw-after-logging-input -j LOG --log-prefix "[UFW BLOCK] " -m limit --limit 3/min --limit-burst 10
+-A ufw-after-logging-forward -j LOG --log-prefix "[UFW BLOCK] " -m limit --limit 3/min --limit-burst 10
+-I ufw-logging-deny -m conntrack --ctstate INVALID -j RETURN -m limit --limit 3/min --limit-burst 10
+-A ufw-logging-deny -j LOG --log-prefix "[UFW BLOCK] " -m limit --limit 3/min --limit-burst 10
+-A ufw-logging-allow -j LOG --log-prefix "[UFW ALLOW] " -m limit --limit 3/min --limit-burst 10
+### END LOGGING ###
+COMMIT
