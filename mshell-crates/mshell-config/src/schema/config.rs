@@ -690,7 +690,7 @@ impl Default for Frame {
 #[cfg(test)]
 mod schema_tests {
     use super::Config;
-    use super::{DockBehavior, DockPosition};
+    use super::{DockBehavior, DockPosition, FileSearch, FileSearchScope};
 
     /// An empty YAML map → every field falls back to its default.
     #[test]
@@ -749,6 +749,22 @@ mod schema_tests {
         let yaml = yaml_serde::to_string(&def).unwrap();
         let back: Config = yaml_serde::from_str(&yaml).unwrap();
         assert_eq!(back, def);
+    }
+
+    /// A config without `launcher.file_search` keeps today's home-only
+    /// search; the keys read back by name.
+    #[test]
+    fn launcher_file_search_defaults_and_parses() {
+        let cfg: Config = yaml_serde::from_str("launcher:\n  compact_rows: true\n").unwrap();
+        assert_eq!(cfg.launcher.file_search, FileSearch::default());
+        assert_eq!(cfg.launcher.file_search.scope, FileSearchScope::Home);
+        assert!(!cfg.launcher.file_search.include_usb);
+        let yaml = "launcher:\n  file_search:\n    scope: HomeAndFolders\n    folders: [\"~/work\", /media/data]\n    include_usb: true\n";
+        let cfg: Config = yaml_serde::from_str(yaml).unwrap();
+        let fs = &cfg.launcher.file_search;
+        assert_eq!(fs.scope, FileSearchScope::HomeAndFolders);
+        assert_eq!(fs.folders, vec!["~/work".to_string(), "/media/data".into()]);
+        assert!(fs.include_usb);
     }
 
     /// An old config that only knew the original dock fields still loads, with

@@ -35,6 +35,54 @@ pub struct Launcher {
     /// Folder whose sub-directories the launcher's `nv` provider lists as
     /// Neovim projects next to the saved sessions. Empty = sessions only.
     pub nvim_projects_dir: String,
+    /// Where the `fs` file search looks (Settings → Launcher → File
+    /// search). The default searches your home folder only.
+    pub file_search: FileSearch,
+}
+
+/// `launcher.file_search` — the scope of the launcher's `fs` provider.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize, Store, Patch, JsonSchema,
+)]
+#[serde(default)]
+pub struct FileSearch {
+    /// `Home` (default), `HomeAndFolders` (home plus `folders`) or
+    /// `System` (all of `/`, without pseudo, network and snapshot
+    /// mounts).
+    pub scope: FileSearchScope,
+    /// Extra folders searched in `HomeAndFolders` mode, absolute or
+    /// `~/…`. Kept when another mode is picked.
+    pub folders: Vec<String>,
+    /// Also search the mounted USB / removable disks. They are walked
+    /// only on an explicit "Rebuild search index", never on plug-in.
+    pub include_usb: bool,
+}
+
+/// Which roots the launcher's `fs` file search indexes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, Store, JsonSchema)]
+pub enum FileSearchScope {
+    /// Your home folder only.
+    #[default]
+    Home,
+    /// Your home folder plus `launcher.file_search.folders`.
+    HomeAndFolders,
+    /// The whole system (`/`).
+    System,
+}
+
+impl PatchField for FileSearchScope {
+    fn patch_field(
+        &mut self,
+        new: Self,
+        path: &StorePath,
+        notify: &mut dyn FnMut(&StorePath),
+        _keys: Option<&KeyMap>,
+    ) {
+        if *self != new {
+            *self = new;
+            notify(path);
+        }
+    }
 }
 
 /// Default `launcher.web_sites` — mirrors
@@ -63,6 +111,7 @@ impl Default for Launcher {
             web_sites: default_web_sites(),
             web_site_favicons: true,
             nvim_projects_dir: String::new(),
+            file_search: FileSearch::default(),
         }
     }
 }
