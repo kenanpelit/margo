@@ -1,10 +1,9 @@
 @use "../02-functions/index" as *;
 // ── Bar pill icon tinting ────────────────────────────────────
-// Mirrors the bluetooth widget pattern: tint the icon based on
-// the three states surfaced by `apply_visual` on the bar widget
-// root. `unknown` is amber rather than red because the most
-// common reason for it is "rule details need authentication" —
-// not actually a problem state.
+// The state class `bars/bar_widgets/ufw` sets on the pill root:
+// on = the §3 live tint, off = danger, amber = warn (on, but not
+// enforced now or not after a reboot), unknown = calm (ufw missing /
+// state unreadable: informational, never red — §17).
 
 .ufw-bar-widget.active image {
   color: var(--primary);
@@ -12,23 +11,29 @@
 .ufw-bar-widget.inactive image {
   color: var(--error);
 }
+.ufw-bar-widget.warn image {
+  color: var(--warning);
+}
 .ufw-bar-widget.unknown image {
-  color: var(--warning, var(--on-surface-variant));
+  color: var(--on-surface-variant);
+}
+// The allowed-in rule count next to the icon (bars.widgets.ufw.show_count).
+.ufw-bar-count {
+  font-size: var(--font-sm);
+  font-weight: 600;
+  font-feature-settings: "tnum";
 }
 
-// UFW Firewall menu widget — matches the design language of the
-// other layer-shell menus (clock, screenshot, quick-settings) by
-// reusing the same matugen tokens (`--surface-variant`, `--primary`,
-// `--on-surface`, `--outline`) and the standard radius / spacing
-// scales rather than rolling its own visual identity.
+// UFW Firewall menu widget — the shared menu primitives (PanelHeader,
+// .ok-boxed-list, the segmented control, .menu-search entries); only
+// the pieces below are its own.
 
 .ufw-menu-widget {
   padding: 0;
 }
 
-// ── Section labels (Default policy / Rules) ──────────────────
-// §1 caption: uppercase, xs, dim. Groups sections tonally so the old
-// hard `GtkSeparator` lines are gone (§0.1 surfaces over borders).
+// ── Section label (Rules) ────────────────────────────────────
+// §1 caption: uppercase, xs, dim.
 .ufw-section-label {
   font-size: var(--font-2xs);
   font-weight: 600;
@@ -38,62 +43,47 @@
   margin-top: var(--space-1);
 }
 
-// ── Status badge in the header (active / inactive / unknown) ─
-.ufw-status-badge {
-  padding: 2px var(--space-3);
-  border-radius: var(--radius-pill);
-  font-weight: 600;
-  font-size: 0.85em;
-  background-color: var(--surface-container-high);
-  color: var(--on-surface-variant);
+// ── Banner: what's wrong + the one-click fix ─────────────────
+// Amber-washed when the firewall isn't enforcing (§2 warn), a calm
+// tonal card when it's only informational (no permission, §17).
+.ufw-banner {
+  background-color: var(--surface-container);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
 }
-.ufw-status-badge.ufw-status-active {
-  background-color: var(--primary);
-  color: var(--on-primary);
-}
-.ufw-status-badge.ufw-status-inactive {
-  background-color: var(--error-container);
-  color: var(--on-error-container);
+.ufw-banner.warn {
+  background-color: color-mix(in srgb, var(--warning) 14%, var(--surface-container));
 }
 
-// ── Default-policy chips (Incoming / Outgoing / Routed) ──────
-// Three identical pill cards laid out in a homogeneous row. The
-// chip background follows the matugen surface variant so it
-// reads as "informational" rather than "interactive."
-.ufw-policy-chip {
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-sm);
-  background-color: var(--surface-container-high);
-  min-width: 60px;
+// ── Inline confirm (turn off / remove a rule) ────────────────
+.ufw-confirm {
+  background-color: var(--surface-container);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+// ── Add-rule form ────────────────────────────────────────────
+.ufw-add-form {
+  background-color: var(--surface-container);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+.ufw-presets flowboxchild {
+  padding: 0;
 }
 
 // ── Rule list ────────────────────────────────────────────────
-// The ListBox + its ScrolledWindow must not paint the default opaque
-// `list` / view background: any scroll slack below the last card would
-// otherwise read as a dark band wedged between the rules and the
-// footer. Keep them transparent so the slack reads as the panel
-// surface — same clean ending the DNS menu's plain card column has.
+// The ScrolledWindow must not paint the default opaque `list` / view
+// background (the "dark band" rule, DESIGN.md §5): slack below the
+// last row reads as the panel surface. The rows are one .ok-boxed-list
+// card, which keeps its own --card-bg.
 .ufw-menu-widget scrolledwindow,
 .ufw-rule-list {
   background-color: transparent;
 }
-
-// ListBox of `(rule label, trash button)` pairs. Tonal raised
-// rows (no outline ring — surfaces over borders) with a calm
-// hover state-layer; list-item shape via --radius-sm.
-.ufw-rule-list row {
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-sm);
-  margin-bottom: var(--space-1);
-  background-color: var(--surface-container-high);
-  @include state-layer(var(--surface-container-high));
-}
-.ufw-rule-list row:last-child {
-  margin-bottom: 0;
-}
-.ufw-rule-text {
-  font-family: monospace;
-  font-size: 0.9em;
+.ufw-rule-list.ok-boxed-list {
+  background-color: var(--card-bg);
 }
 
 // ── Footer actions (Refresh / ufw(8)) ────────────────────────

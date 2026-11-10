@@ -546,16 +546,23 @@ impl Component for ControlCenterTilesModel {
             }
 
             ControlCenterTilesInput::ToggleUfw => {
-                // Right-click quick toggle: enable/disable UFW via pkexec
-                // (polkit prompt), then re-probe the tile state.
-                let want_on = !self.ufw_active;
+                // Right-click quick toggle: turn UFW on/off through the
+                // audited root helper (one polkit prompt), then re-probe.
+                use mshell_privileged::ufw::{Switch, UfwOp};
+                let op = UfwOp::Switch(if self.ufw_active {
+                    Switch::Off
+                } else {
+                    Switch::On
+                });
                 sender.command(move |out, _shutdown| async move {
-                    let cmd = if want_on { "enable" } else { "disable" };
-                    let _ = tokio::process::Command::new("pkexec")
-                        .args(["ufw", cmd])
-                        .status()
-                        .await;
-                    tokio::time::sleep(Duration::from_millis(300)).await;
+                    if let Err(e) = crate::bars::bar_widgets::ufw::service::run(op).await
+                        && e != "Authorization was cancelled"
+                    {
+                        crate::bars::bar_widgets::ufw::service::report(
+                            "Couldn't switch the firewall",
+                            Err(e),
+                        );
+                    }
                     let (subtitle, active) = read_ufw_tile_state().await;
                     let _ = out.send(ControlCenterTilesCommandOutput::UfwRefreshed(
                         subtitle, active,

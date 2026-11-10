@@ -1,54 +1,38 @@
-//! UFW firewall bar pill — port of the noctalia `ufw` plugin's
-//! bar half.
+//! UFW firewall bar pill.
 //!
-//! Render-only widget. Polls UFW status every 5 min (privilege-free —
-//! `systemctl is-active ufw.service`, never `sudo`, so the background
-//! poll doesn't open a PAM/sudo session on every tick) and draws an
-//! icon + tooltip from the result:
+//! Shows the firewall's state at a glance, read without root and without
+//! a prompt ([`service`]): the saved configuration (`ufw.conf`, the rule
+//! files) and the `ufw` systemd unit.
 //!
-//!   * `security-high-symbolic` — UFW active
-//!   * `security-low-symbolic`  — UFW inactive
-//!   * `dialog-warning-symbolic` — UFW not installed / errored
+//!   * green `shield-check` — on and enforced;
+//!   * red `firewall` — off (`ENABLED=no`);
+//!   * amber `firewall-error` — on, but the unit failed / isn't running,
+//!     or doesn't start at boot (the tooltip names the fix, the menu
+//!     offers it);
+//!   * muted `firewall-error` — ufw missing, or its state unreadable.
 //!
-//! Click emits `UfwOutput::Clicked`; `frame.rs` catches that and
-//! toggles the proper layer-shell `MenuType::Ufw` menu (built by
-//! `menus::menu`, positioned per `config.menus.ufw_menu.position`).
-//! No popover anymore — the panel surface matches every other
-//! mshell menu (clipboard, screenshot, quick settings) in
-//! layout, theming, and configurability.
+//! Optionally (`bars.widgets.ufw.show_count`) the number of incoming
+//! allow / limit rules sits next to the icon while the firewall is on.
+//! Click emits `UfwOutput::Clicked`; `frame.rs` toggles `MenuType::Ufw`.
 
-use relm4::gtk::prelude::{ButtonExt, WidgetExt};
+pub(crate) mod service;
+
+use mshell_common::scoped_effects::EffectScope;
+use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{
+    BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, UfwBarWidgetStoreFields,
+};
+use mshell_privileged::ufw::state::{self, Level, ReadError, Snapshot};
+use reactive_graph::traits::{Get, GetUntracked};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::time::Duration;
-
-const REFRESH_INTERVAL: Duration = Duration::from_secs(300);
-const STARTUP_DELAY: Duration = Duration::from_secs(1);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Status {
-    Active,
-    Inactive,
-    Unknown,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct UfwSummary {
-    pub(crate) status: Option<Status>,
-    pub(crate) logging: String,
-    pub(crate) incoming: String,
-    pub(crate) outgoing: String,
-    pub(crate) routed: String,
-    /// Each entry is the raw rule line verbatim from `ufw status
-    /// verbose`. Carrying the literal line lets the menu's delete
-    /// button shell out to `ufw delete <RULE>` rather than depend
-    /// on re-numbering after every change.
-    pub(crate) rules: Vec<String>,
-    pub(crate) error: Option<String>,
-}
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub(crate) struct UfwModel {
-    summary: UfwSummary,
+    snap: Arc<Snapshot>,
+    show_count: bool,
+    _effects: EffectScope,
 }
 
 #[derive(Debug)]
@@ -65,7 +49,8 @@ pub(crate) struct UfwInit {}
 
 #[derive(Debug)]
 pub(crate) enum UfwCommandOutput {
-    Refreshed(UfwSummary),
+    State(Arc<Snapshot>),
+    ShowCount(bool),
 }
 
 #[relm4::component(pub)]
@@ -92,11 +77,23 @@ impl Component for UfwModel {
                     sender.input(UfwInput::Clicked);
                 },
 
-                #[name="image"]
-                gtk::Image {
+                gtk::Box {
+                    set_spacing: 4,
                     set_halign: gtk::Align::Center,
-                    set_valign: gtk::Align::Center,
-                }
+
+                    #[name="image"]
+                    gtk::Image {
+                        set_halign: gtk::Align::Center,
+                        set_valign: gtk::Align::Center,
+                    },
+
+                    #[name="count"]
+                    gtk::Label {
+                        add_css_class: "ufw-bar-count",
+                        set_valign: gtk::Align::Center,
+                        set_visible: false,
+                    },
+                },
             }
         }
     }
@@ -106,36 +103,49 @@ impl Component for UfwModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        // The pill is always shown: it holds the shared watcher's
+        // subscription for as long as it lives.
         sender.command(|out, shutdown| async move {
+            let mut rx = service::subscribe();
             let shutdown_fut = shutdown.wait();
             tokio::pin!(shutdown_fut);
-            let mut first = true;
             loop {
-                let delay = if first {
-                    STARTUP_DELAY
-                } else {
-                    REFRESH_INTERVAL
-                };
-                first = false;
+                let snap = rx.borrow_and_update().clone();
+                let _ = out.send(UfwCommandOutput::State(snap));
                 tokio::select! {
                     () = &mut shutdown_fut => break,
-                    _ = tokio::time::sleep(delay) => {}
+                    changed = rx.changed() => if changed.is_err() { break },
                 }
-                // Privilege-free: the bar icon only needs the
-                // active/inactive bit, which `systemctl` gives without
-                // sudo. The full rule list (sudo/pkexec) is fetched
-                // lazily by the menu when the user opens it.
-                let summary = fetch_ufw_status_only().await;
-                let _ = out.send(UfwCommandOutput::Refreshed(summary));
             }
         });
 
+        let mut effects = EffectScope::new();
+        let cs = sender.clone();
+        effects.push(move |_| {
+            let v = config_manager()
+                .config()
+                .bars()
+                .widgets()
+                .ufw()
+                .show_count()
+                .get();
+            let _ = cs.command_sender().send(UfwCommandOutput::ShowCount(v));
+        });
+
         let model = UfwModel {
-            summary: UfwSummary::default(),
+            snap: service::current(),
+            show_count: config_manager()
+                .config()
+                .bars()
+                .widgets()
+                .ufw()
+                .show_count()
+                .get_untracked(),
+            _effects: effects,
         };
 
         let widgets = view_output!();
-        apply_visual(&widgets.image, &root, &model.summary);
+        apply_visual(&widgets, &root, &model);
 
         ComponentParts { model, widgets }
     }
@@ -156,303 +166,161 @@ impl Component for UfwModel {
         root: &Self::Root,
     ) {
         match message {
-            UfwCommandOutput::Refreshed(summary) => {
-                self.summary = summary;
-                apply_visual(&widgets.image, root, &self.summary);
-            }
+            UfwCommandOutput::State(snap) => self.snap = snap,
+            UfwCommandOutput::ShowCount(v) => self.show_count = v,
         }
+        apply_visual(widgets, root, self);
     }
 }
 
-fn apply_visual(image: &gtk::Image, root: &gtk::Box, s: &UfwSummary) {
-    // Firewall-themed glyphs from Adwaita's `firewall-applet-*`
-    // family. They read as "firewall" at bar size where the
-    // generic `security-{high,low}` padlock icons look like
-    // password-fields. `shields_up` carries the explicit
-    // "actively protecting" visual that lines up with the
-    // user's mental model of UFW.
-    let icon = match s.status {
-        Some(Status::Active) => "shield-check-symbolic",
-        Some(Status::Inactive) => "firewall-symbolic",
-        _ => "firewall-error-symbolic",
+/// What the pill shows for a snapshot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PillView {
+    pub icon: &'static str,
+    /// The state class on the pill root (`_ufw.scss` tints the icon).
+    pub class: &'static str,
+    /// The allowed-in rule count, when shown.
+    pub count: Option<usize>,
+    pub tooltip: String,
+}
+
+/// Every state class [`pill_view`] may set (toggled one at a time).
+const STATE_CLASSES: [&str; 4] = ["active", "inactive", "warn", "unknown"];
+
+pub(crate) fn pill_view(snap: &Snapshot, show_count: bool) -> PillView {
+    let health = state::classify(snap);
+    let (icon, class) = match health.level {
+        Level::Green => ("shield-check-symbolic", "active"),
+        Level::Red => ("firewall-symbolic", "inactive"),
+        Level::Amber => ("firewall-error-symbolic", "warn"),
+        Level::Muted => ("firewall-error-symbolic", "unknown"),
     };
-    image.set_icon_name(Some(icon));
-
-    let tooltip = if let Some(err) = &s.error
-        && s.status.is_none()
+    let allowed = snap.rules.as_ref().ok().map(|r| r.allowed_in());
+    let mut lines = vec![format!("UFW firewall: {}", health.headline)];
+    if health.enforcing()
+        && let Some(n) = allowed
     {
-        format!("UFW: {err}")
-    } else {
-        let mut lines = vec![format!("UFW: {}", status_word(s.status))];
-        if !s.incoming.is_empty() {
-            lines.push(format!("Incoming: {}", s.incoming));
-        }
-        if !s.outgoing.is_empty() {
-            lines.push(format!("Outgoing: {}", s.outgoing));
-        }
-        if !s.routed.is_empty() {
-            lines.push(format!("Routed: {}", s.routed));
-        }
-        if matches!(s.status, Some(Status::Active)) && !s.rules.is_empty() {
-            lines.push(format!("Rules: {}", s.rules.len()));
-        }
-        if s.error.is_some() {
-            lines.push("(open menu to load rules)".to_string());
-        }
-        lines.join("\n")
-    };
-    root.set_tooltip_text(Some(&tooltip));
-
-    // Three-state class set on the bar pill so the SCSS in
-    // `_ufw.scss` (.ufw-bar-widget.active / .inactive / .unknown)
-    // can tint the icon green / red / amber. Mutual exclusion via
-    // remove_css_class before add ensures stale state from a
-    // previous refresh doesn't pile up.
-    root.remove_css_class("active");
-    root.remove_css_class("inactive");
-    root.remove_css_class("unknown");
-    match s.status {
-        Some(Status::Active) => root.add_css_class("active"),
-        Some(Status::Inactive) => root.add_css_class("inactive"),
-        _ => root.add_css_class("unknown"),
+        lines.push(match n {
+            0 => "No rule allows incoming traffic".to_string(),
+            1 => "1 rule allows incoming traffic".to_string(),
+            n => format!("{n} rules allow incoming traffic"),
+        });
+    }
+    if !health.detail.is_empty() {
+        lines.push(health.detail.clone());
+    }
+    if !health.fixes.is_empty() {
+        let fixes: Vec<&str> = health.fixes.iter().map(|f| f.label()).collect();
+        lines.push(format!("Fix in the menu: {}", fixes.join(" · ")));
+    }
+    if snap.installed && snap.rules == Err(ReadError::Denied) {
+        lines.push("The rules need root to read: open the menu → Load rules".to_string());
+    }
+    lines.push("Click: open the firewall menu".to_string());
+    PillView {
+        icon,
+        class,
+        count: allowed.filter(|_| show_count && health.enforcing()),
+        tooltip: lines.join("\n"),
     }
 }
 
-pub(crate) fn status_word(s: Option<Status>) -> &'static str {
-    match s {
-        Some(Status::Active) => "active",
-        Some(Status::Inactive) => "inactive",
-        _ => "unknown",
+fn apply_visual(widgets: &UfwModelWidgets, root: &gtk::Box, model: &UfwModel) {
+    let v = pill_view(&model.snap, model.show_count);
+    widgets.image.set_icon_name(Some(v.icon));
+    match v.count {
+        Some(n) => {
+            widgets.count.set_label(&n.to_string());
+            widgets.count.set_visible(true);
+        }
+        None => widgets.count.set_visible(false),
     }
-}
-
-/// Get the UFW state. `ufw` itself requires root to run (the
-/// binary just bails out with `You need to be root`), so the
-/// background poll cannot call it directly. Two fallbacks chained:
-///
-///   1. `systemctl is-active ufw.service` — no privilege needed
-///      and gives the active/inactive bit (the most important
-///      thing for the bar icon).
-///   2. `sudo -n ufw status verbose` — only succeeds if the user
-///      has a NOPASSWD entry for ufw in /etc/sudoers; gives the
-///      default policies + rule list when available.
-///   3. `pkexec ufw status verbose` — falls into the polkit
-///      graphical-agent path, which the menu's Refresh button
-///      uses explicitly (`fetch_ufw_summary_pkexec`). Auto-poll
-///      does NOT trigger this — we don't want a password prompt
-///      every 120 s.
-///
-/// `pub(crate)` so the menu widget can re-trigger fetches after
-/// an action without duplicating the parse path.
-pub(crate) async fn fetch_ufw_summary() -> UfwSummary {
-    // Detect-only first: a missing `ufw` binary surfaces as
-    // "not installed" rather than the more confusing root error.
-    if !margo_fs::path::on_path("ufw") {
-        return UfwSummary {
-            error: Some("not installed".to_string()),
-            ..UfwSummary::default()
-        };
-    }
-
-    // Try sudo -n (NOPASSWD). If it works, we get full info.
-    if let Some(out) = run_capture("sudo", &["-n", "ufw", "status", "verbose"]).await {
-        return parse_ufw_verbose(&out);
-    }
-
-    // Fall back to the status-only path so the icon at least
-    // reflects active/inactive.
-    let mut summary = UfwSummary::default();
-    if run_capture("systemctl", &["is-active", "--quiet", "ufw.service"])
-        .await
-        .is_some()
-    {
-        summary.status = Some(Status::Active);
-    } else {
-        // is-active returns non-zero for inactive — distinguish
-        // "service missing" from "active=false" by checking the
-        // unit file existence too.
-        if run_capture("systemctl", &["cat", "ufw.service"])
-            .await
-            .is_some()
-        {
-            summary.status = Some(Status::Inactive);
+    root.set_tooltip_text(Some(&v.tooltip));
+    for c in STATE_CLASSES {
+        if c != v.class && root.has_css_class(c) {
+            root.remove_css_class(c);
         }
     }
-    summary.error = Some("rule details need authentication".to_string());
-    summary
-}
-
-/// Privilege-free status probe for the background bar poll and the
-/// control-center firewall tile. Uses **only** `systemctl` — never
-/// `sudo`/`pkexec` — so a recurring poll can't open a PAM/sudo session
-/// on every tick. That sudo-per-poll was the journal + audit spam the
-/// 120 s `sudo -n ufw status verbose` path produced (two lines every
-/// cycle, ×N bars on multi-monitor). This yields the active/inactive
-/// bit that drives the pill icon; the full rule list is fetched lazily
-/// by the menu (`fetch_ufw_summary` / `fetch_ufw_summary_pkexec`) only
-/// when the user actually opens it.
-pub(crate) async fn fetch_ufw_status_only() -> UfwSummary {
-    if !margo_fs::path::on_path("ufw") {
-        return UfwSummary {
-            error: Some("not installed".to_string()),
-            ..UfwSummary::default()
-        };
+    if !root.has_css_class(v.class) {
+        root.add_css_class(v.class);
     }
-
-    let mut summary = UfwSummary::default();
-    if run_capture("systemctl", &["is-active", "--quiet", "ufw.service"])
-        .await
-        .is_some()
-    {
-        summary.status = Some(Status::Active);
-    } else if run_capture("systemctl", &["cat", "ufw.service"])
-        .await
-        .is_some()
-    {
-        // Unit exists but isn't active → firewall off.
-        summary.status = Some(Status::Inactive);
-    }
-    // A short hint rather than the auth-required wording: the menu is
-    // the place to load (and act on) the actual rules.
-    summary.error = Some(if summary.status.is_some() {
-        "open menu for rules".to_string()
-    } else {
-        "status unavailable".to_string()
-    });
-    summary
-}
-
-/// Privileged variant that asks polkit (graphical agent) for
-/// auth. Used by the menu's Refresh button and after every
-/// action so the user sees the full rule list once they've
-/// entered their password. Polkit caches the answer for ~5 min
-/// so subsequent calls within the menu session are silent.
-pub(crate) async fn fetch_ufw_summary_pkexec() -> UfwSummary {
-    if !margo_fs::path::on_path("ufw") {
-        return UfwSummary {
-            error: Some("not installed".to_string()),
-            ..UfwSummary::default()
-        };
-    }
-    match tokio::process::Command::new("pkexec")
-        .args(["ufw", "status", "verbose"])
-        .output()
-        .await
-    {
-        Ok(out) if out.status.success() => parse_ufw_verbose(&String::from_utf8_lossy(&out.stdout)),
-        Ok(out) => UfwSummary {
-            error: Some(format!(
-                "pkexec ufw exit {}: {}",
-                out.status,
-                String::from_utf8_lossy(&out.stderr).trim()
-            )),
-            ..UfwSummary::default()
-        },
-        Err(e) => UfwSummary {
-            error: Some(format!("pkexec spawn: {e}")),
-            ..UfwSummary::default()
-        },
-    }
-}
-
-async fn run_capture(cmd: &str, args: &[&str]) -> Option<String> {
-    let out = tokio::process::Command::new(cmd)
-        .args(args)
-        .output()
-        .await
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    Some(String::from_utf8_lossy(&out.stdout).into_owned())
-}
-
-fn parse_ufw_verbose(stdout: &str) -> UfwSummary {
-    let mut summary = UfwSummary::default();
-    let mut in_rules = false;
-
-    for line in stdout.lines() {
-        let trimmed = line.trim();
-
-        if let Some(rest) = trimmed.strip_prefix("Status:") {
-            summary.status = Some(match rest.trim() {
-                "active" => Status::Active,
-                "inactive" => Status::Inactive,
-                _ => Status::Unknown,
-            });
-            continue;
-        }
-
-        if let Some(rest) = trimmed.strip_prefix("Logging:") {
-            summary.logging = rest.trim().to_string();
-            continue;
-        }
-
-        if let Some(rest) = trimmed.strip_prefix("Default:") {
-            for chunk in rest.split(',') {
-                let chunk = chunk.trim();
-                if let Some((policy, kind)) = chunk.split_once('(') {
-                    let policy = policy.trim().to_string();
-                    let kind = kind.trim_end_matches(')').trim();
-                    match kind {
-                        "incoming" => summary.incoming = policy,
-                        "outgoing" => summary.outgoing = policy,
-                        "routed" => summary.routed = policy,
-                        _ => {}
-                    }
-                }
-            }
-            continue;
-        }
-
-        if trimmed.starts_with("To") && trimmed.contains("Action") && trimmed.contains("From") {
-            continue;
-        }
-        if trimmed.starts_with("--") {
-            in_rules = true;
-            continue;
-        }
-        if in_rules && !trimmed.is_empty() {
-            summary.rules.push(trimmed.to_string());
-        }
-    }
-
-    summary
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mshell_privileged::ufw::rules::{Conf, parse_rules};
+    use mshell_privileged::ufw::state::{UnitRead, parse_show};
+
+    fn snap(enabled: bool, show: &str) -> Snapshot {
+        Snapshot {
+            installed: true,
+            conf: Ok(Conf {
+                enabled: Some(enabled),
+                loglevel: None,
+            }),
+            defaults: None,
+            unit: UnitRead::Unit(parse_show(show)),
+            rules: Ok(parse_rules(
+                "### tuple ### allow tcp 22 0.0.0.0/0 any 0.0.0.0/0 in\n\
+                 ### tuple ### deny udp 53 0.0.0.0/0 any 0.0.0.0/0 out\n\
+                 ### tuple ### limit tcp 2222 0.0.0.0/0 any 0.0.0.0/0 in\n### END RULES ###\n",
+                None,
+                false,
+            )),
+        }
+    }
+
+    const ON: &str = "LoadState=loaded\nActiveState=active\nUnitFileState=enabled\n";
 
     #[test]
-    fn parses_active_with_rules() {
-        let raw = "\
-Status: active
-Logging: on (low)
-Default: deny (incoming), allow (outgoing), disabled (routed)
-New profiles: skip
-
-To                         Action      From
---                         ------      ----
-22                         ALLOW IN    Anywhere
-80                         ALLOW IN    Anywhere
-443                        ALLOW IN    Anywhere
-";
-        let s = parse_ufw_verbose(raw);
-        assert_eq!(s.status, Some(Status::Active));
-        assert_eq!(s.incoming, "deny");
-        assert_eq!(s.outgoing, "allow");
-        assert_eq!(s.routed, "disabled");
-        assert_eq!(s.logging, "on (low)");
-        assert_eq!(s.rules.len(), 3);
-        assert!(s.rules[0].starts_with("22"));
+    fn green_shows_the_count_only_when_asked() {
+        let v = pill_view(&snap(true, ON), true);
+        assert_eq!(
+            (v.icon, v.class, v.count),
+            ("shield-check-symbolic", "active", Some(2))
+        );
+        assert!(
+            v.tooltip
+                .starts_with("UFW firewall: On\n2 rules allow incoming traffic"),
+            "{}",
+            v.tooltip
+        );
+        assert_eq!(pill_view(&snap(true, ON), false).count, None);
     }
 
     #[test]
-    fn parses_inactive() {
-        let raw = "Status: inactive\n";
-        let s = parse_ufw_verbose(raw);
-        assert_eq!(s.status, Some(Status::Inactive));
-        assert!(s.rules.is_empty());
+    fn red_amber_and_muted() {
+        let off = pill_view(&snap(false, ON), true);
+        assert_eq!((off.class, off.count), ("inactive", None));
+        let amber = pill_view(
+            &snap(
+                true,
+                "LoadState=loaded\nActiveState=inactive\nUnitFileState=disabled\n",
+            ),
+            true,
+        );
+        assert_eq!(
+            (amber.icon, amber.class, amber.count),
+            ("firewall-error-symbolic", "warn", None)
+        );
+        assert!(
+            amber
+                .tooltip
+                .contains("Fix in the menu: Start ufw · Start at boot"),
+            "{}",
+            amber.tooltip
+        );
+        let mut missing = snap(true, ON);
+        missing.installed = false;
+        let m = pill_view(&missing, true);
+        assert_eq!(m.class, "unknown");
+        assert!(m.tooltip.contains("ufw isn't installed"));
+        let mut denied = snap(true, ON);
+        denied.rules = Err(ReadError::Denied);
+        let d = pill_view(&denied, true);
+        assert_eq!((d.class, d.count), ("active", None));
+        assert!(d.tooltip.contains("Load rules"));
+        assert_eq!(pill_view(&Snapshot::loading(), true).class, "unknown");
     }
 }

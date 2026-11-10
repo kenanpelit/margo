@@ -106,6 +106,9 @@ pub struct BarWidgets {
     /// Wallpaper pill — what each mouse button does.
     #[serde(default)]
     pub wallpaper: WallpaperBarWidget,
+    /// UFW Firewall pill — whether it shows the allowed-in rule count.
+    #[serde(default)]
+    pub ufw: UfwBarWidget,
     /// User-defined pills, referenced from a bar slot via `!Custom <name>`.
     pub custom_widgets: Vec<CustomWidgetConfig>,
 }
@@ -358,6 +361,18 @@ impl Default for WallpaperBarWidget {
             scroll: false,
         }
     }
+}
+
+/// Settings for the [`crate::schema::bar_widgets::BarWidget::Ufw`] pill.
+/// The default keeps the icon-only pill.
+#[derive(
+    Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema,
+)]
+#[serde(default)]
+pub struct UfwBarWidget {
+    /// Show the number of incoming allow / limit rules next to the icon
+    /// while the firewall is on.
+    pub show_count: bool,
 }
 
 /// Settings for the [`crate::schema::bar_widgets::BarWidget::MargoTags`]
@@ -1221,6 +1236,14 @@ mod tests {
         assert_eq!(widgets.wallpaper.middle_click, WallpaperPillAction::None);
         assert_eq!(widgets.wallpaper.right_click, WallpaperPillAction::None);
         assert!(!widgets.wallpaper.scroll, "scroll stays inert");
+    }
+
+    #[test]
+    fn ufw_pill_count_stays_off_by_default() {
+        let widgets: BarWidgets = yaml_serde::from_str("lyrics: {}\n").unwrap();
+        assert!(!widgets.ufw.show_count);
+        let w: UfwBarWidget = yaml_serde::from_str("show_count: true\n").unwrap();
+        assert!(w.show_count);
     }
 
     #[test]

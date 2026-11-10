@@ -115,6 +115,7 @@ mod timer_settings;
 mod toast_settings;
 mod translate_settings;
 mod tune_bar_settings;
+mod ufw_settings;
 mod users_settings;
 mod valent_mirror_settings;
 mod vpn_settings;

@@ -5,7 +5,6 @@
 //! independently reviewable; their tests live here too.
 
 use crate::bars::bar_widgets::podman::{PodmanSummary, fetch_podman_summary};
-use crate::bars::bar_widgets::ufw::{Status as UfwStatus, fetch_ufw_status_only};
 use mshell_services::{
     audio_service, battery_service, bluetooth_service, line_power_service, network_service,
 };
@@ -181,15 +180,18 @@ pub(super) fn twilight_mode_label(mode: &str) -> &'static str {
 
 // ── Firewall (UFW) helpers ──────────────────────────────────────────────────
 
-/// (subtitle, is_active). Active = UFW enabled. Unprivileged read via the
-/// shared bar-pill helper (`systemctl is-active ufw.service`).
+/// (subtitle, is_active). Active = the firewall enforces its rules;
+/// the subtitle is its state (`On`, `Off`, `On — not running`, …). Read
+/// without root, like the bar pill.
 pub(super) async fn read_ufw_tile_state() -> (String, bool) {
-    let summary = fetch_ufw_status_only().await;
-    match summary.status {
-        Some(UfwStatus::Active) => ("Active".to_string(), true),
-        Some(UfwStatus::Inactive) => ("Inactive".to_string(), false),
-        _ => ("Unavailable".to_string(), false),
-    }
+    let snap = crate::bars::bar_widgets::ufw::service::read().await;
+    let health = mshell_privileged::ufw::state::classify(&snap);
+    let subtitle = match health.status {
+        mshell_privileged::ufw::state::Status::Missing => "Not installed",
+        mshell_privileged::ufw::state::Status::Unknown => "Unavailable",
+        _ => health.headline,
+    };
+    (subtitle.to_string(), health.enforcing())
 }
 
 // ── Podman helpers ──────────────────────────────────────────────────────────

@@ -137,6 +137,14 @@ fn discord_voice_parts() -> Vec<PagePart> {
     ]
 }
 
+/// UFW Firewall: the pill's rule count above the menu geometry.
+fn ufw_parts() -> Vec<PagePart> {
+    vec![
+        page_part!(crate::ufw_settings::UfwSettingsModel => crate::ufw_settings::UfwSettingsInit {}),
+        page_part!(WidgetMenuSettingsModel => WidgetMenuSettingsInit { kind: MenuKind::Ufw }),
+    ]
+}
+
 /// Eye Care: the reminder's rules (a bar-only pill, no menu geometry).
 fn eyecare_parts() -> Vec<PagePart> {
     vec![
@@ -311,11 +319,12 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
             label: "Screenshot",
             icon: "camera-photo-symbolic",
         },
-        WidgetEntry::Menu {
-            kind: MenuKind::Ufw,
+        // UFW Firewall = the pill's rule count + the menu geometry.
+        WidgetEntry::Composite {
             stack_name: "ufw",
             label: "UFW Firewall",
             icon: "firewall-symbolic",
+            parts: ufw_parts,
         },
         WidgetEntry::Menu {
             kind: MenuKind::Bluetooth,
