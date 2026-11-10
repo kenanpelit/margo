@@ -140,9 +140,15 @@ pub(crate) enum Noun {
 
 /// The fold line: "+3 more" under shown rows; standing alone (no row of
 /// the section fits) it names them — "5 events", "3 new notifications".
+/// Folded events span the selected day AND the week's upcoming ones, so
+/// they say "this week": a plain "+8 more" under a "6 events" header
+/// read as a contradiction.
 pub(crate) fn more_label(n: usize, alone: bool, noun: Noun) -> String {
     if !alone {
-        return format!("+{n} more");
+        return match noun {
+            Noun::Events => format!("+{n} more this week"),
+            Noun::Notifications => format!("+{n} more"),
+        };
     }
     match (noun, n) {
         (Noun::Events, 1) => "1 event".to_string(),
@@ -731,7 +737,7 @@ mod tests {
 
     #[test]
     fn more_reads_naturally() {
-        assert_eq!(more_label(1, false, Noun::Events), "+1 more");
+        assert_eq!(more_label(1, false, Noun::Events), "+1 more this week");
         assert_eq!(more_label(12, false, Noun::Notifications), "+12 more");
         assert_eq!(more_label(5, true, Noun::Events), "5 events");
         assert_eq!(more_label(1, true, Noun::Events), "1 event");
