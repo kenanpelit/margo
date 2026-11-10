@@ -7,13 +7,17 @@
 //! place on every poll (see [`super::keyed_rows`]).
 
 use super::keyed_rows::{KeyedList, KeyedRow};
+use super::library_section::{LibUi, LibrarySection};
 use crate::agents::SessionsSnapshot;
+use crate::agents::library::classify::LibStatus;
+use crate::agents::library::{LibAction, LibSession, LibrarySnapshot};
 use crate::agents::local_stats::compact_count;
 use crate::agents::pricing::{self, Currency};
 use crate::agents::sessions::{self, LiveSession, SavedSession, SessionStatus};
 use relm4::gtk;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, Cast, EditableExt, WidgetExt};
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -35,6 +39,10 @@ pub(crate) enum SessionAction {
     /// Open a URL or file in its default app (a Remote Control session on
     /// claude.ai, a CLAUDE.md).
     Open(String),
+    /// Change saved sessions on disk (after the row's confirm).
+    Library(LibAction),
+    /// List the leftovers of deleted sessions for a confirm.
+    FindLeftovers,
 }
 
 /// The page's widgets, built once. A refresh shows or hides the fixed
@@ -63,6 +71,13 @@ pub(crate) struct SessionsPage {
     new_box: gtk::Box,
     new_rows: KeyedList<NewRow>,
     multi: bool,
+    /// Every saved session on disk (the session manager).
+    library: LibrarySection,
+    /// The scan's sessions by `(account dir, id)`, newest copy: recent
+    /// and matching rows show their status from it.
+    lib_by_id: HashMap<(PathBuf, String), LibSession>,
+    /// The recent sessions last shown, to re-annotate on a new scan.
+    last_saved: Vec<SavedSession>,
     on_action: Rc<dyn Fn(SessionAction)>,
 }
 
@@ -108,7 +123,9 @@ impl SessionsPage {
         container: &gtk::Box,
         on_action: impl Fn(SessionAction) + 'static,
         on_search: impl Fn(String) + 'static,
+        on_lib: impl Fn(LibUi) + 'static,
     ) -> Self {
+        let on_action: Rc<dyn Fn(SessionAction)> = Rc::new(on_action);
         let search = gtk::SearchEntry::new();
         search.set_placeholder_text(Some("Search every prompt you typed…"));
         search.add_css_class("agents-search");
@@ -154,6 +171,7 @@ impl SessionsPage {
         container.append(&match_title);
         container.append(&match_box);
         container.append(&no_match);
+        let library = LibrarySection::new(container, on_action.clone(), Rc::new(on_lib));
         let page = SessionsPage {
             notice,
             loading,
@@ -174,13 +192,53 @@ impl SessionsPage {
             new_title,
             new_box,
             multi: false,
-            on_action: Rc::new(on_action),
+            library,
+            lib_by_id: HashMap::new(),
+            last_saved: Vec::new(),
+            on_action,
         };
         page.show_loading_only();
         page.show_matches(false);
         page.new_title.set_visible(false);
         page.new_box.set_visible(false);
         page
+    }
+
+    /// Rows for `saved`, each with what the scan knows about it.
+    fn saved_items(&self, saved: &[SavedSession], now_ms: i64, multi: bool) -> Vec<SavedItem> {
+        saved
+            .iter()
+            .map(|s| SavedItem {
+                lib: self
+                    .lib_by_id
+                    .get(&(s.config_dir.clone(), s.session_id.clone()))
+                    .cloned(),
+                session: s.clone(),
+                now_ms,
+                multi,
+            })
+            .collect()
+    }
+
+    /// Show a fresh scan of every saved session.
+    pub(crate) fn set_library(&mut self, snap: LibrarySnapshot, now_ms: i64) {
+        self.lib_by_id.clear();
+        // Newest first: the first copy of an id wins.
+        for s in &snap.sessions {
+            self.lib_by_id
+                .entry((s.config_dir.clone(), s.id.clone()))
+                .or_insert_with(|| s.clone());
+        }
+        self.library.set_snapshot(snap, now_ms);
+        let items = self.saved_items(&self.last_saved, now_ms, self.multi);
+        let on_action = self.on_action.clone();
+        self.recent
+            .sync(&items, |item| SavedRow::new(item, on_action.clone()));
+    }
+
+    /// The session manager's own controls.
+    pub(crate) fn library_ui(&mut self, msg: LibUi, now_ms: i64) {
+        self.library.handle(msg, now_ms);
     }
 
     fn show_matches(&self, on: bool) {
@@ -196,11 +254,8 @@ impl SessionsPage {
             return;
         }
         self.query = query.to_string();
-        let items: Vec<(SavedSession, i64, bool)> = hits
-            .iter()
-            .cloned()
-            .map(|s| (s, now_ms, self.multi))
-            .collect();
+        self.library.set_query(query, now_ms);
+        let items = self.saved_items(hits, now_ms, self.multi);
         let on_action = self.on_action.clone();
         self.matches
             .sync(&items, |item| SavedRow::new(item, on_action.clone()));
@@ -269,12 +324,8 @@ impl SessionsPage {
         }
         self.none_running
             .set_visible(snap.live.is_empty() && snap.available);
-        let items: Vec<(SavedSession, i64, bool)> = snap
-            .saved
-            .iter()
-            .cloned()
-            .map(|s| (s, now_ms, multi))
-            .collect();
+        self.last_saved = snap.saved.clone();
+        let items = self.saved_items(&snap.saved, now_ms, multi);
         let on_action = self.on_action.clone();
         self.recent
             .sync(&items, |item| SavedRow::new(item, on_action.clone()));
@@ -664,19 +715,48 @@ impl KeyedRow for NewRow {
     }
 }
 
+/// A recent (or matching) session as its row shows it, with what the
+/// scan of the saved sessions knows about it.
+#[derive(Debug, Clone)]
+pub(crate) struct SavedItem {
+    pub(crate) session: SavedSession,
+    pub(crate) now_ms: i64,
+    pub(crate) multi: bool,
+    pub(crate) lib: Option<LibSession>,
+}
+
+/// Where a recent session resumes from, or why it doesn't: a moved
+/// project resumes from its new folder; orphan, misplaced and unknown
+/// ones don't resume from here.
+pub(crate) fn saved_resume(item: &SavedItem) -> Result<String, String> {
+    match &item.lib {
+        Some(l) if l.status != LibStatus::Ok => match l.resume_dir() {
+            Some(dir) => Ok(dir),
+            None => Err(l.status.reason(&l.cwd)),
+        },
+        _ => Ok(item.session.project.clone()),
+    }
+}
+
 /// A recent session to resume: last prompt, project, age; click resumes.
 pub(crate) struct SavedRow {
     button: gtk::Button,
+    glyph: gtk::Image,
     title: gtk::Label,
     subtitle: gtk::Label,
-    cwd: Rc<RefCell<String>>,
+    go: gtk::Image,
+    /// Where a click resumes it; `None` = it can't resume from here.
+    cwd: Rc<RefCell<Option<String>>>,
 }
 
 impl SavedRow {
-    fn new(item: &(SavedSession, i64, bool), on_action: Rc<dyn Fn(SessionAction)>) -> Self {
+    fn new(item: &SavedItem, on_action: Rc<dyn Fn(SessionAction)>) -> Self {
         let button = gtk::Button::new();
         button.set_css_classes(&["agents-session-row"]);
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+        let glyph = gtk::Image::new();
+        glyph.set_valign(gtk::Align::Center);
+        row.append(&glyph);
         let (block, title, subtitle) = text_block();
         row.append(&block);
         let play = gtk::Image::from_icon_name("media-playback-start-symbolic");
@@ -684,24 +764,28 @@ impl SavedRow {
         play.add_css_class("agents-session-go");
         row.append(&play);
         button.set_child(Some(&row));
-        button.set_tooltip_text(Some("Resume in a new terminal"));
-        let cwd = Rc::new(RefCell::new(String::new()));
+        let cwd = Rc::new(RefCell::new(None));
         let (id, c, dir) = (
-            item.0.session_id.clone(),
+            item.session.session_id.clone(),
             cwd.clone(),
-            item.0.config_dir.clone(),
+            item.session.config_dir.clone(),
         );
         button.connect_clicked(move |_| {
+            let Some(cwd) = c.borrow().clone() else {
+                return;
+            };
             on_action(SessionAction::Resume {
                 session_id: id.clone(),
-                cwd: c.borrow().clone(),
+                cwd,
                 config_dir: dir.clone(),
             })
         });
         let r = SavedRow {
             button,
+            glyph,
             title,
             subtitle,
+            go: play,
             cwd,
         };
         r.update(item);
@@ -710,18 +794,19 @@ impl SavedRow {
 }
 
 impl KeyedRow for SavedRow {
-    type Item = (SavedSession, i64, bool);
+    type Item = SavedItem;
     type Key = String;
 
     fn key(item: &Self::Item) -> String {
-        item.0.session_id.clone()
+        item.session.session_id.clone()
     }
 
     fn widget(&self) -> gtk::Widget {
         self.button.clone().upcast()
     }
 
-    fn update(&self, (s, now_ms, multi): &Self::Item) {
+    fn update(&self, item: &Self::Item) {
+        let (s, now_ms, multi) = (&item.session, &item.now_ms, &item.multi);
         let title = if s.last_prompt.is_empty() {
             s.session_id.as_str()
         } else {
@@ -740,7 +825,27 @@ impl KeyedRow for SavedRow {
             s.prompts,
             if s.prompts == 1 { "" } else { "s" }
         ));
-        self.cwd.replace(s.project.clone());
+        let resume = saved_resume(item);
+        let status = item.lib.as_ref().map(|l| &l.status);
+        match status.and_then(LibStatus::icon) {
+            Some(icon) => {
+                self.glyph.set_icon_name(Some(icon));
+                let name = status.map_or("", LibStatus::name);
+                self.glyph.set_css_classes(&["agents-library-status", name]);
+                self.glyph.set_visible(true);
+            }
+            None => self.glyph.set_visible(false),
+        }
+        self.go.set_visible(resume.is_ok());
+        let tip = match (&resume, status) {
+            (Err(why), _) => why.clone(),
+            (Ok(dir), Some(LibStatus::Moved(_))) => {
+                format!("Resume in a new terminal, from {}", sessions::tilde(dir))
+            }
+            (Ok(_), _) => "Resume in a new terminal".to_string(),
+        };
+        self.button.set_tooltip_text(Some(&tip));
+        self.cwd.replace(resume.ok());
     }
 }
 

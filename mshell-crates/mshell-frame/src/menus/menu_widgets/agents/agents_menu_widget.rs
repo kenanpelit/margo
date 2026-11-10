@@ -14,7 +14,10 @@
 //! its terminal, unfold one to read Claude's last reply — recent saved
 //! sessions to resume, a full-text search over every prompt typed, and
 //! (header +) a new session in a recent project (see
-//! [`super::sessions_page`]).
+//! [`super::sessions_page`]). Below them, every saved session on disk
+//! with its status, rename / lock / delete / repair and the leftover
+//! cleanup ([`super::library_section`], scanned by [`LIBRARY_POLL`] only
+//! while the Sessions tab shows).
 //!
 //! Memory (third tab): every CLAUDE.md, click to edit
 //! ([`super::memory_page`]).
@@ -24,6 +27,8 @@
 //!
 //! The menu subscribes to the shared polls only while revealed.
 
+use crate::agents::library::leftovers::Leftover;
+use crate::agents::library::{self, LIBRARY_POLL, LibrarySnapshot};
 use crate::agents::limits::{self, LimitWindow, PaceStatus, Provider, WindowKind};
 use crate::agents::local_stats::compact_count;
 use crate::agents::memory::MemoryFile;
@@ -35,6 +40,7 @@ use crate::agents::{
     USAGE_POLL, UsageSnapshot, pricing, request_refresh,
 };
 use crate::common_widgets::segmented::{Segmented, SegmentedStyle};
+use crate::menus::menu_widgets::agents::library_section::LibUi;
 use crate::menus::menu_widgets::agents::memory_page::rebuild_memory;
 use crate::menus::menu_widgets::agents::plugins_page::rebuild_plugins;
 use crate::menus::menu_widgets::agents::sessions_page::{SessionAction, SessionsPage};
@@ -65,6 +71,9 @@ pub(crate) struct AgentsMenuWidgetModel {
     poll: PollSubscription<UsageSnapshot>,
     sessions_poll: PollSubscription<SessionsSnapshot>,
     history_poll: PollSubscription<HistorySnapshot>,
+    library_poll: PollSubscription<LibrarySnapshot>,
+    /// The menu is shown (the library poll also needs the Sessions tab).
+    revealed: bool,
     _settings: mshell_common::scoped_effects::EffectScope,
 }
 
@@ -76,6 +85,8 @@ pub(crate) enum AgentsMenuWidgetInput {
     Search(String),
     /// Header +: show / hide "New session in…".
     ToggleNew,
+    /// The session manager's own controls (sort, filter, confirms).
+    Library(LibUi),
     Refresh,
     OpenDashboard,
     /// Sent by the host menu on show/hide; gates the shared poll.
@@ -98,6 +109,12 @@ pub(crate) enum AgentsMenuWidgetCommandOutput {
     Plugins(Inventory),
     /// A jump / resume finished; `Some` = what went wrong.
     ActionDone(Option<String>),
+    /// A fresh scan of every saved session.
+    Library(LibrarySnapshot),
+    /// A rename / delete / repair / lock / cleanup finished.
+    LibraryDone(Result<String, String>),
+    /// The leftovers of deleted sessions, for the confirm.
+    Leftovers(Vec<Leftover>),
 }
 
 #[relm4::component(pub(crate))]
@@ -250,6 +267,23 @@ impl Component for AgentsMenuWidgetModel {
             }
         });
 
+        let library_poll = LIBRARY_POLL.subscribe();
+        let mut lrx = library_poll.receiver();
+        sender.command(|out, shutdown| async move {
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            loop {
+                let snap = lrx.borrow_and_update().clone();
+                if let Some(s) = snap {
+                    let _ = out.send(AgentsMenuWidgetCommandOutput::Library(s));
+                }
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    changed = lrx.changed() => if changed.is_err() { break },
+                }
+            }
+        });
+
         let usage_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
         let sessions_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
         let memory_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
@@ -278,10 +312,12 @@ impl Component for AgentsMenuWidgetModel {
         let plan_label = header.meta().cloned().unwrap_or_default();
         let s = sender.clone();
         let s2 = sender.clone();
+        let s3 = sender.clone();
         let sessions_page = SessionsPage::new(
             &sessions_box,
             move |a| s.input(AgentsMenuWidgetInput::Session(a)),
             move |q| s2.input(AgentsMenuWidgetInput::Search(q)),
+            move |m| s3.input(AgentsMenuWidgetInput::Library(m)),
         );
         let mut model = AgentsMenuWidgetModel {
             usage_box: usage_box.clone(),
@@ -299,6 +335,8 @@ impl Component for AgentsMenuWidgetModel {
             poll,
             sessions_poll,
             history_poll,
+            library_poll,
+            revealed: false,
             _settings: crate::agents::settings::watch_settings(),
         };
         let widgets = view_output!();
@@ -327,6 +365,7 @@ impl Component for AgentsMenuWidgetModel {
                 widgets.memory_scroll.set_visible(tab == 2);
                 widgets.plugins_scroll.set_visible(tab == 3);
                 self.update_tabs();
+                self.library_poll.set_active(self.revealed && tab == 1);
                 match tab {
                     2 => self.load_memory(&sender),
                     3 => self.load_plugins(&sender),
@@ -357,6 +396,27 @@ impl Component for AgentsMenuWidgetModel {
                 }
                 self.sessions_page.toggle_new();
             }
+            AgentsMenuWidgetInput::Library(msg) => {
+                let now = chrono::Utc::now().timestamp_millis();
+                self.sessions_page.library_ui(msg, now);
+            }
+            AgentsMenuWidgetInput::Session(SessionAction::Library(action)) => {
+                self.notice = None;
+                sender.oneshot_command(async move {
+                    let result = tokio::task::spawn_blocking(move || library::run(action))
+                        .await
+                        .unwrap_or_else(|_| Err("The action failed".into()));
+                    AgentsMenuWidgetCommandOutput::LibraryDone(result)
+                });
+            }
+            AgentsMenuWidgetInput::Session(SessionAction::FindLeftovers) => {
+                sender.oneshot_command(async move {
+                    let items = tokio::task::spawn_blocking(library::find_leftovers)
+                        .await
+                        .unwrap_or_default();
+                    AgentsMenuWidgetCommandOutput::Leftovers(items)
+                });
+            }
             AgentsMenuWidgetInput::Session(action) => {
                 self.notice = None;
                 sender.oneshot_command(async move {
@@ -370,6 +430,7 @@ impl Component for AgentsMenuWidgetModel {
                 request_refresh();
                 SESSIONS_POLL.refresh_now();
                 HISTORY_POLL.refresh_now();
+                LIBRARY_POLL.refresh_now();
                 match self.tab {
                     2 => self.load_memory(&sender),
                     3 => self.load_plugins(&sender),
@@ -381,6 +442,8 @@ impl Component for AgentsMenuWidgetModel {
                 self.poll.set_active(visible);
                 self.sessions_poll.set_active(visible);
                 self.history_poll.set_active(visible);
+                self.revealed = visible;
+                self.library_poll.set_active(visible && self.tab == 1);
                 if !visible {
                     self.notice = None;
                 }
@@ -442,6 +505,22 @@ impl Component for AgentsMenuWidgetModel {
             AgentsMenuWidgetCommandOutput::ActionDone(notice) => {
                 self.notice = notice;
                 self.update_sessions();
+            }
+            AgentsMenuWidgetCommandOutput::Library(snap) => {
+                let now = chrono::Utc::now().timestamp_millis();
+                self.sessions_page.set_library(snap, now);
+            }
+            AgentsMenuWidgetCommandOutput::LibraryDone(result) => {
+                self.notice = Some(match result {
+                    Ok(done) => done,
+                    Err(why) => why,
+                });
+                self.update_sessions();
+                SESSIONS_POLL.refresh_now();
+            }
+            AgentsMenuWidgetCommandOutput::Leftovers(items) => {
+                let now = chrono::Utc::now().timestamp_millis();
+                self.sessions_page.library_ui(LibUi::Leftovers(items), now);
             }
         }
     }
@@ -517,6 +596,8 @@ fn run_session_action(action: SessionAction) -> Option<String> {
         SessionAction::Open(target) => mshell_process::desktop::open(&target)
             .err()
             .map(|e| format!("Couldn't open it: {e}")),
+        // Routed to `library` by the menu before it gets here.
+        SessionAction::Library(_) | SessionAction::FindLeftovers => None,
     }
 }
 

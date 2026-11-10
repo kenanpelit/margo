@@ -12,6 +12,7 @@ pub(crate) mod details;
 pub(crate) mod history;
 pub(crate) mod jsonl;
 pub(crate) mod launcher;
+pub(crate) mod library;
 pub(crate) mod limits;
 pub(crate) mod local_stats;
 pub(crate) mod memory;
