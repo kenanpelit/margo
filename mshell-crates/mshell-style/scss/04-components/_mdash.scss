@@ -1,0 +1,560 @@
+@use "../02-functions/index" as *;
+
+// ── mdash — the tabbed dashboard ─────────────────────────────────
+//
+// `menus/menu_widgets/mdash/`. One card style for every tab
+// (`.mdash-card`: title INSIDE the card, --card-* tokens), a compact
+// header + status strip + the shared segmented control, and four pages
+// that share one size. Tokens only (DESIGN.md §1, §15).
+
+.mdash-dashboard {
+  // ── Header ─────────────────────────────────────────────────────
+  .mdash-header {
+    padding: 0 0 0 var(--space-1);
+  }
+
+  .mdash-greeting {
+    font-size: var(--font-lg);
+    font-weight: 700;
+    color: var(--on-surface);
+  }
+
+  .mdash-datetime {
+    font-size: var(--font-xs);
+    color: var(--on-surface-variant);
+    font-variant-numeric: tabular-nums;
+  }
+
+  // The power MenuButton carries .panel-action-btn on its outer node;
+  // GTK puts the real button inside — give that the circular action look.
+  menubutton.mdash-power-button > button {
+    all: unset;
+    min-width: var(--button-circle-size);
+    min-height: var(--button-circle-size);
+    border-radius: var(--radius-pill);
+    @include state-layer();
+
+    image {
+      color: var(--on-surface-variant);
+      -gtk-icon-size: var(--icon-md);
+    }
+
+    &:focus-visible {
+      box-shadow: inset 0 0 0 2px var(--primary);
+    }
+  }
+
+  // ── Status strip ───────────────────────────────────────────────
+  .mdash-strip {
+    margin-top: -2px;
+  }
+
+  button.mdash-chip {
+    all: unset;
+    padding: 2px var(--space-2);
+    border-radius: var(--radius-pill);
+    background-color: var(--surface-container);
+    color: var(--on-surface-variant);
+    font-size: var(--font-xs);
+    @include state-layer(var(--surface-container));
+
+    image {
+      -gtk-icon-size: var(--icon-sm);
+      color: var(--on-surface-variant);
+    }
+
+    &:focus-visible {
+      box-shadow: inset 0 0 0 2px var(--primary);
+    }
+  }
+
+  // ── Tabs ───────────────────────────────────────────────────────
+  .mdash-tabs > button.ok-segment {
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--font-xs);
+
+    label {
+      font-size: var(--font-xs);
+    }
+  }
+
+  // Page scrollers paint nothing of their own.
+  scrolledwindow.mdash-page,
+  scrolledwindow.mdash-page > viewport {
+    background-color: transparent;
+  }
+
+  // ── Cards ──────────────────────────────────────────────────────
+  .mdash-card {
+    background-color: var(--card-bg);
+    border-radius: var(--card-radius);
+    padding: var(--space-3);
+    color: var(--on-surface);
+    transition: background-color var(--motion-fast) var(--ease-standard);
+
+    &.activatable:hover {
+      background-color: var(--surface-container-high);
+    }
+  }
+
+  .mdash-card-header {
+    min-height: 24px;
+  }
+
+  .mdash-card-icon {
+    color: var(--primary);
+    -gtk-icon-size: var(--icon-sm);
+  }
+
+  .mdash-card-title {
+    font-size: var(--font-xs);
+    font-weight: 700;
+    color: var(--on-surface-variant);
+    letter-spacing: 0.02em;
+  }
+
+  .mdash-card-meta {
+    font-size: var(--font-xs);
+    color: var(--outline);
+  }
+
+  button.mdash-card-open,
+  button.mdash-icon-button {
+    all: unset;
+    min-width: 24px;
+    min-height: 24px;
+    border-radius: var(--radius-pill);
+    @include state-layer();
+
+    image {
+      -gtk-icon-size: var(--icon-sm);
+      color: var(--on-surface-variant);
+    }
+
+    &:focus-visible {
+      box-shadow: inset 0 0 0 2px var(--primary);
+    }
+  }
+
+  .mdash-dim {
+    font-size: var(--font-xs);
+    color: var(--on-surface-variant);
+  }
+
+  .mdash-empty {
+    font-size: var(--font-xs);
+    color: var(--on-surface-variant);
+  }
+
+  // Flat, labelled row actions inside a card (resume, a station).
+  button.mdash-row-button {
+    all: unset;
+    padding: var(--space-1) var(--space-2);
+    min-height: 28px;
+    border-radius: var(--radius-sm);
+    background-color: var(--surface-container-high);
+    font-size: var(--font-xs);
+    @include state-layer(var(--surface-container-high));
+
+    image {
+      -gtk-icon-size: var(--icon-sm);
+      color: var(--primary);
+    }
+
+    &:focus-visible {
+      box-shadow: inset 0 0 0 2px var(--primary);
+    }
+  }
+
+  // ── Today: calendar + agenda ───────────────────────────────────
+  calendar.mdash-calendar {
+    background-color: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    color: var(--on-surface-variant);
+
+    > header {
+      padding: 0 0 var(--space-1);
+
+      > label {
+        font-weight: 600;
+        color: var(--on-surface);
+      }
+
+      > button {
+        background-color: transparent;
+        min-height: 24px;
+        min-width: 24px;
+      }
+    }
+
+    > grid > label {
+      padding: 2px 0;
+      min-width: 26px;
+      min-height: 22px;
+      font-size: var(--font-xs);
+      border-radius: var(--radius-pill);
+      color: var(--on-surface-variant);
+
+      &.day-name {
+        color: var(--outline);
+        font-weight: 600;
+      }
+
+      &.other-month {
+        opacity: 0.35;
+      }
+
+      &:checked {
+        background-image: radial-gradient(circle, var(--primary) 45%, transparent 50%);
+        background-size: 4px 4px;
+        background-repeat: no-repeat;
+        background-position: 50% 94%;
+      }
+
+      &:selected {
+        background-color: var(--secondary-container);
+        color: var(--on-secondary-container);
+      }
+
+      &.today {
+        background-color: var(--primary);
+        color: var(--on-primary);
+        font-weight: 700;
+      }
+    }
+  }
+
+  .mdash-agenda-card {
+    .calendar-agenda-row {
+      padding: var(--space-1) 0;
+      border-bottom: 1px solid var(--outline-variant);
+    }
+  }
+
+  // ── Today: weather ─────────────────────────────────────────────
+  .mdash-weather-icon {
+    -gtk-icon-size: var(--icon-lg);
+    color: var(--primary);
+  }
+
+  .mdash-weather-temp {
+    font-size: var(--font-xl);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mdash-weather-condition {
+    font-weight: 600;
+    font-size: var(--font-sm);
+  }
+
+  .mdash-weather-hours {
+    background-color: var(--surface-container-high);
+    border-radius: var(--radius-sm);
+    padding: var(--space-1) 0;
+  }
+
+  .mdash-weather-hour image {
+    -gtk-icon-size: var(--icon-sm);
+    color: var(--on-surface-variant);
+  }
+
+  .mdash-weather-hour-temp,
+  .mdash-weather-range {
+    font-size: var(--font-xs);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mdash-weather-day {
+    font-size: var(--font-xs);
+    font-weight: 600;
+    min-width: 32px;
+  }
+
+  .mdash-weather-days image {
+    -gtk-icon-size: var(--icon-sm);
+    color: var(--on-surface-variant);
+  }
+
+  // ── Today: media ───────────────────────────────────────────────
+  .mdash-media-art {
+    min-width: 52px;
+    min-height: 52px;
+    border-radius: var(--radius-xs);
+    background-color: var(--surface-container-high);
+  }
+
+  .mdash-media-art-fallback {
+    -gtk-icon-size: var(--icon-md);
+    color: var(--on-surface-variant);
+  }
+
+  .mdash-media-title {
+    font-weight: 600;
+    font-size: var(--font-sm);
+  }
+
+  progressbar.mdash-media-progress > trough,
+  progressbar.mdash-timer-progress > trough {
+    min-height: 4px;
+    border-radius: var(--radius-pill);
+    background-color: var(--surface-container-highest);
+
+    > progress {
+      min-height: 4px;
+      border-radius: var(--radius-pill);
+      background-color: var(--primary);
+    }
+  }
+
+  button.mdash-transport {
+    all: unset;
+    min-width: 34px;
+    min-height: 34px;
+    border-radius: var(--radius-pill);
+    @include state-layer();
+
+    image {
+      -gtk-icon-size: var(--icon-sm);
+      color: var(--on-surface);
+    }
+
+    &.primary {
+      background-color: var(--primary);
+      @include state-layer-selected;
+
+      image {
+        color: var(--on-primary);
+      }
+    }
+
+    &:disabled image {
+      opacity: 0.38;
+    }
+
+    &:focus-visible {
+      box-shadow: inset 0 0 0 2px var(--primary);
+    }
+  }
+
+  // ── Today: timers ──────────────────────────────────────────────
+  entry.mdash-entry {
+    min-height: 30px;
+    font-size: var(--font-xs);
+  }
+
+  button.mdash-preset {
+    all: unset;
+    min-height: 26px;
+    border-radius: var(--radius-sm);
+    background-color: var(--surface-container-high);
+    font-size: var(--font-xs);
+    font-weight: 600;
+    @include state-layer(var(--surface-container-high));
+
+    label {
+      padding: 0 var(--space-1);
+    }
+
+    &:focus-visible {
+      box-shadow: inset 0 0 0 2px var(--primary);
+    }
+  }
+
+  .mdash-timer-left {
+    font-weight: 700;
+    font-size: var(--font-sm);
+    font-variant-numeric: tabular-nums;
+  }
+
+  // ── System ─────────────────────────────────────────────────────
+  .mdash-metric-value {
+    font-size: var(--font-lg);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+
+    &.warn {
+      color: var(--tertiary);
+    }
+
+    &.danger {
+      color: var(--error);
+    }
+  }
+
+  .mdash-sparkline {
+    color: var(--primary);
+    min-height: 28px;
+  }
+
+  levelbar.mdash-bar > trough {
+    min-height: 6px;
+    border-radius: var(--radius-pill);
+    background-color: var(--surface-container-highest);
+    border: none;
+    padding: 0;
+
+    > block {
+      min-height: 6px;
+      border-radius: var(--radius-pill);
+      border: none;
+
+      &.filled {
+        background-color: var(--primary);
+      }
+
+      &.empty {
+        background-color: transparent;
+      }
+    }
+  }
+
+  levelbar.mdash-bar.warn > trough > block.filled {
+    background-color: var(--tertiary);
+  }
+
+  levelbar.mdash-bar.danger > trough > block.filled {
+    background-color: var(--error);
+  }
+
+  .mdash-ai-label {
+    font-size: var(--font-xs);
+  }
+
+  .mdash-ai-percent {
+    font-size: var(--font-xs);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+
+    &.warn {
+      color: var(--tertiary);
+    }
+
+    &.danger {
+      color: var(--error);
+    }
+  }
+
+  // ── Controls ───────────────────────────────────────────────────
+  .mdash-sliders-card {
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .mdash-section-caption {
+    font-size: var(--font-2xs);
+    font-weight: 700;
+    color: var(--on-surface-variant);
+    letter-spacing: 0.04em;
+    margin: var(--space-1) 0 0 var(--space-1);
+  }
+
+  // Split tile: the toggle button + the related-menu chevron share one
+  // card; the whole card takes the active fill.
+  .mdash-tile-frame {
+    background-color: var(--card-bg);
+    border-radius: var(--card-radius);
+    transition: background-color var(--motion-fast) var(--ease-standard);
+
+    &.active {
+      background-color: var(--primary-container);
+    }
+
+    > button.control-center-tile.mdash-tile {
+      background-color: transparent;
+      padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+      @include state-layer();
+
+      .control-center-tile-title {
+        font-size: var(--font-xs);
+      }
+
+      .control-center-tile-subtitle {
+        font-size: var(--font-2xs);
+      }
+
+      .control-center-tile-icon image {
+        -gtk-icon-size: var(--icon-sm);
+      }
+    }
+
+    > button.mdash-tile-more {
+      all: unset;
+      min-width: 26px;
+      border-radius: 0 var(--card-radius) var(--card-radius) 0;
+      box-shadow: inset 1px 0 0 0 var(--outline-variant);
+      @include state-layer();
+
+      image {
+        -gtk-icon-size: var(--icon-sm);
+        color: var(--on-surface-variant);
+      }
+
+      &:focus-visible {
+        box-shadow: inset 0 0 0 2px var(--primary);
+      }
+    }
+
+    &.active > button.mdash-tile-more image {
+      color: var(--on-primary-container);
+    }
+  }
+
+  // ── Tools ──────────────────────────────────────────────────────
+  button.mdash-tool {
+    all: unset;
+    border-radius: var(--card-radius);
+    background-color: var(--card-bg);
+    padding: var(--space-2) var(--space-1);
+    @include state-layer(var(--card-bg));
+
+    &:focus-visible {
+      box-shadow: inset 0 0 0 2px var(--primary);
+    }
+  }
+
+  .mdash-tool-icon {
+    -gtk-icon-size: var(--icon-md);
+    color: var(--primary);
+  }
+
+  .mdash-tool-label {
+    font-size: var(--font-xs);
+    color: var(--on-surface);
+  }
+}
+
+// The power popover is a separate surface (not under .mdash-dashboard).
+popover.mdash-power-popover > contents {
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container);
+  min-width: 200px;
+
+  button.mdash-power-row {
+    all: unset;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    @include state-layer(var(--surface-container));
+
+    image {
+      -gtk-icon-size: var(--icon-sm);
+      color: var(--on-surface-variant);
+    }
+
+    &.destructive image {
+      color: var(--error);
+    }
+
+    &:focus-visible {
+      box-shadow: inset 0 0 0 2px var(--primary);
+    }
+  }
+
+  .mdash-power-question {
+    font-weight: 700;
+    font-size: var(--font-sm);
+  }
+}

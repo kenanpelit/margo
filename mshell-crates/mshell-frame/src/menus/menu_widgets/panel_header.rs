@@ -44,20 +44,25 @@ fn current_date() -> String {
 /// the capitalised `$USER` (best-effort; dropped when unavailable so the
 /// greeting still reads cleanly). Recomputed on the minute tick so it
 /// flips as the day rolls from morning → afternoon → evening.
-fn greeting_text() -> String {
+pub(crate) fn greeting_text() -> String {
     let now = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
-    let part = match now.hour() {
+    greeting_for(now.hour(), std::env::var("USER").ok().as_deref())
+}
+
+/// The greeting for `hour` (0–23) and login `user`.
+pub(crate) fn greeting_for(hour: u8, user: Option<&str>) -> String {
+    let part = match hour {
         5..=11 => "Good morning",
         12..=17 => "Good afternoon",
         18..=22 => "Good evening",
         _ => "Good night",
     };
-    match std::env::var("USER").ok().filter(|u| !u.is_empty()) {
+    match user.filter(|u| !u.is_empty()) {
         Some(user) => {
             let mut chars = user.chars();
             let name = match chars.next() {
                 Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-                None => user,
+                None => user.to_string(),
             };
             format!("{part}, {name}")
         }
@@ -270,5 +275,19 @@ impl Drop for PanelHeaderModel {
         if let Some(id) = self.timer_id.take() {
             id.remove();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::greeting_for;
+
+    #[test]
+    fn greeting_follows_the_hour_and_capitalises_the_user() {
+        assert_eq!(greeting_for(8, Some("kenan")), "Good morning, Kenan");
+        assert_eq!(greeting_for(13, Some("kenan")), "Good afternoon, Kenan");
+        assert_eq!(greeting_for(20, Some("kenan")), "Good evening, Kenan");
+        assert_eq!(greeting_for(2, None), "Good night");
+        assert_eq!(greeting_for(20, Some("")), "Good evening");
     }
 }

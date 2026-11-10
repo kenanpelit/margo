@@ -369,7 +369,7 @@ pub(super) fn read_mic_subtitle() -> String {
 /// Vendor-neutral: detects OpenVPN (`tun*`), WireGuard (`wg*`, incl. Mullvad's
 /// `wg*-mullvad`), NetworkManager VPNs, and PPP-based VPNs by scanning
 /// `/sys/class/net` — no VPN-specific CLI. Cheap (a directory read).
-pub(super) fn read_vpn_state() -> (String, bool) {
+pub(crate) fn read_vpn_state() -> (String, bool) {
     match vpn_interface() {
         Some(iface) => (format!("Connected · {iface}"), true),
         None => ("Off".to_string(), false),

@@ -68,6 +68,9 @@ use crate::menus::menu_widgets::lyrics::lyrics_menu_widget::{
 use crate::menus::menu_widgets::margo_layout::margo_layout_menu_widget::{
     MargoLayoutMenuWidgetInit, MargoLayoutMenuWidgetModel, MargoLayoutMenuWidgetOutput,
 };
+use crate::menus::menu_widgets::mdash::dashboard::{
+    DashboardInit, DashboardModel, DashboardOutput,
+};
 use crate::menus::menu_widgets::media_player::media_players::{
     MediaPlayersInit, MediaPlayersModel,
 };
@@ -156,6 +159,17 @@ pub fn build_widget(
     weather_all_in_one: bool,
 ) -> Box<dyn GenericWidgetController> {
     match menu_widget {
+        MenuWidget::Dashboard(config) => Box::new(
+            DashboardModel::builder()
+                .launch(DashboardInit {
+                    config: config.clone(),
+                    live: true,
+                })
+                .forward(sender.output_sender(), |msg| match msg {
+                    DashboardOutput::OpenMenu(id) => MenuOutput::OpenMenu(id),
+                    DashboardOutput::CloseMenu => MenuOutput::CloseMenu,
+                }),
+        ),
         MenuWidget::AlarmClock => Box::new(
             AlarmClockMenuWidgetModel::builder()
                 .launch(AlarmClockMenuWidgetInit {})

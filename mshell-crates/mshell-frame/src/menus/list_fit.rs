@@ -25,7 +25,7 @@
 //! With a height set the list may use all of it — a cap below the setting
 //! would stop the menu short of it (the 4.9.1 bug). The exception is a list
 //! embedded in a bigger host (the network and Podman lists inside the
-//! Control Center, anything in mdash): the host's height is for the host, so
+//! Control Center, a legacy mixed mdash layout): the host's height is for the host, so
 //! an embedded list keeps its built-in cap there
 //! ([`lists_follow_menu_height`]).
 //!
@@ -55,7 +55,8 @@ pub(crate) fn list_cap(menu_max_height: i32, default_cap: i32, follows_menu: boo
 /// Whether the lists in a menu built from `kinds` follow the menu's height.
 /// True when every configured widget is a list widget (the Crashes menu is
 /// `[Crashes]`, the network menu `[Network]`, …); false for hosts that embed
-/// a list among other content (Control Center, mdash, a user's mixed menu).
+/// a list among other content (Control Center, a user's mixed menu). The
+/// tabbed mdash dashboard counts as a list menu: its tab pages scroll.
 pub(crate) fn lists_follow_menu_height(kinds: &[MenuWidget]) -> bool {
     !kinds.is_empty()
         && kinds.iter().all(|k| {
@@ -74,6 +75,7 @@ pub(crate) fn lists_follow_menu_height(kinds: &[MenuWidget]) -> bool {
                     | MenuWidget::Network
                     | MenuWidget::CpuDashboard
                     | MenuWidget::Mtune
+                    | MenuWidget::Dashboard(_)
             )
         })
 }
@@ -224,11 +226,24 @@ mod tests {
     fn hosts_and_mixed_menus_do_not() {
         let m = Menus::default();
         assert!(!lists_follow_menu_height(&m.control_center_menu.widgets));
-        assert!(!lists_follow_menu_height(&m.mdash_menu.widgets));
         assert!(!lists_follow_menu_height(&[]));
         assert!(!lists_follow_menu_height(&[
             MenuWidget::Network,
             MenuWidget::Bluetooth
+        ]));
+    }
+
+    /// The tabbed mdash dashboard scrolls inside its tab pages, so its
+    /// pages follow the configured height; a legacy mixed layout doesn't.
+    #[test]
+    fn the_tabbed_dashboard_follows_its_height() {
+        use mshell_config::schema::menu_widgets::DashboardConfig;
+        assert!(lists_follow_menu_height(&[MenuWidget::Dashboard(
+            DashboardConfig::default()
+        )]));
+        assert!(!lists_follow_menu_height(&[
+            MenuWidget::Dashboard(DashboardConfig::default()),
+            MenuWidget::Weather
         ]));
     }
 

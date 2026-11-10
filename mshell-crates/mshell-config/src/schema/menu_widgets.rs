@@ -1,3 +1,4 @@
+pub use crate::schema::dashboard::DashboardConfig;
 use crate::schema::position::Orientation;
 use reactive_stores::{KeyMap, PatchField, Store, StorePath};
 use schemars::JsonSchema;
@@ -41,6 +42,10 @@ pub enum MenuWidget {
     /// dashboard wants a tighter "connectivity at a glance" view.
     Connectivity,
     Container(ContainerConfig),
+    /// mdash's tabbed dashboard — header, status strip and the Today /
+    /// Controls / System / Tools tabs sharing one panel size. The default
+    /// `mdash_menu` content; see [`DashboardConfig`].
+    Dashboard(DashboardConfig),
     /// CPU Dashboard menu — hero (CPU% + temp), per-core bars,
     /// RAM bar, load-avg footer. The menu content for the
     /// `cpu_dashboard` bar pill.
@@ -199,6 +204,7 @@ impl MenuWidget {
             MenuWidget::CompactAudio => "Compact Audio",
             MenuWidget::Connectivity => "Connectivity",
             MenuWidget::Container(_) => "Container",
+            MenuWidget::Dashboard(_) => "Dashboard",
             MenuWidget::CpuDashboard => "CPU Dashboard",
             MenuWidget::Divider => "Divider",
             MenuWidget::MargoLayout => "Margo Layout",
@@ -279,6 +285,7 @@ impl MenuWidget {
             MenuWidget::CompactAudio,
             MenuWidget::Connectivity,
             MenuWidget::Container(ContainerConfig::default()),
+            MenuWidget::Dashboard(DashboardConfig::default()),
             MenuWidget::CpuDashboard,
             MenuWidget::Divider,
             MenuWidget::MargoLayout,

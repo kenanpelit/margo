@@ -23,6 +23,7 @@ pub(super) fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTi
         };
         w.update_visibility(id, model.edit_mode, enabled, available);
     }
+    w.repack_dashboard();
 
     // Wi-Fi — active when connected to a network (has an SSID)
     let wifi = w.tile(TileId::Wifi);

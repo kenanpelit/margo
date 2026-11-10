@@ -47,6 +47,7 @@ use crate::menus::menu_widgets::lyrics::lyrics_menu_widget::{
 use crate::menus::menu_widgets::margo_layout::margo_layout_menu_widget::{
     MargoLayoutMenuWidgetInput, MargoLayoutMenuWidgetModel,
 };
+use crate::menus::menu_widgets::mdash::dashboard::{DashboardInput, DashboardModel};
 use crate::menus::menu_widgets::media_player::media_players::{
     MediaPlayersInput, MediaPlayersModel,
 };
@@ -253,6 +254,8 @@ pub(crate) struct MenuModel {
     /// control actually resizes the surface instead of only clamping a tall
     /// one. Other menus keep grow-to-fit.
     fixed_height: bool,
+    /// A `MdashSelectTab` that arrived before the content was built.
+    pending_mdash_tab: Option<(mshell_config::schema::dashboard::DashboardTab, bool)>,
     _effects: EffectScope,
 }
 
@@ -284,6 +287,13 @@ pub(crate) enum MenuInput {
     /// launcher on a specific tab — frame fires the toggle,
     /// then sends this so the runtime's `select_category` runs.
     AppLauncherSelectCategory(String),
+    /// `mshellctl menu mdash <tab>`: show `tab` on the hosted dashboard;
+    /// `was_open` = the menu was already on screen (same tab again closes
+    /// it). Kept until the content is built when it arrives first.
+    MdashSelectTab {
+        tab: mshell_config::schema::dashboard::DashboardTab,
+        was_open: bool,
+    },
 }
 
 #[derive(Debug)]
@@ -780,6 +790,7 @@ impl Component for MenuModel {
             css_class,
             weather_all_in_one: matches!(params.menu_type, MenuType::Weather),
             built: false,
+            pending_mdash_tab: None,
             lazy_wizard: matches!(params.menu_type, MenuType::Wizard),
             // Fixed-height menus: a plain `maximum_height` is only a cap, which
             // does nothing when the content is short/dynamic. Pinning the height
@@ -1187,6 +1198,14 @@ impl Component for MenuModel {
                             .ok();
                     }
                     if let Some(controller) =
+                        controller.downcast_ref::<Controller<DashboardModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(DashboardInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
                         controller.downcast_ref::<Controller<OverviewIntelModel>>()
                     {
                         controller
@@ -1314,6 +1333,13 @@ impl Component for MenuModel {
                         .ok();
                 }
             }
+            MenuInput::MdashSelectTab { tab, was_open } => {
+                if self.built {
+                    self.send_mdash_tab(tab, was_open);
+                } else {
+                    self.pending_mdash_tab = Some((tab, was_open));
+                }
+            }
             MenuInput::AppLauncherSelectCategory(label) => {
                 // Forward to the AppLauncherModel if this menu
                 // hosts one. The launcher widget is the only
@@ -1365,6 +1391,20 @@ impl MenuModel {
         self.widget_kinds = kinds;
         self.built = true;
         self.fit_lists();
+        if let Some((tab, was_open)) = self.pending_mdash_tab.take() {
+            self.send_mdash_tab(tab, was_open);
+        }
+    }
+
+    /// Forward a tab request to the hosted dashboard(s).
+    fn send_mdash_tab(&self, tab: mshell_config::schema::dashboard::DashboardTab, was_open: bool) {
+        for controller in &self.widget_controllers {
+            if let Some(dash) = controller.downcast_ref::<Controller<DashboardModel>>() {
+                dash.sender()
+                    .send(DashboardInput::Request { tab, was_open })
+                    .ok();
+            }
+        }
     }
 
     /// Cap the content's list scrollers for the current height (see

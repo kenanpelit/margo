@@ -3,8 +3,8 @@ use crate::schema::clipboard::Clipboard;
 use crate::schema::content_fit::ContentFit;
 use crate::schema::location_query::{LocationQueryConfig, OrdF64};
 use crate::schema::menu_widgets::{
-    ContainerConfig, MenuWidget, PanelHeaderConfig, QuickActionWidget, QuickActionsConfig,
-    SectionLabelConfig, SpacerConfig,
+    ContainerConfig, DashboardConfig, MenuWidget, PanelHeaderConfig, QuickActionWidget,
+    QuickActionsConfig, SectionLabelConfig, SpacerConfig,
 };
 use crate::schema::position::{Orientation, OsdPosition, Position};
 use crate::schema::temperature::TemperatureUnitConfig;

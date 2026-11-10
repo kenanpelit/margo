@@ -12,7 +12,7 @@
 //! - `.small` css class: icon only, no labels
 
 use relm4::gtk;
-use relm4::gtk::prelude::{BoxExt, ButtonExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, Cast, WidgetExt};
 
 /// Handle returned by `build_tile` / `build_expand_tile` / `build_small_tile`.
 /// The caller uses these references to update the tile's live state without a
@@ -26,15 +26,23 @@ pub(crate) struct TileWidget {
     pub(crate) subtitle: gtk::Label,
     /// Title label (the user-defined tile renames itself).
     pub(crate) title: gtk::Label,
+    /// mdash's split tile: the box holding the tile button and its chevron
+    /// button. It carries the same `.active` class so the whole split tile
+    /// fills, not just the button half.
+    pub(crate) frame: Option<gtk::Box>,
 }
 
 impl TileWidget {
     /// Set the `.active` CSS class on the tile button.
     pub(crate) fn set_active(&self, active: bool) {
-        if active {
-            self.button.add_css_class("active");
-        } else {
-            self.button.remove_css_class("active");
+        let widgets = std::iter::once(self.button.upcast_ref::<gtk::Widget>())
+            .chain(self.frame.as_ref().map(|f| f.upcast_ref::<gtk::Widget>()));
+        for w in widgets {
+            if active {
+                w.add_css_class("active");
+            } else {
+                w.remove_css_class("active");
+            }
         }
     }
 
@@ -124,5 +132,6 @@ fn build_tile_inner(icon_name: &str, title: &str, subtitle: &str, expandable: bo
         icon,
         subtitle: subtitle_label,
         title: title_label,
+        frame: None,
     }
 }

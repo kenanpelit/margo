@@ -757,16 +757,15 @@ impl Component for Frame {
                 // inside its widget controller, so we just send
                 // the message and let the runtime handle the
                 // "unknown tab" fall back to "All".
-                self.ensure_menu_built(&sender, MenuId::AppLauncher, widgets);
-                if !self.is_menu_visible_now(APP_LAUNCHER_MENU, widgets) {
-                    self.toggle_menu(APP_LAUNCHER_MENU, widgets);
-                }
-                if let Some(menu) = self.menus.get(APP_LAUNCHER_MENU) {
-                    menu.sender()
-                        .send(MenuInput::AppLauncherSelectCategory(tab))
-                        .ok();
-                }
-                self.sync_keyboard_mode(root);
+                self.open_menu_then(&sender, MenuId::AppLauncher, widgets, root, |_| {
+                    MenuInput::AppLauncherSelectCategory(tab)
+                });
+            }
+            FrameInput::ToggleMdashMenuWithTab(tab) => {
+                // mdash decides: switch tab, or close on the same tab.
+                self.open_menu_then(&sender, MenuId::Mdash, widgets, root, |was_open| {
+                    MenuInput::MdashSelectTab { tab, was_open }
+                });
             }
             FrameInput::ToggleWasmPluginPanel {
                 name,

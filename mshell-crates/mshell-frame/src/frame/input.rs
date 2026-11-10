@@ -49,6 +49,9 @@ pub enum FrameInput {
     /// `mshellctl menu app-launcher --tab Run` to the runtime's
     /// existing category-cycle path.
     ToggleAppLauncherMenuWithTab(String),
+    /// `mshellctl menu mdash <tab>`: open mdash on `tab` (switch when it
+    /// is open on another tab, close when it already shows that tab).
+    ToggleMdashMenuWithTab(mshell_config::schema::dashboard::DashboardTab),
     /// Open the first-class plugin-panel menu hosting a plugin's WASM panel,
     /// carrying its compiled component path + resolved settings (JSON) + the
     /// granted host capabilities (comma-separated tokens; deny-by-default).

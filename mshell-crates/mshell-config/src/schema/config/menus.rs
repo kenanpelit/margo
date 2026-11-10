@@ -106,9 +106,14 @@ pub struct Menus {
     /// keeps it OUT of the written profile while it equals the code
     /// default, so future default changes win instead of a stale baked
     /// copy overriding them (it's only persisted once edited in Settings).
+    ///
+    /// A profile that baked the pre-tabs default (the 5.1 two-pane layout,
+    /// written before this skip existed) is read as the current default:
+    /// see [`migrate_mdash_menu`]. Any other custom layout is kept as is.
     #[serde(
         default = "default_mdash_menu",
-        skip_serializing_if = "mdash_menu_is_default"
+        skip_serializing_if = "mdash_menu_is_default",
+        deserialize_with = "deserialize_mdash_menu"
     )]
     pub mdash_menu: Menu,
     /// Margo layout switcher — replaces the legacy bar-popover
@@ -136,7 +141,45 @@ pub(super) fn default_plugin_panel_menu() -> Menu {
     }
 }
 
-/// `mdash` — a compact, polished dashboard. A balanced two-pane body sized
+/// True when `mdash_menu` is still an untouched code default (today's or
+/// the pre-tabs one), so the profile serializer can omit it (see the
+/// field's `skip_serializing_if`).
+pub(super) fn mdash_menu_is_default(m: &Menu) -> bool {
+    *m == default_mdash_menu() || *m == legacy_mdash_menu()
+}
+
+/// A profile whose `mdash_menu` is exactly the pre-tabs default gets the
+/// current default: it never chose that layout, it only baked it.
+pub(super) fn migrate_mdash_menu(m: Menu) -> Menu {
+    if m == legacy_mdash_menu() {
+        default_mdash_menu()
+    } else {
+        m
+    }
+}
+
+fn deserialize_mdash_menu<'de, D>(deserializer: D) -> Result<Menu, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Menu::deserialize(deserializer).map(migrate_mdash_menu)
+}
+
+/// The code default of `mdash_menu`: the tabbed dashboard (header +
+/// status strip + Today / Controls / System / Tools), at the top centre.
+pub(super) fn default_mdash_menu() -> Menu {
+    Menu {
+        position: Position::Top,
+        widgets: vec![MenuWidget::Dashboard(DashboardConfig::default())],
+        minimum_width: 760,
+        maximum_height: 0,
+    }
+}
+
+/// The pre-tabs (5.1) `mdash` default — kept only to recognise a profile
+/// that baked it (see [`migrate_mdash_menu`]).
+///
+/// It was a compact, polished dashboard. A balanced two-pane body sized
 /// to fit on screen, a time-aware greeting header, and a two-row action
 /// grid where the power actions sit apart from the toggles so a stray
 /// click can't reach Shutdown.
@@ -150,13 +193,7 @@ pub(super) fn default_plugin_panel_menu() -> Menu {
 ///
 /// `fill: false` on the columns keeps tiles at their natural height (top
 /// aligned) instead of stretching the last tile.
-/// True when `mdash_menu` is still the untouched code default, so the
-/// profile serializer can omit it (see the field's `skip_serializing_if`).
-pub(super) fn mdash_menu_is_default(m: &Menu) -> bool {
-    *m == default_mdash_menu()
-}
-
-pub(super) fn default_mdash_menu() -> Menu {
+pub(super) fn legacy_mdash_menu() -> Menu {
     Menu {
         position: Position::Top,
         widgets: vec![
@@ -720,5 +757,77 @@ impl Default for ScreenshareMenu {
         Self {
             position: Position::Left,
         }
+    }
+}
+
+#[cfg(test)]
+mod mdash_tests {
+    use super::*;
+    use crate::schema::dashboard::{DashboardCard, DashboardTab, DashboardTabConfig};
+
+    /// A user's own `mdash_menu` (a Container + QuickActions layout from
+    /// before the tabs) still parses and is kept exactly as written.
+    #[test]
+    fn a_custom_legacy_mdash_layout_parses_and_is_kept() {
+        let yaml = "mdash_menu:\n  position: Top\n  minimum_width: 700\n  widgets:\n    - !PanelHeader\n      title: Mine\n    - !Container\n      widgets: [CalendarGrid, Weather]\n      orientation: Vertical\n    - !QuickActions\n      widgets: [Lock, Settings]\n";
+        let menus: Menus = yaml_serde::from_str(yaml).expect("legacy custom mdash parses");
+        assert_eq!(menus.mdash_menu.minimum_width, 700);
+        assert_eq!(menus.mdash_menu.widgets.len(), 3);
+        assert!(matches!(
+            &menus.mdash_menu.widgets[2],
+            MenuWidget::QuickActions(q) if q.widgets == [QuickActionWidget::Lock, QuickActionWidget::Settings]
+        ));
+        assert!(!mdash_menu_is_default(&menus.mdash_menu));
+        // Written back, it stays in the profile.
+        let out = yaml_serde::to_string(&menus).expect("serialises");
+        assert!(out.contains("mdash_menu"), "{out}");
+    }
+
+    /// A profile that merely baked the old two-pane default is read as the
+    /// current default and is not written back.
+    #[test]
+    fn a_baked_legacy_default_reads_as_the_current_default() {
+        let menus = Menus {
+            mdash_menu: legacy_mdash_menu(),
+            ..Menus::default()
+        };
+        let yaml = yaml_serde::to_string(&menus.mdash_menu).expect("serialises");
+        let back: Menus =
+            yaml_serde::from_str(&format!("mdash_menu:\n{}", indent(&yaml))).expect("parses");
+        assert_eq!(back.mdash_menu, default_mdash_menu());
+        assert!(mdash_menu_is_default(&legacy_mdash_menu()));
+        let out = yaml_serde::to_string(&Menus::default()).expect("serialises");
+        assert!(
+            !out.contains("mdash_menu"),
+            "the default stays out of the profile"
+        );
+    }
+
+    /// The tabbed dashboard config round-trips through YAML.
+    #[test]
+    fn a_customised_dashboard_round_trips() {
+        let menu = Menu {
+            widgets: vec![MenuWidget::Dashboard(DashboardConfig {
+                tabs: vec![
+                    DashboardTabConfig {
+                        hidden_cards: vec![DashboardCard::Media],
+                        ..DashboardTabConfig::new(DashboardTab::Today)
+                    },
+                    DashboardTabConfig {
+                        visible: false,
+                        ..DashboardTabConfig::new(DashboardTab::Tools)
+                    },
+                ],
+            })],
+            ..default_mdash_menu()
+        };
+        let yaml = yaml_serde::to_string(&menu).expect("serialises");
+        let back: Menu = yaml_serde::from_str(&yaml).expect("parses");
+        assert_eq!(back, menu);
+        assert!(!mdash_menu_is_default(&menu));
+    }
+
+    fn indent(text: &str) -> String {
+        text.lines().map(|l| format!("  {l}\n")).collect()
     }
 }

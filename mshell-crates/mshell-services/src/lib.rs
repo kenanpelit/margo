@@ -174,6 +174,25 @@ fn spawn_degraded_toast(title: String, body: String) {
     });
 }
 
+/// Render fixtures (tests that build real widgets without a desktop):
+/// mark every optional service as absent, so widgets take their "no
+/// service" paths instead of panicking on an uninitialised one. The
+/// required ones (margo, sysinfo, weather) stay unset — a fixture must
+/// not reach them. Never called by the shell.
+#[doc(hidden)]
+pub fn init_absent_services_for_fixtures() {
+    let _ = AUDIO_SERVICE.set(None);
+    let _ = BATTERY_SERVICE.set(None);
+    let _ = BLUETOOTH_SERVICE.set(None);
+    let _ = BRIGHTNESS_SERVICE.set(None);
+    let _ = LINE_POWER_SERVICE.set(None);
+    let _ = MEDIA_SERVICE.set(None);
+    let _ = NETWORK_SERVICE.set(None);
+    let _ = NOTIFICATION_SERVICE.set(None);
+    let _ = POWER_PROFILE_SERVICE.set(None);
+    let _ = SYS_TRAY_SERVICE.set(None);
+}
+
 pub async fn init_services(
     location_query: LocationQuery,
     temperature_unit: TemperatureUnit,

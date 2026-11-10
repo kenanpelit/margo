@@ -54,11 +54,12 @@ pub(super) fn wire(tile: &TileWidget) {
         mshell_margo_client::ctl::dispatch_detached("internal_keyboard", &["toggle"]);
     });
     render(tile, margo_service().internal_keyboard.get().as_ref());
-    let (button, icon, subtitle, title) = (
+    let (button, icon, subtitle, title, frame) = (
         tile.button.clone(),
         tile.icon.clone(),
         tile.subtitle.clone(),
         tile.title.clone(),
+        tile.frame.clone(),
     );
     relm4::spawn_local(async move {
         let tile = TileWidget {
@@ -66,6 +67,7 @@ pub(super) fn wire(tile: &TileWidget) {
             icon,
             subtitle,
             title,
+            frame,
         };
         let mut stream = margo_service().internal_keyboard.watch();
         while let Some(state) = stream.next().await {

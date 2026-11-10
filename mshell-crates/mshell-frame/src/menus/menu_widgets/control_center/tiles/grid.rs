@@ -3,14 +3,16 @@
 //! [`TILES`](super::registry::TILES), plus the grid layout and the
 //! edit-mode visibility rules.
 
-use super::registry::{PrimaryClick, TILES, TileId, ordered_tile_ids};
+use super::dash_layout::{self, DashPrimary, Placement, TileGroup};
+use super::registry::{PrimaryClick, TILES, TileId, TileSpec, ordered_tile_ids};
 use super::{ControlCenterTilesInput, ControlCenterTilesModel, ControlCenterTilesOutput};
 use crate::menus::menu_widgets::control_center::tile::{TileWidget, build_expand_tile, build_tile};
 use relm4::ComponentSender;
 use relm4::gtk;
 use relm4::gtk::prelude::{
-    ButtonExt, Cast, CheckButtonExt, GestureExt, GestureSingleExt, GridExt, WidgetExt,
+    BoxExt, ButtonExt, Cast, CheckButtonExt, GestureExt, GestureSingleExt, GridExt, WidgetExt,
 };
+use std::cell::RefCell;
 use std::collections::HashSet;
 
 mod internal_keyboard;
@@ -27,12 +29,45 @@ pub(crate) struct TileSlot {
 /// its click handlers stay alive (the colour picker has no state to show).
 pub(crate) struct ControlCenterTilesWidgets {
     slots: Vec<TileSlot>,
+    /// mdash's Controls layout (`None` in the Control Center).
+    dash: Option<DashGrid>,
+}
+
+/// Which arrangement + click grammar the tiles use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TilesLayout {
+    /// The Control Center's two-column, user-ordered grid with edit mode.
+    ControlCenter,
+    /// mdash's Controls tab: captioned sections packed into full rows.
+    Dashboard,
+}
+
+/// mdash's grid: the section captions and the visible set it was last
+/// packed for (re-packed only when that set changes).
+struct DashGrid {
+    grid: gtk::Grid,
+    captions: Vec<gtk::Label>,
+    packed: RefCell<Option<Vec<bool>>>,
+}
+
+pub(crate) struct ControlCenterTilesInit {
+    pub(crate) layout: TilesLayout,
+    /// `false` only in render fixtures: skip the margo-backed wiring.
+    pub(crate) live: bool,
 }
 
 impl ControlCenterTilesWidgets {
     /// Build every tile from the registry, wire its clicks and wrap it in
     /// an edit-mode overlay. Nothing is attached to the grid yet.
-    pub(super) fn build(sender: &ComponentSender<ControlCenterTilesModel>) -> Self {
+    pub(super) fn build(
+        sender: &ComponentSender<ControlCenterTilesModel>,
+        layout: TilesLayout,
+        grid: &gtk::Grid,
+        live: bool,
+    ) -> Self {
+        if layout == TilesLayout::Dashboard {
+            return Self::build_dashboard(sender, grid, live);
+        }
         let slots = TILES
             .iter()
             .map(|spec| {
@@ -66,8 +101,85 @@ impl ControlCenterTilesWidgets {
                 }
             })
             .collect::<Vec<TileSlot>>();
-        internal_keyboard::wire(&slots[TileId::InternalKeyboard as usize].tile);
-        Self { slots }
+        if live {
+            internal_keyboard::wire(&slots[TileId::InternalKeyboard as usize].tile);
+        }
+        Self { slots, dash: None }
+    }
+
+    /// mdash's tiles: the same registry rows as split tiles — the tile
+    /// button does the primary action, a chevron button (and a right
+    /// click) opens the related menu.
+    fn build_dashboard(
+        sender: &ComponentSender<ControlCenterTilesModel>,
+        grid: &gtk::Grid,
+        live: bool,
+    ) -> Self {
+        // 12 equal units (see `dash_layout`), tighter gaps: a compact grid
+        // that fills the Controls tab edge to edge.
+        grid.remove_css_class("control-center-grid");
+        grid.add_css_class("mdash-tiles");
+        grid.set_row_spacing(6);
+        grid.set_column_spacing(8);
+        let slots = TILES
+            .iter()
+            .map(|spec| build_dash_slot(spec, sender))
+            .collect::<Vec<TileSlot>>();
+        if live {
+            internal_keyboard::wire(&slots[TileId::InternalKeyboard as usize].tile);
+        }
+        let captions = TileGroup::ALL
+            .iter()
+            .map(|g| {
+                let l = gtk::Label::new(Some(g.caption()));
+                l.add_css_class("mdash-section-caption");
+                l.set_halign(gtk::Align::Start);
+                l.set_xalign(0.0);
+                l
+            })
+            .collect();
+        Self {
+            slots,
+            dash: Some(DashGrid {
+                grid: grid.clone(),
+                captions,
+                packed: RefCell::new(None),
+            }),
+        }
+    }
+
+    /// mdash: lay the visible tiles out again when the visible set
+    /// changed since the last pack (a battery appeared, a tile was hidden
+    /// in the Control Center's edit mode, …).
+    pub(super) fn repack_dashboard(&self) {
+        let Some(dash) = &self.dash else {
+            return;
+        };
+        let visible: Vec<bool> = self.slots.iter().map(|s| s.overlay.is_visible()).collect();
+        if dash.packed.borrow().as_ref() == Some(&visible) {
+            return;
+        }
+        let grid = &dash.grid;
+        while let Some(child) = grid.first_child() {
+            grid.remove(&child);
+        }
+        for placement in dash_layout::pack(|id| visible[id as usize]) {
+            match placement {
+                Placement::Caption {
+                    group,
+                    col,
+                    row,
+                    span,
+                } => {
+                    let i = TileGroup::ALL.iter().position(|g| *g == group).unwrap_or(0);
+                    grid.attach(&dash.captions[i], col, row, span, 1);
+                }
+                Placement::Tile { id, col, row, span } => {
+                    grid.attach(&self.slot(id).overlay, col, row, span, 1);
+                }
+            }
+        }
+        *dash.packed.borrow_mut() = Some(visible);
     }
 
     fn slot(&self, id: TileId) -> &TileSlot {
@@ -119,6 +231,13 @@ impl ControlCenterTilesWidgets {
         tile_order: &[String],
         wide_tiles: &HashSet<String>,
     ) {
+        if let Some(dash) = &self.dash {
+            // The Controls tab ignores the Control Center's order / wide
+            // tiles; a config change only forces a re-pack.
+            *dash.packed.borrow_mut() = None;
+            self.repack_dashboard();
+            return;
+        }
         // Detach only the overlays actually parented to this grid.
         // `TileId::all()` is the full universe of tiles, but hidden
         // tiles (id not in `tile_order`) were never attached, and on
@@ -158,6 +277,92 @@ impl ControlCenterTilesWidgets {
             }
         }
     }
+}
+
+// ── mdash split tile ───────────────────────────────────────────────────────────
+
+/// The Controls tab's shorter title where the Control Center's would not
+/// fit a quarter-width tile.
+fn dash_title(id: TileId, title: &'static str) -> &'static str {
+    match id {
+        TileId::MicDenoise => "Noise Filter",
+        TileId::InternalKeyboard => "Keyboard",
+        _ => title,
+    }
+}
+
+fn build_dash_slot(spec: &TileSpec, sender: &ComponentSender<ControlCenterTilesModel>) -> TileSlot {
+    let (primary, menu) = dash_layout::dash_actions(spec.id);
+    let title = dash_title(spec.id, spec.title);
+    // A tile whose click opens a menu shows the Control Center's inline
+    // chevron; a toggle with a related menu gets a separate chevron button.
+    let mut tile = if matches!(primary, DashPrimary::Open(_)) {
+        build_expand_tile(spec.icon, title, spec.subtitle)
+    } else {
+        build_tile(spec.icon, title, spec.subtitle)
+    };
+    tile.button.add_css_class("mdash-tile");
+    tile.button.set_hexpand(true);
+    match primary {
+        DashPrimary::Input(make) => {
+            let s = sender.clone();
+            tile.button.connect_clicked(move |_| s.input(make()));
+        }
+        DashPrimary::Open(id) => {
+            let s = sender.clone();
+            tile.button.connect_clicked(move |_| {
+                s.output(ControlCenterTilesOutput::OpenMenu(id)).ok();
+            });
+        }
+        DashPrimary::Own => {}
+    }
+    let related = menu.or(match primary {
+        DashPrimary::Open(id) => Some(id),
+        _ => None,
+    });
+    if let Some(id) = related {
+        let s = sender.clone();
+        wire_secondary(&tile.button, move || {
+            s.output(ControlCenterTilesOutput::OpenMenu(id)).ok();
+        });
+    }
+
+    let frame = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    frame.add_css_class("mdash-tile-frame");
+    frame.set_hexpand(true);
+    frame.append(&tile.button);
+    if let Some(id) = menu {
+        let more = gtk::Button::from_icon_name("go-next-symbolic");
+        more.add_css_class("mdash-tile-more");
+        mshell_common::a11y::name(&more, &format!("{title} settings"));
+        let s = sender.clone();
+        more.connect_clicked(move |_| {
+            s.output(ControlCenterTilesOutput::OpenMenu(id)).ok();
+        });
+        frame.append(&more);
+    }
+    tile.frame = Some(frame.clone());
+
+    let overlay = gtk::Overlay::new();
+    overlay.set_child(Some(&frame));
+    let check = gtk::CheckButton::new();
+    check.set_visible(false);
+    TileSlot {
+        tile,
+        overlay,
+        check,
+    }
+}
+
+/// A right click on `button` runs `f` (claimed so it doesn't bubble).
+fn wire_secondary(button: &gtk::Button, f: impl Fn() + 'static) {
+    let gesture = gtk::GestureClick::new();
+    gesture.set_button(gtk::gdk::BUTTON_SECONDARY);
+    gesture.connect_pressed(move |g, _, _, _| {
+        g.set_state(gtk::EventSequenceState::Claimed);
+        f();
+    });
+    button.add_controller(gesture);
 }
 
 // ── Secondary-click quick toggle ───────────────────────────────────────────────

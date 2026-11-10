@@ -35,17 +35,18 @@
 //! `tiles/tile_probes.rs` reads the live system state.
 
 mod custom;
+pub(crate) mod dash_layout;
+#[cfg(test)]
+pub(crate) mod fixture;
 mod grid;
 mod led;
 pub(crate) mod led_auto;
 mod pollers;
 mod registry;
-// The live system-state readers (battery, disk, twilight, UFW, podman,
-// Wi-Fi, Bluetooth, audio, VPN, Valent, airplane) live in `tile_probes.rs`.
-mod tile_probes;
+pub(crate) mod tile_probes;
 mod visuals;
 
-pub(crate) use grid::ControlCenterTilesWidgets;
+pub(crate) use grid::{ControlCenterTilesInit, ControlCenterTilesWidgets, TilesLayout};
 pub(crate) use registry::TileId;
 
 use crate::bars::bar_widgets::podman::{PODMAN_POLL, PodmanSummary};
@@ -223,15 +224,18 @@ pub(crate) enum ControlCenterTilesInput {
     /// all grid children in the new order / column spans. Also fires on
     /// visibility changes so hidden gaps are eliminated in normal mode.
     RebuildGrid(Vec<String>, Vec<String>),
+    /// Render fixture: replace the live state with canned values.
+    #[cfg(test)]
+    Fixture(Box<fixture::TilesFixture>),
 }
 
 #[derive(Debug)]
 pub(crate) enum ControlCenterTilesOutput {
     /// User clicked an expandable tile; switch to this detail page.
     ExpandPage(DetailPage),
+    /// mdash: open this menu (closes the dashboard).
+    OpenMenu(crate::frame::MenuId),
 }
-
-pub(crate) struct ControlCenterTilesInit {}
 
 #[derive(Debug)]
 pub(crate) enum ControlCenterTilesCommandOutput {
@@ -282,14 +286,14 @@ impl Component for ControlCenterTilesModel {
     }
 
     fn init(
-        _params: Self::Init,
+        params: Self::Init,
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         // Build every tile from the registry and wire its clicks + its
         // edit-mode overlay. Wide tile CSS is applied by rebuild_grid from
         // the `wide_tiles` config.
-        let widgets = ControlCenterTilesWidgets::build(&sender);
+        let widgets = ControlCenterTilesWidgets::build(&sender, params.layout, &root, params.live);
 
         // Reactive dark-mode effect (always active — cheap config-store watch)
         let mut effects = EffectScope::new();
@@ -639,6 +643,8 @@ impl Component for ControlCenterTilesModel {
                 self.wide_tiles = wide.iter().cloned().collect();
                 widgets.rebuild_grid(root, &order, &self.wide_tiles);
             }
+            #[cfg(test)]
+            ControlCenterTilesInput::Fixture(f) => f.apply(self),
         }
 
         apply_visuals(self, widgets);

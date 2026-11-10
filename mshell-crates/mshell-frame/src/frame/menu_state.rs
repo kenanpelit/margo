@@ -185,6 +185,28 @@ impl Frame {
         self.menus.insert(name, controller);
     }
 
+    /// Open menu `id` (built on demand) if hidden, then send it the input
+    /// `make(was_open)` builds — the "open on a tab" IPC verbs.
+    pub(super) fn open_menu_then(
+        &mut self,
+        sender: &ComponentSender<Self>,
+        id: MenuId,
+        widgets: &mut FrameWidgets,
+        root: &<Self as Component>::Root,
+        make: impl FnOnce(bool) -> MenuInput,
+    ) {
+        self.ensure_menu_built(sender, id, widgets);
+        let name = id.menu_name();
+        let was_open = self.is_menu_visible_now(name, widgets);
+        if !was_open {
+            self.toggle_menu(name, widgets);
+        }
+        if let Some(menu) = self.menus.get(name) {
+            menu.sender().send(make(was_open)).ok();
+        }
+        self.sync_keyboard_mode(root);
+    }
+
     /// Build the Settings panel + attach it to its stack on first open.
     /// Deferred from `init` because the panel launches ~48 page
     /// controllers and one Frame exists per monitor (see the

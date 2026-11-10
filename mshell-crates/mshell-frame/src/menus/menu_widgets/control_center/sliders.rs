@@ -65,6 +65,9 @@ pub(crate) enum ControlCenterSlidersInput {
     /// Chevron clicked — ask the parent to open the device picker.
     OpenOutputDevices,
     OpenInputDevices,
+    /// Render fixture: (volume, mic, brightness or no backlight) fractions.
+    #[cfg(test)]
+    Fixture(f64, f64, Option<f64>),
 }
 
 #[derive(Debug)]
@@ -75,7 +78,11 @@ pub(crate) enum ControlCenterSlidersOutput {
     OpenMic,
 }
 
-pub(crate) struct ControlCenterSlidersInit {}
+pub(crate) struct ControlCenterSlidersInit {
+    /// mdash's Controls tab: the three sliders side by side in one row
+    /// (equal widths) instead of stacked.
+    pub(crate) horizontal: bool,
+}
 
 #[derive(Debug)]
 pub(crate) enum ControlCenterSlidersCommandOutput {
@@ -261,10 +268,16 @@ impl Component for ControlCenterSlidersModel {
     }
 
     fn init(
-        _params: Self::Init,
+        params: Self::Init,
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        if params.horizontal {
+            root.set_orientation(gtk::Orientation::Horizontal);
+            root.set_homogeneous(true);
+            root.set_spacing(12);
+            root.add_css_class("mdash-sliders");
+        }
         // Spawn watchers for default audio output, input, and brightness.
         spawn_default_output_watcher(&sender, None, || {
             ControlCenterSlidersCommandOutput::OutputChanged
@@ -386,6 +399,24 @@ impl Component for ControlCenterSlidersModel {
         _root: &Self::Root,
     ) {
         match message {
+            #[cfg(test)]
+            ControlCenterSlidersInput::Fixture(out, mic, bright) => {
+                self.output_percent = out;
+                self.output_icon = "audio-volume-medium-symbolic".into();
+                self.input_percent = mic;
+                self.input_icon = "audio-input-microphone-symbolic".into();
+                self.has_backlight = bright.is_some();
+                self.brightness_fraction = bright.unwrap_or(0.0);
+                self.suppress_output_signal = true;
+                self.suppress_input_signal = true;
+                self.suppress_brightness_signal = true;
+                widgets.vol_scale.set_value(out);
+                widgets.mic_scale.set_value(mic);
+                widgets.bright_scale.set_value(self.brightness_fraction);
+                self.suppress_output_signal = false;
+                self.suppress_input_signal = false;
+                self.suppress_brightness_signal = false;
+            }
             ControlCenterSlidersInput::Refresh => {
                 // Refresh output volume.
                 self.output_device = audio_service().and_then(|a| a.default_output.get());

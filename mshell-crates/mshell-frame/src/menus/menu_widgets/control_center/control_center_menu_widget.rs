@@ -33,7 +33,7 @@ use crate::menus::menu_widgets::control_center::sliders::{
 };
 use crate::menus::menu_widgets::control_center::tiles::{
     ControlCenterTilesInit, ControlCenterTilesInput, ControlCenterTilesModel,
-    ControlCenterTilesOutput, DetailPage,
+    ControlCenterTilesOutput, DetailPage, TilesLayout,
 };
 use crate::menus::menu_widgets::dns::dns_menu_widget::{
     DnsMenuWidgetInit, DnsMenuWidgetInput, DnsMenuWidgetModel,
@@ -177,7 +177,7 @@ impl Component for ControlCenterMenuWidgetModel {
 
         // ── Main-page components ─────────────────────────────────────────────
         let sliders = ControlCenterSlidersModel::builder()
-            .launch(ControlCenterSlidersInit {})
+            .launch(ControlCenterSlidersInit { horizontal: false })
             .forward(sender.input_sender(), |msg| match msg {
                 ControlCenterSlidersOutput::OpenAudioOut => {
                     ControlCenterMenuWidgetInput::OpenDetailPage(DetailPage::AudioOut)
@@ -192,10 +192,17 @@ impl Component for ControlCenterMenuWidgetModel {
             .detach();
 
         let tiles = ControlCenterTilesModel::builder()
-            .launch(ControlCenterTilesInit {})
+            .launch(ControlCenterTilesInit {
+                layout: TilesLayout::ControlCenter,
+                live: true,
+            })
             .forward(sender.input_sender(), |msg| match msg {
                 ControlCenterTilesOutput::ExpandPage(page) => {
                     ControlCenterMenuWidgetInput::OpenDetailPage(page)
+                }
+                // Only the dashboard layout opens other menus.
+                ControlCenterTilesOutput::OpenMenu(_) => {
+                    ControlCenterMenuWidgetInput::_HeaderActionHandled
                 }
             });
 

@@ -2,6 +2,7 @@ pub mod bar_widgets;
 pub mod clipboard;
 pub mod config;
 pub mod content_fit;
+pub mod dashboard;
 pub mod location_query;
 pub mod menu_widgets;
 pub mod position;
