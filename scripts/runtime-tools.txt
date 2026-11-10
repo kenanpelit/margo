@@ -72,7 +72,7 @@ curl                        curl                       public-IP widget, downloa
 fzf                         fzf                        mtm pickers
 tmux                        tmux                       mtm
 cliphist                    cliphist                   mtm clip history
-ufw                         ufw                        firewall pill
+ufw                         ufw                        firewall pill / menu, mshellctl ufw (via mshell-privileged)
 podman                      podman                     containers pill
 mullvad                     mullvad-vpn                mvpn
 mullvad-exclude             mullvad-vpn                mshellctl play: keep mpv streams off the tunnel
@@ -84,6 +84,7 @@ bash                        -                          base
 true                        -                          base (tests)
 sleep                       -                          base (tests: a throwaway child process)
 dbus-daemon                 -                          dbus, a hard dependency (tests: an isolated session bus)
+bwrap                       -                          tests only: the mshell-privileged ufw sandbox test (skips without it)
 mpv                         -                          a hard dependency (depends=, mshellctl links libmpv)
 date                        -                          base
 df                          -                          base

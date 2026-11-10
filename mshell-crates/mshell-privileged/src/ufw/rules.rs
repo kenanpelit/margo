@@ -223,6 +223,9 @@ pub fn parse_tuple(line: &str) -> Option<Rule> {
 pub struct RuleSet {
     pub rules: Vec<Rule>,
     pub complete: bool,
+    /// ufw manages IPv6 too (`IPV6=yes`): only then is a one-family
+    /// rule worth pointing out.
+    pub ipv6: bool,
 }
 
 impl RuleSet {
@@ -276,7 +279,11 @@ pub fn parse_rules(v4: &str, v6: Option<&str>, ipv6: bool) -> RuleSet {
     if ipv6 {
         complete &= v6.is_some_and(|t| add_file(t, true));
     }
-    RuleSet { rules, complete }
+    RuleSet {
+        rules,
+        complete,
+        ipv6,
+    }
 }
 
 impl Rule {
@@ -349,8 +356,10 @@ impl Rule {
         s
     }
 
-    /// `Allow in · from 192.168.0.0/24 · on eth0 · IPv4 only`.
-    pub fn summary(&self) -> String {
+    /// `Allow in · from 192.168.0.0/24 · on eth0`, `Allow in · IPv4 only`.
+    /// The IP version is named only when nothing else implies it (no
+    /// address) and ufw manages both (`ipv6`).
+    pub fn summary(&self, ipv6: bool) -> String {
         let mut parts = vec![format!(
             "{}{} {}",
             if self.route { "Route " } else { "" },
@@ -376,10 +385,12 @@ impl Rule {
         if let Some(l) = self.log {
             parts.push(l.keyword().to_string());
         }
-        match (self.v4, self.v6) {
-            (true, false) => parts.push("IPv4 only".into()),
-            (false, true) => parts.push("IPv6 only".into()),
-            _ => {}
+        if self.from == "any" && self.to == "any" {
+            match (self.v4, self.v6) {
+                (true, false) if ipv6 => parts.push("IPv4 only".into()),
+                (false, true) => parts.push("IPv6 only".into()),
+                _ => {}
+            }
         }
         parts.join(" · ")
     }
@@ -530,11 +541,8 @@ mod tests {
         );
         assert_eq!(set.rules[2].from, "192.168.0.0/24");
         assert_eq!(set.allowed_in(), 9);
-        assert_eq!(
-            set.rules[2].summary(),
-            "Allow in · from 192.168.0.0/24 · IPv4 only"
-        );
-        assert_eq!(set.rules[0].summary(), "Allow in");
+        assert_eq!(set.rules[2].summary(true), "Allow in · from 192.168.0.0/24");
+        assert_eq!(set.rules[0].summary(true), "Allow in");
     }
 
     #[test]
@@ -569,12 +577,12 @@ mod tests {
         let find = |target: &str, sum: &str| {
             set.rules
                 .iter()
-                .find(|r| r.target() == target && r.summary() == sum)
+                .find(|r| r.target() == target && r.summary(true) == sum)
                 .unwrap_or_else(|| panic!("{target} / {sum} in {:#?}", set.rules))
         };
         let ssh = find("22/tcp", "Allow in");
         assert_eq!(ssh.comment.as_deref(), Some("ssh"));
-        let printer = find("8080/tcp", "Reject in · from 2001:db8::/32 · IPv6 only");
+        let printer = find("8080/tcp", "Reject in · from 2001:db8::/32");
         assert_eq!(printer.comment.as_deref(), Some("Yazıcı ağ"));
         let spec = printer.delete_spec(true).unwrap();
         assert_eq!(spec.to.to_string(), "::/0");
@@ -593,12 +601,9 @@ mod tests {
             list.delete_spec(true).unwrap().ports.unwrap().to_string(),
             "80,443"
         );
-        let host = find("any port", "Allow in · from 198.51.100.7 · IPv4 only");
+        let host = find("any port", "Allow in · from 198.51.100.7");
         assert!(host.delete_spec(true).is_some());
-        let dest = find(
-            "41007/tcp to 10.0.0.0/8",
-            "Allow in · from port 41005 · IPv4 only",
-        );
+        let dest = find("41007/tcp to 10.0.0.0/8", "Allow in · from port 41005");
         assert_eq!(
             dest.delete_spec(true),
             None,
@@ -626,6 +631,13 @@ mod tests {
         assert!(!parse_rules(REAL_V4, None, true).complete);
         let v4_only = parse_rules(REAL_V4, None, false);
         assert!(v4_only.complete, "IPV6=no needs only user.rules");
+        assert_eq!(
+            v4_only.rules[0].summary(v4_only.ipv6),
+            "Allow in",
+            "IPv6 off: no note"
+        );
+        let cut_v6 = parse_rules(REAL_V4, Some(""), true);
+        assert_eq!(cut_v6.rules[0].summary(cut_v6.ipv6), "Allow in · IPv4 only");
     }
 
     #[test]

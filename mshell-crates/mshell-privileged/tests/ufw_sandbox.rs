@@ -213,20 +213,20 @@ fn the_helper_drives_real_ufw() {
     let shown: Vec<String> = set
         .rules
         .iter()
-        .map(|r| format!("{} | {}", r.target(), r.summary()))
+        .map(|r| format!("{} | {}", r.target(), r.summary(true)))
         .collect();
     assert_eq!(
         shown,
         [
             "22/tcp | Allow in",
-            "1714:1764/tcp | Allow in · from 192.168.0.0/24 · IPv4 only",
-            "1714:1764/udp | Allow in · from 192.168.0.0/24 · IPv4 only",
+            "1714:1764/tcp | Allow in · from 192.168.0.0/24",
+            "1714:1764/udp | Allow in · from 192.168.0.0/24",
             "5353/udp | Deny in",
-            "53317 | Allow in · from 10.1.2.3 · IPv4 only",
+            "53317 | Allow in · from 10.1.2.3",
             "80,443/tcp | Allow in",
             "43117 | Allow in · on eth9",
             "53/udp | Allow out",
-            "8080/tcp | Reject in · from 2001:db8::/32 · IPv6 only",
+            "8080/tcp | Reject in · from 2001:db8::/32",
         ]
     );
     assert_eq!(set.rules[0].comment.as_deref(), Some("SSH"));
@@ -285,6 +285,7 @@ fn the_helper_drives_real_ufw() {
     let left = sb.rules();
     assert_eq!(left.rules.len(), 1);
     assert!(!left.rules[0].v4 && left.rules[0].v6);
+    assert_eq!(left.rules[0].summary(true), "Allow in · IPv6 only");
     let conf = std::fs::read_to_string(sb.root.join("etc-ufw/ufw.conf")).expect("conf");
     assert_eq!(
         rules::parse_conf(&conf).enabled,
