@@ -190,6 +190,32 @@ pub(in crate::audio) fn stop_player(play: &gst_play::Play) {
         .expect("GstPlay did not finish stopping");
 }
 
+/// Play with an empty queue clears the URI; GstPlay then posts URI_LOADED
+/// without a `uri`. The bus sync handler runs on GstPlay's C thread, where a
+/// panic aborts the whole app (a media key on an empty mtune crashed it).
+#[test]
+fn play_without_a_uri_does_not_abort() {
+    let _guard = GST_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    gst::init().unwrap();
+    let (sender, receiver) = async_channel::unbounded();
+    let backend = GstBackend::new(sender);
+    let sink = gst::ElementFactory::make("fakesink").build().unwrap();
+    backend
+        .gst_player
+        .pipeline()
+        .set_property("audio-sink", &sink);
+    backend.set_song_uri(None);
+    backend.play();
+    // Give GstPlay's thread time to post (and us to handle) URI_LOADED.
+    thread::sleep(Duration::from_millis(800));
+    while let Ok(action) = receiver.try_recv() {
+        if let PlaybackAction::StreamEnded(uri) | PlaybackAction::StreamPlaying(uri) = action {
+            assert!(uri.is_empty(), "no URI was loaded, got {uri:?}");
+        }
+    }
+    stop_player(&backend.gst_player);
+}
+
 #[test]
 fn radio_switches_between_codecs_rates_and_channels() {
     let _guard = GST_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());

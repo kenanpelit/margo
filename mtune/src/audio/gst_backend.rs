@@ -166,10 +166,17 @@ impl GstBackend {
 
                 match play_msg {
                     gst_play::PlayMessage::UriLoaded(message) => {
+                        // A cleared queue loads no URI: GstPlay then posts
+                        // URI_LOADED with a NULL `uri`, and
+                        // `UriLoaded::uri()` unwraps it. A panic here, on
+                        // GstPlay's C thread, aborts mtune.
+                        let uri = message
+                            .structure()
+                            .and_then(|s| s.get::<Option<String>>("uri").ok().flatten())
+                            .unwrap_or_default();
                         *loaded_uri
                             .lock()
-                            .unwrap_or_else(std::sync::PoisonError::into_inner) =
-                            message.uri().to_string();
+                            .unwrap_or_else(std::sync::PoisonError::into_inner) = uri;
                     }
                     gst_play::PlayMessage::Error(message) => {
                         error!(
