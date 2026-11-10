@@ -1,8 +1,7 @@
 //! The Control Center tiles as mdash's **Controls** tab lays them out:
-//! labelled sections (Connectivity, Display, …) packed into a 12-unit grid
-//! so every row is full — no hole at the end of a short row, no empty half
-//! column — and what a click does there (a toggle first, the related menu
-//! on the chevron / right click).
+//! labelled sections (Connectivity, Display, …) on a grid of four equal
+//! columns — every tile the same size — and what a click does there (a
+//! toggle first, the related menu on the chevron / right click).
 //!
 //! Same tiles, same model, same probes as the Control Center (the registry
 //! in `registry.rs`): only the arrangement and the click grammar differ, so
@@ -14,11 +13,9 @@ use crate::frame::MenuId;
 #[cfg(test)]
 use mshell_config::schema::menu_widgets::QuickActionWidget;
 
-/// Grid width in units. 12 divides by 1, 2, 3 and 4, so a row of 1–4
-/// tiles always fills it exactly.
-pub(crate) const UNITS: i32 = 12;
-/// Most tiles a row holds.
-pub(crate) const ROW_MAX: usize = 4;
+/// Columns of the Controls grid: every tile is one column wide, so all
+/// tiles have the same size.
+pub(crate) const COLUMNS: usize = 4;
 
 /// A captioned section of the Controls tab.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,42 +91,14 @@ pub(crate) enum Placement {
     },
 }
 
-/// A band: a caption row and the tile row(s) under it. A group of up to
-/// four tiles shares its band with the groups that still fit; a bigger
-/// group gets its own band and spreads evenly over its rows.
-#[derive(Debug, Default)]
-struct Band {
-    /// (group, its visible tiles) in band order.
-    groups: Vec<(TileGroup, Vec<TileId>)>,
-}
-
-impl Band {
-    fn width(&self) -> usize {
-        self.groups.iter().map(|(_, t)| t.len()).sum()
-    }
-    fn is_single_row(&self) -> bool {
-        self.width() <= ROW_MAX
-    }
-}
-
-/// How `n` tiles split over the fewest rows of at most [`ROW_MAX`], as
-/// evenly as possible (6 → 3 + 3, 5 → 3 + 2, 7 → 4 + 3).
-fn split_rows(n: usize) -> Vec<usize> {
-    if n == 0 {
-        return Vec::new();
-    }
-    let rows = n.div_ceil(ROW_MAX);
-    let base = n / rows;
-    let extra = n % rows;
-    (0..rows).map(|i| base + usize::from(i < extra)).collect()
-}
-
-/// Lay out the visible tiles (`visible(id)`): captions + tiles, every tile
-/// row exactly [`UNITS`] wide. Empty groups vanish. Groups keep their order
-/// except that a small group may join an earlier band that still has room
-/// (first fit), which is what keeps the rows full.
+/// Lay out the visible tiles (`visible(id)`) on a [`COLUMNS`]-wide grid of
+/// equal cells: each section is a caption line over its tiles, filled left
+/// to right. Sections keep their order; two (or more) consecutive sections
+/// that fit one row together share it, each over its own whole columns
+/// (Focus 2 + Audio 2). Empty sections vanish.
 pub(crate) fn pack(visible: impl Fn(TileId) -> bool) -> Vec<Placement> {
-    let mut bands: Vec<Band> = Vec::new();
+    // Bands of consecutive sections that share their rows.
+    let mut bands: Vec<Vec<(TileGroup, Vec<TileId>)>> = Vec::new();
     for group in TileGroup::ALL {
         let tiles: Vec<TileId> = group
             .tiles()
@@ -140,64 +109,57 @@ pub(crate) fn pack(visible: impl Fn(TileId) -> bool) -> Vec<Placement> {
         if tiles.is_empty() {
             continue;
         }
-        if tiles.len() <= ROW_MAX
-            && let Some(band) = bands
-                .iter_mut()
-                .find(|b| b.is_single_row() && b.width() + tiles.len() <= ROW_MAX)
-        {
-            band.groups.push((group, tiles));
-            continue;
+        if let Some(band) = bands.last_mut() {
+            let used: usize = band.iter().map(|(_, t)| t.len()).sum();
+            if used + tiles.len() <= COLUMNS {
+                band.push((group, tiles));
+                continue;
+            }
         }
-        bands.push(Band {
-            groups: vec![(group, tiles)],
-        });
+        bands.push(vec![(group, tiles)]);
     }
 
     let mut out = Vec::new();
     let mut row = 0;
     for band in bands {
-        if band.is_single_row() {
-            let span = UNITS / band.width() as i32;
+        if band.len() > 1 || band[0].1.len() <= COLUMNS {
+            // One row: captions side by side over their own columns.
             let mut col = 0;
-            for (group, tiles) in &band.groups {
+            for (group, tiles) in &band {
                 out.push(Placement::Caption {
                     group: *group,
                     col,
                     row,
-                    span: span * tiles.len() as i32,
+                    span: tiles.len() as i32,
                 });
-                for (i, &id) in tiles.iter().enumerate() {
+                for &id in tiles {
                     out.push(Placement::Tile {
                         id,
-                        col: col + span * i as i32,
+                        col,
                         row: row + 1,
-                        span,
+                        span: 1,
                     });
+                    col += 1;
                 }
-                col += span * tiles.len() as i32;
             }
             row += 2;
         } else {
-            let (group, tiles) = &band.groups[0];
+            let (group, tiles) = &band[0];
             out.push(Placement::Caption {
                 group: *group,
                 col: 0,
                 row,
-                span: UNITS,
+                span: COLUMNS as i32,
             });
             row += 1;
-            let mut it = tiles.iter();
-            for count in split_rows(tiles.len()) {
-                let span = UNITS / count as i32;
-                for i in 0..count {
-                    if let Some(&id) = it.next() {
-                        out.push(Placement::Tile {
-                            id,
-                            col: span * i as i32,
-                            row,
-                            span,
-                        });
-                    }
+            for chunk in tiles.chunks(COLUMNS) {
+                for (col, &id) in chunk.iter().enumerate() {
+                    out.push(Placement::Tile {
+                        id,
+                        col: col as i32,
+                        row,
+                        span: 1,
+                    });
                 }
                 row += 1;
             }
@@ -284,25 +246,32 @@ mod tests {
             .collect()
     }
 
-    /// Every tile row is exactly UNITS wide and no two widgets overlap.
-    fn assert_full_rows(p: &[Placement]) {
-        let mut rows: HashMap<i32, i32> = HashMap::new();
+    /// Every tile is one cell, nothing overlaps or leaves the grid, and
+    /// each row's tiles start at column 0 with no hole between them.
+    fn assert_equal_cells(p: &[Placement]) {
         let mut cells: HashSet<(i32, i32)> = HashSet::new();
+        let mut rows: HashMap<i32, Vec<i32>> = HashMap::new();
         for pl in p {
-            let (col, row, span, is_tile) = match *pl {
-                Placement::Caption { col, row, span, .. } => (col, row, span, false),
-                Placement::Tile { col, row, span, .. } => (col, row, span, true),
+            let (col, row, span) = match *pl {
+                Placement::Caption { col, row, span, .. } => (col, row, span),
+                Placement::Tile { col, row, span, .. } => {
+                    assert_eq!(span, 1, "{pl:?}: tiles are one column");
+                    rows.entry(row).or_default().push(col);
+                    (col, row, span)
+                }
             };
-            assert!(span > 0 && col >= 0 && col + span <= UNITS, "{pl:?}");
+            assert!(
+                span > 0 && col >= 0 && col + span <= COLUMNS as i32,
+                "{pl:?}"
+            );
             for c in col..col + span {
                 assert!(cells.insert((c, row)), "overlap at {c},{row}");
             }
-            if is_tile {
-                *rows.entry(row).or_default() += span;
-            }
         }
-        for (row, width) in rows {
-            assert_eq!(width, UNITS, "tile row {row} is not full");
+        for (row, mut cols) in rows {
+            cols.sort_unstable();
+            let expect: Vec<i32> = (0..cols.len() as i32).collect();
+            assert_eq!(cols, expect, "tile row {row} has a hole");
         }
     }
 
@@ -319,18 +288,18 @@ mod tests {
     }
 
     #[test]
-    fn all_tiles_pack_into_full_rows() {
+    fn all_tiles_pack_into_equal_cells_in_section_order() {
         let p = pack(|_| true);
-        assert_full_rows(&p);
+        assert_equal_cells(&p);
         assert_eq!(tiles_of(&p).len(), TileId::all().len());
-        // 22 tiles, seven sections → six tile rows, five caption rows.
-        let max_row = p
+        let captions: Vec<TileGroup> = p
             .iter()
-            .map(|p| match *p {
-                Placement::Caption { row, .. } | Placement::Tile { row, .. } => row,
+            .filter_map(|p| match *p {
+                Placement::Caption { group, .. } => Some(group),
+                _ => None,
             })
-            .max();
-        assert_eq!(max_row, Some(10));
+            .collect();
+        assert_eq!(captions, TileGroup::ALL, "sections flow in order");
     }
 
     #[test]
@@ -338,7 +307,7 @@ mod tests {
         // A desktop: no battery, no ThinkPad LED, no custom tile.
         let hidden = [TileId::Battery, TileId::ThinkpadLed, TileId::CustomShortcut];
         let p = pack(|t| !hidden.contains(&t));
-        assert_full_rows(&p);
+        assert_equal_cells(&p);
         let tiles = tiles_of(&p);
         assert_eq!(tiles.len(), TileId::all().len() - hidden.len());
         assert!(hidden.iter().all(|h| !tiles.contains(h)));
@@ -352,34 +321,65 @@ mod tests {
     }
 
     #[test]
-    fn a_big_group_spreads_evenly_over_its_rows() {
-        assert_eq!(split_rows(6), [3, 3]);
-        assert_eq!(split_rows(5), [3, 2]);
-        assert_eq!(split_rows(4), [4]);
-        assert_eq!(split_rows(7), [4, 3]);
-        assert!(split_rows(0).is_empty());
+    fn a_big_group_fills_rows_of_four() {
         let p = pack(|t| TileGroup::Connectivity.tiles().contains(&t));
-        assert_full_rows(&p);
-        assert!(matches!(p[0], Placement::Caption { span: UNITS, .. }));
+        assert_equal_cells(&p);
+        assert!(matches!(
+            p[0],
+            Placement::Caption {
+                span: 4,
+                row: 0,
+                ..
+            }
+        ));
+        let rows: Vec<i32> = p
+            .iter()
+            .filter_map(|p| match *p {
+                Placement::Tile { row, .. } => Some(row),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(rows, [1, 1, 1, 1, 2, 2], "6 tiles: a row of 4, then 2");
     }
 
     #[test]
-    fn small_groups_share_a_band() {
+    fn small_consecutive_groups_share_a_row() {
         let p = pack(|t| {
-            TileGroup::Focus.tiles().contains(&t) || TileGroup::Services.tiles().contains(&t)
+            TileGroup::Focus.tiles().contains(&t) || TileGroup::Audio.tiles().contains(&t)
         });
-        assert_full_rows(&p);
+        assert_equal_cells(&p);
         let captions: Vec<_> = p
             .iter()
             .filter_map(|p| match *p {
-                Placement::Caption { group, row, .. } => Some((group, row)),
+                Placement::Caption {
+                    group,
+                    row,
+                    col,
+                    span,
+                } => Some((group, row, col, span)),
+                _ => None,
+            })
+            .collect();
+        // Focus (2) + Audio (3) don't fit one row of four: two bands.
+        assert_eq!(
+            captions,
+            [(TileGroup::Focus, 0, 0, 2), (TileGroup::Audio, 2, 0, 3)]
+        );
+        let p = pack(|t| {
+            TileGroup::Focus.tiles().contains(&t)
+                || (TileGroup::Audio.tiles().contains(&t) && t != TileId::MicDenoise)
+        });
+        let captions: Vec<_> = p
+            .iter()
+            .filter_map(|p| match *p {
+                Placement::Caption { group, col, .. } => Some((group, col)),
                 _ => None,
             })
             .collect();
         assert_eq!(
             captions,
-            [(TileGroup::Focus, 0), (TileGroup::Services, 0)],
-            "two two-tile groups sit side by side"
+            [(TileGroup::Focus, 0), (TileGroup::Audio, 2)],
+            "2 + 2 share a row, each over its own columns"
         );
     }
 

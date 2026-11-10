@@ -2,6 +2,7 @@
 //! menus that exist; opening one closes mdash and opens it in its own
 //! place (the menu-launcher quick action's `OpenMenu` path).
 
+use super::card::GAP;
 use crate::frame::MenuId;
 use relm4::gtk;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, GridExt, WidgetExt};
@@ -30,7 +31,7 @@ const fn tool(icon: &'static str, label: &'static str, menu: MenuId) -> Tool {
     }
 }
 
-/// Columns of the grid (five rows of six fill the tab).
+/// Columns of the grid (five full rows of six).
 pub(crate) const COLUMNS: usize = 6;
 
 /// Every tool, in reading order: capture & write, assist, system,
@@ -93,15 +94,16 @@ impl ToolsTab {
         let open: Rc<dyn Fn(ToolTarget)> = Rc::new(open);
         let root = gtk::Grid::new();
         root.add_css_class("mdash-tools");
+        // Six equal columns of compact card-buttons, one gap, natural
+        // height: the grid never spreads to fill a taller tab.
         root.set_column_homogeneous(true);
         root.set_row_homogeneous(true);
-        root.set_row_spacing(8);
-        root.set_column_spacing(8);
-        root.set_vexpand(true);
+        root.set_row_spacing(GAP.unsigned_abs());
+        root.set_column_spacing(GAP.unsigned_abs());
         for (i, t) in TOOLS.iter().enumerate() {
             let button = gtk::Button::new();
             button.add_css_class("mdash-tool");
-            let content = gtk::Box::new(gtk::Orientation::Vertical, 6);
+            let content = gtk::Box::new(gtk::Orientation::Vertical, 4);
             content.set_valign(gtk::Align::Center);
             let icon = gtk::Image::from_icon_name(t.icon);
             icon.add_css_class("mdash-tool-icon");
@@ -112,6 +114,7 @@ impl ToolsTab {
             content.append(&label);
             button.set_child(Some(&content));
             button.set_tooltip_text(Some(&format!("Open {}", t.label)));
+            mshell_common::a11y::name(&button, &format!("Open {}", t.label));
             let (open, target) = (open.clone(), t.target);
             button.connect_clicked(move |_| open(target));
             let (col, row) = ((i % COLUMNS) as i32, (i / COLUMNS) as i32);

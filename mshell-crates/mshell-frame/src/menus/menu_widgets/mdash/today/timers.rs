@@ -59,7 +59,23 @@ pub(crate) struct TimersCard {
     pub(crate) card: Card,
     alarm: gtk::Label,
     list: gtk::Box,
-    empty: gtk::Label,
+    /// The "No timers running" row.
+    empty: gtk::Box,
+}
+
+/// A one-line dim row: a small leading icon and a label.
+fn icon_row(icon: &str) -> (gtk::Box, gtk::Label) {
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    row.add_css_class("mdash-icon-row");
+    let image = gtk::Image::from_icon_name(icon);
+    row.append(&image);
+    let label = gtk::Label::new(None);
+    label.add_css_class("mdash-dim");
+    label.set_xalign(0.0);
+    label.set_hexpand(true);
+    label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    row.append(&label);
+    (row, label)
 }
 
 impl TimersCard {
@@ -67,21 +83,17 @@ impl TimersCard {
         let card = Card::new("alarm-symbolic", "Timers");
         card.root.add_css_class("mdash-timers-card");
 
-        let alarm = gtk::Label::new(None);
-        alarm.add_css_class("mdash-dim");
-        alarm.set_xalign(0.0);
-        alarm.set_ellipsize(gtk::pango::EllipsizeMode::End);
-        card.body.append(&alarm);
+        // Compact: the next alarm and the running timers as single rows
+        // (icon + text), then the entry and the presets.
+        let (alarm_row, alarm) = icon_row("alarm-symbolic");
+        card.body.append(&alarm_row);
 
         let list = gtk::Box::new(gtk::Orientation::Vertical, 4);
-        list.set_vexpand(true);
         card.body.append(&list);
-        let empty = gtk::Label::new(Some("No timers running"));
-        empty.add_css_class("mdash-empty");
-        empty.set_xalign(0.0);
-        empty.set_vexpand(true);
-        empty.set_valign(gtk::Align::Center);
-        card.body.append(&empty);
+        let (empty_row, empty) = icon_row("timer-symbolic");
+        empty.set_label("No timers running");
+        card.body.append(&empty_row);
+        let empty = empty_row;
 
         let entry_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         let entry = gtk::Entry::new();
@@ -209,12 +221,10 @@ fn timer_row(timer: &Timer, now: i64) -> gtk::Box {
         TimerKind::Timer | TimerKind::Snooze => "timer-symbolic",
     });
     row.append(&icon);
-    let text = gtk::Box::new(gtk::Orientation::Vertical, 2);
-    text.set_hexpand(true);
-    let line = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    // One line: time left · label · a short progress bar · cancel.
     let left = gtk::Label::new(Some(&format::pill_text(timer.remaining(now))));
     left.add_css_class("mdash-timer-left");
-    line.append(&left);
+    row.append(&left);
     let label = if timer.label.is_empty() {
         format::rings_phrase(&timers::due_clock(timer, now))
     } else {
@@ -225,13 +235,12 @@ fn timer_row(timer: &Timer, now: i64) -> gtk::Box {
     sub.set_xalign(0.0);
     sub.set_hexpand(true);
     sub.set_ellipsize(gtk::pango::EllipsizeMode::End);
-    line.append(&sub);
-    text.append(&line);
+    row.append(&sub);
     let progress = gtk::ProgressBar::new();
     progress.add_css_class("mdash-timer-progress");
+    progress.set_valign(gtk::Align::Center);
     progress.set_fraction(timer.progress(now));
-    text.append(&progress);
-    row.append(&text);
+    row.append(&progress);
     let cancel = gtk::Button::from_icon_name("window-close-symbolic");
     cancel.add_css_class("mdash-icon-button");
     cancel.set_valign(gtk::Align::Center);

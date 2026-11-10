@@ -7,6 +7,7 @@ use super::dash_layout::{self, DashPrimary, Placement, TileGroup};
 use super::registry::{PrimaryClick, TILES, TileId, TileSpec, ordered_tile_ids};
 use super::{ControlCenterTilesInput, ControlCenterTilesModel, ControlCenterTilesOutput};
 use crate::menus::menu_widgets::control_center::tile::{TileWidget, build_expand_tile, build_tile};
+use crate::menus::menu_widgets::mdash::card::GAP as DASH_GAP;
 use relm4::ComponentSender;
 use relm4::gtk;
 use relm4::gtk::prelude::{
@@ -115,12 +116,12 @@ impl ControlCenterTilesWidgets {
         grid: &gtk::Grid,
         live: bool,
     ) -> Self {
-        // 12 equal units (see `dash_layout`), tighter gaps: a compact grid
-        // that fills the Controls tab edge to edge.
+        // Four equal columns (see `dash_layout`), the dashboard's one gap.
         grid.remove_css_class("control-center-grid");
         grid.add_css_class("mdash-tiles");
-        grid.set_row_spacing(6);
-        grid.set_column_spacing(8);
+        grid.set_column_homogeneous(true);
+        grid.set_row_spacing(DASH_GAP.unsigned_abs());
+        grid.set_column_spacing(DASH_GAP.unsigned_abs());
         let slots = TILES
             .iter()
             .map(|spec| build_dash_slot(spec, sender))
@@ -294,13 +295,10 @@ fn dash_title(id: TileId, title: &'static str) -> &'static str {
 fn build_dash_slot(spec: &TileSpec, sender: &ComponentSender<ControlCenterTilesModel>) -> TileSlot {
     let (primary, menu) = dash_layout::dash_actions(spec.id);
     let title = dash_title(spec.id, spec.title);
-    // A tile whose click opens a menu shows the Control Center's inline
-    // chevron; a toggle with a related menu gets a separate chevron button.
-    let mut tile = if matches!(primary, DashPrimary::Open(_)) {
-        build_expand_tile(spec.icon, title, spec.subtitle)
-    } else {
-        build_tile(spec.icon, title, spec.subtitle)
-    };
+    // One tile shape for all: the frame is the tile surface; inside it the
+    // tile button (icon, title, subtitle) and, when the tile leads to a
+    // menu, a chevron button — no separate box, no divider.
+    let mut tile = build_tile(spec.icon, title, spec.subtitle);
     tile.button.add_css_class("mdash-tile");
     tile.button.set_hexpand(true);
     match primary {
@@ -331,10 +329,12 @@ fn build_dash_slot(spec: &TileSpec, sender: &ComponentSender<ControlCenterTilesM
     frame.add_css_class("mdash-tile-frame");
     frame.set_hexpand(true);
     frame.append(&tile.button);
-    if let Some(id) = menu {
+    if let Some(id) = related {
         let more = gtk::Button::from_icon_name("go-next-symbolic");
         more.add_css_class("mdash-tile-more");
+        more.set_valign(gtk::Align::Center);
         mshell_common::a11y::name(&more, &format!("{title} settings"));
+        more.set_tooltip_text(Some(&format!("{title} settings")));
         let s = sender.clone();
         more.connect_clicked(move |_| {
             s.output(ControlCenterTilesOutput::OpenMenu(id)).ok();

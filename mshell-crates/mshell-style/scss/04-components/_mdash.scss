@@ -4,13 +4,16 @@
 //
 // `menus/menu_widgets/mdash/`. One card style for every tab
 // (`.mdash-card`: title INSIDE the card, --card-* tokens), a compact
-// header + status strip + the shared segmented control, and four pages
-// that share one size. Tokens only (DESIGN.md §1, §15).
+// header + status strip + the shared segmented control, and four pages at
+// their natural heights. ONE inset: header, strip, tabs and cards all
+// start at the menu's own margin (no extra padding here), and ONE gap
+// (`card::GAP`, --space-2) between cards, rows and tiles. Tokens only
+// (DESIGN.md §1, §15).
 
 .mdash-dashboard {
   // ── Header ─────────────────────────────────────────────────────
   .mdash-header {
-    padding: 0 0 0 var(--space-1);
+    padding: 0;
   }
 
   .mdash-greeting {
@@ -46,7 +49,7 @@
 
   // ── Status strip ───────────────────────────────────────────────
   .mdash-strip {
-    margin-top: -2px;
+    margin: 0;
   }
 
   button.mdash-chip {
@@ -281,8 +284,8 @@
 
   // ── Today: media ───────────────────────────────────────────────
   .mdash-media-art {
-    min-width: 52px;
-    min-height: 52px;
+    min-width: 44px;
+    min-height: 44px;
     border-radius: var(--radius-xs);
     background-color: var(--surface-container-high);
   }
@@ -299,11 +302,13 @@
 
   progressbar.mdash-media-progress > trough,
   progressbar.mdash-timer-progress > trough {
+    border: none;
     min-height: 4px;
     border-radius: var(--radius-pill);
     background-color: var(--surface-container-highest);
 
     > progress {
+      border: none;
       min-height: 4px;
       border-radius: var(--radius-pill);
       background-color: var(--primary);
@@ -312,8 +317,8 @@
 
   button.mdash-transport {
     all: unset;
-    min-width: 34px;
-    min-height: 34px;
+    min-width: 32px;
+    min-height: 32px;
     border-radius: var(--radius-pill);
     @include state-layer();
 
@@ -341,9 +346,32 @@
   }
 
   // ── Today: timers ──────────────────────────────────────────────
+  // The quick-entry field on the card's raised surface (the theme's own
+  // entry chrome would read as a white box on the card).
   entry.mdash-entry {
     min-height: 30px;
+    padding: 0 var(--space-2);
+    border: none;
+    border-radius: var(--radius-sm);
+    box-shadow: none;
+    background-color: var(--surface-container-high);
+    color: var(--on-surface);
+    caret-color: var(--on-surface);
     font-size: var(--font-xs);
+
+    placeholder {
+      color: var(--on-surface-variant);
+    }
+
+    &:focus-within {
+      box-shadow: inset 0 0 0 2px var(--primary);
+    }
+  }
+
+  // The media card's second row (progress, or the station buttons) is
+  // one height in both states, so the card doesn't change size.
+  .mdash-media-row2 {
+    min-height: 28px;
   }
 
   button.mdash-preset {
@@ -362,6 +390,15 @@
     &:focus-visible {
       box-shadow: inset 0 0 0 2px var(--primary);
     }
+  }
+
+  progressbar.mdash-timer-progress {
+    min-width: 56px;
+  }
+
+  .mdash-icon-row image {
+    -gtk-icon-size: var(--icon-sm);
+    color: var(--on-surface-variant);
   }
 
   .mdash-timer-left {
@@ -385,9 +422,18 @@
     }
   }
 
-  .mdash-sparkline {
+  // The metric visual slot: a sparkline, or the disk's line + bar, all
+  // the same fixed height right under the card's text.
+  .mdash-sparkline,
+  .mdash-metric-visual {
     color: var(--primary);
-    min-height: 28px;
+    min-height: 36px;
+  }
+
+  button.mdash-inline-button {
+    padding: var(--space-1) var(--space-3);
+    min-height: 30px;
+    font-size: var(--font-xs);
   }
 
   levelbar.mdash-bar > trough {
@@ -420,6 +466,18 @@
     background-color: var(--error);
   }
 
+  // The Control Center's power-profile switch inside a half-width card:
+  // tighter sides so three labelled segments fit, and the raised surface
+  // so it reads on the card (the CC paints it on the panel itself).
+  .control-center-power-profile .control-center-pp-btn {
+    padding: var(--space-2) var(--space-1);
+
+    &:not(.active) {
+      background: var(--surface-container-high);
+      @include state-layer(var(--surface-container-high));
+    }
+  }
+
   .mdash-ai-label {
     font-size: var(--font-xs);
   }
@@ -443,16 +501,24 @@
     padding: var(--space-2) var(--space-3);
   }
 
+  // Where a slider row has no device chevron: the chevron's footprint
+  // (--icon-sm + its --space-1 padding on both sides).
+  .mdash-slider-slot {
+    min-width: calc(var(--icon-sm) + 2 * var(--space-1));
+  }
+
   .mdash-section-caption {
     font-size: var(--font-2xs);
     font-weight: 700;
     color: var(--on-surface-variant);
     letter-spacing: 0.04em;
-    margin: var(--space-1) 0 0 var(--space-1);
+    margin: var(--space-1) 0 0 0;
   }
 
-  // Split tile: the toggle button + the related-menu chevron share one
-  // card; the whole card takes the active fill.
+  // The tile: the frame IS the tile surface (one per tile, same size in
+  // the four equal columns); inside it the transparent tile button (icon,
+  // title, subtitle) and, when the tile leads to a menu, a round chevron
+  // button — no separate box, no divider. On = the accent fill.
   .mdash-tile-frame {
     background-color: var(--card-bg);
     border-radius: var(--card-radius);
@@ -464,8 +530,12 @@
 
     > button.control-center-tile.mdash-tile {
       background-color: transparent;
-      padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+      padding: var(--space-2) var(--space-1) var(--space-2) var(--space-3);
       @include state-layer();
+
+      &:last-child {
+        padding-right: var(--space-3);
+      }
 
       .control-center-tile-title {
         font-size: var(--font-xs);
@@ -482,9 +552,10 @@
 
     > button.mdash-tile-more {
       all: unset;
-      min-width: 26px;
-      border-radius: 0 var(--card-radius) var(--card-radius) 0;
-      box-shadow: inset 1px 0 0 0 var(--outline-variant);
+      min-width: 24px;
+      min-height: 24px;
+      margin: 0 var(--space-2) 0 0;
+      border-radius: var(--radius-pill);
       @include state-layer();
 
       image {
@@ -507,7 +578,8 @@
     all: unset;
     border-radius: var(--card-radius);
     background-color: var(--card-bg);
-    padding: var(--space-2) var(--space-1);
+    min-height: 64px;
+    padding: var(--space-1);
     @include state-layer(var(--card-bg));
 
     &:focus-visible {

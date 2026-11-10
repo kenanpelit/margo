@@ -37,49 +37,18 @@ fn row(cards: &[DashboardCard], row: i32, shows: &impl Fn(DashboardCard) -> bool
         .collect()
 }
 
-/// **Today**: calendar | agenda on top; weather on the left beside media
-/// over timers below (the weather card is about as tall as the two
-/// smaller cards together, so both columns end level).
-pub(crate) fn today(shows: impl Fn(DashboardCard) -> bool) -> Vec<Slot> {
+/// **Today**: two columns of cards. Left: calendar over weather (both
+/// fixed height); right: agenda over media over timers, where the agenda
+/// is the flexible card that absorbs the difference, so both columns end
+/// level. A column whose cards are all hidden disappears and the other
+/// takes the whole width.
+pub(crate) fn today(shows: impl Fn(DashboardCard) -> bool) -> Vec<Vec<DashboardCard>> {
     use DashboardCard::{Agenda, Calendar, Media, Timers, Weather};
-    let mut out = row(&[Calendar, Agenda], 0, &shows);
-    let half = UNITS / 2;
-    let right: Vec<DashboardCard> = [Media, Timers].into_iter().filter(|c| shows(*c)).collect();
-    if !shows(Weather) {
-        out.extend(row(&right, 1, &shows));
-        return out;
-    }
-    if right.is_empty() {
-        out.extend(row(&[Weather], 1, &shows));
-        return out;
-    }
-    out.push(Slot {
-        card: Weather,
-        col: 0,
-        row: 1,
-        width: half,
-        height: 2,
-    });
-    if right.len() == 1 {
-        out.push(Slot {
-            card: right[0],
-            col: half,
-            row: 1,
-            width: half,
-            height: 2,
-        });
-    } else {
-        for (i, card) in right.into_iter().enumerate() {
-            out.push(Slot {
-                card,
-                col: half,
-                row: 1 + i as i32,
-                width: half,
-                height: 1,
-            });
-        }
-    }
-    out
+    [vec![Calendar, Weather], vec![Agenda, Media, Timers]]
+        .into_iter()
+        .map(|col| col.into_iter().filter(|c| shows(*c)).collect::<Vec<_>>())
+        .filter(|col| !col.is_empty())
+        .collect()
 }
 
 /// **System**: four metric cards across, then battery & power | network,
@@ -128,19 +97,15 @@ mod tests {
     }
 
     #[test]
-    fn today_full_is_two_level_columns() {
-        let s = today(|_| true);
-        assert_tiled(&s);
-        let weather = s.iter().find(|s| s.card == Weather).expect("weather");
-        assert_eq!((weather.row, weather.height), (1, 2));
-        let media = s.iter().find(|s| s.card == Media).expect("media");
-        let timers = s.iter().find(|s| s.card == Timers).expect("timers");
-        assert_eq!(media.row + 1, timers.row);
-        assert_eq!(timers.row + timers.height, weather.row + weather.height);
+    fn today_is_calendar_and_weather_beside_agenda_media_timers() {
+        assert_eq!(
+            today(|_| true),
+            vec![vec![Calendar, Weather], vec![Agenda, Media, Timers]]
+        );
     }
 
     #[test]
-    fn today_every_subset_tiles_without_holes() {
+    fn today_every_subset_keeps_every_shown_card_and_no_empty_column() {
         let cards = [Calendar, Agenda, Weather, Media, Timers];
         for mask in 0u32..32 {
             let shown: Vec<_> = cards
@@ -149,9 +114,11 @@ mod tests {
                 .filter(|(i, _)| mask & (1 << i) != 0)
                 .map(|(_, c)| *c)
                 .collect();
-            let s = today(|c| shown.contains(&c));
-            assert_tiled(&s);
-            assert_eq!(s.len(), shown.len(), "mask {mask:b}");
+            let cols = today(|c| shown.contains(&c));
+            assert!(cols.iter().all(|c| !c.is_empty()), "mask {mask:b}");
+            let placed: Vec<_> = cols.concat();
+            assert_eq!(placed.len(), shown.len(), "mask {mask:b}");
+            assert!(shown.iter().all(|c| placed.contains(c)));
         }
     }
 
@@ -185,12 +152,8 @@ mod tests {
 
     #[test]
     fn a_hidden_card_gives_its_room_to_its_neighbour() {
-        let s = today(|c| c != Agenda);
-        let cal = s.iter().find(|s| s.card == Calendar).expect("calendar");
-        assert_eq!(cal.width, UNITS);
-        let s = today(|c| c != Media);
-        let timers = s.iter().find(|s| s.card == Timers).expect("timers");
-        assert_eq!(timers.height, 2, "timers fill the right column");
+        // A whole column hidden: the other one spans the tab.
+        assert_eq!(today(|c| c == Agenda), vec![vec![Agenda]]);
         let s = system(|c| c != Temperature);
         assert!(s.iter().filter(|s| s.row == 0).all(|s| s.width == 4));
     }

@@ -84,6 +84,7 @@ pub(crate) fn pick_player(
 
 pub(crate) struct MediaCard {
     pub(crate) card: Card,
+    views: gtk::Stack,
     playing_box: gtk::Box,
     idle_box: gtk::Box,
     cover: gtk::Picture,
@@ -115,7 +116,7 @@ impl MediaCard {
         let card = Card::new("media-playback-start-symbolic", "Media");
         card.root.add_css_class("mdash-media-card");
 
-        // Player switch in the header row's meta slot area.
+        // Player switch: in the card's header, after the player's name.
         let switch = gtk::Box::new(gtk::Orientation::Horizontal, 2);
         let prev_player = icon_button(
             "go-previous-symbolic",
@@ -134,11 +135,11 @@ impl MediaCard {
         switch.append(&prev_player);
         switch.append(&next_player);
         switch.set_visible(false);
+        card.append_to_header(&switch);
 
-        // ── playing ──
+        // ── playing: cover · title / artist · transport, then progress ──
         let playing_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
-        playing_box.set_vexpand(true);
-        let top = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        let top = gtk::Box::new(gtk::Orientation::Horizontal, 10);
         let art = gtk::Overlay::new();
         art.add_css_class("mdash-media-art");
         let cover_fallback = gtk::Image::from_icon_name("audio-x-generic-symbolic");
@@ -163,22 +164,9 @@ impl MediaCard {
         artist.set_ellipsize(gtk::pango::EllipsizeMode::End);
         text.append(&artist);
         top.append(&text);
-        top.append(&switch);
-        playing_box.append(&top);
 
-        let progress_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        let progress = gtk::ProgressBar::new();
-        progress.add_css_class("mdash-media-progress");
-        progress.set_hexpand(true);
-        progress.set_valign(gtk::Align::Center);
-        progress_row.append(&progress);
-        let time = gtk::Label::new(None);
-        time.add_css_class("mdash-dim");
-        progress_row.append(&time);
-        playing_box.append(&progress_row);
-
-        let transport = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        transport.set_halign(gtk::Align::Center);
+        let transport = gtk::Box::new(gtk::Orientation::Horizontal, 2);
+        transport.set_valign(gtk::Align::Center);
         let prev = icon_button(
             "media-skip-backward-symbolic",
             "Previous track",
@@ -200,54 +188,70 @@ impl MediaCard {
             b.connect_clicked(move |_| on(ev.clone()));
             transport.append(b);
         }
-        playing_box.append(&transport);
+        top.append(&transport);
+        playing_box.append(&top);
 
-        // ── idle ──
+        let progress_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        progress_row.add_css_class("mdash-media-row2");
+        let progress = gtk::ProgressBar::new();
+        progress.add_css_class("mdash-media-progress");
+        progress.set_hexpand(true);
+        progress.set_valign(gtk::Align::Center);
+        progress_row.append(&progress);
+        let time = gtk::Label::new(None);
+        time.add_css_class("mdash-dim");
+        progress_row.append(&time);
+        playing_box.append(&progress_row);
+
+        // ── idle: the same two rows — "Nothing playing" + resume, then
+        // the saved stations ──
         let idle_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
-        idle_box.set_vexpand(true);
-        let idle_line = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        let idle_line = gtk::Box::new(gtk::Orientation::Horizontal, 10);
         let idle_art = gtk::Image::from_icon_name("audio-x-generic-symbolic");
         idle_art.add_css_class("mdash-media-art-fallback");
         idle_art.add_css_class("mdash-media-art");
         idle_line.append(&idle_art);
         let idle_text = gtk::Box::new(gtk::Orientation::Vertical, 2);
         idle_text.set_valign(gtk::Align::Center);
+        idle_text.set_hexpand(true);
         let nothing = gtk::Label::new(Some("Nothing playing"));
         nothing.add_css_class("mdash-media-title");
         nothing.set_xalign(0.0);
         idle_text.append(&nothing);
-        let hint = gtk::Label::new(Some("Start something below"));
-        hint.add_css_class("mdash-dim");
-        hint.set_xalign(0.0);
-        idle_text.append(&hint);
-        idle_line.append(&idle_text);
-        idle_box.append(&idle_line);
-
-        let resume = gtk::Button::new();
-        resume.add_css_class("mdash-row-button");
-        let resume_content = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        resume_content.append(&gtk::Image::from_icon_name("media-playback-start-symbolic"));
         let resume_label = gtk::Label::new(None);
-        resume_label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        resume_label.add_css_class("mdash-dim");
         resume_label.set_xalign(0.0);
-        resume_content.append(&resume_label);
-        resume.set_child(Some(&resume_content));
+        resume_label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        idle_text.append(&resume_label);
+        idle_line.append(&idle_text);
+        let resume = icon_button("media-playback-start-symbolic", "Resume", "mdash-transport");
+        resume.add_css_class("primary");
+        resume.set_valign(gtk::Align::Center);
         {
             let on = on.clone();
             resume.connect_clicked(move |_| on(MediaEvent::Resume));
         }
-        idle_box.append(&resume);
+        idle_line.append(&resume);
+        idle_box.append(&idle_line);
 
         let stations = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        stations.add_css_class("mdash-media-row2");
         stations.set_homogeneous(true);
-        stations.set_valign(gtk::Align::End);
-        stations.set_vexpand(true);
         idle_box.append(&stations);
 
-        card.body.append(&playing_box);
-        card.body.append(&idle_box);
+        // Playing and idle share one homogeneous stack: the card keeps the
+        // same height whether something plays or not, so Today's columns
+        // don't shift when a track stops.
+        let views = gtk::Stack::new();
+        views.set_hhomogeneous(true);
+        views.set_vhomogeneous(true);
+        views.add_child(&playing_box);
+        views.add_child(&idle_box);
+        views.set_visible_child(&idle_box);
+        card.body.append(&views);
         Self {
             card,
+            views,
             playing_box,
             idle_box,
             cover,
@@ -270,8 +274,7 @@ impl MediaCard {
     pub(crate) fn apply(&self, view: &MediaView) {
         match view {
             MediaView::Playing(np) => {
-                self.playing_box.set_visible(true);
-                self.idle_box.set_visible(false);
+                self.views.set_visible_child(&self.playing_box);
                 self.card.set_title("Now playing");
                 self.card.set_meta(&np.player);
                 self.title.set_label(if np.title.is_empty() {
@@ -315,16 +318,21 @@ impl MediaCard {
                 self.switch.set_visible(np.players > 1);
             }
             MediaView::Idle(idle) => {
-                self.playing_box.set_visible(false);
-                self.idle_box.set_visible(true);
+                self.views.set_visible_child(&self.idle_box);
                 self.card.set_title("Media");
                 self.card.set_meta("");
                 match &idle.resume {
                     Some(track) => {
-                        self.resume_label.set_label(&format!("Resume {track}"));
+                        self.resume_label.set_label(track);
+                        mshell_common::a11y::name(&self.resume, &format!("Resume {track}"));
+                        self.resume
+                            .set_tooltip_text(Some(&format!("Resume {track}")));
                         self.resume.set_visible(true);
                     }
-                    None => self.resume.set_visible(false),
+                    None => {
+                        self.resume_label.set_label("Start a station or open Music");
+                        self.resume.set_visible(false);
+                    }
                 }
                 while let Some(child) = self.stations.first_child() {
                     self.stations.remove(&child);
@@ -333,7 +341,7 @@ impl MediaCard {
                     let b = gtk::Button::new();
                     b.add_css_class("mdash-row-button");
                     let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-                    content.append(&gtk::Image::from_icon_name("audio-radio-symbolic"));
+                    content.append(&gtk::Image::from_icon_name("media-playback-start-symbolic"));
                     let l = gtk::Label::new(Some(name));
                     l.set_ellipsize(gtk::pango::EllipsizeMode::End);
                     content.append(&l);
@@ -346,7 +354,7 @@ impl MediaCard {
                 let open = gtk::Button::new();
                 open.add_css_class("mdash-row-button");
                 let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-                content.append(&gtk::Image::from_icon_name("folder-music-symbolic"));
+                content.append(&gtk::Image::from_icon_name("audio-x-generic-symbolic"));
                 content.append(&gtk::Label::new(Some("Music")));
                 open.set_child(Some(&content));
                 mshell_common::a11y::name(&open, "Open Tune");

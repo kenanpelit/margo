@@ -61,6 +61,7 @@ impl TilesFixture {
             used_bytes: 182 << 30,
             total_bytes: 476 << 30,
         };
+        m.power_profile = wayle_power_profiles::types::profile::PowerProfile::Balanced;
         m.battery = if self.battery {
             BatterySnapshot {
                 present: true,

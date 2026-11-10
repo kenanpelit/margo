@@ -3,6 +3,7 @@
 //! slider and tile components (same model, probes and pollers, so a toggle
 //! here and in the Control Center always agree) in the dashboard layout.
 
+use super::card::GAP;
 use crate::frame::MenuId;
 use crate::menus::menu_widgets::control_center::sliders::{
     ControlCenterSlidersInit, ControlCenterSlidersModel, ControlCenterSlidersOutput,
@@ -34,13 +35,12 @@ impl ControlsTab {
         live: bool,
         open: impl Fn(MenuId) + Clone + Send + 'static,
     ) -> Self {
-        let root = gtk::Box::new(gtk::Orientation::Vertical, 10);
+        let root = gtk::Box::new(gtk::Orientation::Vertical, GAP);
         root.add_css_class("mdash-controls");
-        root.set_vexpand(true);
 
         let o = open.clone();
         let sliders = ControlCenterSlidersModel::builder()
-            .launch(ControlCenterSlidersInit { horizontal: true })
+            .launch(ControlCenterSlidersInit { dashboard: true })
             .connect_receiver(move |_, msg| match msg {
                 ControlCenterSlidersOutput::OpenAudioOut | ControlCenterSlidersOutput::OpenMic => {
                     o(MenuId::AudioDashboard)
@@ -64,8 +64,6 @@ impl ControlsTab {
                 ControlCenterTilesOutput::ExpandPage(_) => {}
             });
         tiles.widget().set_visible(cfg.shows(DashboardCard::Tiles));
-        tiles.widget().set_vexpand(true);
-        tiles.widget().set_valign(gtk::Align::Start);
         root.append(tiles.widget());
 
         Self {

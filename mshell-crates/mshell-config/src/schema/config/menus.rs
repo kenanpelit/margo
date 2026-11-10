@@ -167,11 +167,13 @@ where
 
 /// The code default of `mdash_menu`: the tabbed dashboard (header +
 /// status strip + Today / Controls / System / Tools), at the top centre.
+/// 800 px = a 760 px dashboard inside the menu's 20 px margins — what the
+/// four-column tiles and the six-column tools need without crowding.
 pub(super) fn default_mdash_menu() -> Menu {
     Menu {
         position: Position::Top,
         widgets: vec![MenuWidget::Dashboard(DashboardConfig::default())],
-        minimum_width: 760,
+        minimum_width: 800,
         maximum_height: 0,
     }
 }

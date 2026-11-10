@@ -5218,6 +5218,7 @@ dependencies = [
 name = "mshell-frame"
 version = "5.1.1"
 dependencies = [
+ "any_spawner",
  "chrono",
  "chrono-tz",
  "futures",

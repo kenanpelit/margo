@@ -177,7 +177,7 @@ impl Component for ControlCenterMenuWidgetModel {
 
         // ── Main-page components ─────────────────────────────────────────────
         let sliders = ControlCenterSlidersModel::builder()
-            .launch(ControlCenterSlidersInit { horizontal: false })
+            .launch(ControlCenterSlidersInit { dashboard: false })
             .forward(sender.input_sender(), |msg| match msg {
                 ControlCenterSlidersOutput::OpenAudioOut => {
                     ControlCenterMenuWidgetInput::OpenDetailPage(DetailPage::AudioOut)

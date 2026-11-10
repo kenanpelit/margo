@@ -4,7 +4,7 @@
 //! detailed menu. The data comes from the shared services / polls (see
 //! the dashboard's live feeds), only while this tab is on screen.
 
-use super::card::{Card, empty_label, value_label};
+use super::card::{Card, GAP, empty_label, value_label};
 use super::layout::{self, Slot};
 use super::sparkline::Sparkline;
 use crate::frame::MenuId;
@@ -13,7 +13,7 @@ use crate::menus::menu_widgets::control_center::power_profile::{
 };
 use mshell_config::schema::dashboard::{DashboardCard, DashboardTabConfig};
 use relm4::gtk;
-use relm4::gtk::prelude::{BoxExt, ButtonExt, GridExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, WidgetExt};
 use relm4::{Component, ComponentController, Controller};
 use std::rc::Rc;
 
@@ -60,6 +60,30 @@ pub(crate) fn rate(bytes_per_sec: u64) -> String {
     format!("{}/s", bytes_short(bytes_per_sec))
 }
 
+/// The battery card's second line: "3 h 12 min left" on battery, "Full in
+/// 45 min" while charging (UPower's estimates, seconds; 0 = unknown).
+pub(crate) fn battery_time_line(charging: bool, time_to_empty: i64, time_to_full: i64) -> String {
+    let (secs, template): (i64, fn(&str) -> String) = if charging {
+        (time_to_full, |t| format!("Full in {t}"))
+    } else {
+        (time_to_empty, |t| format!("{t} left"))
+    };
+    if secs <= 0 {
+        return if charging {
+            "Charging".to_string()
+        } else {
+            "Estimating time left…".to_string()
+        };
+    }
+    let mins = (secs + 30) / 60;
+    let text = match (mins / 60, mins % 60) {
+        (0, m) => format!("{m} min"),
+        (h, 0) => format!("{h} h"),
+        (h, m) => format!("{h} h {m} min"),
+    };
+    template(&text)
+}
+
 /// One limits row: "Claude · 5h", 42 %.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct AiRow {
@@ -72,6 +96,18 @@ pub(crate) struct AiRow {
 pub(crate) struct UpdatesView {
     pub(crate) total: usize,
     pub(crate) detail: String,
+    /// What pacman will download for the repo part (`None` = unknown).
+    pub(crate) download: Option<u64>,
+}
+
+/// The updates card's third line.
+pub(crate) fn download_line(u: &UpdatesView) -> String {
+    match (u.total, u.download) {
+        (0, _) => "Nothing to download".to_string(),
+        (_, Some(b)) if b > 0 => format!("{} to download", bytes_short(b)),
+        (_, Some(_)) => "Already downloaded".to_string(),
+        (_, None) => "Download size not known yet".to_string(),
+    }
 }
 
 /// A metric card: big value + dim detail + sparkline (or a bar).
@@ -97,8 +133,8 @@ impl Metric {
         let detail = value_label("mdash-dim");
         card.body.append(&detail);
         if let Some(s) = &spark {
-            s.area.set_vexpand(true);
-            s.area.set_valign(gtk::Align::End);
+            // Fixed height (`.mdash-sparkline`), right under the text.
+            s.area.set_vexpand(false);
             card.body.append(&s.area);
         }
         Self {
@@ -128,20 +164,23 @@ impl Metric {
 }
 
 pub(crate) struct SystemTab {
-    pub(crate) root: gtk::Grid,
+    pub(crate) root: gtk::Box,
     cpu: Metric,
     memory: Metric,
     temp: Metric,
     disk: Metric,
     disk_bar: gtk::LevelBar,
+    disk_used: gtk::Label,
     battery_card: Card,
     battery_value: gtk::Label,
     battery_detail: gtk::Label,
+    battery_time: gtk::Label,
     pub(crate) power_profile: Controller<ControlCenterPowerProfileModel>,
     network: Metric,
     updates_card: Card,
     updates_value: gtk::Label,
     updates_detail: gtk::Label,
+    updates_download: gtk::Label,
     updates_button: gtk::Button,
     ai_card: Card,
     ai_rows: gtk::Box,
@@ -151,12 +190,8 @@ pub(crate) struct SystemTab {
 impl SystemTab {
     pub(crate) fn new(cfg: &DashboardTabConfig, open: impl Fn(MenuId) + 'static) -> Self {
         let open: Rc<dyn Fn(MenuId)> = Rc::new(open);
-        let root = gtk::Grid::new();
-        root.add_css_class("mdash-tab-grid");
-        root.set_column_homogeneous(true);
-        root.set_row_spacing(10);
-        root.set_column_spacing(10);
-        root.set_vexpand(true);
+        let root = gtk::Box::new(gtk::Orientation::Vertical, GAP);
+        root.add_css_class("mdash-system");
 
         let cpu_menu = MenuId::CpuDashboard;
         let cpu = Metric::new(
@@ -187,11 +222,18 @@ impl SystemTab {
             cpu_menu,
             open.clone(),
         );
+        // The disk's visual sits in the same fixed-height slot as the
+        // sparklines beside it: the used / total line over a usage bar.
+        let disk_visual = gtk::Box::new(gtk::Orientation::Vertical, 6);
+        disk_visual.add_css_class("mdash-metric-visual");
+        let disk_used = value_label("mdash-dim");
+        disk_used.set_valign(gtk::Align::End);
+        disk_used.set_vexpand(true);
+        disk_visual.append(&disk_used);
         let disk_bar = gtk::LevelBar::new();
         disk_bar.add_css_class("mdash-bar");
-        disk_bar.set_vexpand(true);
-        disk_bar.set_valign(gtk::Align::End);
-        disk.card.body.append(&disk_bar);
+        disk_visual.append(&disk_bar);
+        disk.card.body.append(&disk_visual);
 
         let battery_card = {
             let open = open.clone();
@@ -205,11 +247,11 @@ impl SystemTab {
         battery_detail.set_valign(gtk::Align::Center);
         battery_line.append(&battery_detail);
         battery_card.body.append(&battery_line);
+        let battery_time = value_label("mdash-dim");
+        battery_card.body.append(&battery_time);
         let power_profile = ControlCenterPowerProfileModel::builder()
             .launch(ControlCenterPowerProfileInit {})
             .detach();
-        power_profile.widget().set_vexpand(true);
-        power_profile.widget().set_valign(gtk::Align::End);
         battery_card.body.append(power_profile.widget());
 
         let network = Metric::new(
@@ -225,29 +267,34 @@ impl SystemTab {
             Card::new("software-update-available-symbolic", "Updates")
                 .opens("Updates", move || open(MenuId::SystemUpdate))
         };
+        // Count + sources on the left, the action inline on the right.
+        let updates_line = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        let updates_text = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        updates_text.set_hexpand(true);
         let updates_value = value_label("mdash-metric-value");
-        updates_card.body.append(&updates_value);
+        updates_text.append(&updates_value);
         let updates_detail = value_label("mdash-dim");
-        updates_detail.set_wrap(true);
-        updates_card.body.append(&updates_detail);
+        updates_text.append(&updates_detail);
+        let updates_download = value_label("mdash-dim");
+        updates_text.append(&updates_download);
+        updates_line.append(&updates_text);
         let updates_button = gtk::Button::with_label("Review & update");
         updates_button.add_css_class("ok-button-primary");
-        updates_button.add_css_class("ok-button-cell");
-        updates_button.set_vexpand(true);
-        updates_button.set_valign(gtk::Align::End);
-        updates_button.set_halign(gtk::Align::Start);
+        updates_button.add_css_class("mdash-inline-button");
+        updates_button.set_valign(gtk::Align::Center);
         {
             let open = open.clone();
             updates_button.connect_clicked(move |_| open(MenuId::SystemUpdate));
         }
-        updates_card.body.append(&updates_button);
+        updates_line.append(&updates_button);
+        updates_card.body.append(&updates_line);
 
         let ai_card = {
             let open = open.clone();
             Card::new("ai-agents-symbolic", "AI usage")
                 .opens("AI agents", move || open(MenuId::Agents))
         };
-        let ai_rows = gtk::Box::new(gtk::Orientation::Vertical, 6);
+        let ai_rows = gtk::Box::new(gtk::Orientation::Vertical, 8);
         ai_card.body.append(&ai_rows);
         let ai_empty = empty_label("No Claude or Codex sign-in found");
         ai_card.body.append(&ai_empty);
@@ -259,27 +306,27 @@ impl SystemTab {
             temp,
             disk,
             disk_bar,
+            disk_used,
             battery_card,
             battery_value,
             battery_detail,
+            battery_time,
             power_profile,
             network,
             updates_card,
             updates_value,
             updates_detail,
+            updates_download,
             updates_button,
             ai_card,
             ai_rows,
             ai_empty,
         };
-        for Slot {
-            card,
-            col,
-            row,
-            width,
-            height,
-        } in layout::system(|c| cfg.shows(c))
-        {
+        // One homogeneous row per layout row: the cards of a row share its
+        // height, and every card keeps its natural content (no card
+        // vexpands, nothing is pushed to a card's bottom).
+        let mut rows: Vec<gtk::Box> = Vec::new();
+        for Slot { card, row, .. } in layout::system(|c| cfg.shows(c)) {
             let widget = match card {
                 DashboardCard::Cpu => &tab.cpu.card.root,
                 DashboardCard::Memory => &tab.memory.card.root,
@@ -291,11 +338,16 @@ impl SystemTab {
                 DashboardCard::AiUsage => &tab.ai_card.root,
                 _ => continue,
             };
-            tab.root.attach(widget, col, row, width, height);
+            let row = row as usize;
+            while rows.len() <= row {
+                let b = gtk::Box::new(gtk::Orientation::Horizontal, GAP);
+                b.set_homogeneous(true);
+                b.add_css_class("mdash-system-row");
+                tab.root.append(&b);
+                rows.push(b);
+            }
+            rows[row].append(widget);
         }
-        // The last row (updates / AI) takes the spare height.
-        tab.updates_card.root.set_vexpand(true);
-        tab.ai_card.root.set_vexpand(true);
         tab.apply_ai(&[]);
         tab.apply_updates(None);
         tab.apply_battery(None);
@@ -347,6 +399,11 @@ impl SystemTab {
             &format!("{mount} · {} free", bytes_short(total.saturating_sub(used))),
             Some(usage_severity(pct)),
         );
+        self.disk_used.set_label(&format!(
+            "{} of {} used",
+            bytes_short(used),
+            bytes_short(total)
+        ));
         self.disk_bar.set_value((pct / 100.0).clamp(0.0, 1.0));
     }
 
@@ -360,18 +417,20 @@ impl SystemTab {
     }
 
     /// `None` = no battery: the card is about the power profile only.
-    pub(crate) fn apply_battery(&self, battery: Option<(u8, &str)>) {
+    /// `time` is the second line ([`battery_time_line`]).
+    pub(crate) fn apply_battery(&self, battery: Option<(u8, &str, String)>) {
         match battery {
-            Some((pct, state)) => {
+            Some((pct, state, time)) => {
                 self.battery_card.set_title("Battery & power");
                 self.battery_value.set_label(&format!("{pct}%"));
-                self.battery_value.set_visible(true);
                 self.battery_detail.set_label(state);
+                self.battery_time.set_label(&time);
             }
             None => {
                 self.battery_card.set_title("Power");
-                self.battery_value.set_visible(false);
-                self.battery_detail.set_label("On AC power · no battery");
+                self.battery_value.set_label("AC");
+                self.battery_detail.set_label("Plugged in");
+                self.battery_time.set_label("No battery");
             }
         }
     }
@@ -382,17 +441,20 @@ impl SystemTab {
             None => {
                 self.updates_value.set_label("—");
                 self.updates_detail.set_label("Checking…");
+                self.updates_download.set_label("Repo, AUR and Flatpak");
                 self.updates_button.set_visible(false);
             }
             Some(u) if u.total == 0 => {
                 self.updates_value.set_label("Up to date");
                 self.updates_detail.set_label(&u.detail);
+                self.updates_download.set_label(&download_line(u));
                 self.updates_button.set_visible(false);
             }
             Some(u) => {
                 self.updates_value
                     .set_label(&format!("{} pending", u.total));
                 self.updates_detail.set_label(&u.detail);
+                self.updates_download.set_label(&download_line(u));
                 self.updates_button.set_visible(true);
             }
         }
@@ -405,24 +467,28 @@ impl SystemTab {
         self.ai_empty.set_visible(rows.is_empty());
         self.ai_rows.set_visible(!rows.is_empty());
         for r in rows.iter().take(4) {
-            let row = gtk::Box::new(gtk::Orientation::Vertical, 3);
-            let line = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+            // One line per window: label · bar · percent.
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
             let label = gtk::Label::new(Some(&r.label));
             label.add_css_class("mdash-ai-label");
             label.set_xalign(0.0);
-            label.set_hexpand(true);
+            label.set_width_chars(14);
+            label.set_max_width_chars(14);
             label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-            line.append(&label);
-            let pct = gtk::Label::new(Some(&format!("{:.0}%", r.percent)));
-            pct.add_css_class("mdash-ai-percent");
-            pct.add_css_class(usage_severity(r.percent));
-            line.append(&pct);
-            row.append(&line);
+            row.append(&label);
             let bar = gtk::LevelBar::new();
             bar.add_css_class("mdash-bar");
             bar.add_css_class(usage_severity(r.percent));
+            bar.set_hexpand(true);
+            bar.set_valign(gtk::Align::Center);
             bar.set_value((r.percent / 100.0).clamp(0.0, 1.0));
             row.append(&bar);
+            let pct = gtk::Label::new(Some(&format!("{:.0}%", r.percent)));
+            pct.add_css_class("mdash-ai-percent");
+            pct.add_css_class(usage_severity(r.percent));
+            pct.set_xalign(1.0);
+            pct.set_width_chars(4);
+            row.append(&pct);
             self.ai_rows.append(&row);
         }
     }
@@ -439,6 +505,31 @@ mod tests {
         assert_eq!(bytes_short(476_000_000_000), "476 GB");
         assert_eq!(rate(1_234_000), "1.2 MB/s");
         assert_eq!(rate(0), "0 B/s");
+    }
+
+    #[test]
+    fn download_line_says_what_is_known() {
+        let u = |total, download| UpdatesView {
+            total,
+            detail: String::new(),
+            download,
+        };
+        assert_eq!(
+            download_line(&u(7, Some(182_000_000))),
+            "182 MB to download"
+        );
+        assert_eq!(download_line(&u(7, Some(0))), "Already downloaded");
+        assert_eq!(download_line(&u(7, None)), "Download size not known yet");
+        assert_eq!(download_line(&u(0, None)), "Nothing to download");
+    }
+
+    #[test]
+    fn battery_time_reads_naturally() {
+        assert_eq!(battery_time_line(false, 11_520, 0), "3 h 12 min left");
+        assert_eq!(battery_time_line(false, 7_200, 0), "2 h left");
+        assert_eq!(battery_time_line(true, 0, 2_700), "Full in 45 min");
+        assert_eq!(battery_time_line(false, 0, 0), "Estimating time left…");
+        assert_eq!(battery_time_line(true, 0, 0), "Charging");
     }
 
     #[test]

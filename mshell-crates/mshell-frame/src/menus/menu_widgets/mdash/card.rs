@@ -6,6 +6,10 @@
 use relm4::gtk;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, WidgetExt};
 
+/// The one gap of the dashboard (`--space-2`): between cards, between
+/// card rows and between tiles — every tab uses this and nothing else.
+pub(crate) const GAP: i32 = 8;
+
 pub(crate) struct Card {
     pub(crate) root: gtk::Box,
     pub(crate) meta: gtk::Label,
@@ -20,6 +24,10 @@ impl Card {
         let root = gtk::Box::new(gtk::Orientation::Vertical, 8);
         root.add_css_class("mdash-card");
         root.set_hexpand(true);
+        // Natural height only: a card never grows to fill a column (set
+        // explicitly so a child's expand flag can't propagate up). The
+        // one flexible card (the agenda) opts in.
+        root.set_vexpand(false);
 
         let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         header.add_css_class("mdash-card-header");
@@ -42,7 +50,6 @@ impl Card {
 
         let body = gtk::Box::new(gtk::Orientation::Vertical, 6);
         body.add_css_class("mdash-card-body");
-        body.set_vexpand(true);
         root.append(&body);
 
         Self {
@@ -58,6 +65,11 @@ impl Card {
         if self.title.label() != text {
             self.title.set_label(text);
         }
+    }
+
+    /// A control at the end of the header row (after the meta).
+    pub(crate) fn append_to_header(&self, w: &impl gtk::prelude::IsA<gtk::Widget>) {
+        self.header.append(w);
     }
 
     /// Trailing metadata in the header ("Istanbul", "3 running").
@@ -93,7 +105,6 @@ pub(crate) fn empty_label(text: &str) -> gtk::Label {
     l.add_css_class("mdash-empty");
     l.set_wrap(true);
     l.set_justify(gtk::Justification::Center);
-    l.set_vexpand(true);
     l.set_valign(gtk::Align::Center);
     l
 }

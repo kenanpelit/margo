@@ -81,6 +81,8 @@ wasm-plugins = [
 ]
 
 [dev-dependencies]
+# Render fixtures drive reactive_graph effects on the GTK main context.
+any_spawner.workspace = true
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }
 

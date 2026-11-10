@@ -10,11 +10,16 @@ use relm4::gtk::prelude::{BoxExt, ObjectExt, WidgetExt};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+/// The agenda list's floor (about two event rows): the agenda never asks
+/// for more, so it can't make the right column outgrow the left.
+const AGENDA_MIN_HEIGHT: i32 = 56;
+
 pub(crate) struct CalendarCards {
     pub(crate) calendar_card: Card,
     pub(crate) agenda_card: Card,
     calendar: gtk::Calendar,
     agenda_list: gtk::Box,
+    agenda_scroller: gtk::ScrolledWindow,
     agenda_empty: gtk::Label,
     events: RefCell<Vec<mcal::Event>>,
     selected: Cell<NaiveDate>,
@@ -58,12 +63,21 @@ impl CalendarCards {
         agenda_card.root.add_css_class("mdash-agenda-card");
         let agenda_list = gtk::Box::new(gtk::Orientation::Vertical, 4);
         agenda_list.add_css_class("calendar-agenda-list");
+        // The agenda is Today's flexible card: its list asks for no height
+        // of its own (beyond a two-row floor) and takes what the left
+        // column leaves, scrolling when a busy day overflows it.
         let scroller = gtk::ScrolledWindow::new();
         scroller.set_hscrollbar_policy(gtk::PolicyType::Never);
+        scroller.set_propagate_natural_height(false);
+        scroller.set_min_content_height(AGENDA_MIN_HEIGHT);
         scroller.set_vexpand(true);
         scroller.set_child(Some(&agenda_list));
+        agenda_card.body.set_vexpand(true);
         agenda_card.body.append(&scroller);
         let agenda_empty = empty_label("No events");
+        agenda_empty.set_vexpand(true);
+        // The same floor as the list: an empty day is as tall as a quiet one.
+        agenda_empty.set_size_request(-1, AGENDA_MIN_HEIGHT);
         agenda_card.body.append(&agenda_empty);
 
         let today = Local::now().date_naive();
@@ -72,6 +86,7 @@ impl CalendarCards {
             agenda_card,
             calendar,
             agenda_list,
+            agenda_scroller: scroller,
             agenda_empty,
             events: RefCell::new(Vec::new()),
             selected: Cell::new(today),
@@ -129,7 +144,7 @@ impl CalendarCards {
         let day = self.selected.get();
         calendar_data::rebuild_agenda(&self.agenda_list, &self.agenda_empty, &events, day);
         let n = mcal::events_on_day(&events, day).len();
-        self.agenda_list.set_visible(n > 0);
+        self.agenda_scroller.set_visible(n > 0);
         self.agenda_card
             .set_title(&agenda_title(day, Local::now().date_naive()));
         self.agenda_card.set_meta(&event_count(n));

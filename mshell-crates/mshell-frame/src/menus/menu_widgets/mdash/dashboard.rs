@@ -1,8 +1,8 @@
 //! The mdash dashboard component (`MenuWidget::Dashboard`).
 //!
-//! One header, one status strip, a segmented tab switch and a homogeneous
-//! `gtk::Stack`: every tab gets the same allocation, so the panel keeps
-//! one size whichever tab is on screen. Each page sits in its own
+//! One header, one status strip, a segmented tab switch and a `gtk::Stack`
+//! of the tabs: the width is fixed, the height follows the active tab (its
+//! natural height) and eases on a switch. Each page sits in its own
 //! scroller (marked with `list_fit`) so a too-small screen or a configured
 //! `maximum_height` scrolls inside the tab, never the header.
 //!
@@ -11,6 +11,7 @@
 //! shown, the system streams + limits poll while System is shown, and the
 //! tile watchers while Controls is shown.
 
+use super::card::GAP;
 use super::controls::ControlsTab;
 use super::header::{Header, HeaderEvent, datetime_line};
 use super::strip::{Strip, StripState};
@@ -42,6 +43,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use wayle_media::core::player::Player;
 use wayle_media::types::PlaybackState;
+
+/// The tab switch: crossfade + height interpolation (`--motion-medium`).
+const TAB_TRANSITION_MS: u32 = 200;
 
 pub(crate) struct DashboardInit {
     pub(crate) config: DashboardConfig,
@@ -269,11 +273,17 @@ impl DashboardModel {
         self.strip.apply(&self.strip_state);
         if let Some(system) = &self.system {
             let label = battery_state_label(battery.state);
-            system.apply_battery(
-                battery
-                    .present
-                    .then(|| (battery.percentage.round().clamp(0.0, 100.0) as u8, label)),
-            );
+            let charging = matches!(battery.state, wayle_battery::types::DeviceState::Charging);
+            let (to_empty, to_full) = mshell_services::battery_service()
+                .map(|b| (b.device.time_to_empty.get(), b.device.time_to_full.get()))
+                .unwrap_or_default();
+            system.apply_battery(battery.present.then(|| {
+                (
+                    battery.percentage.round().clamp(0.0, 100.0) as u8,
+                    label,
+                    super::system::battery_time_line(charging, to_empty, to_full),
+                )
+            }));
         }
     }
 
@@ -445,6 +455,7 @@ fn updates_view(report: &crate::system_update::UpdateReport) -> UpdatesView {
         } else {
             parts.join(" · ")
         },
+        download: report.download_bytes,
     }
 }
 
@@ -472,7 +483,7 @@ impl Component for DashboardModel {
     type Widgets = ();
 
     fn init_root() -> Self::Root {
-        let root = gtk::Box::new(gtk::Orientation::Vertical, 10);
+        let root = gtk::Box::new(gtk::Orientation::Vertical, GAP);
         root.add_css_class("mdash-dashboard");
         root
     }
@@ -515,13 +526,17 @@ impl Component for DashboardModel {
         segmented.root().set_visible(tabs.len() > 1);
         root.append(segmented.root());
 
+        // Width is shared; height follows the active tab (each tab at its
+        // natural height — nothing stretched to match a taller one), and
+        // the switch eases the panel to the new height under a short
+        // crossfade.
         let stack = gtk::Stack::new();
         stack.add_css_class("mdash-stack");
         stack.set_hhomogeneous(true);
-        stack.set_vhomogeneous(true);
+        stack.set_vhomogeneous(false);
+        stack.set_interpolate_size(true);
         stack.set_transition_type(gtk::StackTransitionType::Crossfade);
-        stack.set_transition_duration(120);
-        stack.set_vexpand(true);
+        stack.set_transition_duration(TAB_TRANSITION_MS);
 
         let open = {
             let s = sender.clone();

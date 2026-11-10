@@ -50,6 +50,8 @@ pub(crate) struct ControlCenterSlidersModel {
     brightness_icon: String,
     suppress_brightness_signal: bool,
     has_backlight: bool,
+    /// mdash's Controls layout (see [`ControlCenterSlidersInit`]).
+    dashboard: bool,
 }
 
 // ── Messages ──────────────────────────────────────────────────────────────────
@@ -79,9 +81,10 @@ pub(crate) enum ControlCenterSlidersOutput {
 }
 
 pub(crate) struct ControlCenterSlidersInit {
-    /// mdash's Controls tab: the three sliders side by side in one row
-    /// (equal widths) instead of stacked.
-    pub(crate) horizontal: bool,
+    /// mdash's Controls tab: three bare rows (no device-name lines) whose
+    /// tracks are the same length — the brightness row, which has no
+    /// device picker, keeps an empty slot as wide as the chevrons.
+    pub(crate) dashboard: bool,
 }
 
 #[derive(Debug)]
@@ -163,7 +166,7 @@ impl Component for ControlCenterSlidersModel {
                 #[watch]
                 set_label: &model.output_name,
                 #[watch]
-                set_visible: !model.output_name.is_empty(),
+                set_visible: !model.dashboard && !model.output_name.is_empty(),
                 set_halign: gtk::Align::Start,
                 set_ellipsize: gtk::pango::EllipsizeMode::End,
             },
@@ -222,7 +225,7 @@ impl Component for ControlCenterSlidersModel {
                 #[watch]
                 set_label: &model.input_name,
                 #[watch]
-                set_visible: !model.input_name.is_empty(),
+                set_visible: !model.dashboard && !model.input_name.is_empty(),
                 set_halign: gtk::Align::Start,
                 set_ellipsize: gtk::pango::EllipsizeMode::End,
             },
@@ -272,12 +275,6 @@ impl Component for ControlCenterSlidersModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        if params.horizontal {
-            root.set_orientation(gtk::Orientation::Horizontal);
-            root.set_homogeneous(true);
-            root.set_spacing(12);
-            root.add_css_class("mdash-sliders");
-        }
         // Spawn watchers for default audio output, input, and brightness.
         spawn_default_output_watcher(&sender, None, || {
             ControlCenterSlidersCommandOutput::OutputChanged
@@ -343,9 +340,19 @@ impl Component for ControlCenterSlidersModel {
             brightness_icon,
             suppress_brightness_signal: false,
             has_backlight,
+            dashboard: params.dashboard,
         };
 
         let widgets = view_output!();
+
+        if model.dashboard {
+            root.add_css_class("mdash-sliders");
+            // An empty slot as wide as the chevrons keeps the brightness
+            // track as long as the two above it (`.mdash-slider-slot`).
+            let slot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+            slot.add_css_class("mdash-slider-slot");
+            widgets.brightness_row.append(&slot);
+        }
 
         // Prime sliders without triggering change callbacks.
         widgets.vol_scale.set_value(model.output_percent);

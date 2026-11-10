@@ -66,8 +66,9 @@ impl WeatherCard {
         let card = Card::new("weather-few-clouds-symbolic", "Weather");
         card.root.add_css_class("mdash-weather-card");
 
-        let content = gtk::Box::new(gtk::Orientation::Vertical, 10);
-        content.set_vexpand(true);
+        // Now, the hours strip and the three days stacked tight: the card
+        // is exactly as tall as its content.
+        let content = gtk::Box::new(gtk::Orientation::Vertical, 8);
 
         let now = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         now.add_css_class("mdash-weather-now");
@@ -102,8 +103,6 @@ impl WeatherCard {
         days.add_css_class("mdash-weather-days");
         days.set_row_spacing(4);
         days.set_column_spacing(10);
-        days.set_vexpand(true);
-        days.set_valign(gtk::Align::End);
         content.append(&days);
 
         card.body.append(&content);
