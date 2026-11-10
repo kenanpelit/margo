@@ -185,6 +185,33 @@ fn headline_is_the_fullest_session_or_weekly_window() {
 }
 
 #[test]
+fn an_account_without_a_session_window_heads_with_its_weekly_one() {
+    // Ultra-style reading: no 5-hour window at all.
+    let mut snap = empty_snapshot(T0);
+    snap.claude = limits_with(
+        Provider::Claude,
+        vec![
+            window(WindowKind::Weekly, 6.0),
+            window(WindowKind::Other, 90.0),
+        ],
+    );
+    let (p, w) = snap.headline().unwrap();
+    assert_eq!(
+        (p.provider, w.kind, w.percent),
+        (Provider::Claude, WindowKind::Weekly, 6.0)
+    );
+    // No session window, so no burn-rate sample is taken from it.
+    let mut rate = RateTracker::default();
+    let sampled = snap
+        .claude
+        .usage
+        .as_ref()
+        .and_then(|u| u.windows.iter().find(|w| w.kind == WindowKind::Session))
+        .and_then(|w| rate.sample(w, T0));
+    assert_eq!(sampled, None);
+}
+
+#[test]
 fn history_views_cover_the_last_thirty_days() {
     use history::tests::{at, utc};
     let dir = tempfile::tempdir().unwrap();

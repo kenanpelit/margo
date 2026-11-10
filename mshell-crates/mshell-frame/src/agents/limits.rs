@@ -774,6 +774,58 @@ mod tests {
         assert_eq!(u.windows[1].resets_at, None);
     }
 
+    /// The shape an account without a 5-hour window gets (verified Ultra,
+    /// from claudecode 1.1.3's `tests/test-get-claude-usage.sh` test 40,
+    /// padded with the null keys our own captured response carries):
+    /// `five_hour` is null and the `limits` list has no session entry.
+    const NO_SESSION_SAMPLE: &str = r#"{
+      "five_hour": null,
+      "seven_day": {"utilization": 6, "resets_at": "2030-01-01T00:00:00Z",
+                    "limit_dollars": null, "used_dollars": null, "remaining_dollars": null, "locked_reason": null},
+      "seven_day_oauth_apps": null, "seven_day_opus": null, "seven_day_sonnet": null,
+      "extra_usage": null,
+      "limits": [
+        {"kind": "weekly_all", "group": "weekly", "percent": 6, "resets_at": "2030-01-01T00:00:00Z",
+         "scope": null, "is_active": true}
+      ],
+      "spend": null
+    }"#;
+
+    #[test]
+    fn claude_account_without_a_five_hour_window() {
+        let u = parse_claude_usage(NO_SESSION_SAMPLE, "Claude Ultra".into()).unwrap();
+        let got: Vec<_> = u.windows.iter().map(|w| (w.kind, w.percent)).collect();
+        assert_eq!(got, [(WindowKind::Weekly, 6.0)]);
+        // The same account on the older shape, without the `limits` list.
+        let old = r#"{"five_hour":null,"seven_day":{"utilization":6,"resets_at":"2030-01-01T00:00:00Z"},
+                      "seven_day_opus":null,"seven_day_sonnet":null}"#;
+        let u = parse_claude_usage(old, String::new()).unwrap();
+        let got: Vec<_> = u.windows.iter().map(|w| (w.kind, w.percent)).collect();
+        assert_eq!(got, [(WindowKind::Weekly, 6.0)]);
+        // Null windows and null fields inside a window are skipped, never
+        // read as 0 %.
+        let nulls = r#"{"five_hour":{"utilization":null,"resets_at":null},
+                        "seven_day":{"utilization":6,"resets_at":null},
+                        "limits":[{"kind":"session","percent":null,"resets_at":null}]}"#;
+        let u = parse_claude_usage(nulls, String::new()).unwrap();
+        let got: Vec<_> = u.windows.iter().map(|w| (w.kind, w.percent)).collect();
+        assert_eq!(got, [(WindowKind::Weekly, 6.0)]);
+        // Every window null: nothing to show is an error, not a 0 % pill.
+        let none = r#"{"five_hour":null,"seven_day":null,"limits":null}"#;
+        assert!(parse_claude_usage(none, String::new()).is_err());
+    }
+
+    #[test]
+    fn pace_works_without_a_session_window() {
+        let u = parse_claude_usage(NO_SESSION_SAMPLE, String::new()).unwrap();
+        let w = &u.windows[0];
+        // Pace and texts work without a 5-hour window.
+        let now = parse_iso_ms("2029-12-29T00:00:00Z").unwrap();
+        let p = pace(w, now, None);
+        assert_ne!(p.status, PaceStatus::Limit);
+        assert!(!forecast_text(w, &p).is_empty());
+    }
+
     #[test]
     fn claude_without_windows_is_a_parse_error() {
         assert!(matches!(
