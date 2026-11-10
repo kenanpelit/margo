@@ -2913,6 +2913,86 @@ _arguments "${_arguments_options[@]}" : \
 '::action -- toggle | start | pause | skip | reset | reset-all | status (default\: status):(toggle start pause skip reset reset-all status)' \
 && ret=0
 ;;
+(timer)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+":: :_mshellctl__subcmd__timer_commands" \
+"*::: :->timer" \
+&& ret=0
+
+    case $state in
+    (timer)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mshellctl-timer-command-$line[1]:"
+        case $line[1] in
+            (add)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+'*::text -- The line (quote it, or pass it as several words):_default' \
+&& ret=0
+;;
+(list)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(cancel)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+':id -- Timer id:_default' \
+&& ret=0
+;;
+(clear)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_mshellctl__subcmd__timer__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mshellctl-timer-help-command-$line[1]:"
+        case $line[1] in
+            (add)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(cancel)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(clear)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
 (eyecare)
 _arguments "${_arguments_options[@]}" : \
 '-h[Print help]' \
@@ -4782,6 +4862,38 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(timer)
+_arguments "${_arguments_options[@]}" : \
+":: :_mshellctl__subcmd__help__subcmd__timer_commands" \
+"*::: :->timer" \
+&& ret=0
+
+    case $state in
+    (timer)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mshellctl-help-timer-command-$line[1]:"
+        case $line[1] in
+            (add)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(cancel)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(clear)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
 (eyecare)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -5124,6 +5236,7 @@ _mshellctl_commands() {
 'toast:Show a transient state-change toast — the \`notify-send\` equivalent for the toast surface. Ephemeral (no notification history); usable from scripts and startup services' \
 'gamemode:Game Mode — drop compositor effects, silence notifications, and keep the session awake while gaming; optionally switch the power profile, hide the bars / dock, hold back the OSD, stop the wallpaper, pause media and run your hooks. Configure what it affects in Settings → Game Mode' \
 'pomodoro:Pomodoro timer — work / short-break / long-break cycle. Prints the status line after the action (\`phase=work state=running remaining=24\:13 session=1/4 completed=0\`). Lengths and auto-start live in Settings → Widgets → Alarm Clock' \
+'timer:One-shot timers and reminders from one line of text\: \`timer add 10m tea\`, \`timer add "14\:30 meeting"\`, \`timer add tomorrow 9am\`, \`timer add "10 dk sonra çay"\`. They ring with the Alarm Clock'\''s tone and a Stop / Snooze notification, survive a shell restart, and show in the Alarm Clock menu'\''s Timers tab. Bare \`timer\` lists them' \
 'eyecare:20-20-20 eye-care reminder — every 20 minutes of screen time, look ~6 m away for 20 seconds. Prints the status line after the action (\`state=active next-break-in=840s\`). Off by default; \`on\` enables it. Lengths live in Settings → Widgets → Eye Care' \
 'calendar:Calendar — today'\''s / upcoming events and connected accounts (proxied to the \`mcal\` calendar tool). \`calendar account setup google\` connects a Google account' \
 'vpn:Mullvad VPN control — connect / disconnect / pick a relay (proxied to \`mvpn\`). Use \`vpn menu\` for the shell'\''s DNS/VPN panel' \
@@ -5831,6 +5944,7 @@ _mshellctl__subcmd__help_commands() {
 'toast:Show a transient state-change toast — the \`notify-send\` equivalent for the toast surface. Ephemeral (no notification history); usable from scripts and startup services' \
 'gamemode:Game Mode — drop compositor effects, silence notifications, and keep the session awake while gaming; optionally switch the power profile, hide the bars / dock, hold back the OSD, stop the wallpaper, pause media and run your hooks. Configure what it affects in Settings → Game Mode' \
 'pomodoro:Pomodoro timer — work / short-break / long-break cycle. Prints the status line after the action (\`phase=work state=running remaining=24\:13 session=1/4 completed=0\`). Lengths and auto-start live in Settings → Widgets → Alarm Clock' \
+'timer:One-shot timers and reminders from one line of text\: \`timer add 10m tea\`, \`timer add "14\:30 meeting"\`, \`timer add tomorrow 9am\`, \`timer add "10 dk sonra çay"\`. They ring with the Alarm Clock'\''s tone and a Stop / Snooze notification, survive a shell restart, and show in the Alarm Clock menu'\''s Timers tab. Bare \`timer\` lists them' \
 'eyecare:20-20-20 eye-care reminder — every 20 minutes of screen time, look ~6 m away for 20 seconds. Prints the status line after the action (\`state=active next-break-in=840s\`). Off by default; \`on\` enables it. Lengths live in Settings → Widgets → Eye Care' \
 'calendar:Calendar — today'\''s / upcoming events and connected accounts (proxied to the \`mcal\` calendar tool). \`calendar account setup google\` connects a Google account' \
 'vpn:Mullvad VPN control — connect / disconnect / pick a relay (proxied to \`mvpn\`). Use \`vpn menu\` for the shell'\''s DNS/VPN panel' \
@@ -7263,6 +7377,36 @@ _mshellctl__subcmd__help__subcmd__theme__subcmd__list_commands() {
 _mshellctl__subcmd__help__subcmd__theme__subcmd__set_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help theme set commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__timer_commands] )) ||
+_mshellctl__subcmd__help__subcmd__timer_commands() {
+    local commands; commands=(
+'add:Add a timer or reminder from one line of text — "10m tea", "1h 30m", "14\:30 meeting", "11am standup", "tomorrow 09\:00 coffee", "in 10m tea", "after 5m - stretch", "10 dk sonra çay", "yarın 09\:00 kahve". Prints when it rings' \
+'list:List pending timers, soonest first\: id, due time, time left, label (tab-separated)' \
+'cancel:Cancel the timer with this id (from \`list\`)' \
+'clear:Cancel every pending timer' \
+    )
+    _describe -t commands 'mshellctl help timer commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__timer__subcmd__add_commands] )) ||
+_mshellctl__subcmd__help__subcmd__timer__subcmd__add_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help timer add commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__timer__subcmd__cancel_commands] )) ||
+_mshellctl__subcmd__help__subcmd__timer__subcmd__cancel_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help timer cancel commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__timer__subcmd__clear_commands] )) ||
+_mshellctl__subcmd__help__subcmd__timer__subcmd__clear_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help timer clear commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__timer__subcmd__list_commands] )) ||
+_mshellctl__subcmd__help__subcmd__timer__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help timer list commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__help__subcmd__toast_commands] )) ||
 _mshellctl__subcmd__help__subcmd__toast_commands() {
@@ -9779,6 +9923,73 @@ _mshellctl__subcmd__theme__subcmd__list_commands() {
 _mshellctl__subcmd__theme__subcmd__set_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl theme set commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__timer_commands] )) ||
+_mshellctl__subcmd__timer_commands() {
+    local commands; commands=(
+'add:Add a timer or reminder from one line of text — "10m tea", "1h 30m", "14\:30 meeting", "11am standup", "tomorrow 09\:00 coffee", "in 10m tea", "after 5m - stretch", "10 dk sonra çay", "yarın 09\:00 kahve". Prints when it rings' \
+'list:List pending timers, soonest first\: id, due time, time left, label (tab-separated)' \
+'cancel:Cancel the timer with this id (from \`list\`)' \
+'clear:Cancel every pending timer' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mshellctl timer commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__timer__subcmd__add_commands] )) ||
+_mshellctl__subcmd__timer__subcmd__add_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl timer add commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__timer__subcmd__cancel_commands] )) ||
+_mshellctl__subcmd__timer__subcmd__cancel_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl timer cancel commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__timer__subcmd__clear_commands] )) ||
+_mshellctl__subcmd__timer__subcmd__clear_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl timer clear commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__timer__subcmd__help_commands] )) ||
+_mshellctl__subcmd__timer__subcmd__help_commands() {
+    local commands; commands=(
+'add:Add a timer or reminder from one line of text — "10m tea", "1h 30m", "14\:30 meeting", "11am standup", "tomorrow 09\:00 coffee", "in 10m tea", "after 5m - stretch", "10 dk sonra çay", "yarın 09\:00 kahve". Prints when it rings' \
+'list:List pending timers, soonest first\: id, due time, time left, label (tab-separated)' \
+'cancel:Cancel the timer with this id (from \`list\`)' \
+'clear:Cancel every pending timer' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mshellctl timer help commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__timer__subcmd__help__subcmd__add_commands] )) ||
+_mshellctl__subcmd__timer__subcmd__help__subcmd__add_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl timer help add commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__timer__subcmd__help__subcmd__cancel_commands] )) ||
+_mshellctl__subcmd__timer__subcmd__help__subcmd__cancel_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl timer help cancel commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__timer__subcmd__help__subcmd__clear_commands] )) ||
+_mshellctl__subcmd__timer__subcmd__help__subcmd__clear_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl timer help clear commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__timer__subcmd__help__subcmd__help_commands] )) ||
+_mshellctl__subcmd__timer__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl timer help help commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__timer__subcmd__help__subcmd__list_commands] )) ||
+_mshellctl__subcmd__timer__subcmd__help__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl timer help list commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__timer__subcmd__list_commands] )) ||
+_mshellctl__subcmd__timer__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl timer list commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__toast_commands] )) ||
 _mshellctl__subcmd__toast_commands() {

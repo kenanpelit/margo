@@ -124,6 +124,9 @@ _mshellctl() {
             mshellctl,theme)
                 cmd="mshellctl__subcmd__theme"
                 ;;
+            mshellctl,timer)
+                cmd="mshellctl__subcmd__timer"
+                ;;
             mshellctl,toast)
                 cmd="mshellctl__subcmd__toast"
                 ;;
@@ -549,6 +552,9 @@ _mshellctl() {
                 ;;
             mshellctl__subcmd__help,theme)
                 cmd="mshellctl__subcmd__help__subcmd__theme"
+                ;;
+            mshellctl__subcmd__help,timer)
+                cmd="mshellctl__subcmd__help__subcmd__timer"
                 ;;
             mshellctl__subcmd__help,toast)
                 cmd="mshellctl__subcmd__help__subcmd__toast"
@@ -1170,6 +1176,18 @@ _mshellctl() {
                 ;;
             mshellctl__subcmd__help__subcmd__theme__subcmd__bundle,list)
                 cmd="mshellctl__subcmd__help__subcmd__theme__subcmd__bundle__subcmd__list"
+                ;;
+            mshellctl__subcmd__help__subcmd__timer,add)
+                cmd="mshellctl__subcmd__help__subcmd__timer__subcmd__add"
+                ;;
+            mshellctl__subcmd__help__subcmd__timer,cancel)
+                cmd="mshellctl__subcmd__help__subcmd__timer__subcmd__cancel"
+                ;;
+            mshellctl__subcmd__help__subcmd__timer,clear)
+                cmd="mshellctl__subcmd__help__subcmd__timer__subcmd__clear"
+                ;;
+            mshellctl__subcmd__help__subcmd__timer,list)
+                cmd="mshellctl__subcmd__help__subcmd__timer__subcmd__list"
                 ;;
             mshellctl__subcmd__help__subcmd__translate,clipboard)
                 cmd="mshellctl__subcmd__help__subcmd__translate__subcmd__clipboard"
@@ -2338,6 +2356,36 @@ _mshellctl() {
             mshellctl__subcmd__theme__subcmd__help__subcmd__bundle,list)
                 cmd="mshellctl__subcmd__theme__subcmd__help__subcmd__bundle__subcmd__list"
                 ;;
+            mshellctl__subcmd__timer,add)
+                cmd="mshellctl__subcmd__timer__subcmd__add"
+                ;;
+            mshellctl__subcmd__timer,cancel)
+                cmd="mshellctl__subcmd__timer__subcmd__cancel"
+                ;;
+            mshellctl__subcmd__timer,clear)
+                cmd="mshellctl__subcmd__timer__subcmd__clear"
+                ;;
+            mshellctl__subcmd__timer,help)
+                cmd="mshellctl__subcmd__timer__subcmd__help"
+                ;;
+            mshellctl__subcmd__timer,list)
+                cmd="mshellctl__subcmd__timer__subcmd__list"
+                ;;
+            mshellctl__subcmd__timer__subcmd__help,add)
+                cmd="mshellctl__subcmd__timer__subcmd__help__subcmd__add"
+                ;;
+            mshellctl__subcmd__timer__subcmd__help,cancel)
+                cmd="mshellctl__subcmd__timer__subcmd__help__subcmd__cancel"
+                ;;
+            mshellctl__subcmd__timer__subcmd__help,clear)
+                cmd="mshellctl__subcmd__timer__subcmd__help__subcmd__clear"
+                ;;
+            mshellctl__subcmd__timer__subcmd__help,help)
+                cmd="mshellctl__subcmd__timer__subcmd__help__subcmd__help"
+                ;;
+            mshellctl__subcmd__timer__subcmd__help,list)
+                cmd="mshellctl__subcmd__timer__subcmd__help__subcmd__list"
+                ;;
             mshellctl__subcmd__translate,clipboard)
                 cmd="mshellctl__subcmd__translate__subcmd__clipboard"
                 ;;
@@ -2447,7 +2495,7 @@ _mshellctl() {
 
     case "${cmd}" in
         mshellctl)
-            opts="-h -V --help --version quit inspect set-wallpaper menu bar hidden-bar custom-refresh audio bluetooth mtune media brightness log dock lock session notification settings wizard wallpaper theme plugin screenshot screenrecord clipboard translate qr toast gamemode pomodoro eyecare calendar vpn power layout osk color play doctor completions help"
+            opts="-h -V --help --version quit inspect set-wallpaper menu bar hidden-bar custom-refresh audio bluetooth mtune media brightness log dock lock session notification settings wizard wallpaper theme plugin screenshot screenrecord clipboard translate qr toast gamemode pomodoro timer eyecare calendar vpn power layout osk color play doctor completions help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -3991,7 +4039,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help)
-            opts="quit inspect set-wallpaper menu bar hidden-bar custom-refresh audio bluetooth mtune media brightness log dock lock session notification settings wizard wallpaper theme plugin screenshot screenrecord clipboard translate qr toast gamemode pomodoro eyecare calendar vpn power layout osk color play doctor completions help"
+            opts="quit inspect set-wallpaper menu bar hidden-bar custom-refresh audio bluetooth mtune media brightness log dock lock session notification settings wizard wallpaper theme plugin screenshot screenrecord clipboard translate qr toast gamemode pomodoro timer eyecare calendar vpn power layout osk color play doctor completions help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -7323,6 +7371,76 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help__subcmd__theme__subcmd__set)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__timer)
+            opts="add list cancel clear"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__timer__subcmd__add)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__timer__subcmd__cancel)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__timer__subcmd__clear)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__timer__subcmd__list)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -13280,6 +13398,160 @@ _mshellctl() {
             ;;
         mshellctl__subcmd__theme__subcmd__set)
             opts="-h --help <NAME>"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__timer)
+            opts="-h --help add list cancel clear help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__timer__subcmd__add)
+            opts="-h --help <TEXT>..."
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__timer__subcmd__cancel)
+            opts="-h --help <ID>"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__timer__subcmd__clear)
+            opts="-h --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__timer__subcmd__help)
+            opts="add list cancel clear help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__timer__subcmd__help__subcmd__add)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__timer__subcmd__help__subcmd__cancel)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__timer__subcmd__help__subcmd__clear)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__timer__subcmd__help__subcmd__help)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__timer__subcmd__help__subcmd__list)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__timer__subcmd__list)
+            opts="-h --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

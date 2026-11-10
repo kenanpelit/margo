@@ -25,6 +25,7 @@ pub mod screenshot;
 pub mod session;
 pub mod settings;
 pub mod theme;
+pub mod timer;
 pub mod translate;
 pub mod vpn;
 pub mod wallpaper;

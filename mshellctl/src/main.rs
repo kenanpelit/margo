@@ -78,6 +78,7 @@ async fn main() -> anyhow::Result<()> {
             let status: String = shell().await?.pomodoro(action.verb()).await?;
             println!("{status}");
         }
+        Commands::Timer { command } => mshellctl::subcommands::timer::execute(command).await?,
         Commands::Eyecare { action } => {
             let status: String = shell().await?.eyecare(action.verb()).await?;
             println!("{status}");

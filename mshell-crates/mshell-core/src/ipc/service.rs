@@ -173,6 +173,16 @@ impl IPCService {
         self.send(IPCCommand::Local(LocalCommand::Pomodoro(cmd, tx)))?;
         rx.await.map_err(|_| no_reply())
     }
+    /// `mshellctl timer add "<text>" | list | cancel <id> | clear` — one-shot
+    /// timers and reminders from one line ("10m tea", "14:30 meeting",
+    /// "10 dk sonra çay"). Returns the text to print; a line that doesn't
+    /// parse is an `InvalidArgs` error carrying the reason. The timer store
+    /// is thread-safe, so this needs no GTK round trip.
+    async fn timer(&self, action: String, arg: String) -> fdo::Result<String> {
+        let cmd =
+            mshell_frame::timers::Command::parse(&action, &arg).map_err(fdo::Error::InvalidArgs)?;
+        mshell_frame::timers::run(cmd).map_err(fdo::Error::InvalidArgs)
+    }
     /// `mshellctl eyecare break|skip|reset|on|off|toggle|status` — drive the
     /// 20-20-20 reminder; returns the status line after the action.
     async fn eyecare(&self, action: String) -> fdo::Result<String> {

@@ -2,6 +2,7 @@
 
 use super::*;
 use mshell_process::desktop::{self, Notice, Urgency};
+use mshell_sounds::{play_timer, play_timer_loop};
 
 // ── Alarm scheduler (port of the DMS alarmClock plugin) ─────────────────────
 // A single main-thread glib timer ticks each second, reads the alarms from the
@@ -27,14 +28,23 @@ thread_local! {
 /// Main-thread only: reads the reactive config.
 pub(super) fn alarm_work_pending() -> bool {
     let snoozed = ALARM_SNOOZES.lock().map(|q| !q.is_empty()).unwrap_or(false);
-    snoozed
-        || config_manager()
+    work_pending(
+        snoozed,
+        config_manager()
             .config()
             .alarm()
             .alarms()
             .get_untracked()
             .iter()
-            .any(|a| a.enabled)
+            .any(|a| a.enabled),
+        mshell_frame::timers::has_pending(),
+    )
+}
+
+/// The tick runs while an alarm snooze is queued, an alarm is enabled, or a
+/// one-shot timer / reminder is pending — and never otherwise.
+pub(super) fn work_pending(snoozed: bool, alarm_enabled: bool, timer_pending: bool) -> bool {
+    snoozed || alarm_enabled || timer_pending
 }
 
 /// Install the per-second tick if work is pending and it isn't already up.
@@ -64,13 +74,21 @@ pub(super) fn wake_alarm_scheduler() {
     glib::idle_add_once(ensure_alarm_timer);
 }
 
-/// Watch the alarm list so enabling an alarm brings the tick back.
+/// Watch the alarm list so enabling an alarm brings the tick back, and the
+/// one-shot timers so adding one (or loading the saved ones) does too.
 pub(super) fn spawn_alarm_scheduler() {
     Effect::new(|_| {
         // Tracked read: re-runs whenever an alarm is added, enabled, or edited.
         let _alarms = config_manager().config().alarm().alarms().get();
         ensure_alarm_timer();
     });
+    let mut timers = mshell_frame::timers::changes();
+    glib::spawn_future_local(async move {
+        while timers.changed().await.is_ok() {
+            ensure_alarm_timer();
+        }
+    });
+    mshell_frame::timers::spawn_service();
 }
 
 pub(super) fn run_alarm_tick(last_minute: &std::rc::Rc<std::cell::Cell<i64>>) {
@@ -88,6 +106,16 @@ pub(super) fn run_alarm_tick(last_minute: &std::rc::Rc<std::cell::Cell<i64>>) {
     };
     if due > 0 {
         fire_alarm("Snoozed alarm".to_string());
+    }
+
+    // One-shot timers and reminders, to the second. After a suspend the
+    // first tick finds the overdue ones; they come back marked missed.
+    let unix_now = sys_now
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64);
+    let fired = mshell_frame::timers::take_due(unix_now);
+    if !fired.is_empty() {
+        fire_timers(fired, unix_now);
     }
 
     // Scheduled alarms — fire at most once per clock minute.
@@ -181,9 +209,63 @@ pub(super) fn fire_alarm(label: String) {
     });
 }
 
+/// Fire the timers the tick took: on-time ones ring like an alarm (the
+/// timer chime, looping) with Stop / Snooze; missed ones — reached long
+/// after their time, the machine slept or mshell was off — get one chime
+/// and one "missed at HH:MM" notification instead of a tone that would
+/// start out of nowhere.
+fn fire_timers(fired: Vec<mshell_frame::timers::Fired>, now: i64) {
+    use mshell_frame::timers::{self, format};
+    let settings = ring_settings();
+    let (missed, on_time): (Vec<_>, Vec<_>) = fired.into_iter().partition(|f| f.missed);
+
+    if !missed.is_empty() {
+        play_timer();
+        if settings.notifications {
+            let missed: Vec<_> = missed.into_iter().map(|f| f.timer).collect();
+            let (summary, body) = format::missed_message(&missed, |t| timers::due_clock(t, now));
+            desktop::notify(
+                Notice::new("Alarm Clock", summary, body)
+                    .icon("alarm-symbolic")
+                    .urgency(settings.urgency)
+                    .silent(),
+            );
+        }
+    }
+
+    for f in on_time {
+        let timer = f.timer;
+        play_timer_loop();
+        if !settings.notifications {
+            continue;
+        }
+        let (summary, body) = format::ring_message(&timer, &timers::due_clock(&timer, now));
+        let urgency = settings.urgency;
+        let snooze_secs = settings.snooze_secs as i64;
+        std::thread::spawn(move || {
+            let action = desktop::ask(ring_notice(&summary, &body, urgency));
+            stop_alarm();
+            if action.as_deref() == Some("snooze")
+                && let Err(e) = timers::snooze(&timer, snooze_secs)
+            {
+                tracing::warn!(error = %e, "timers: snooze not queued");
+            }
+            // A snooze publishes a change; the scheduler re-arms from it.
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_tick_runs_only_while_there_is_work() {
+        assert!(!work_pending(false, false, false), "idle: no tick");
+        assert!(work_pending(true, false, false));
+        assert!(work_pending(false, true, false));
+        assert!(work_pending(false, false, true), "a pending timer keeps it");
+    }
 
     #[test]
     fn the_ring_notification_has_stop_and_snooze_and_never_expires() {

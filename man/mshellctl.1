@@ -161,6 +161,27 @@ after the action, e.g.
 .IR status ).
 Lengths and auto-start live in Settings \(-> Widgets \(-> Alarm Clock.
 .TP
+.B timer \fR[\fBadd\fR \fITEXT\fR | \fBlist\fR | \fBcancel\fR \fIID\fR | \fBclear\fR]
+One-shot timers and reminders from one line of text:
+.IR "10m tea" ,
+.IR "1h 30m" ,
+.IR "14:30 meeting" ,
+.IR "11am standup" ,
+.IR "tomorrow 09:00 \- coffee" ,
+.IR "in 10m tea" ,
+or in Turkish
+.IR "10 dk sonra \(,cay" ,
+.IR "yar\(.in 09:00 kahve" .
+A clock time already past today rings tomorrow; a bare number is minutes.
+They ring with the Alarm Clock tone and a Stop / Snooze notification,
+survive a shell restart (\fI$XDG_STATE_HOME/margo/timers.json\fR), and a
+timer missed while the machine slept fires once as \(lqmissed at HH:MM\(rq.
+.B add
+prints when it rings,
+.B list
+prints one tab-separated line per timer (id, due, time left, label;
+the default).
+.TP
 .B eyecare \fR[\fIbreak\fR | \fIskip\fR | \fIreset\fR | \fIon\fR | \fIoff\fR | \fItoggle\fR | \fIstatus\fR]
 The 20-20-20 eye-care reminder: every 20 minutes of screen time, look about
 6 m (20 ft) away for 20 seconds. Only time at the keyboard counts; stepping

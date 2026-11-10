@@ -23,6 +23,7 @@ use crate::subcommands::screenshot::ScreenshotCommands;
 use crate::subcommands::session::SessionCommands;
 use crate::subcommands::settings::SettingsCommands;
 use crate::subcommands::theme::ThemeCommands;
+use crate::subcommands::timer::TimerCommands;
 use crate::subcommands::vpn::VpnCommands;
 use crate::subcommands::wallpaper::WallpaperCommands;
 use mshell_cli_style;
@@ -75,6 +76,7 @@ SESSION & NOTIFICATIONS
 
 FOCUS & BREAKS
   pomodoro        Pomodoro timer — toggle / start / pause / skip / reset / status
+  timer           One-line timers & reminders — add / list / cancel / clear
   eyecare         20-20-20 eye breaks — break / skip / reset / on / off / status
 
 CAPTURE
@@ -312,6 +314,15 @@ pub enum Commands {
         /// (default: status).
         #[arg(value_enum, default_value = "status")]
         action: PomodoroAction,
+    },
+    /// One-shot timers and reminders from one line of text: `timer add 10m
+    /// tea`, `timer add "14:30 meeting"`, `timer add tomorrow 9am`, `timer
+    /// add "10 dk sonra çay"`. They ring with the Alarm Clock's tone and a
+    /// Stop / Snooze notification, survive a shell restart, and show in the
+    /// Alarm Clock menu's Timers tab. Bare `timer` lists them.
+    Timer {
+        #[command(subcommand)]
+        command: Option<TimerCommands>,
     },
     /// 20-20-20 eye-care reminder — every 20 minutes of screen time, look
     /// ~6 m away for 20 seconds. Prints the status line after the action
