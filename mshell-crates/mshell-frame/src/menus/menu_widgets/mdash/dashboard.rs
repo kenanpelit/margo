@@ -20,6 +20,7 @@ use super::tab_state::{self, TabRequest};
 use super::today::TodayTab;
 use super::today::media::{Idle, MediaEvent, MediaView, NowPlaying, pick_player};
 use super::today::timers::{alarm_line, next_alarm};
+use super::today::today_card::{NoteLine, TodayEvent, note_time};
 use super::tools::{ToolTarget, ToolsTab};
 use crate::common_widgets::segmented::{Segmented, SegmentedStyle};
 use crate::frame::MenuId;
@@ -68,6 +69,8 @@ pub(crate) enum DashboardInput {
     Tick,
     Header(HeaderEvent),
     Media(MediaEvent),
+    /// A click on the Today card (more events / notifications, mark read).
+    Today(TodayEvent),
     OpenMenu(MenuId),
     #[cfg(test)]
     Fixture(Box<super::render_tests::DashboardFixture>),
@@ -271,6 +274,10 @@ impl DashboardModel {
             .map(|w| weather_chip(&w));
         s.unread = crate::notification_unread::unread();
         self.strip.apply(&self.strip_state);
+        if let Some(today) = &self.today {
+            let (unread, earlier) = notes(self.strip_state.unread);
+            today.calendar.set_notes(unread, earlier);
+        }
         if let Some(system) = &self.system {
             let label = battery_state_label(battery.state);
             let charging = matches!(battery.state, wayle_battery::types::DeviceState::Charging);
@@ -302,6 +309,32 @@ impl DashboardModel {
             id.remove();
         }
     }
+}
+
+/// The Today card's notification rows: the `unread` newest (the service
+/// keeps the history newest first) and, as filler, the read ones before
+/// them (a dozen at most — the card shows whole rows only).
+fn notes(unread: usize) -> (Vec<NoteLine>, Vec<NoteLine>) {
+    let Some(service) = mshell_services::notification_service() else {
+        return (Vec::new(), Vec::new());
+    };
+    let h24 = config_manager()
+        .config()
+        .general()
+        .clock_format_24_h()
+        .get_untracked();
+    let now = Local::now();
+    let line = |n: &Arc<wayle_notification::core::notification::Notification>| NoteLine {
+        id: n.id,
+        icon: n.app_icon.get(),
+        app: n.app_name.get().unwrap_or_default(),
+        summary: n.summary.get(),
+        time: note_time(n.timestamp.get().with_timezone(&Local), now, h24),
+    };
+    let history = service.notifications.get();
+    let unread_rows = history.iter().take(unread).map(line).collect();
+    let earlier = history.iter().skip(unread).take(12).map(line).collect();
+    (unread_rows, earlier)
 }
 
 fn weather_chip(w: &wayle_weather::Weather) -> (String, &'static str) {
@@ -546,8 +579,12 @@ impl Component for DashboardModel {
         for cfg in &shown {
             let widget: gtk::Widget = match cfg.tab {
                 DashboardTab::Today => {
-                    let s = sender.clone();
-                    let t = TodayTab::new(cfg, move |e| s.input(DashboardInput::Media(e)));
+                    let (s, s2) = (sender.clone(), sender.clone());
+                    let t = TodayTab::new(
+                        cfg,
+                        move |e| s.input(DashboardInput::Media(e)),
+                        move |e| s2.input(DashboardInput::Today(e)),
+                    );
                     let w = t.root.clone().into();
                     today = Some(t);
                     w
@@ -714,6 +751,18 @@ impl Component for DashboardModel {
                 let _ = sender.output(DashboardOutput::OpenMenu(id));
             }
             DashboardInput::Media(event) => self.media_event(event, &sender),
+            DashboardInput::Today(TodayEvent::OpenCalendar) => {
+                let _ = sender.output(DashboardOutput::OpenMenu(MenuId::Clock));
+            }
+            DashboardInput::Today(TodayEvent::OpenNotifications) => {
+                let _ = sender.output(DashboardOutput::OpenMenu(MenuId::Notification));
+            }
+            DashboardInput::Today(TodayEvent::MarkAllRead) => {
+                if self.live {
+                    crate::notification_unread::mark_all_read();
+                    self.refresh_strip();
+                }
+            }
             #[cfg(test)]
             DashboardInput::Fixture(f) => f.apply(self),
         }
@@ -741,7 +790,7 @@ impl Component for DashboardModel {
             DashboardCommand::Media(view, player) => {
                 self.player = player;
                 if let Some(today) = &self.today {
-                    today.media.apply(&view);
+                    today.apply_media(&view);
                 }
             }
             DashboardCommand::Updates(view) => {

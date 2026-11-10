@@ -84,7 +84,8 @@ impl TimersCard {
         card.root.add_css_class("mdash-timers-card");
 
         // Compact: the next alarm and the running timers as single rows
-        // (icon + text), then the entry and the presets.
+        // (icon + text), then ONE row: the entry and the presets beside it
+        // (the right column's height goes to the Today card).
         let (alarm_row, alarm) = icon_row("alarm-symbolic");
         card.body.append(&alarm_row);
 
@@ -99,7 +100,10 @@ impl TimersCard {
         let entry = gtk::Entry::new();
         entry.add_css_class("mdash-entry");
         entry.set_hexpand(true);
+        // Narrow by default: the presets share its row.
+        entry.set_width_chars(6);
         entry.set_placeholder_text(Some("10m tea · 14:30 call"));
+        entry.set_tooltip_text(Some("A timer or reminder: “10m tea”, “14:30 call”"));
         mshell_common::a11y::name(&entry, "New timer or reminder");
         entry_row.append(&entry);
         card.body.append(&entry_row);
@@ -113,7 +117,7 @@ impl TimersCard {
 
         let presets = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         presets.set_homogeneous(true);
-        // +5m +10m +25m +1h: four fit a half-width card.
+        // +5m +10m +25m +1h: four fit beside the entry.
         for (secs, label) in PRESETS.iter().filter(|(s, _)| *s != 15 * 60) {
             let b = gtk::Button::with_label(label);
             b.add_css_class("mdash-preset");
@@ -135,7 +139,7 @@ impl TimersCard {
             });
             presets.append(&b);
         }
-        card.body.append(&presets);
+        entry_row.append(&presets);
 
         {
             let preview = preview.clone();

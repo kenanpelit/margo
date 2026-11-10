@@ -3,11 +3,23 @@
 //! state that still offers something to start: resume the last Tune
 //! track, or one of the saved radio stations. The card never disappears,
 //! so the Today grid keeps its shape.
+//!
+//! Idle, the card can grow: the stations past the first two wait in
+//! "spill" rows (three per row) the Today card hands its whole-row
+//! leftover to ([`super::today_card::Spill`]), so a quiet day never shows
+//! an empty Today card while there is something to start.
 
 use super::super::card::Card;
+use super::today_card::Spill;
 use relm4::gtk;
-use relm4::gtk::prelude::{BoxExt, ButtonExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, Cast, GridExt, WidgetExt};
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+
+/// Stations per spill row (the station row's three slots).
+const SPILL_COLUMNS: usize = 3;
+/// Stations on the idle card's own row (the third slot is "Music").
+const ROW_STATIONS: usize = 2;
 use std::time::Duration;
 
 /// What a playing player shows.
@@ -32,7 +44,8 @@ pub(crate) struct NowPlaying {
 pub(crate) struct Idle {
     /// The last Tune track ("title — artist"), resumable.
     pub(crate) resume: Option<String>,
-    /// Saved radio stations: (key, name), at most three shown.
+    /// Saved radio stations: (key, name); two on the card's row, the rest
+    /// in spill rows shown when the column has room.
     pub(crate) stations: Vec<(String, String)>,
 }
 
@@ -100,6 +113,11 @@ pub(crate) struct MediaCard {
     resume: gtk::Button,
     resume_label: gtk::Label,
     stations: gtk::Box,
+    /// Extra station rows (idle only), shown on demand by the Today card.
+    spill: RefCell<Vec<gtk::Grid>>,
+    spill_shown: Cell<usize>,
+    /// The stations the spill rows were built from.
+    spill_keys: RefCell<Vec<(String, String)>>,
     on: Rc<dyn Fn(MediaEvent)>,
 }
 
@@ -267,14 +285,64 @@ impl MediaCard {
             resume,
             resume_label,
             stations,
+            spill: RefCell::new(Vec::new()),
+            spill_shown: Cell::new(0),
+            spill_keys: RefCell::new(Vec::new()),
             on,
         }
+    }
+
+    /// One station button (the idle row's and the spill rows' style).
+    fn station_button(&self, key: &str, name: &str) -> gtk::Button {
+        let b = gtk::Button::new();
+        b.add_css_class("mdash-row-button");
+        let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        content.append(&gtk::Image::from_icon_name("media-playback-start-symbolic"));
+        let l = gtk::Label::new(Some(name));
+        l.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        content.append(&l);
+        b.set_child(Some(&content));
+        b.set_tooltip_text(Some(name));
+        mshell_common::a11y::name(&b, &format!("Play {name}"));
+        let (on, key) = (self.on.clone(), key.to_string());
+        b.connect_clicked(move |_| on(MediaEvent::PlayStation(key.clone())));
+        b
+    }
+
+    /// Rebuild the spill rows: `stations` past the card's own row, three
+    /// per row, in equal columns (a short last row keeps the widths).
+    fn rebuild_spill(&self, stations: &[(String, String)]) {
+        for row in self.spill.borrow_mut().drain(..) {
+            self.card.body.remove(&row);
+        }
+        let rows: Vec<gtk::Grid> = stations
+            .chunks(SPILL_COLUMNS)
+            .map(|chunk| {
+                let grid = gtk::Grid::new();
+                grid.add_css_class("mdash-media-row2");
+                grid.set_column_homogeneous(true);
+                grid.set_column_spacing(6);
+                for col in 0..SPILL_COLUMNS {
+                    let cell: gtk::Widget = match chunk.get(col) {
+                        Some((key, name)) => self.station_button(key, name).upcast(),
+                        None => gtk::Box::new(gtk::Orientation::Horizontal, 0).upcast(),
+                    };
+                    grid.attach(&cell, col as i32, 0, 1, 1);
+                }
+                grid.set_visible(false);
+                self.card.body.append(&grid);
+                grid
+            })
+            .collect();
+        *self.spill.borrow_mut() = rows;
+        self.spill_shown.set(0);
     }
 
     pub(crate) fn apply(&self, view: &MediaView) {
         match view {
             MediaView::Playing(np) => {
                 self.views.set_visible_child(&self.playing_box);
+                self.set_spill(0);
                 self.card.set_title("Now playing");
                 self.card.set_meta(&np.player);
                 self.title.set_label(if np.title.is_empty() {
@@ -337,19 +405,8 @@ impl MediaCard {
                 while let Some(child) = self.stations.first_child() {
                     self.stations.remove(&child);
                 }
-                for (key, name) in idle.stations.iter().take(2) {
-                    let b = gtk::Button::new();
-                    b.add_css_class("mdash-row-button");
-                    let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-                    content.append(&gtk::Image::from_icon_name("media-playback-start-symbolic"));
-                    let l = gtk::Label::new(Some(name));
-                    l.set_ellipsize(gtk::pango::EllipsizeMode::End);
-                    content.append(&l);
-                    b.set_child(Some(&content));
-                    mshell_common::a11y::name(&b, &format!("Play {name}"));
-                    let (on, key) = (self.on.clone(), key.clone());
-                    b.connect_clicked(move |_| on(MediaEvent::PlayStation(key.clone())));
-                    self.stations.append(&b);
+                for (key, name) in idle.stations.iter().take(ROW_STATIONS) {
+                    self.stations.append(&self.station_button(key, name));
                 }
                 let open = gtk::Button::new();
                 open.add_css_class("mdash-row-button");
@@ -361,8 +418,37 @@ impl MediaCard {
                 let on = self.on.clone();
                 open.connect_clicked(move |_| on(MediaEvent::OpenMusic));
                 self.stations.append(&open);
+                let more = idle.stations.get(ROW_STATIONS..).unwrap_or_default();
+                if self.spill_keys.borrow().as_slice() != more {
+                    *self.spill_keys.borrow_mut() = more.to_vec();
+                    self.rebuild_spill(more);
+                }
             }
         }
+    }
+}
+
+impl Spill for MediaCard {
+    fn spill_metrics(&self) -> (i32, i32, usize) {
+        let idle = self.views.visible_child().as_ref() == Some(self.idle_box.upcast_ref());
+        let spill = self.spill.borrow();
+        let Some(first) = spill.first().filter(|_| idle) else {
+            return (0, 0, 0);
+        };
+        let width = self.card.body.width();
+        let height = first.measure(gtk::Orientation::Vertical, width).1;
+        (height, self.card.body.spacing(), spill.len())
+    }
+
+    fn spill_shown(&self) -> usize {
+        self.spill_shown.get()
+    }
+
+    fn set_spill(&self, rows: usize) {
+        for (i, row) in self.spill.borrow().iter().enumerate() {
+            row.set_visible(i < rows);
+        }
+        self.spill_shown.set(rows.min(self.spill.borrow().len()));
     }
 }
 

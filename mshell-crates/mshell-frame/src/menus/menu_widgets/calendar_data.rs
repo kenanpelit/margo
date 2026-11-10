@@ -146,7 +146,7 @@ fn agenda_row(event: &mcal::Event) -> gtk::Box {
 }
 
 /// A row's time column: "All day" or local "HH:MM".
-fn time_label(event: &mcal::Event) -> String {
+pub(crate) fn time_label(event: &mcal::Event) -> String {
     if event.all_day {
         "All day".to_string()
     } else {

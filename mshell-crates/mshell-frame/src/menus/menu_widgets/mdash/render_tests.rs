@@ -15,6 +15,7 @@ use super::strip::StripState;
 use super::system::{AiRow, UpdatesView};
 use super::today::media::{Idle, MediaView, NowPlaying};
 use super::today::timers::alarm_line;
+use super::today::today_card::{NoteLine, note_time};
 use crate::menus::menu_widgets::control_center::sliders::ControlCenterSlidersInput;
 use crate::menus::menu_widgets::control_center::tiles::ControlCenterTilesInput;
 use crate::menus::menu_widgets::control_center::tiles::fixture::TilesFixture;
@@ -26,12 +27,28 @@ use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentController};
 use std::time::Duration;
 
+/// How busy the calendar is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Events {
+    None,
+    /// Three today, a few later this week.
+    Some,
+    /// A packed day and week: the Today card overflows into "+N more".
+    Many,
+}
+
 /// What one render shows.
 #[derive(Debug, Clone)]
 pub(crate) struct DashboardFixture {
     pub(crate) playing: bool,
-    pub(crate) events: bool,
+    pub(crate) events: Events,
+    /// Unread notifications.
+    pub(crate) notes: usize,
+    /// Read notifications in the history before them.
+    pub(crate) earlier: usize,
     pub(crate) battery: bool,
+    /// Two running timers and tomorrow's alarm.
+    pub(crate) timers: bool,
 }
 
 fn fixture_now() -> NaiveDateTime {
@@ -41,10 +58,22 @@ fn fixture_now() -> NaiveDateTime {
 }
 
 fn event(summary: &str, h: u32, m: u32, mins: i64, location: Option<&str>) -> mcal::Event {
-    let start = Utc
-        .with_ymd_and_hms(2026, 11, 10, h, m, 0)
+    event_on(10, summary, h, m, mins, location)
+}
+
+fn event_on(
+    day: u32,
+    summary: &str,
+    h: u32,
+    m: u32,
+    mins: i64,
+    location: Option<&str>,
+) -> mcal::Event {
+    let start = chrono::Local
+        .with_ymd_and_hms(2026, 11, day, h, m, 0)
         .single()
-        .expect("valid");
+        .expect("valid")
+        .with_timezone(&Utc);
     mcal::Event {
         id: summary.into(),
         calendar_id: "fixture".into(),
@@ -77,16 +106,84 @@ impl DashboardFixture {
             updates: 7,
         };
         if let Some(t) = today {
+            t.calendar.follow_today(fixture_now().date());
             t.calendar.select(fixture_now().date());
-            t.calendar.set_events(if self.events {
-                vec![
-                    event("Stand-up", 7, 0, 15, Some("Room 2")),
-                    event("Design review", 11, 30, 60, None),
-                    event("Dentist", 15, 0, 45, Some("Kadıköy")),
-                ]
-            } else {
-                Vec::new()
-            });
+            let mut events = Vec::new();
+            if self.events != Events::None {
+                events.extend([
+                    event("Stand-up", 10, 0, 15, Some("Room 2")),
+                    event("Design review", 14, 30, 60, None),
+                    event("Dentist", 18, 0, 45, Some("Kadıköy")),
+                    event_on(11, "Gym", 7, 30, 60, None),
+                    event_on(13, "Team lunch", 12, 30, 90, Some("Moda")),
+                ]);
+            }
+            if self.events == Events::Many {
+                events.extend([
+                    event("1:1 with Ayşe", 11, 0, 30, None),
+                    event("Release sync", 16, 0, 30, Some("Meet")),
+                    event("Call mum", 20, 0, 20, None),
+                    event_on(11, "Sprint planning", 10, 0, 60, None),
+                    event_on(12, "Car service", 9, 0, 60, Some("Ataşehir")),
+                    event_on(14, "Cinema", 21, 0, 120, None),
+                ]);
+            }
+            t.calendar.set_events(events);
+            let apps = [
+                (
+                    "Thunderbird",
+                    "mail-unread-symbolic",
+                    "Invoice #2041 from Hetzner",
+                ),
+                (
+                    "Signal",
+                    "chat-symbolic",
+                    "Deniz: are we still on for tonight?",
+                ),
+                (
+                    "GitHub",
+                    "software-update-available-symbolic",
+                    "margo: CI passed on cp3/mdash",
+                ),
+                (
+                    "System update",
+                    "system-software-update-symbolic",
+                    "7 updates available",
+                ),
+                (
+                    "Calendar",
+                    "x-office-calendar-symbolic",
+                    "Dentist in 1 hour",
+                ),
+                ("Valent", "phone-symbolic", "Pixel: battery at 15%"),
+                (
+                    "Tune",
+                    "audio-x-generic-symbolic",
+                    "Now playing on Radio One",
+                ),
+            ];
+            let now = chrono::Local
+                .from_local_datetime(&fixture_now())
+                .single()
+                .expect("valid");
+            let all: Vec<NoteLine> = (0..self.notes + self.earlier)
+                .map(|i| {
+                    let (app, icon, summary) = apps[i % apps.len()];
+                    NoteLine {
+                        id: i as u32,
+                        icon: Some(icon.into()),
+                        app: app.into(),
+                        summary: summary.into(),
+                        time: note_time(
+                            now - chrono::Duration::minutes(7 + 23 * i as i64),
+                            now,
+                            true,
+                        ),
+                    }
+                })
+                .collect();
+            let (unread, earlier) = all.split_at(self.notes);
+            t.calendar.set_notes(unread.to_vec(), earlier.to_vec());
             let weather: wayle_weather::Weather =
                 serde_json::from_str(include_str!("testdata/weather.json")).expect("weather");
             let at = NaiveDate::from_ymd_opt(2026, 11, 10)
@@ -98,7 +195,7 @@ impl DashboardFixture {
                 true,
                 at,
             );
-            t.media.apply(&if self.playing {
+            t.apply_media(&if self.playing {
                 MediaView::Playing(NowPlaying {
                     player: "Tune".into(),
                     title: "A quiet place to begin".into(),
@@ -114,10 +211,22 @@ impl DashboardFixture {
             } else {
                 MediaView::Idle(Idle {
                     resume: Some("Late night jazz — Radio One".into()),
-                    stations: vec![
-                        ("one".into(), "Radio One".into()),
-                        ("two".into(), "Night Signals".into()),
-                    ],
+                    stations: [
+                        "Radio One",
+                        "Night Signals",
+                        "Jazz FM",
+                        "Açık Radyo",
+                        "SomaFM Groove",
+                        "BBC 6 Music",
+                        "Lofi Beats",
+                        "Radio Paradise",
+                        "NTS 1",
+                        "KEXP",
+                        "FIP",
+                    ]
+                    .iter()
+                    .map(|n| (n.to_lowercase(), n.to_string()))
+                    .collect(),
                 })
             });
         }
@@ -171,7 +280,7 @@ impl DashboardFixture {
         }
         m.fixture_refresh();
         // A busy laptop day: an alarm tomorrow and two running timers.
-        if self.events {
+        if self.timers {
             let (today, ..) = m.fixture_parts();
             if let Some(t) = today {
                 let now = fixture_now();
@@ -344,6 +453,84 @@ fn assert_equal_widths(name: &str, tab: &str, page: &gtk::Widget, class: &str) -
     widths.len()
 }
 
+/// Today: every line of the Today card is whole (inside the card's list
+/// area, never cut), and the card shows no empty band — below its last
+/// line there is less than one more line of room.
+fn assert_today_card_whole_rows(name: &str, page: &gtk::Widget) {
+    let mut lists = Vec::new();
+    with_class(page, "mdash-today-lines", &mut lists);
+    let Some(lines) = lists.first() else {
+        return;
+    };
+    let Some(area) = lines.parent().and_then(|v| v.parent()) else {
+        return;
+    };
+    let area_box = bounds(&area, page);
+    let (top, bottom) = (area_box.y(), area_box.y() + area_box.height());
+    let mut last_bottom = top;
+    let mut tallest = 0f32;
+    let mut shown = Vec::new();
+    let mut child = lines.first_child();
+    while let Some(c) = child {
+        if c.is_visible() {
+            let b = bounds(&c, page);
+            assert!(
+                b.y() >= top - 0.5 && b.y() + b.height() <= bottom + 0.5,
+                "{name}/today: a cut line in the Today card ({:?} at {}..{} of {top}..{bottom})",
+                c.css_classes(),
+                b.y(),
+                b.y() + b.height()
+            );
+            last_bottom = b.y() + b.height();
+            tallest = tallest.max(b.height());
+            let text = c
+                .downcast_ref::<gtk::Label>()
+                .map(|l| l.label().to_string())
+                .or_else(|| {
+                    c.downcast_ref::<gtk::Button>()
+                        .and_then(|b| b.label())
+                        .map(|l| l.to_string())
+                })
+                .unwrap_or_else(|| c.type_().name().to_string());
+            shown.push(text);
+        }
+        child = c.next_sibling();
+    }
+    let gap = bottom - last_bottom;
+    println!("{name}/today: Today card lines {shown:?}, {gap} px free below");
+    // Less than one more line (+ spacing) of room: no empty band.
+    assert!(
+        gap < tallest + 8.0,
+        "{name}/today: the Today card leaves {gap} px empty"
+    );
+}
+
+/// Controls: the tiles flow in full rows of four — every row of tiles but
+/// the last holds exactly four (rows grouped by their top edge).
+fn assert_full_tile_rows(name: &str, page: &gtk::Widget) {
+    let mut tiles = Vec::new();
+    with_class(page, "mdash-tile-frame", &mut tiles);
+    let mut rows: Vec<(i32, usize)> = Vec::new();
+    let mut tops: Vec<i32> = tiles
+        .iter()
+        .map(|t| bounds(t, page).y().round() as i32)
+        .collect();
+    tops.sort_unstable();
+    for y in tops {
+        match rows.last_mut() {
+            Some((top, n)) if (y - *top).abs() <= 1 => *n += 1,
+            _ => rows.push((y, 1)),
+        }
+    }
+    println!("{name}/controls: tile rows {rows:?}");
+    if let Some((_, init)) = rows.split_last() {
+        assert!(
+            init.iter().all(|(_, n)| *n == 4),
+            "{name}/controls: a part-filled tile row before the last: {rows:?}"
+        );
+    }
+}
+
 /// Labels cut by ellipsis. Titles and labels may never be cut (a
 /// truncated tile / card / tool name = a layout bug); values and subtitles
 /// may (a long SSID), and are listed for the report.
@@ -416,22 +603,71 @@ fn native_mdash_render_fixture() {
     // The real panel: mdash's default width (800) minus the menu's 20 px
     // margins on each side.
     const CONTENT_WIDTH: i32 = 760;
-    for (name, fx) in [
+    const ALL_TABS: &[&str] = &["today", "controls", "system", "tools"];
+    for (name, fx, tabs) in [
         (
             "laptop-playing",
             DashboardFixture {
                 playing: true,
-                events: true,
+                events: Events::Some,
+                notes: 3,
+                earlier: 6,
                 battery: true,
+                timers: true,
             },
+            ALL_TABS,
         ),
         (
+            // No events AND no notifications: the Today card shrinks to
+            // its two lines and the idle media card grows station rows.
             "desktop-idle",
             DashboardFixture {
                 playing: false,
-                events: false,
+                events: Events::None,
+                notes: 0,
+                earlier: 0,
                 battery: false,
+                timers: false,
             },
+            ALL_TABS,
+        ),
+        (
+            // Overflow: whole rows, then "+N more" in both sections.
+            "busy-day",
+            DashboardFixture {
+                playing: true,
+                events: Events::Many,
+                notes: 9,
+                earlier: 6,
+                battery: true,
+                timers: true,
+            },
+            &["today"],
+        ),
+        (
+            "notifications-only",
+            DashboardFixture {
+                playing: false,
+                events: Events::None,
+                notes: 5,
+                earlier: 0,
+                battery: false,
+                timers: false,
+            },
+            &["today"],
+        ),
+        (
+            // Playing, a free week, two unread notifications, no timers.
+            "quiet-week",
+            DashboardFixture {
+                playing: true,
+                events: Events::None,
+                notes: 2,
+                earlier: 8,
+                battery: true,
+                timers: false,
+            },
+            &["today"],
         ),
     ] {
         let controller = DashboardModel::builder()
@@ -463,6 +699,9 @@ fn native_mdash_render_fixture() {
             .into_iter()
             .enumerate()
         {
+            if !tabs.contains(&tab) {
+                continue;
+            }
             controller.emit(DashboardInput::Select(i));
             // Past the crossfade + height interpolation.
             pump();
@@ -510,9 +749,11 @@ fn native_mdash_render_fixture() {
                     let (l, r) = column_bottoms(&page);
                     println!("{name}/{tab}: column bottoms {l} / {r}");
                     assert!((l - r).abs() <= 2.0, "{name}/{tab}: columns end {l} vs {r}");
+                    assert_today_card_whole_rows(name, &page);
                 }
                 "controls" => {
                     assert!(assert_equal_widths(name, tab, &page, "mdash-tile-frame") > 8);
+                    assert_full_tile_rows(name, &page);
                     // The slider tracks end in one column.
                     assert!(assert_equal_widths(name, tab, &page, "control-center-slider") >= 2);
                 }

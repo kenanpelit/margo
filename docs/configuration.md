@@ -680,7 +680,8 @@ menus:
     widgets:
       - !Dashboard
         tabs:
-          - tab: Today       # Calendar, Agenda, Weather, Media, Timers
+          - tab: Today       # Calendar, Agenda (the Today card), Weather,
+                             # Media, Timers
           - tab: Controls    # Sliders, Tiles
           - tab: System      # Cpu, Memory, Temperature, Disk, Battery,
                              # Network, Updates, AiUsage

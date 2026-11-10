@@ -209,16 +209,25 @@ centre. The default is the tabbed dashboard (`MenuWidget::Dashboard`):
   weather, unread notifications and pending updates; each opens its menu and
   hides when it doesn't apply (no battery on a desktop, nothing unread).
 - **Today** — two columns that end level: Calendar over Weather (now, the
-  next hours, three days) on the left; the selected day's Agenda, Now
-  playing and Timers on the right. The agenda takes the height the left
-  column leaves and scrolls on a busy day. When nothing plays the media card
-  keeps its size and offers to resume the last Tune track or start a saved
-  station. Timers shows the next alarm, the running timers (cancel in place)
-  and the quick entry (`10m tea`, `14:30 call`) with +5m / +10m / +25m / +1h —
-  the same store as the Alarm Clock menu and `mshellctl timer`.
+  next hours, three days) on the left; the **Today** card, Now playing and
+  Timers on the right. The Today card shows the selected day's events, then
+  the next seven days' grouped under day headings, then the newest unread
+  notifications (app icon, summary, time — a click opens the notification
+  centre; *Mark all read* clears the count). It takes the height the left
+  column leaves and shows whole rows only: what doesn't fit folds into a
+  "+N more" line (events → the calendar menu, notifications → the
+  notification centre). Empty states are one line ("No events this week",
+  "No new notifications"); leftover room goes to more saved-station rows on
+  the idle media card, then to the *Earlier* (already read) notifications.
+  When nothing plays the media card offers to resume the last Tune track or
+  start a saved station. Timers shows the next alarm, the running timers
+  (cancel in place) and one row with the quick entry (`10m tea`,
+  `14:30 call`) and +5m / +10m / +25m / +1h — the same store as the Alarm
+  Clock menu and `mshellctl timer`.
 - **Controls** — output volume, microphone and brightness sliders, then
-  every quick setting as a labelled tile in four equal columns, grouped
-  under Connectivity, Display, Focus, Audio, Services, Hardware and Custom.
+  every quick setting as a labelled tile in four equal columns, flowing in
+  full rows through Connectivity, Display, Focus, Audio, Services, Hardware
+  and Custom (a section can start mid-row under its own caption).
   These are the Control Center's own tiles (same state, same probes; a
   toggle here and there always agree, and tiles the hardware lacks are
   hidden the same way). A click toggles; the chevron or a right click opens

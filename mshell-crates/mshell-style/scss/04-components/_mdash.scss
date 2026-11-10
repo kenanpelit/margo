@@ -229,10 +229,66 @@
     }
   }
 
-  .mdash-agenda-card {
-    .calendar-agenda-row {
-      padding: var(--space-1) 0;
-      border-bottom: 1px solid var(--outline-variant);
+  // The Today card: one-line rows (an event: time · title · place; a
+  // notification: app icon · summary · time), day captions, and the flat
+  // "+N more" / "Mark all read" text buttons.
+  .mdash-today-lines {
+    .mdash-section-caption {
+      margin: var(--space-1) 0 0 0;
+    }
+  }
+
+  .mdash-today-row {
+    min-height: 24px;
+  }
+
+  .mdash-today-time {
+    min-width: 44px;
+    font-size: var(--font-xs);
+    font-weight: 600;
+    color: var(--primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mdash-today-title {
+    font-size: var(--font-sm);
+  }
+
+  .mdash-today-empty {
+    min-height: 24px;
+  }
+
+  button.mdash-note-row {
+    all: unset;
+    border-radius: var(--radius-sm);
+    @include state-layer();
+
+    &:focus-visible {
+      box-shadow: inset 0 0 0 2px var(--primary);
+    }
+  }
+
+  .mdash-note-icon {
+    color: var(--on-surface-variant);
+  }
+
+  // Read notifications (the "Earlier" filler) sit back.
+  button.mdash-note-read .mdash-today-title {
+    color: var(--on-surface-variant);
+  }
+
+  button.mdash-more {
+    all: unset;
+    padding: 0 var(--space-1);
+    min-height: 20px;
+    border-radius: var(--radius-sm);
+    font-size: var(--font-xs);
+    font-weight: 600;
+    color: var(--primary);
+    @include state-layer();
+
+    &:focus-visible {
+      box-shadow: inset 0 0 0 2px var(--primary);
     }
   }
 

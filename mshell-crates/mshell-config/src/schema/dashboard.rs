@@ -120,7 +120,7 @@ impl DashboardCard {
     pub fn label(self) -> &'static str {
         match self {
             DashboardCard::Calendar => "Calendar",
-            DashboardCard::Agenda => "Agenda",
+            DashboardCard::Agenda => "Today (events, notifications)",
             DashboardCard::Weather => "Weather",
             DashboardCard::Media => "Media",
             DashboardCard::Timers => "Timers & alarms",

@@ -1,8 +1,10 @@
-//! Today: the month calendar card and, beside it, the selected day's
-//! agenda card. Events come from the shared `calendar_data` loader (local
-//! `.ics` + subscriptions) the clock menu and the old mdash grid use.
+//! Today: the month calendar card. Its selected day drives the Today card
+//! ([`super::today_card`]: that day's events, the week after it, and the
+//! unread notifications). Events come from the shared `calendar_data`
+//! loader (local `.ics` + subscriptions) the clock menu uses.
 
-use super::super::card::{Card, empty_label};
+use super::super::card::Card;
+use super::today_card::{NoteLine, TodayCard, event_lines};
 use crate::menus::menu_widgets::calendar_data;
 use chrono::{Datelike, Local, NaiveDate};
 use relm4::gtk;
@@ -10,22 +12,18 @@ use relm4::gtk::prelude::{BoxExt, ObjectExt, WidgetExt};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-/// The agenda list's floor (about two event rows): the agenda never asks
-/// for more, so it can't make the right column outgrow the left.
-const AGENDA_MIN_HEIGHT: i32 = 56;
-
 pub(crate) struct CalendarCards {
     pub(crate) calendar_card: Card,
-    pub(crate) agenda_card: Card,
+    pub(crate) today_card: Rc<TodayCard>,
     calendar: gtk::Calendar,
-    agenda_list: gtk::Box,
-    agenda_scroller: gtk::ScrolledWindow,
-    agenda_empty: gtk::Label,
     events: RefCell<Vec<mcal::Event>>,
+    notes: RefCell<(Vec<NoteLine>, Vec<NoteLine>)>,
     selected: Cell<NaiveDate>,
+    /// The dashboard's today (frozen in render fixtures).
+    today: Cell<NaiveDate>,
 }
 
-/// "Tuesday 10 November" for the agenda title, "Today" for today.
+/// "Tuesday 10 November" for the Today card's title, "Today" for today.
 pub(crate) fn agenda_title(day: NaiveDate, today: NaiveDate) -> String {
     if day == today {
         "Today".to_string()
@@ -38,7 +36,7 @@ pub(crate) fn agenda_title(day: NaiveDate, today: NaiveDate) -> String {
     }
 }
 
-/// "2 events" / "1 event" / "" for the agenda card's meta.
+/// "2 events" / "1 event" / "" for the Today card's meta.
 pub(crate) fn event_count(n: usize) -> String {
     match n {
         0 => String::new(),
@@ -48,7 +46,7 @@ pub(crate) fn event_count(n: usize) -> String {
 }
 
 impl CalendarCards {
-    pub(crate) fn new() -> Rc<Self> {
+    pub(crate) fn new(today_card: Rc<TodayCard>) -> Rc<Self> {
         let calendar_card = Card::new("x-office-calendar-symbolic", "Calendar");
         calendar_card.root.add_css_class("mdash-calendar-card");
         let calendar = gtk::Calendar::new();
@@ -59,37 +57,15 @@ impl CalendarCards {
         calendar.add_css_class("mdash-calendar");
         calendar_card.body.append(&calendar);
 
-        let agenda_card = Card::new("view-list-symbolic", "Today");
-        agenda_card.root.add_css_class("mdash-agenda-card");
-        let agenda_list = gtk::Box::new(gtk::Orientation::Vertical, 4);
-        agenda_list.add_css_class("calendar-agenda-list");
-        // The agenda is Today's flexible card: its list asks for no height
-        // of its own (beyond a two-row floor) and takes what the left
-        // column leaves, scrolling when a busy day overflows it.
-        let scroller = gtk::ScrolledWindow::new();
-        scroller.set_hscrollbar_policy(gtk::PolicyType::Never);
-        scroller.set_propagate_natural_height(false);
-        scroller.set_min_content_height(AGENDA_MIN_HEIGHT);
-        scroller.set_vexpand(true);
-        scroller.set_child(Some(&agenda_list));
-        agenda_card.body.set_vexpand(true);
-        agenda_card.body.append(&scroller);
-        let agenda_empty = empty_label("No events");
-        agenda_empty.set_vexpand(true);
-        // The same floor as the list: an empty day is as tall as a quiet one.
-        agenda_empty.set_size_request(-1, AGENDA_MIN_HEIGHT);
-        agenda_card.body.append(&agenda_empty);
-
         let today = Local::now().date_naive();
         let cards = Rc::new(Self {
             calendar_card,
-            agenda_card,
+            today_card,
             calendar,
-            agenda_list,
-            agenda_scroller: scroller,
-            agenda_empty,
             events: RefCell::new(Vec::new()),
+            notes: RefCell::new((Vec::new(), Vec::new())),
             selected: Cell::new(today),
+            today: Cell::new(today),
         });
 
         let weak = Rc::downgrade(&cards);
@@ -128,6 +104,7 @@ impl CalendarCards {
 
     /// Jump back to today if the day rolled over since the last look.
     pub(crate) fn follow_today(&self, today: NaiveDate) {
+        self.today.set(today);
         if self.selected.get() != today && self.selected.get() < today {
             self.select(today);
         }
@@ -138,16 +115,29 @@ impl CalendarCards {
         self.refresh();
     }
 
+    /// The unread notifications and the read ones before them, newest
+    /// first (no-op when unchanged).
+    pub(crate) fn set_notes(&self, unread: Vec<NoteLine>, earlier: Vec<NoteLine>) {
+        let notes = (unread, earlier);
+        if *self.notes.borrow() != notes {
+            *self.notes.borrow_mut() = notes;
+            self.refresh();
+        }
+    }
+
     fn refresh(&self) {
         let events = self.events.borrow();
         calendar_data::refresh_marks(&self.calendar, &events);
         let day = self.selected.get();
-        calendar_data::rebuild_agenda(&self.agenda_list, &self.agenda_empty, &events, day);
+        let today = self.today.get();
         let n = mcal::events_on_day(&events, day).len();
-        self.agenda_scroller.set_visible(n > 0);
-        self.agenda_card
-            .set_title(&agenda_title(day, Local::now().date_naive()));
-        self.agenda_card.set_meta(&event_count(n));
+        self.today_card.set_content(
+            &agenda_title(day, today),
+            &event_count(n),
+            &event_lines(&events, day, today),
+            &self.notes.borrow().0,
+            &self.notes.borrow().1,
+        );
         self.calendar_card
             .set_meta(&format!("Week {}", day.iso_week().week()));
     }

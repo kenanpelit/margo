@@ -47,8 +47,8 @@ The GTK4 + relm4 shell hosting the bars, menus, settings, and dashboard.
 - **Bars + widgets** — top/bottom bars with 50+ pills. Full reference:
   **[Bar widgets](widgets.md)**.
 - **mdash dashboard** — a tabbed dashboard at the top centre: header with
-  one power button, a status strip, and **Today** (calendar, agenda,
-  weather, media, timers), **Controls** (sliders + every quick setting as a
+  one power button, a status strip, and **Today** (calendar, weather,
+  events + unread notifications, media, timers), **Controls** (sliders + every quick setting as a
   labelled tile), **System** (CPU / memory / temperature / disk, battery and
   power profile, network, updates, AI limits) and **Tools** (menu
   launchers). `mshellctl menu mdash [today|controls|system|tools]`; see
