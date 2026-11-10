@@ -243,6 +243,10 @@ pub(crate) enum ShellInput {
     /// provider through the `SECTION_BACKEND` bridge.
     OpenSettingsAtSection(Option<String>, String),
     ToggleMdashMenu(Option<String>),
+    ToggleMdashMenuWithTab(
+        Option<String>,
+        mshell_config::schema::dashboard::DashboardTab,
+    ),
     RunSessionAction(mshell_utils::session::SessionAction),
     /// `mshellctl session reboot-into`: set `BootNext` to this (resolved)
     /// UEFI entry through the root helper, then run the session Reboot.
@@ -1091,6 +1095,11 @@ impl Component for Shell {
             ShellInput::ToggleMdashMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
                     frame.emit(FrameInput::ToggleMenu(MenuId::Mdash));
+                }
+            }
+            ShellInput::ToggleMdashMenuWithTab(monitor_name, tab) => {
+                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
+                    frame.emit(FrameInput::ToggleMdashMenuWithTab(tab));
                 }
             }
             ShellInput::RunSessionAction(action) => {

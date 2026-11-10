@@ -474,6 +474,7 @@ esac
 _arguments "${_arguments_options[@]}" : \
 '-h[Print help]' \
 '--help[Print help]' \
+'::tab -- The tab to show:(today controls system tools)' \
 && ret=0
 ;;
 (plugin)
@@ -6670,7 +6671,7 @@ _mshellctl__subcmd__help__subcmd__menu_commands() {
 'mtune:Toggle the Tune (mtune folder-first music player) menu' \
 'lyrics:Toggle the Lyrics menu (synced lyrics of the now-playing track)' \
 'session:Toggle the session / power menu, or run a session action' \
-'mdash:Toggle the mdash dashboard menu — greeting header, calendar + weather, the quick-settings card stack, and a menu-shortcut grid' \
+'mdash:Toggle the mdash dashboard — greeting header, status strip and the Today / Controls / System / Tools tabs. With a tab, open mdash on that tab (switch to it when mdash is open on another one; close mdash when it already shows it)' \
 'plugin:Toggle an installed plugin'\''s panel/menu by key — e.g. \`menu plugin assistant\` or \`menu plugin mullvad\`. Generic\: works for any plugin that ships a panel or a \`\[\[widget.menu\]\]\`, with no per-plugin code (the key matches the plugin id or a widget key)' \
 'translate:Toggle the Translate menu (manual language lookup; the select-or-copy + keybind flow is headless — see \`mshellctl translate\`)' \
 'color-picker:Toggle the Color Picker menu (recent colours + HEX / RGB / HSL editor)' \
@@ -8128,7 +8129,7 @@ _mshellctl__subcmd__menu_commands() {
 'mtune:Toggle the Tune (mtune folder-first music player) menu' \
 'lyrics:Toggle the Lyrics menu (synced lyrics of the now-playing track)' \
 'session:Toggle the session / power menu, or run a session action' \
-'mdash:Toggle the mdash dashboard menu — greeting header, calendar + weather, the quick-settings card stack, and a menu-shortcut grid' \
+'mdash:Toggle the mdash dashboard — greeting header, status strip and the Today / Controls / System / Tools tabs. With a tab, open mdash on that tab (switch to it when mdash is open on another one; close mdash when it already shows it)' \
 'plugin:Toggle an installed plugin'\''s panel/menu by key — e.g. \`menu plugin assistant\` or \`menu plugin mullvad\`. Generic\: works for any plugin that ships a panel or a \`\[\[widget.menu\]\]\`, with no per-plugin code (the key matches the plugin id or a widget key)' \
 'translate:Toggle the Translate menu (manual language lookup; the select-or-copy + keybind flow is headless — see \`mshellctl translate\`)' \
 'color-picker:Toggle the Color Picker menu (recent colours + HEX / RGB / HSL editor)' \
@@ -8262,7 +8263,7 @@ _mshellctl__subcmd__menu__subcmd__help_commands() {
 'mtune:Toggle the Tune (mtune folder-first music player) menu' \
 'lyrics:Toggle the Lyrics menu (synced lyrics of the now-playing track)' \
 'session:Toggle the session / power menu, or run a session action' \
-'mdash:Toggle the mdash dashboard menu — greeting header, calendar + weather, the quick-settings card stack, and a menu-shortcut grid' \
+'mdash:Toggle the mdash dashboard — greeting header, status strip and the Today / Controls / System / Tools tabs. With a tab, open mdash on that tab (switch to it when mdash is open on another one; close mdash when it already shows it)' \
 'plugin:Toggle an installed plugin'\''s panel/menu by key — e.g. \`menu plugin assistant\` or \`menu plugin mullvad\`. Generic\: works for any plugin that ships a panel or a \`\[\[widget.menu\]\]\`, with no per-plugin code (the key matches the plugin id or a widget key)' \
 'translate:Toggle the Translate menu (manual language lookup; the select-or-copy + keybind flow is headless — see \`mshellctl translate\`)' \
 'color-picker:Toggle the Color Picker menu (recent colours + HEX / RGB / HSL editor)' \

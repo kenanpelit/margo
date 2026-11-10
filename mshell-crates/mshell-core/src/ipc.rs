@@ -331,6 +331,12 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::Mdash => {
                     app_sender.emit(ShellInput::ToggleMdashMenu(active_monitor().await));
                 }
+                IPCCommand::MdashTab(tab) => {
+                    app_sender.emit(ShellInput::ToggleMdashMenuWithTab(
+                        active_monitor().await,
+                        tab,
+                    ));
+                }
                 IPCCommand::SessionAction(a) => app_sender.emit(ShellInput::RunSessionAction(a)),
                 IPCCommand::SessionRebootInto(n) => app_sender.emit(ShellInput::RebootInto(n)),
                 IPCCommand::PluginMenu(key) => {
@@ -679,7 +685,7 @@ pub const APP_LAUNCHER_TABS: &[&str] = &["All", "Apps", "Actions", "Search", "He
 mod tests {
     use super::{
         ClipboardAction, mute_target, parse_bluetooth_action, parse_clipboard_action,
-        parse_cycle_direction, parse_game_mode, parse_launcher_tab, pick_device,
+        parse_cycle_direction, parse_game_mode, parse_launcher_tab, parse_mdash_tab, pick_device,
         validate_wallpaper_path,
     };
     use mshell_cache::wallpaper::CycleDirection;
@@ -822,6 +828,17 @@ mod tests {
         assert!(parse_bluetooth_action("conect").is_err());
         assert!(parse_bluetooth_action("connect:x").is_err());
         assert!(parse_bluetooth_action("connect:999").is_err());
+    }
+
+    #[test]
+    fn mdash_tab_is_parsed_case_insensitively_or_rejected() {
+        use mshell_config::schema::dashboard::DashboardTab;
+        assert_eq!(parse_mdash_tab("today"), Ok(DashboardTab::Today));
+        assert_eq!(parse_mdash_tab(" Controls "), Ok(DashboardTab::Controls));
+        assert_eq!(parse_mdash_tab("SYSTEM"), Ok(DashboardTab::System));
+        assert_eq!(parse_mdash_tab("tools"), Ok(DashboardTab::Tools));
+        let err = parse_mdash_tab("music").unwrap_err();
+        assert!(err.contains("today|controls|system|tools"), "{err}");
     }
 
     #[test]

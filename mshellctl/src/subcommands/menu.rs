@@ -143,9 +143,15 @@ pub enum MenuCommands {
         #[command(subcommand)]
         action: Option<SessionAction>,
     },
-    /// Toggle the mdash dashboard menu — greeting header, calendar +
-    /// weather, the quick-settings card stack, and a menu-shortcut grid.
-    Mdash,
+    /// Toggle the mdash dashboard — greeting header, status strip and the
+    /// Today / Controls / System / Tools tabs. With a tab, open mdash on
+    /// that tab (switch to it when mdash is open on another one; close
+    /// mdash when it already shows it).
+    Mdash {
+        /// The tab to show.
+        #[arg(value_enum)]
+        tab: Option<MdashTab>,
+    },
     /// Toggle an installed plugin's panel/menu by key — e.g.
     /// `menu plugin assistant` or `menu plugin mullvad`. Generic: works for
     /// any plugin that ships a panel or a `[[widget.menu]]`, with no
@@ -342,8 +348,11 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
                 shell().await?.session_shutdown().await?;
             }
         },
-        MenuCommands::Mdash => {
+        MenuCommands::Mdash { tab: None } => {
             shell().await?.mdash().await?;
+        }
+        MenuCommands::Mdash { tab: Some(tab) } => {
+            shell().await?.mdash_tab(tab.token()).await?;
         }
         MenuCommands::Plugin { key } => {
             shell().await?.plugin_menu(&key).await?;
@@ -353,4 +362,69 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+/// mdash's tabs, as `mshellctl menu mdash <tab>` spells them (the shell
+/// parses the same lowercase tokens).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+pub enum MdashTab {
+    Today,
+    Controls,
+    System,
+    Tools,
+}
+
+impl MdashTab {
+    fn token(self) -> &'static str {
+        match self {
+            MdashTab::Today => "today",
+            MdashTab::Controls => "controls",
+            MdashTab::System => "system",
+            MdashTab::Tools => "tools",
+        }
+    }
+}
+
+#[cfg(test)]
+mod mdash_tab_tests {
+    use super::*;
+    use clap::Parser;
+
+    #[derive(Parser)]
+    struct Cli {
+        #[command(subcommand)]
+        menu: MenuCommands,
+    }
+
+    fn parse(args: &[&str]) -> Result<MenuCommands, clap::Error> {
+        Cli::try_parse_from(std::iter::once("menu").chain(args.iter().copied())).map(|c| c.menu)
+    }
+
+    #[test]
+    fn plain_mdash_still_toggles() {
+        assert!(matches!(
+            parse(&["mdash"]),
+            Ok(MenuCommands::Mdash { tab: None })
+        ));
+    }
+
+    #[test]
+    fn every_tab_parses_to_its_token() {
+        for (arg, token) in [
+            ("today", "today"),
+            ("controls", "controls"),
+            ("system", "system"),
+            ("tools", "tools"),
+        ] {
+            match parse(&["mdash", arg]) {
+                Ok(MenuCommands::Mdash { tab: Some(tab) }) => assert_eq!(tab.token(), token),
+                _ => panic!("{arg} did not parse"),
+            }
+        }
+    }
+
+    #[test]
+    fn an_unknown_tab_is_rejected() {
+        assert!(parse(&["mdash", "music"]).is_err());
+    }
 }

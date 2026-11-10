@@ -80,6 +80,7 @@ pub(super) enum IPCCommand {
     Mtune,
     Lyrics,
     Mdash,
+    MdashTab(mshell_config::schema::dashboard::DashboardTab),
     /// Toggle an installed plugin's panel/menu by key (generic — any plugin).
     PluginMenu(String),
     /// Force-reload an installed plugin's WASM panel — evict the cached

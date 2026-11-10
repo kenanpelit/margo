@@ -122,6 +122,7 @@ pub trait Shell {
     fn lyrics(&self) -> zbus::Result<()>;
     fn session(&self) -> zbus::Result<()>;
     fn mdash(&self) -> zbus::Result<()>;
+    fn mdash_tab(&self, tab: &str) -> zbus::Result<()>;
     fn plugin_reload(&self, key: &str) -> zbus::Result<()>;
     fn plugin_keybind(&self, arg: &str) -> zbus::Result<()>;
     fn plugin_menu(&self, key: &str) -> zbus::Result<()>;

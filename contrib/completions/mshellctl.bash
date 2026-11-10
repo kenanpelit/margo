@@ -9797,7 +9797,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__menu__subcmd__mdash)
-            opts="-h --help"
+            opts="-h --help today controls system tools"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

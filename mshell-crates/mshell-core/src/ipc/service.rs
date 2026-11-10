@@ -93,6 +93,17 @@ pub(super) fn parse_bluetooth_action(action: &str) -> Result<String, String> {
     }
 }
 
+/// Parse an mdash tab name (`mshellctl menu mdash <tab>`).
+pub(super) fn parse_mdash_tab(
+    tab: &str,
+) -> Result<mshell_config::schema::dashboard::DashboardTab, String> {
+    use mshell_config::schema::dashboard::DashboardTab;
+    DashboardTab::from_token(tab).ok_or_else(|| {
+        let names: Vec<&str> = DashboardTab::ALL.iter().map(|t| t.token()).collect();
+        format!("unknown mdash tab '{tab}' ({})", names.join("|"))
+    })
+}
+
 /// Match a launcher tab name case-insensitively against `APP_LAUNCHER_TABS`,
 /// returning its canonical spelling (the launcher's lookup is exact).
 pub(super) fn parse_launcher_tab(tab: &str) -> Result<String, String> {
@@ -590,6 +601,12 @@ impl IPCService {
     }
     async fn mdash(&self) -> fdo::Result<()> {
         self.send(IPCCommand::Mdash)
+    }
+    /// Open mdash on a tab (`today|controls|system|tools`, any case); the
+    /// same tab again closes it. An unknown name is rejected.
+    async fn mdash_tab(&self, tab: String) -> fdo::Result<()> {
+        let tab = parse_mdash_tab(&tab).map_err(fdo::Error::InvalidArgs)?;
+        self.send(IPCCommand::MdashTab(tab))
     }
     async fn plugin_reload(&self, key: String) -> fdo::Result<()> {
         self.send(IPCCommand::PluginReload(key))
