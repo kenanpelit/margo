@@ -97,6 +97,11 @@ jobs:
   # cut into 16-line pieces, and inputs are capped at 4 KiB: fed the whole
   # ~95 KiB example, the sanitized validator manages ~10 runs a second; the
   # pieces cover the same code at a few hundred.
+  #
+  # --target is explicit: cargo-fuzz defaults to the triple it was itself
+  # built for, and install-action falls back to cargo-binstall's musl build
+  # of cargo-fuzz, which made it build for x86_64-unknown-linux-musl (no
+  # such std in this nightly, and ASan refuses static libc).
   fuzz:
     name: fuzz ${{ matrix.target }}
     runs-on: ubuntu-latest
@@ -125,7 +130,7 @@ jobs:
           mkdir -p fuzz/corpus/${{ matrix.target }}
           grep -v '^[[:space:]]*#' margo/src/config.example.conf | grep -v '^[[:space:]]*$' |
             split -l 16 - fuzz/corpus/${{ matrix.target }}/example-
-          cargo +nightly fuzz run ${{ matrix.target }} -- \
+          cargo +nightly fuzz run --target x86_64-unknown-linux-gnu ${{ matrix.target }} -- \
             -max_total_time=600 -max_len=4096
 
       # A crash or timeout leaves the input under fuzz/artifacts/; replay it
