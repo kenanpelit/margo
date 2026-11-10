@@ -1,6 +1,7 @@
 //! Alarm scheduler: the on-demand one-second tick, snoozes and firing.
 
 use super::*;
+use mshell_process::desktop::{self, Notice, Urgency};
 
 // ── Alarm scheduler (port of the DMS alarmClock plugin) ─────────────────────
 // A single main-thread glib timer ticks each second, reads the alarms from the
@@ -125,56 +126,72 @@ pub(super) fn run_alarm_tick(last_minute: &std::rc::Rc<std::cell::Cell<i64>>) {
     }
 }
 
+/// Ring settings shared by alarms and timers, read on the main thread.
+struct RingSettings {
+    notifications: bool,
+    snooze_secs: u64,
+    urgency: Urgency,
+}
+
+fn ring_settings() -> RingSettings {
+    let alarm = config_manager().config().alarm();
+    RingSettings {
+        notifications: alarm.clone().notifications().get_untracked(),
+        snooze_secs: (alarm.clone().snooze_minutes().get_untracked().max(1) as u64) * 60,
+        urgency: Urgency::from_name(&alarm.urgency().get_untracked()),
+    }
+}
+
+/// The Stop / Snooze notification for a ringing alarm or timer. It never
+/// expires on its own: the tone stops when the user answers it.
+pub(super) fn ring_notice(summary: &str, body: &str, urgency: Urgency) -> Notice {
+    Notice::new("Alarm Clock", summary, body)
+        .icon("alarm-symbolic")
+        .urgency(urgency)
+        .timeout_ms(0)
+        .action("stop", "Stop")
+        .action("snooze", "Snooze")
+        // The looping tone is the sound.
+        .silent()
+}
+
 /// Ring the tone + (optionally) pop a Stop/Snooze notification. The
 /// notification blocks a worker thread until the user acts; the tone stops on
 /// any outcome, and Snooze re-queues a fire `snooze_minutes` later.
 pub(super) fn fire_alarm(label: String) {
     play_alarm_loop();
-    if !config_manager()
-        .config()
-        .alarm()
-        .notifications()
-        .get_untracked()
-    {
+    let settings = ring_settings();
+    if !settings.notifications {
         return;
     }
-    let snooze_secs = (config_manager()
-        .config()
-        .alarm()
-        .snooze_minutes()
-        .get_untracked()
-        .max(1) as u64)
-        * 60;
-    let urgency = config_manager().config().alarm().urgency().get_untracked();
     std::thread::spawn(move || {
-        let action = std::process::Command::new("notify-send")
-            .args([
-                "-a",
-                "Alarm Clock",
-                "-i",
-                "alarm-symbolic",
-                "-u",
-                &urgency,
-                "-A",
-                "stop=Stop",
-                "-A",
-                "snooze=Snooze",
-                &label,
-                "It's time.",
-            ])
-            .output()
-            .ok()
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-            .unwrap_or_default();
+        let action = desktop::ask(ring_notice(&label, "It's time.", settings.urgency));
         stop_alarm(); // stop on every outcome (Stop / Snooze / dismiss)
-        if action == "snooze"
+        if action.as_deref() == Some("snooze")
             && let Ok(mut q) = ALARM_SNOOZES.lock()
         {
-            q.push(std::time::SystemTime::now() + std::time::Duration::from_secs(snooze_secs));
+            q.push(
+                std::time::SystemTime::now() + std::time::Duration::from_secs(settings.snooze_secs),
+            );
             drop(q);
             // The tick may have removed itself (a one-shot alarm disables
             // itself when it fires), and this runs on a worker. Re-arm it.
             wake_alarm_scheduler();
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_ring_notification_has_stop_and_snooze_and_never_expires() {
+        let n = ring_notice("tea", "10 min timer is up.", Urgency::Critical);
+        assert_eq!(n.app, "Alarm Clock");
+        assert_eq!(n.timeout_ms, Some(0));
+        let ids: Vec<&str> = n.actions.iter().map(|(id, _)| id.as_str()).collect();
+        assert_eq!(ids, vec!["stop", "snooze"]);
+        assert_eq!(n.urgency, Urgency::Critical);
+    }
 }

@@ -18,6 +18,18 @@ pub enum Urgency {
     Critical,
 }
 
+impl Urgency {
+    /// A config value (`low` | `normal` | `critical`, any case); anything
+    /// else is `Normal`.
+    pub fn from_name(name: &str) -> Self {
+        match name.trim().to_ascii_lowercase().as_str() {
+            "low" => Urgency::Low,
+            "critical" => Urgency::Critical,
+            _ => Urgency::Normal,
+        }
+    }
+}
+
 /// One desktop notification. Build with [`Notice::new`] and the setters,
 /// then hand it to [`notify`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,6 +48,8 @@ pub struct Notice {
     /// Ask the server not to play its own sound (`suppress-sound`), for a
     /// caller that plays a dedicated cue itself (Pomodoro, eye care).
     pub silent: bool,
+    /// Action buttons, `(id, label)`; [`ask`] returns the chosen id.
+    pub actions: Vec<(String, String)>,
 }
 
 impl Notice {
@@ -54,7 +68,14 @@ impl Notice {
             replace_tag: None,
             category: None,
             silent: false,
+            actions: Vec::new(),
         }
+    }
+
+    /// Add an action button; [`ask`] reports which one was pressed.
+    pub fn action(mut self, id: impl Into<String>, label: impl Into<String>) -> Self {
+        self.actions.push((id.into(), label.into()));
+        self
     }
 
     /// Suppress the notification server's sound for this notice.
@@ -118,6 +139,9 @@ impl Notice {
         if self.silent {
             n.hint(notify_rust::Hint::SuppressSound(true));
         }
+        for (id, label) in &self.actions {
+            n.action(id, label);
+        }
         n
     }
 }
@@ -142,6 +166,31 @@ pub fn notify(notice: Notice) {
     if let Err(err) = spawned {
         tracing::warn!(%err, "notification: could not start thread");
     }
+}
+
+/// Show `notice` and wait for the user: the id of the action button they
+/// pressed, or `None` when it was dismissed, expired or no notification
+/// server answered. Blocks until then — call it on a worker thread. Never
+/// forks `notify-send`.
+pub fn ask(notice: Notice) -> Option<String> {
+    if cfg!(test) {
+        return None;
+    }
+    let handle = match notice.to_notification().show() {
+        Ok(handle) => handle,
+        Err(err) => {
+            tracing::warn!(?err, app = %notice.app, summary = %notice.summary, "notification failed");
+            return None;
+        }
+    };
+    let mut chosen = None;
+    handle.wait_for_action(|action| chosen = chosen_action(action));
+    chosen
+}
+
+/// The action id `wait_for_action` reported, minus its "closed" sentinel.
+fn chosen_action(action: &str) -> Option<String> {
+    (!action.is_empty() && action != "__closed").then(|| action.to_string())
 }
 
 /// Open `target` (a URL, file or folder) in the user's default app via
@@ -191,6 +240,38 @@ mod tests {
                 .hints
                 .contains(&notify_rust::Hint::SuppressSound(true))
         );
+    }
+
+    #[test]
+    fn actions_become_notification_buttons_in_order() {
+        let n = Notice::new("Alarm Clock", "tea", "10 min timer is up.")
+            .action("stop", "Stop")
+            .action("snooze", "Snooze")
+            .to_notification();
+        assert_eq!(n.actions, vec!["stop", "Stop", "snooze", "Snooze"]);
+        assert!(
+            Notice::new("a", "b", "c")
+                .to_notification()
+                .actions
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn a_closed_notification_chose_no_action() {
+        assert_eq!(chosen_action("snooze"), Some("snooze".to_string()));
+        assert_eq!(chosen_action("__closed"), None);
+        assert_eq!(chosen_action(""), None);
+        // Under test `ask` never talks to a notification server.
+        assert_eq!(ask(Notice::new("a", "b", "c").action("x", "X")), None);
+    }
+
+    #[test]
+    fn urgency_names_from_the_config() {
+        assert_eq!(Urgency::from_name("low"), Urgency::Low);
+        assert_eq!(Urgency::from_name(" Critical "), Urgency::Critical);
+        assert_eq!(Urgency::from_name("normal"), Urgency::Normal);
+        assert_eq!(Urgency::from_name("bogus"), Urgency::Normal);
     }
 
     #[test]
