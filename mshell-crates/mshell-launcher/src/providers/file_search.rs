@@ -37,8 +37,8 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::rc::Rc;
-use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::{Arc, Weak};
 use std::time::Duration;
 
 const NAME: &str = "Files";
@@ -360,8 +360,10 @@ type Hits = Vec<(Entry, f64)>;
 struct SearchState {
     /// Latest query the UI asked for (with the index to search).
     wanted: Option<(String, Arc<Index>)>,
-    /// Last finished search.
-    done: Option<(String, Hits)>,
+    /// Last finished search, with the index it ran over: a refreshed or
+    /// switched index must not be answered from the old one's hits. Weak,
+    /// so a finished search never keeps a dropped index's paths alive.
+    done: Option<(String, Weak<Index>, Hits)>,
     running: bool,
 }
 
@@ -383,12 +385,13 @@ impl Searcher {
         let Ok(mut st) = self.state.lock() else {
             return (None, None);
         };
-        if let Some((q, hits)) = &st.done
+        if let Some((q, searched, hits)) = &st.done
             && q == query
+            && Weak::ptr_eq(searched, &Arc::downgrade(index))
         {
             return (Some(hits.clone()), None);
         }
-        let previous = st.done.as_ref().map(|(_, h)| h.clone());
+        let previous = st.done.as_ref().map(|(_, _, h)| h.clone());
         st.wanted = Some((query.to_string(), Arc::clone(index)));
         if !st.running {
             st.running = true;
@@ -409,7 +412,7 @@ impl Searcher {
                         .map(|(e, s)| (e.clone(), s))
                         .collect();
                     if let Ok(mut s) = state.lock() {
-                        s.done = Some((q, hits));
+                        s.done = Some((q, Arc::downgrade(&index), hits));
                     }
                     if let Ok(slot) = notifier.lock()
                         && let Some(notify) = slot.as_ref()
@@ -800,6 +803,30 @@ mod tests {
             .map(|(e, _)| e.path.as_str())
             .collect();
         assert_eq!(both, vec!["/home/u/docs/report.pdf"]);
+    }
+
+    /// A refreshed index must not be answered from the previous index's
+    /// hits for the same query.
+    #[test]
+    fn searcher_does_not_serve_hits_of_a_replaced_index() {
+        let searcher = Searcher::default();
+        let old = Arc::new(Index {
+            entries: vec![e("/home/u/old-report.txt")],
+            backend: Some(Backend::Fd),
+        });
+        let new = Arc::new(Index {
+            entries: vec![e("/home/u/new-report.txt")],
+            backend: Some(Backend::Fd),
+        });
+        let run = |index: &Arc<Index>| {
+            if let (Some(hits), _) = searcher.request("report", index) {
+                return hits;
+            }
+            searcher.wait_idle();
+            searcher.request("report", index).0.unwrap_or_default()
+        };
+        assert_eq!(run(&old)[0].0.path, "/home/u/old-report.txt");
+        assert_eq!(run(&new)[0].0.path, "/home/u/new-report.txt");
     }
 
     #[test]
