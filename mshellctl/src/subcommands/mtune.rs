@@ -2,7 +2,8 @@
 //! command line. Talks straight to mtune's D-Bus surface
 //! (`org.mpris.MediaPlayer2.org.margo.Tune`, custom `org.margo.Tune`
 //! interface at `/org/margo/Tune`) — no shell required. Actions launch
-//! mtune if it isn't running; reads fail cleanly if it isn't.
+//! mtune hidden if it isn't running (pause/stop/quit don't launch it);
+//! reads fail cleanly if it isn't.
 
 use crate::bus::shell;
 use anyhow::{Context, Result, bail};
@@ -99,7 +100,11 @@ pub async fn execute(command: MtuneCommands) -> Result<()> {
         _ => {}
     }
 
-    let conn = action_conn().await?;
+    let conn = match action_conn(launch_policy(&command)).await? {
+        Some(conn) => conn,
+        // Not running and nothing to do (pause/stop/quit on no player).
+        None => return Ok(()),
+    };
     match command {
         MtuneCommands::PlayPause => call(&conn, "PlayPause", &()).await?,
         MtuneCommands::Play => mpris(&conn, "Play").await?,
@@ -258,11 +263,49 @@ async fn read_conn() -> Result<Connection> {
     Ok(conn)
 }
 
-async fn action_conn() -> Result<Connection> {
+/// What an action does when mtune is not running.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Launch {
+    /// Nothing to act on: succeed without starting mtune.
+    Never,
+    /// Start mtune in the background (as at login): transport keys
+    /// must not pop a window up; `Raise` / `ToggleWindow` show it
+    /// themselves (a visible launch would make `ToggleWindow` hide it).
+    Hidden,
+    /// Start mtune with its window: loading a folder or playlist goes
+    /// through the window.
+    Window,
+}
+
+fn launch_policy(command: &MtuneCommands) -> Launch {
+    match command {
+        MtuneCommands::Pause | MtuneCommands::Stop | MtuneCommands::Quit => Launch::Never,
+        MtuneCommands::Open { .. }
+        | MtuneCommands::Library { .. }
+        | MtuneCommands::Rescan
+        | MtuneCommands::Jump { .. }
+        | MtuneCommands::PlaylistLoad { .. }
+        | MtuneCommands::PlaylistSave { .. } => Launch::Window,
+        _ => Launch::Hidden,
+    }
+}
+
+fn launch_args(launch: Launch) -> &'static [&'static str] {
+    match launch {
+        Launch::Never | Launch::Window => &[],
+        Launch::Hidden => &["--hidden"],
+    }
+}
+
+async fn action_conn(launch: Launch) -> Result<Option<Connection>> {
     let conn = Connection::session().await.context("no session bus")?;
     if !name_has_owner(&conn).await? {
+        if launch == Launch::Never {
+            return Ok(None);
+        }
         // Launch it and wait briefly for the name.
         let _ = std::process::Command::new("mtune")
+            .args(launch_args(launch))
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -271,12 +314,12 @@ async fn action_conn() -> Result<Connection> {
         for _ in 0..40 {
             tokio::time::sleep(std::time::Duration::from_millis(250)).await;
             if name_has_owner(&conn).await.unwrap_or(false) {
-                return Ok(conn);
+                return Ok(Some(conn));
             }
         }
         bail!("mtune did not come up");
     }
-    Ok(conn)
+    Ok(Some(conn))
 }
 
 async fn name_has_owner(conn: &Connection) -> Result<bool> {
@@ -442,4 +485,39 @@ async fn metadata(json: bool) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pause_and_stop_never_start_mtune() {
+        // Nothing to pause: a headset's AVRCP pause (e.g. when the phone
+        // plays a message tone) must not open a fresh mtune.
+        assert_eq!(launch_policy(&MtuneCommands::Pause), Launch::Never);
+        assert_eq!(launch_policy(&MtuneCommands::Stop), Launch::Never);
+        assert_eq!(launch_policy(&MtuneCommands::Quit), Launch::Never);
+    }
+
+    #[test]
+    fn other_actions_start_mtune_hidden() {
+        for cmd in [
+            MtuneCommands::Play,
+            MtuneCommands::PlayPause,
+            MtuneCommands::Next,
+            MtuneCommands::Raise,
+            MtuneCommands::ToggleWindow,
+        ] {
+            assert_eq!(launch_policy(&cmd), Launch::Hidden, "{cmd:?}");
+        }
+        assert_eq!(launch_args(Launch::Hidden), ["--hidden"]);
+    }
+
+    #[test]
+    fn loading_media_starts_mtune_with_its_window() {
+        let open = MtuneCommands::Open { path: "/m".into() };
+        assert_eq!(launch_policy(&open), Launch::Window);
+        assert!(launch_args(Launch::Window).is_empty());
+    }
 }
