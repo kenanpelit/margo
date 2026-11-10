@@ -1,6 +1,6 @@
 //! The Control Center tiles as mdash's **Controls** tab lays them out:
-//! labelled sections (Connectivity, Display, …) on a grid of four equal
-//! columns — every tile the same size — and what a click does there (a
+//! labelled sections (Connectivity, Display, …) flowing through one grid of
+//! four equal columns — every tile the same size, every row full — and what a click does there (a
 //! toggle first, the related menu on the chevron / right click).
 //!
 //! Same tiles, same model, same probes as the Control Center (the registry
@@ -92,78 +92,58 @@ pub(crate) enum Placement {
 }
 
 /// Lay out the visible tiles (`visible(id)`) on a [`COLUMNS`]-wide grid of
-/// equal cells: each section is a caption line over its tiles, filled left
-/// to right. Sections keep their order; two (or more) consecutive sections
-/// that fit one row together share it, each over its own whole columns
-/// (Focus 2 + Audio 2). Empty sections vanish.
+/// equal cells as ONE continuous flow in section order: tiles fill rows of
+/// four left to right, so every row is full except possibly the last, and
+/// a section may start in the middle of a row. A section's caption sits on
+/// a caption line above its first tile and spans that section's tiles on
+/// that row (Focus 2 + Audio 2 share a row; Valent ends Connectivity's
+/// second row beside Display's captioned three). A row on which no section
+/// starts has no caption line. Sections keep their order, their tiles stay
+/// contiguous, and empty sections vanish.
 pub(crate) fn pack(visible: impl Fn(TileId) -> bool) -> Vec<Placement> {
-    // Bands of consecutive sections that share their rows.
-    let mut bands: Vec<Vec<(TileGroup, Vec<TileId>)>> = Vec::new();
-    for group in TileGroup::ALL {
-        let tiles: Vec<TileId> = group
-            .tiles()
-            .iter()
-            .copied()
-            .filter(|&t| visible(t))
-            .collect();
-        if tiles.is_empty() {
-            continue;
-        }
-        if let Some(band) = bands.last_mut() {
-            let used: usize = band.iter().map(|(_, t)| t.len()).sum();
-            if used + tiles.len() <= COLUMNS {
-                band.push((group, tiles));
-                continue;
-            }
-        }
-        bands.push(vec![(group, tiles)]);
-    }
+    let flow: Vec<(TileGroup, TileId)> = TileGroup::ALL
+        .iter()
+        .flat_map(|&g| g.tiles().iter().map(move |&t| (g, t)))
+        .filter(|&(_, t)| visible(t))
+        .collect();
 
     let mut out = Vec::new();
     let mut row = 0;
-    for band in bands {
-        if band.len() > 1 || band[0].1.len() <= COLUMNS {
-            // One row: captions side by side over their own columns.
-            let mut col = 0;
-            for (group, tiles) in &band {
-                out.push(Placement::Caption {
-                    group: *group,
-                    col,
-                    row,
-                    span: tiles.len() as i32,
-                });
-                for &id in tiles {
-                    out.push(Placement::Tile {
-                        id,
-                        col,
-                        row: row + 1,
-                        span: 1,
-                    });
-                    col += 1;
-                }
-            }
-            row += 2;
-        } else {
-            let (group, tiles) = &band[0];
-            out.push(Placement::Caption {
-                group: *group,
-                col: 0,
-                row,
-                span: COLUMNS as i32,
-            });
-            row += 1;
-            for chunk in tiles.chunks(COLUMNS) {
-                for (col, &id) in chunk.iter().enumerate() {
-                    out.push(Placement::Tile {
-                        id,
-                        col: col as i32,
-                        row,
-                        span: 1,
-                    });
-                }
-                row += 1;
+    let mut captioned: Vec<TileGroup> = Vec::new();
+    for chunk in flow.chunks(COLUMNS) {
+        // Runs of one section on this row: (group, first column, span).
+        let mut runs: Vec<(TileGroup, i32, i32)> = Vec::new();
+        for (col, &(group, _)) in chunk.iter().enumerate() {
+            match runs.last_mut() {
+                Some((g, _, span)) if *g == group => *span += 1,
+                _ => runs.push((group, col as i32, 1)),
             }
         }
+        let mut has_caption = false;
+        for &(group, col, span) in &runs {
+            if !captioned.contains(&group) {
+                captioned.push(group);
+                out.push(Placement::Caption {
+                    group,
+                    col,
+                    row,
+                    span,
+                });
+                has_caption = true;
+            }
+        }
+        if has_caption {
+            row += 1;
+        }
+        for (col, &(_, id)) in chunk.iter().enumerate() {
+            out.push(Placement::Tile {
+                id,
+                col: col as i32,
+                row,
+                span: 1,
+            });
+        }
+        row += 1;
     }
     out
 }
@@ -340,16 +320,12 @@ mod tests {
             })
             .collect();
         assert_eq!(rows, [1, 1, 1, 1, 2, 2], "6 tiles: a row of 4, then 2");
+        // The second row continues the section: no caption line above it.
+        assert_eq!(captions_of(&p).len(), 1);
     }
 
-    #[test]
-    fn small_consecutive_groups_share_a_row() {
-        let p = pack(|t| {
-            TileGroup::Focus.tiles().contains(&t) || TileGroup::Audio.tiles().contains(&t)
-        });
-        assert_equal_cells(&p);
-        let captions: Vec<_> = p
-            .iter()
+    fn captions_of(p: &[Placement]) -> Vec<(TileGroup, i32, i32, i32)> {
+        p.iter()
             .filter_map(|p| match *p {
                 Placement::Caption {
                     group,
@@ -359,28 +335,141 @@ mod tests {
                 } => Some((group, row, col, span)),
                 _ => None,
             })
-            .collect();
-        // Focus (2) + Audio (3) don't fit one row of four: two bands.
-        assert_eq!(
-            captions,
-            [(TileGroup::Focus, 0, 0, 2), (TileGroup::Audio, 2, 0, 3)]
-        );
+            .collect()
+    }
+
+    /// Tile rows (grid row → tile count), in order.
+    fn tile_rows(p: &[Placement]) -> Vec<(i32, usize)> {
+        let mut rows: Vec<(i32, usize)> = Vec::new();
+        for pl in p {
+            if let Placement::Tile { row, .. } = *pl {
+                match rows.last_mut() {
+                    Some((r, n)) if *r == row => *n += 1,
+                    _ => rows.push((row, 1)),
+                }
+            }
+        }
+        rows
+    }
+
+    #[test]
+    fn small_consecutive_groups_share_a_row() {
         let p = pack(|t| {
-            TileGroup::Focus.tiles().contains(&t)
-                || (TileGroup::Audio.tiles().contains(&t) && t != TileId::MicDenoise)
+            TileGroup::Focus.tiles().contains(&t) || TileGroup::Audio.tiles().contains(&t)
         });
-        let captions: Vec<_> = p
-            .iter()
-            .filter_map(|p| match *p {
-                Placement::Caption { group, col, .. } => Some((group, col)),
-                _ => None,
-            })
-            .collect();
+        assert_equal_cells(&p);
+        // Focus (2) + Audio (3): one flow — Focus and two Audio tiles on
+        // the first row, Mic Denoise continues Audio on the next (no
+        // caption line of its own).
         assert_eq!(
-            captions,
-            [(TileGroup::Focus, 0), (TileGroup::Audio, 2)],
-            "2 + 2 share a row, each over its own columns"
+            captions_of(&p),
+            [(TileGroup::Focus, 0, 0, 2), (TileGroup::Audio, 0, 2, 2)]
         );
+        assert_eq!(tile_rows(&p), [(1, 4), (2, 1)]);
+    }
+
+    /// The laptop fixture's set (Connectivity 5, Display 3, Focus 2,
+    /// Audio 2, Services 2, Hardware 2): four full rows, Valent finishing
+    /// Connectivity's second row beside Display's caption.
+    #[test]
+    fn sections_flow_into_full_rows() {
+        let shown = [
+            TileId::Wifi,
+            TileId::Bluetooth,
+            TileId::AirplaneMode,
+            TileId::Vpn,
+            TileId::Valent,
+            TileId::DarkMode,
+            TileId::NightLight,
+            TileId::ColorPicker,
+            TileId::Dnd,
+            TileId::KeepAwake,
+            TileId::AudioOut,
+            TileId::Mic,
+            TileId::Ufw,
+            TileId::Podman,
+            TileId::Battery,
+            TileId::Disk,
+        ];
+        let p = pack(|t| shown.contains(&t));
+        assert_equal_cells(&p);
+        assert_eq!(
+            captions_of(&p),
+            [
+                (TileGroup::Connectivity, 0, 0, 4),
+                (TileGroup::Display, 2, 1, 3),
+                (TileGroup::Focus, 4, 0, 2),
+                (TileGroup::Audio, 4, 2, 2),
+                (TileGroup::Services, 6, 0, 2),
+                (TileGroup::Hardware, 6, 2, 2),
+            ]
+        );
+        assert_eq!(tile_rows(&p), [(1, 4), (3, 4), (5, 4), (7, 4)]);
+        assert_eq!(tiles_of(&p), shown, "tiles keep section order");
+    }
+
+    /// Any visible subset: every tile row but the last is full, tiles keep
+    /// the section order, each shown section is captioned exactly once,
+    /// on the caption line right above its first tile, spanning its run.
+    #[test]
+    fn every_subset_fills_rows_of_four_in_order() {
+        let all: Vec<TileId> = TileId::all().collect();
+        // A deterministic sample of masks over the 21 tiles (+ the edge
+        // cases all / none / each single tile).
+        let mut masks: Vec<u32> = vec![0, (1 << all.len()) - 1];
+        masks.extend((0..all.len()).map(|i| 1 << i));
+        let mut x: u32 = 0x9e37_79b9;
+        for _ in 0..4000 {
+            x ^= x << 13;
+            x ^= x >> 17;
+            x ^= x << 5;
+            masks.push(x & ((1 << all.len()) - 1));
+        }
+        let order: Vec<TileId> = TileGroup::ALL
+            .iter()
+            .flat_map(|g| g.tiles().iter().copied())
+            .collect();
+        for mask in masks {
+            let shown = |t: TileId| {
+                let i = all.iter().position(|a| *a == t).unwrap_or(0);
+                mask & (1 << i) != 0
+            };
+            let p = pack(shown);
+            assert_equal_cells(&p);
+            let expect: Vec<TileId> = order.iter().copied().filter(|t| shown(*t)).collect();
+            assert_eq!(tiles_of(&p), expect, "mask {mask:b}");
+            let rows = tile_rows(&p);
+            if let Some((_, init)) = rows.split_last() {
+                assert!(
+                    init.iter().all(|(_, n)| *n == COLUMNS),
+                    "mask {mask:b}: part-filled row {rows:?}"
+                );
+            }
+            let caps = captions_of(&p);
+            let groups: Vec<TileGroup> = caps.iter().map(|c| c.0).collect();
+            let expect_groups: Vec<TileGroup> = TileGroup::ALL
+                .iter()
+                .copied()
+                .filter(|g| g.tiles().iter().any(|t| shown(*t)))
+                .collect();
+            assert_eq!(groups, expect_groups, "mask {mask:b}");
+            for (group, row, col, span) in caps {
+                // The caption's run: the tiles right under it.
+                let under: Vec<TileId> = p
+                    .iter()
+                    .filter_map(|pl| match *pl {
+                        Placement::Tile {
+                            id, col: c, row: r, ..
+                        } if r == row + 1 && c >= col && c < col + span => Some(id),
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(under.len(), span as usize, "mask {mask:b}");
+                assert!(under.iter().all(|t| group.tiles().contains(t)));
+                let first = group.tiles().iter().copied().find(|t| shown(*t));
+                assert_eq!(under.first().copied(), first, "caption over the first tile");
+            }
+        }
     }
 
     /// The Controls tab is the union of the Control Center tiles and the
