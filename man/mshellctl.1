@@ -276,6 +276,23 @@ video-wallpaper engine
 The auto-connect engine:
 .IR toggle ", " connect ", " disconnect ", " "connect-number \fIN\fR" .
 .TP
+.B ufw \fISUBCOMMAND\fR
+The UFW firewall, through the shell's root helper (mshell\-privileged, one
+polkit prompt per change):
+.B status
+[\fB\-\-root\fR],
+.BR enable ,
+.BR disable ,
+.B allow\fR|\fBdeny\fR|\fBreject\fR|\fBlimit \fIPORT\fR
+[\fB\-\-proto\fR tcp|udp|both] [\fB\-\-from\fR \fIADDR\fR]
+[\fB\-\-comment\fR \fITEXT\fR],
+.B delete \fIN\fR
+[\fB\-\-yes\fR] (\fIN\fR as \fBufw status\fR numbers it).
+\fIPORT\fR is 22, 22/tcp, 1714:1764 or 80,443. The state and the rules are
+read without root;
+.B menu ufw
+opens the panel.
+.TP
 .B log \fISUBCOMMAND\fR
 Shell file logging
 .RI ( ~/.local/state/margo/logs/mshell-*.log ):

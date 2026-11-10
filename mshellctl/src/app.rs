@@ -24,6 +24,7 @@ use crate::subcommands::session::SessionCommands;
 use crate::subcommands::settings::SettingsCommands;
 use crate::subcommands::theme::ThemeCommands;
 use crate::subcommands::timer::TimerCommands;
+use crate::subcommands::ufw::UfwCommands;
 use crate::subcommands::vpn::VpnCommands;
 use crate::subcommands::wallpaper::WallpaperCommands;
 use mshell_cli_style;
@@ -97,6 +98,7 @@ COMPANION TOOLS
 
 SYSTEM & DIAGNOSTICS
   bluetooth       Auto-connect engine — toggle/connect/disconnect
+  ufw             UFW firewall — status / enable / disable / allow / delete
   log             Shell file-logging controls
   plugin          Manage installed WASM plugins
   doctor          Health check — bus, version, services
@@ -351,6 +353,13 @@ pub enum Commands {
     Power {
         #[command(subcommand)]
         command: PowerCommands,
+    },
+    /// UFW firewall — status / enable / disable / allow / deny / reject /
+    /// limit / delete, through the shell's root helper (one polkit prompt
+    /// per change). Use `menu ufw` for the panel.
+    Ufw {
+        #[command(subcommand)]
+        command: UfwCommands,
     },
     /// Saved tiling-layout snapshots — list / set / next / prev / preview
     /// (proxied to `mlayout`).

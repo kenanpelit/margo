@@ -93,6 +93,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Vpn { command } => mshellctl::subcommands::vpn::execute(command).await?,
         Commands::Power { command } => mshellctl::subcommands::power::execute(command).await?,
+        Commands::Ufw { command } => mshellctl::subcommands::ufw::execute(command).await?,
         Commands::Layout { command } => mshellctl::subcommands::layout::execute(command).await?,
         Commands::Osk { command } => mshellctl::subcommands::osk::execute(command).await?,
         Commands::Color(args) => mshellctl::subcommands::color::execute(args).await?,

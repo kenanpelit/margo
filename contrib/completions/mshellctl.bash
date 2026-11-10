@@ -124,14 +124,14 @@ _mshellctl() {
             mshellctl,theme)
                 cmd="mshellctl__subcmd__theme"
                 ;;
-            mshellctl,timer)
-                cmd="mshellctl__subcmd__timer"
-                ;;
             mshellctl,toast)
                 cmd="mshellctl__subcmd__toast"
                 ;;
             mshellctl,translate)
                 cmd="mshellctl__subcmd__translate"
+                ;;
+            mshellctl,ufw)
+                cmd="mshellctl__subcmd__ufw"
                 ;;
             mshellctl,vpn)
                 cmd="mshellctl__subcmd__vpn"
@@ -553,14 +553,14 @@ _mshellctl() {
             mshellctl__subcmd__help,theme)
                 cmd="mshellctl__subcmd__help__subcmd__theme"
                 ;;
-            mshellctl__subcmd__help,timer)
-                cmd="mshellctl__subcmd__help__subcmd__timer"
-                ;;
             mshellctl__subcmd__help,toast)
                 cmd="mshellctl__subcmd__help__subcmd__toast"
                 ;;
             mshellctl__subcmd__help,translate)
                 cmd="mshellctl__subcmd__help__subcmd__translate"
+                ;;
+            mshellctl__subcmd__help,ufw)
+                cmd="mshellctl__subcmd__help__subcmd__ufw"
                 ;;
             mshellctl__subcmd__help,vpn)
                 cmd="mshellctl__subcmd__help__subcmd__vpn"
@@ -1177,18 +1177,6 @@ _mshellctl() {
             mshellctl__subcmd__help__subcmd__theme__subcmd__bundle,list)
                 cmd="mshellctl__subcmd__help__subcmd__theme__subcmd__bundle__subcmd__list"
                 ;;
-            mshellctl__subcmd__help__subcmd__timer,add)
-                cmd="mshellctl__subcmd__help__subcmd__timer__subcmd__add"
-                ;;
-            mshellctl__subcmd__help__subcmd__timer,cancel)
-                cmd="mshellctl__subcmd__help__subcmd__timer__subcmd__cancel"
-                ;;
-            mshellctl__subcmd__help__subcmd__timer,clear)
-                cmd="mshellctl__subcmd__help__subcmd__timer__subcmd__clear"
-                ;;
-            mshellctl__subcmd__help__subcmd__timer,list)
-                cmd="mshellctl__subcmd__help__subcmd__timer__subcmd__list"
-                ;;
             mshellctl__subcmd__help__subcmd__translate,clipboard)
                 cmd="mshellctl__subcmd__help__subcmd__translate__subcmd__clipboard"
                 ;;
@@ -1197,6 +1185,30 @@ _mshellctl() {
                 ;;
             mshellctl__subcmd__help__subcmd__translate,text)
                 cmd="mshellctl__subcmd__help__subcmd__translate__subcmd__text"
+                ;;
+            mshellctl__subcmd__help__subcmd__ufw,allow)
+                cmd="mshellctl__subcmd__help__subcmd__ufw__subcmd__allow"
+                ;;
+            mshellctl__subcmd__help__subcmd__ufw,delete)
+                cmd="mshellctl__subcmd__help__subcmd__ufw__subcmd__delete"
+                ;;
+            mshellctl__subcmd__help__subcmd__ufw,deny)
+                cmd="mshellctl__subcmd__help__subcmd__ufw__subcmd__deny"
+                ;;
+            mshellctl__subcmd__help__subcmd__ufw,disable)
+                cmd="mshellctl__subcmd__help__subcmd__ufw__subcmd__disable"
+                ;;
+            mshellctl__subcmd__help__subcmd__ufw,enable)
+                cmd="mshellctl__subcmd__help__subcmd__ufw__subcmd__enable"
+                ;;
+            mshellctl__subcmd__help__subcmd__ufw,limit)
+                cmd="mshellctl__subcmd__help__subcmd__ufw__subcmd__limit"
+                ;;
+            mshellctl__subcmd__help__subcmd__ufw,reject)
+                cmd="mshellctl__subcmd__help__subcmd__ufw__subcmd__reject"
+                ;;
+            mshellctl__subcmd__help__subcmd__ufw,status)
+                cmd="mshellctl__subcmd__help__subcmd__ufw__subcmd__status"
                 ;;
             mshellctl__subcmd__help__subcmd__vpn,connect)
                 cmd="mshellctl__subcmd__help__subcmd__vpn__subcmd__connect"
@@ -2356,36 +2368,6 @@ _mshellctl() {
             mshellctl__subcmd__theme__subcmd__help__subcmd__bundle,list)
                 cmd="mshellctl__subcmd__theme__subcmd__help__subcmd__bundle__subcmd__list"
                 ;;
-            mshellctl__subcmd__timer,add)
-                cmd="mshellctl__subcmd__timer__subcmd__add"
-                ;;
-            mshellctl__subcmd__timer,cancel)
-                cmd="mshellctl__subcmd__timer__subcmd__cancel"
-                ;;
-            mshellctl__subcmd__timer,clear)
-                cmd="mshellctl__subcmd__timer__subcmd__clear"
-                ;;
-            mshellctl__subcmd__timer,help)
-                cmd="mshellctl__subcmd__timer__subcmd__help"
-                ;;
-            mshellctl__subcmd__timer,list)
-                cmd="mshellctl__subcmd__timer__subcmd__list"
-                ;;
-            mshellctl__subcmd__timer__subcmd__help,add)
-                cmd="mshellctl__subcmd__timer__subcmd__help__subcmd__add"
-                ;;
-            mshellctl__subcmd__timer__subcmd__help,cancel)
-                cmd="mshellctl__subcmd__timer__subcmd__help__subcmd__cancel"
-                ;;
-            mshellctl__subcmd__timer__subcmd__help,clear)
-                cmd="mshellctl__subcmd__timer__subcmd__help__subcmd__clear"
-                ;;
-            mshellctl__subcmd__timer__subcmd__help,help)
-                cmd="mshellctl__subcmd__timer__subcmd__help__subcmd__help"
-                ;;
-            mshellctl__subcmd__timer__subcmd__help,list)
-                cmd="mshellctl__subcmd__timer__subcmd__help__subcmd__list"
-                ;;
             mshellctl__subcmd__translate,clipboard)
                 cmd="mshellctl__subcmd__translate__subcmd__clipboard"
                 ;;
@@ -2409,6 +2391,60 @@ _mshellctl() {
                 ;;
             mshellctl__subcmd__translate__subcmd__help,text)
                 cmd="mshellctl__subcmd__translate__subcmd__help__subcmd__text"
+                ;;
+            mshellctl__subcmd__ufw,allow)
+                cmd="mshellctl__subcmd__ufw__subcmd__allow"
+                ;;
+            mshellctl__subcmd__ufw,delete)
+                cmd="mshellctl__subcmd__ufw__subcmd__delete"
+                ;;
+            mshellctl__subcmd__ufw,deny)
+                cmd="mshellctl__subcmd__ufw__subcmd__deny"
+                ;;
+            mshellctl__subcmd__ufw,disable)
+                cmd="mshellctl__subcmd__ufw__subcmd__disable"
+                ;;
+            mshellctl__subcmd__ufw,enable)
+                cmd="mshellctl__subcmd__ufw__subcmd__enable"
+                ;;
+            mshellctl__subcmd__ufw,help)
+                cmd="mshellctl__subcmd__ufw__subcmd__help"
+                ;;
+            mshellctl__subcmd__ufw,limit)
+                cmd="mshellctl__subcmd__ufw__subcmd__limit"
+                ;;
+            mshellctl__subcmd__ufw,reject)
+                cmd="mshellctl__subcmd__ufw__subcmd__reject"
+                ;;
+            mshellctl__subcmd__ufw,status)
+                cmd="mshellctl__subcmd__ufw__subcmd__status"
+                ;;
+            mshellctl__subcmd__ufw__subcmd__help,allow)
+                cmd="mshellctl__subcmd__ufw__subcmd__help__subcmd__allow"
+                ;;
+            mshellctl__subcmd__ufw__subcmd__help,delete)
+                cmd="mshellctl__subcmd__ufw__subcmd__help__subcmd__delete"
+                ;;
+            mshellctl__subcmd__ufw__subcmd__help,deny)
+                cmd="mshellctl__subcmd__ufw__subcmd__help__subcmd__deny"
+                ;;
+            mshellctl__subcmd__ufw__subcmd__help,disable)
+                cmd="mshellctl__subcmd__ufw__subcmd__help__subcmd__disable"
+                ;;
+            mshellctl__subcmd__ufw__subcmd__help,enable)
+                cmd="mshellctl__subcmd__ufw__subcmd__help__subcmd__enable"
+                ;;
+            mshellctl__subcmd__ufw__subcmd__help,help)
+                cmd="mshellctl__subcmd__ufw__subcmd__help__subcmd__help"
+                ;;
+            mshellctl__subcmd__ufw__subcmd__help,limit)
+                cmd="mshellctl__subcmd__ufw__subcmd__help__subcmd__limit"
+                ;;
+            mshellctl__subcmd__ufw__subcmd__help,reject)
+                cmd="mshellctl__subcmd__ufw__subcmd__help__subcmd__reject"
+                ;;
+            mshellctl__subcmd__ufw__subcmd__help,status)
+                cmd="mshellctl__subcmd__ufw__subcmd__help__subcmd__status"
                 ;;
             mshellctl__subcmd__vpn,connect)
                 cmd="mshellctl__subcmd__vpn__subcmd__connect"
@@ -2495,7 +2531,7 @@ _mshellctl() {
 
     case "${cmd}" in
         mshellctl)
-            opts="-h -V --help --version quit inspect set-wallpaper menu bar hidden-bar custom-refresh audio bluetooth mtune media brightness log dock lock session notification settings wizard wallpaper theme plugin screenshot screenrecord clipboard translate qr toast gamemode pomodoro timer eyecare calendar vpn power layout osk color play doctor completions help"
+            opts="-h -V --help --version quit inspect set-wallpaper menu bar hidden-bar custom-refresh audio bluetooth mtune media brightness log dock lock session notification settings wizard wallpaper theme plugin screenshot screenrecord clipboard translate qr toast gamemode pomodoro eyecare calendar vpn power ufw layout osk color play doctor completions help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -4039,7 +4075,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help)
-            opts="quit inspect set-wallpaper menu bar hidden-bar custom-refresh audio bluetooth mtune media brightness log dock lock session notification settings wizard wallpaper theme plugin screenshot screenrecord clipboard translate qr toast gamemode pomodoro timer eyecare calendar vpn power layout osk color play doctor completions help"
+            opts="quit inspect set-wallpaper menu bar hidden-bar custom-refresh audio bluetooth mtune media brightness log dock lock session notification settings wizard wallpaper theme plugin screenshot screenrecord clipboard translate qr toast gamemode pomodoro eyecare calendar vpn power ufw layout osk color play doctor completions help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -7384,76 +7420,6 @@ _mshellctl() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        mshellctl__subcmd__help__subcmd__timer)
-            opts="add list cancel clear"
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
-        mshellctl__subcmd__help__subcmd__timer__subcmd__add)
-            opts=""
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
-        mshellctl__subcmd__help__subcmd__timer__subcmd__cancel)
-            opts=""
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
-        mshellctl__subcmd__help__subcmd__timer__subcmd__clear)
-            opts=""
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
-        mshellctl__subcmd__help__subcmd__timer__subcmd__list)
-            opts=""
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
         mshellctl__subcmd__help__subcmd__toast)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
@@ -7511,6 +7477,132 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help__subcmd__translate__subcmd__text)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__ufw)
+            opts="status enable disable allow deny reject limit delete"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__ufw__subcmd__allow)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__ufw__subcmd__delete)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__ufw__subcmd__deny)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__ufw__subcmd__disable)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__ufw__subcmd__enable)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__ufw__subcmd__limit)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__ufw__subcmd__reject)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__ufw__subcmd__status)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -13410,160 +13502,6 @@ _mshellctl() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        mshellctl__subcmd__timer)
-            opts="-h --help add list cancel clear help"
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
-        mshellctl__subcmd__timer__subcmd__add)
-            opts="-h --help <TEXT>..."
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
-        mshellctl__subcmd__timer__subcmd__cancel)
-            opts="-h --help <ID>"
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
-        mshellctl__subcmd__timer__subcmd__clear)
-            opts="-h --help"
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
-        mshellctl__subcmd__timer__subcmd__help)
-            opts="add list cancel clear help"
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
-        mshellctl__subcmd__timer__subcmd__help__subcmd__add)
-            opts=""
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
-        mshellctl__subcmd__timer__subcmd__help__subcmd__cancel)
-            opts=""
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
-        mshellctl__subcmd__timer__subcmd__help__subcmd__clear)
-            opts=""
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
-        mshellctl__subcmd__timer__subcmd__help__subcmd__help)
-            opts=""
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
-        mshellctl__subcmd__timer__subcmd__help__subcmd__list)
-            opts=""
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
-        mshellctl__subcmd__timer__subcmd__list)
-            opts="-h --help"
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
         mshellctl__subcmd__toast)
             opts="-h --icon --severity --help <TITLE> [BODY]"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
@@ -13700,6 +13638,320 @@ _mshellctl() {
             ;;
         mshellctl__subcmd__translate__subcmd__text)
             opts="-h --help <TEXT>"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__ufw)
+            opts="-h --help status enable disable allow deny reject limit delete help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__ufw__subcmd__allow)
+            opts="-h --proto --from --comment --help <PORT>"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --proto)
+                    COMPREPLY=($(compgen -W "tcp udp both" -- "${cur}"))
+                    return 0
+                    ;;
+                --from)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --comment)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__ufw__subcmd__delete)
+            opts="-h --yes --help <NUMBER>"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__ufw__subcmd__deny)
+            opts="-h --proto --from --comment --help <PORT>"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --proto)
+                    COMPREPLY=($(compgen -W "tcp udp both" -- "${cur}"))
+                    return 0
+                    ;;
+                --from)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --comment)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__ufw__subcmd__disable)
+            opts="-h --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__ufw__subcmd__enable)
+            opts="-h --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__ufw__subcmd__help)
+            opts="status enable disable allow deny reject limit delete help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__ufw__subcmd__help__subcmd__allow)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__ufw__subcmd__help__subcmd__delete)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__ufw__subcmd__help__subcmd__deny)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__ufw__subcmd__help__subcmd__disable)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__ufw__subcmd__help__subcmd__enable)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__ufw__subcmd__help__subcmd__help)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__ufw__subcmd__help__subcmd__limit)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__ufw__subcmd__help__subcmd__reject)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__ufw__subcmd__help__subcmd__status)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__ufw__subcmd__limit)
+            opts="-h --proto --from --comment --help <PORT>"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --proto)
+                    COMPREPLY=($(compgen -W "tcp udp both" -- "${cur}"))
+                    return 0
+                    ;;
+                --from)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --comment)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__ufw__subcmd__reject)
+            opts="-h --proto --from --comment --help <PORT>"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --proto)
+                    COMPREPLY=($(compgen -W "tcp udp both" -- "${cur}"))
+                    return 0
+                    ;;
+                --from)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --comment)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__ufw__subcmd__status)
+            opts="-h --root --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

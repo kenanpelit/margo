@@ -3298,6 +3298,151 @@ esac
     ;;
 esac
 ;;
+(ufw)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+":: :_mshellctl__subcmd__ufw_commands" \
+"*::: :->ufw" \
+&& ret=0
+
+    case $state in
+    (ufw)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mshellctl-ufw-command-$line[1]:"
+        case $line[1] in
+            (status)
+_arguments "${_arguments_options[@]}" : \
+'--root[]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(enable)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(disable)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(allow)
+_arguments "${_arguments_options[@]}" : \
+'--proto=[Protocol (a \`/tcp\` or \`/udp\` suffix on PORT picks it too)]:PROTO:((tcp\:""
+udp\:""
+both\:"TCP and UDP (one rule for a single port, two for a range or list)"))' \
+'--from=[Only from this address or network (192.168.1.0/24); default anywhere]:FROM:_default' \
+'--comment=[A label shown next to the rule]:COMMENT:_default' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+':port -- Port, range or list\: 22, 22/tcp, 1714\:1764, 80,443:_default' \
+&& ret=0
+;;
+(deny)
+_arguments "${_arguments_options[@]}" : \
+'--proto=[Protocol (a \`/tcp\` or \`/udp\` suffix on PORT picks it too)]:PROTO:((tcp\:""
+udp\:""
+both\:"TCP and UDP (one rule for a single port, two for a range or list)"))' \
+'--from=[Only from this address or network (192.168.1.0/24); default anywhere]:FROM:_default' \
+'--comment=[A label shown next to the rule]:COMMENT:_default' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+':port -- Port, range or list\: 22, 22/tcp, 1714\:1764, 80,443:_default' \
+&& ret=0
+;;
+(reject)
+_arguments "${_arguments_options[@]}" : \
+'--proto=[Protocol (a \`/tcp\` or \`/udp\` suffix on PORT picks it too)]:PROTO:((tcp\:""
+udp\:""
+both\:"TCP and UDP (one rule for a single port, two for a range or list)"))' \
+'--from=[Only from this address or network (192.168.1.0/24); default anywhere]:FROM:_default' \
+'--comment=[A label shown next to the rule]:COMMENT:_default' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+':port -- Port, range or list\: 22, 22/tcp, 1714\:1764, 80,443:_default' \
+&& ret=0
+;;
+(limit)
+_arguments "${_arguments_options[@]}" : \
+'--proto=[Protocol (a \`/tcp\` or \`/udp\` suffix on PORT picks it too)]:PROTO:((tcp\:""
+udp\:""
+both\:"TCP and UDP (one rule for a single port, two for a range or list)"))' \
+'--from=[Only from this address or network (192.168.1.0/24); default anywhere]:FROM:_default' \
+'--comment=[A label shown next to the rule]:COMMENT:_default' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+':port -- Port, range or list\: 22, 22/tcp, 1714\:1764, 80,443:_default' \
+&& ret=0
+;;
+(delete)
+_arguments "${_arguments_options[@]}" : \
+'--yes[]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':number:_default' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_mshellctl__subcmd__ufw__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mshellctl-ufw-help-command-$line[1]:"
+        case $line[1] in
+            (status)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(enable)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(disable)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(allow)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(deny)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(reject)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(limit)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(delete)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
 (layout)
 _arguments "${_arguments_options[@]}" : \
 '-h[Print help]' \
@@ -5018,6 +5163,54 @@ _arguments "${_arguments_options[@]}" : \
     ;;
 esac
 ;;
+(ufw)
+_arguments "${_arguments_options[@]}" : \
+":: :_mshellctl__subcmd__help__subcmd__ufw_commands" \
+"*::: :->ufw" \
+&& ret=0
+
+    case $state in
+    (ufw)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mshellctl-help-ufw-command-$line[1]:"
+        case $line[1] in
+            (status)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(enable)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(disable)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(allow)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(deny)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(reject)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(limit)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(delete)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
 (layout)
 _arguments "${_arguments_options[@]}" : \
 ":: :_mshellctl__subcmd__help__subcmd__layout_commands" \
@@ -5241,6 +5434,7 @@ _mshellctl_commands() {
 'calendar:Calendar — today'\''s / upcoming events and connected accounts (proxied to the \`mcal\` calendar tool). \`calendar account setup google\` connects a Google account' \
 'vpn:Mullvad VPN control — connect / disconnect / pick a relay (proxied to \`mvpn\`). Use \`vpn menu\` for the shell'\''s DNS/VPN panel' \
 'power:Power-profile control — status / cycle / set / pause / resume (proxied to the \`mpower\` daemon). Use \`menu power\` for the panel' \
+'ufw:UFW firewall — status / enable / disable / allow / deny / reject / limit / delete, through the shell'\''s root helper (one polkit prompt per change). Use \`menu ufw\` for the panel' \
 'layout:Saved tiling-layout snapshots — list / set / next / prev / preview (proxied to \`mlayout\`)' \
 'osk:On-screen keyboard — show / hide / toggle (proxied to \`mkeys\`)' \
 'color:Pick a screen colour (proxied to \`mpicker\`) — prints the colour; use \`--copy\` / \`--notify\` / \`--format\`' \
@@ -5949,6 +6143,7 @@ _mshellctl__subcmd__help_commands() {
 'calendar:Calendar — today'\''s / upcoming events and connected accounts (proxied to the \`mcal\` calendar tool). \`calendar account setup google\` connects a Google account' \
 'vpn:Mullvad VPN control — connect / disconnect / pick a relay (proxied to \`mvpn\`). Use \`vpn menu\` for the shell'\''s DNS/VPN panel' \
 'power:Power-profile control — status / cycle / set / pause / resume (proxied to the \`mpower\` daemon). Use \`menu power\` for the panel' \
+'ufw:UFW firewall — status / enable / disable / allow / deny / reject / limit / delete, through the shell'\''s root helper (one polkit prompt per change). Use \`menu ufw\` for the panel' \
 'layout:Saved tiling-layout snapshots — list / set / next / prev / preview (proxied to \`mlayout\`)' \
 'osk:On-screen keyboard — show / hide / toggle (proxied to \`mkeys\`)' \
 'color:Pick a screen colour (proxied to \`mpicker\`) — prints the colour; use \`--copy\` / \`--notify\` / \`--format\`' \
@@ -7436,6 +7631,60 @@ _mshellctl__subcmd__help__subcmd__translate__subcmd__selection_commands() {
 _mshellctl__subcmd__help__subcmd__translate__subcmd__text_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help translate text commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__ufw_commands] )) ||
+_mshellctl__subcmd__help__subcmd__ufw_commands() {
+    local commands; commands=(
+'status:Print the firewall'\''s state and its numbered rules (read without root; \`--root\` reads rule files only root can read, one prompt)' \
+'enable:Turn the firewall on (also starts ufw.service when it isn'\''t running)' \
+'disable:Turn the firewall off (\`ufw disable\`\: until turned on again, also after a reboot)' \
+'allow:Allow incoming traffic to a port' \
+'deny:Drop incoming traffic to a port' \
+'reject:Refuse incoming traffic to a port (the sender is told)' \
+'limit:Allow, but refuse an address that opens 6+ connections in 30 s' \
+'delete:Remove rule NUMBER as \`mshellctl ufw status\` numbers it (asks first unless --yes)' \
+    )
+    _describe -t commands 'mshellctl help ufw commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__ufw__subcmd__allow_commands] )) ||
+_mshellctl__subcmd__help__subcmd__ufw__subcmd__allow_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help ufw allow commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__ufw__subcmd__delete_commands] )) ||
+_mshellctl__subcmd__help__subcmd__ufw__subcmd__delete_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help ufw delete commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__ufw__subcmd__deny_commands] )) ||
+_mshellctl__subcmd__help__subcmd__ufw__subcmd__deny_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help ufw deny commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__ufw__subcmd__disable_commands] )) ||
+_mshellctl__subcmd__help__subcmd__ufw__subcmd__disable_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help ufw disable commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__ufw__subcmd__enable_commands] )) ||
+_mshellctl__subcmd__help__subcmd__ufw__subcmd__enable_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help ufw enable commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__ufw__subcmd__limit_commands] )) ||
+_mshellctl__subcmd__help__subcmd__ufw__subcmd__limit_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help ufw limit commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__ufw__subcmd__reject_commands] )) ||
+_mshellctl__subcmd__help__subcmd__ufw__subcmd__reject_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help ufw reject commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__ufw__subcmd__status_commands] )) ||
+_mshellctl__subcmd__help__subcmd__ufw__subcmd__status_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help ufw status commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__help__subcmd__vpn_commands] )) ||
 _mshellctl__subcmd__help__subcmd__vpn_commands() {
@@ -10050,6 +10299,121 @@ _mshellctl__subcmd__translate__subcmd__selection_commands() {
 _mshellctl__subcmd__translate__subcmd__text_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl translate text commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__ufw_commands] )) ||
+_mshellctl__subcmd__ufw_commands() {
+    local commands; commands=(
+'status:Print the firewall'\''s state and its numbered rules (read without root; \`--root\` reads rule files only root can read, one prompt)' \
+'enable:Turn the firewall on (also starts ufw.service when it isn'\''t running)' \
+'disable:Turn the firewall off (\`ufw disable\`\: until turned on again, also after a reboot)' \
+'allow:Allow incoming traffic to a port' \
+'deny:Drop incoming traffic to a port' \
+'reject:Refuse incoming traffic to a port (the sender is told)' \
+'limit:Allow, but refuse an address that opens 6+ connections in 30 s' \
+'delete:Remove rule NUMBER as \`mshellctl ufw status\` numbers it (asks first unless --yes)' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mshellctl ufw commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__ufw__subcmd__allow_commands] )) ||
+_mshellctl__subcmd__ufw__subcmd__allow_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl ufw allow commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__ufw__subcmd__delete_commands] )) ||
+_mshellctl__subcmd__ufw__subcmd__delete_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl ufw delete commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__ufw__subcmd__deny_commands] )) ||
+_mshellctl__subcmd__ufw__subcmd__deny_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl ufw deny commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__ufw__subcmd__disable_commands] )) ||
+_mshellctl__subcmd__ufw__subcmd__disable_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl ufw disable commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__ufw__subcmd__enable_commands] )) ||
+_mshellctl__subcmd__ufw__subcmd__enable_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl ufw enable commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__ufw__subcmd__help_commands] )) ||
+_mshellctl__subcmd__ufw__subcmd__help_commands() {
+    local commands; commands=(
+'status:Print the firewall'\''s state and its numbered rules (read without root; \`--root\` reads rule files only root can read, one prompt)' \
+'enable:Turn the firewall on (also starts ufw.service when it isn'\''t running)' \
+'disable:Turn the firewall off (\`ufw disable\`\: until turned on again, also after a reboot)' \
+'allow:Allow incoming traffic to a port' \
+'deny:Drop incoming traffic to a port' \
+'reject:Refuse incoming traffic to a port (the sender is told)' \
+'limit:Allow, but refuse an address that opens 6+ connections in 30 s' \
+'delete:Remove rule NUMBER as \`mshellctl ufw status\` numbers it (asks first unless --yes)' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mshellctl ufw help commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__ufw__subcmd__help__subcmd__allow_commands] )) ||
+_mshellctl__subcmd__ufw__subcmd__help__subcmd__allow_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl ufw help allow commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__ufw__subcmd__help__subcmd__delete_commands] )) ||
+_mshellctl__subcmd__ufw__subcmd__help__subcmd__delete_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl ufw help delete commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__ufw__subcmd__help__subcmd__deny_commands] )) ||
+_mshellctl__subcmd__ufw__subcmd__help__subcmd__deny_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl ufw help deny commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__ufw__subcmd__help__subcmd__disable_commands] )) ||
+_mshellctl__subcmd__ufw__subcmd__help__subcmd__disable_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl ufw help disable commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__ufw__subcmd__help__subcmd__enable_commands] )) ||
+_mshellctl__subcmd__ufw__subcmd__help__subcmd__enable_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl ufw help enable commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__ufw__subcmd__help__subcmd__help_commands] )) ||
+_mshellctl__subcmd__ufw__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl ufw help help commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__ufw__subcmd__help__subcmd__limit_commands] )) ||
+_mshellctl__subcmd__ufw__subcmd__help__subcmd__limit_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl ufw help limit commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__ufw__subcmd__help__subcmd__reject_commands] )) ||
+_mshellctl__subcmd__ufw__subcmd__help__subcmd__reject_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl ufw help reject commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__ufw__subcmd__help__subcmd__status_commands] )) ||
+_mshellctl__subcmd__ufw__subcmd__help__subcmd__status_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl ufw help status commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__ufw__subcmd__limit_commands] )) ||
+_mshellctl__subcmd__ufw__subcmd__limit_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl ufw limit commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__ufw__subcmd__reject_commands] )) ||
+_mshellctl__subcmd__ufw__subcmd__reject_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl ufw reject commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__ufw__subcmd__status_commands] )) ||
+_mshellctl__subcmd__ufw__subcmd__status_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl ufw status commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__vpn_commands] )) ||
 _mshellctl__subcmd__vpn_commands() {

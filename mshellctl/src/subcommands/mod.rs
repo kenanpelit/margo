@@ -27,5 +27,6 @@ pub mod settings;
 pub mod theme;
 pub mod timer;
 pub mod translate;
+pub mod ufw;
 pub mod vpn;
 pub mod wallpaper;
