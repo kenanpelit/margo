@@ -743,6 +743,16 @@ impl AudioPlayer {
         self.backend.set_volume(volume);
     }
 
+    /// Apply a remembered level at startup: the pipeline gets it before
+    /// the first track loads, and `PlayerState` reflects it immediately so
+    /// the window's sliders and the MPRIS/shell snapshot start correct
+    /// (GstPlay's own `VolumeChanged` echo arrives asynchronously).
+    pub fn restore_volume(&self, volume: f64) {
+        let volume = crate::volume_memory::sanitize(volume);
+        self.backend.set_volume(volume);
+        self.state.set_volume(volume);
+    }
+
     pub fn toggle_repeat_mode(&self) {
         let cur_mode = self.queue.repeat_mode();
         let new_mode = match cur_mode {
@@ -838,6 +848,27 @@ mod tests {
             key: key.to_string(),
             ..StreamInfo::default()
         })
+    }
+
+    #[test]
+    fn restored_volume_reaches_the_pipeline_and_state_clamped() {
+        let _guard = crate::audio::gst_backend::tests::GST_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let player = test_player();
+        player.restore_volume(0.5);
+        assert_eq!(player.state.volume(), 0.5);
+        // The pipeline takes linear volume: cubic 0.5 -> 0.125.
+        let linear = player.backend.test_player().volume();
+        assert!((linear - 0.125).abs() < 1e-6, "pipeline volume {linear}");
+
+        player.restore_volume(7.0);
+        assert_eq!(player.state.volume(), 1.0);
+        player.restore_volume(f64::NAN);
+        assert_eq!(player.state.volume(), 1.0);
+        player.restore_volume(-2.0);
+        assert_eq!(player.state.volume(), 0.0);
+        assert_eq!(player.backend.test_player().volume(), 0.0);
     }
 
     #[test]

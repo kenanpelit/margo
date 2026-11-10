@@ -303,7 +303,9 @@ media` *controls* other players, `mtune` *is* one.
 - **Playback.** Speed control with **pitch held constant** (`scaletempo`),
   playlists (m3u / m3u8 / pls, open + save — each saved playlist remembers
   and resumes at its own last-played track), resume the last track +
-  position on launch, ReplayGain, compact **mini / strip** window skins
+  position on launch, the volume you left it at (slider, tray scroll, MPRIS
+  or the Tune menu — kept in the `volume` GSetting, written once the level
+  settles), ReplayGain, compact **mini / strip** window skins
   (cycled with `Ctrl+M`), and desktop notifications on track / setting
   change. Repeat modes: off / all / one / **each** (repeat a track N times,
   then advance — `[playback] repeat_count`, default 3).

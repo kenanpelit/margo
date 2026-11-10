@@ -27,6 +27,7 @@ mod sort;
 mod tray;
 mod utils;
 mod volume_control;
+mod volume_memory;
 mod waveform_view;
 mod window;
 

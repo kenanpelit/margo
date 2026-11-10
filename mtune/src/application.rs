@@ -75,6 +75,8 @@ mod imp {
         /// Keeps the GApplication alive while it runs windowless after a
         /// hidden start (it would otherwise quit with zero windows).
         pub startup_hold: RefCell<Option<gio::ApplicationHoldGuard>>,
+        /// Debounced writer for the remembered volume (`volume` key).
+        pub volume_memory: crate::volume_memory::VolumeMemory,
     }
 
     impl std::fmt::Debug for Application {
@@ -93,12 +95,14 @@ mod imp {
             let (sender, r) = async_channel::unbounded();
             let receiver = RefCell::new(Some(r));
             let (cmd_tx, cmd_rx) = async_channel::unbounded();
+            let settings = utils::settings_manager();
 
             Self {
                 player: AudioPlayer::new(sender),
                 receiver,
                 background_hold: RefCell::default(),
-                settings: utils::settings_manager(),
+                volume_memory: crate::volume_memory::VolumeMemory::new(settings.clone()),
+                settings,
                 config: RefCell::new(MtuneConfig::load()),
                 watcher: RefCell::default(),
                 library_loaded: std::cell::Cell::new(false),
@@ -195,6 +199,7 @@ mod imp {
 
         fn shutdown(&self) {
             self.obj().persist_resume();
+            self.volume_memory.flush();
             crate::discover::flush();
             self.parent_shutdown();
         }
@@ -817,10 +822,25 @@ impl Application {
 
         let _dummy = self.imp().settings.boolean("background-play");
 
+        // Volume is remembered: apply the stored level before anything can
+        // start playing, then write every settled change back (slider,
+        // scroll, mute, tray, MPRIS and the shell's Tune menu all end in
+        // `PlayerState::volume`).
+        let imp = self.imp();
+        imp.player
+            .restore_volume(crate::volume_memory::load(&imp.settings));
+        imp.player.state().connect_notify_local(
+            Some("volume"),
+            clone!(
+                #[weak(rename_to = this)]
+                self,
+                move |state, _| this.imp().volume_memory.note(state.volume())
+            ),
+        );
+
         // Playback rate is sticky: restore the last value, and persist it
         // whenever it changes (the pill / MPRIS / window all route through
         // `PlayerState`).
-        let imp = self.imp();
         let rate = imp.settings.double("playback-rate");
         if (rate - 1.0).abs() > f64::EPSILON {
             imp.player.set_playback_rate(rate);

@@ -41,6 +41,12 @@
       <range min="0.5" max="2.0"/>
       <default>1.0</default>
     </key>
+    <key name="volume" type="d">
+      <range min="0.0" max="1.0"/>
+      <default>1.0</default>
+      <summary>Player volume</summary>
+      <description>The playback volume (0 = silent, 1 = full, on the same cubic scale as the volume slider). Remembered across restarts; written shortly after the level stops changing.</description>
+    </key>
     <key name="view-mode" enum="org.margo.Tune.ViewMode">
       <default>'full'</default>
     </key>
