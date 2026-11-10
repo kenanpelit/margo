@@ -311,6 +311,15 @@ impl DashboardModel {
     }
 }
 
+/// A widget that takes typed text (an entry's inner text, a text view):
+/// Tab and digits belong to it.
+fn is_text_entry(w: &gtk::Widget) -> bool {
+    use gtk::prelude::Cast;
+    w.downcast_ref::<gtk::Text>().is_some()
+        || w.downcast_ref::<gtk::TextView>().is_some()
+        || w.downcast_ref::<gtk::Entry>().is_some()
+}
+
 /// The Today card's notification rows: the `unread` newest (the service
 /// keeps the history newest first) and, as filler, the read ones before
 /// them (a dozen at most — the card shows whole rows only).
@@ -617,19 +626,37 @@ impl Component for DashboardModel {
         stack.set_visible_child_name(tabs[current].token());
         root.append(&stack);
 
-        // 1–9 / Ctrl+Tab / Ctrl+Shift+Tab. Bubble phase: a focused entry
-        // (the timer field) keeps its digits.
+        // Tab / Shift+Tab, 1–9, Ctrl+Tab / Ctrl+Shift+Tab. Capture phase,
+        // so a focused button or tile can't swallow Tab; a focused text
+        // entry keeps Tab and its digits (see `tab_state::key_action`).
         let keys = gtk::EventControllerKey::new();
+        gtk::prelude::EventControllerExt::set_propagation_phase(
+            &keys,
+            gtk::PropagationPhase::Capture,
+        );
         let s = sender.clone();
-        keys.connect_key_pressed(
-            move |_, key, _, state| match tab_state::tab_key(key, state) {
-                Some(k) => {
+        let dash = root.clone();
+        keys.connect_key_pressed(move |_, key, _, state| {
+            let Some(window) = dash.root() else {
+                return glib::Propagation::Proceed;
+            };
+            let focus = gtk::prelude::RootExt::focus(&window);
+            let in_text = focus.as_ref().is_some_and(is_text_entry);
+            match tab_state::key_action(key, state, in_text) {
+                tab_state::KeyAction::Tab(k) => {
                     s.input(DashboardInput::Key(k));
                     glib::Propagation::Stop
                 }
-                None => glib::Propagation::Proceed,
-            },
-        );
+                tab_state::KeyAction::LeaveEntry => {
+                    // Focus the dashboard's first control (the header):
+                    // keys reach this controller again, Tab cycles tabs.
+                    gtk::prelude::RootExt::set_focus(&window, None::<&gtk::Widget>);
+                    dash.child_focus(gtk::DirectionType::TabForward);
+                    glib::Propagation::Stop
+                }
+                tab_state::KeyAction::Pass => glib::Propagation::Proceed,
+            }
+        });
         root.add_controller(keys);
 
         let today_gate = RevealGate::new(false);

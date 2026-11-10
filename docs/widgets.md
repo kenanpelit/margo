@@ -244,8 +244,13 @@ The panel is 800 px wide (`minimum_width`); its height follows the tab on
 screen and eases on a switch. A tab taller than the screen (or than the
 menu's `maximum_height`) scrolls inside the tab area.
 
-Keys: <kbd>1</kbd>–<kbd>4</kbd> pick a tab, <kbd>Ctrl</kbd>+<kbd>Tab</kbd> /
-<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Tab</kbd> cycle. The last tab is
+Keys: <kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd> cycle the tabs
+(wrapping), as do <kbd>Ctrl</kbd>+<kbd>Tab</kbd> /
+<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Tab</kbd>; <kbd>1</kbd>–<kbd>4</kbd> pick
+a tab. The arrow keys move keyboard focus inside a tab. While a text field
+has focus (the timer entry) <kbd>Tab</kbd> and the digits keep their normal
+meaning; <kbd>Esc</kbd> leaves the field and Tab cycles tabs again
+(<kbd>Ctrl</kbd>+<kbd>Tab</kbd> works from inside the field too). The last tab is
 remembered (`$XDG_STATE_HOME/margo/mdash-tab`) and the next open starts there.
 `mshellctl menu mdash today|controls|system|tools` opens on that tab (the same
 tab again closes it). Tab order, visibility and the cards of each tab are set

@@ -114,6 +114,54 @@ pub(crate) fn tab_key(key: gdk::Key, state: gdk::ModifierType) -> Option<TabKey>
         .then(|| TabKey::Index(digit as usize - 1))
 }
 
+/// What a key press on the dashboard does (decided in the capture phase,
+/// before any child widget sees the key).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum KeyAction {
+    /// Switch tabs.
+    Tab(TabKey),
+    /// Escape in a text entry: leave the entry (focus back on the
+    /// dashboard) so Tab cycles the tabs again.
+    LeaveEntry,
+    /// Not ours: the focused widget handles it (typing, arrow-key focus
+    /// moves, Escape closing the menu, …).
+    Pass,
+}
+
+/// The dashboard's key decision. Plain Tab / Shift+Tab cycle the tabs
+/// (wrapping), as do Ctrl+Tab / Ctrl+Shift+Tab / Ctrl+Page Up/Down and
+/// the digits 1–9 — except while a text entry has focus (the timer
+/// field, a search box): there Tab keeps its normal meaning (moves focus
+/// out), digits are typed, and Escape leaves the entry. Ctrl+Tab works
+/// everywhere. Focus moves inside a tab with the arrow keys.
+pub(crate) fn key_action(key: gdk::Key, state: gdk::ModifierType, in_text: bool) -> KeyAction {
+    let mods = gdk::ModifierType::CONTROL_MASK
+        | gdk::ModifierType::ALT_MASK
+        | gdk::ModifierType::SUPER_MASK;
+    let plain = !state.intersects(mods);
+    let shift = state.contains(gdk::ModifierType::SHIFT_MASK);
+    let is_tab = matches!(
+        key,
+        gdk::Key::Tab | gdk::Key::KP_Tab | gdk::Key::ISO_Left_Tab
+    );
+    if in_text {
+        if plain && key == gdk::Key::Escape {
+            return KeyAction::LeaveEntry;
+        }
+        // Only the Ctrl chords switch tabs from inside an entry.
+        return match tab_key(key, state) {
+            Some(k) if state.contains(gdk::ModifierType::CONTROL_MASK) => KeyAction::Tab(k),
+            _ => KeyAction::Pass,
+        };
+    }
+    if plain && is_tab {
+        // Shift+Tab arrives as ISO_Left_Tab (with or without SHIFT set).
+        let back = shift || key == gdk::Key::ISO_Left_Tab;
+        return KeyAction::Tab(if back { TabKey::Prev } else { TabKey::Next });
+    }
+    tab_key(key, state).map_or(KeyAction::Pass, KeyAction::Tab)
+}
+
 /// The tab index a key lands on among `len` tabs (`None`: not a tab key,
 /// or a digit past the last tab).
 pub(crate) fn apply_key(key: TabKey, len: usize, current: usize) -> Option<usize> {
@@ -210,6 +258,66 @@ mod tests {
         assert_eq!(apply_key(TabKey::Index(3), 3, 0), None, "no fourth tab");
         assert_eq!(apply_key(TabKey::Prev, 4, 0), Some(3));
         assert_eq!(apply_key(TabKey::Next, 1, 0), None);
+    }
+
+    #[test]
+    fn plain_tab_cycles_unless_a_text_entry_has_focus() {
+        let none = gdk::ModifierType::empty();
+        let shift = gdk::ModifierType::SHIFT_MASK;
+        let ctrl = gdk::ModifierType::CONTROL_MASK;
+        let alt = gdk::ModifierType::ALT_MASK;
+        // Outside an entry: Tab / Shift+Tab switch tabs.
+        assert_eq!(
+            key_action(gdk::Key::Tab, none, false),
+            KeyAction::Tab(TabKey::Next)
+        );
+        assert_eq!(
+            key_action(gdk::Key::ISO_Left_Tab, shift, false),
+            KeyAction::Tab(TabKey::Prev)
+        );
+        assert_eq!(
+            key_action(gdk::Key::Tab, shift, false),
+            KeyAction::Tab(TabKey::Prev)
+        );
+        assert_eq!(
+            key_action(gdk::Key::_2, none, false),
+            KeyAction::Tab(TabKey::Index(1))
+        );
+        assert_eq!(
+            key_action(gdk::Key::Tab, ctrl, false),
+            KeyAction::Tab(TabKey::Next)
+        );
+        assert_eq!(key_action(gdk::Key::Tab, alt, false), KeyAction::Pass);
+        // Arrows move focus; Escape closes the menu as before.
+        assert_eq!(key_action(gdk::Key::Down, none, false), KeyAction::Pass);
+        assert_eq!(key_action(gdk::Key::Escape, none, false), KeyAction::Pass);
+
+        // In a text entry: Tab moves focus out, digits are typed, Escape
+        // leaves the entry; Ctrl+Tab still switches tabs.
+        assert_eq!(key_action(gdk::Key::Tab, none, true), KeyAction::Pass);
+        assert_eq!(
+            key_action(gdk::Key::ISO_Left_Tab, shift, true),
+            KeyAction::Pass
+        );
+        assert_eq!(key_action(gdk::Key::_1, none, true), KeyAction::Pass);
+        assert_eq!(
+            key_action(gdk::Key::Escape, none, true),
+            KeyAction::LeaveEntry
+        );
+        assert_eq!(
+            key_action(gdk::Key::Tab, ctrl, true),
+            KeyAction::Tab(TabKey::Next)
+        );
+        assert_eq!(
+            key_action(gdk::Key::Page_Up, ctrl, true),
+            KeyAction::Tab(TabKey::Prev)
+        );
+    }
+
+    #[test]
+    fn tab_cycling_wraps_both_ways() {
+        assert_eq!(apply_key(TabKey::Next, 4, 3), Some(0));
+        assert_eq!(apply_key(TabKey::Prev, 4, 0), Some(3));
     }
 
     #[test]
