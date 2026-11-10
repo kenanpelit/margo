@@ -178,11 +178,11 @@ pub(super) const PAGE_KEYWORDS: &[(&str, &str)] = &[
     ("plugins", "plugin wasm extension addon"),
     (
         "default_apps",
-        "default browser terminal editor mime handler",
+        "default browser terminal editor mime handler email calendar files archive music video photos text code pdf document spreadsheet presentation torrent",
     ),
     (
         "default apps",
-        "default browser terminal editor mime handler",
+        "default browser terminal editor mime handler email calendar files archive music video photos text code pdf document spreadsheet presentation torrent",
     ),
     ("bar", "panel pill widget topbar bottombar status"),
     ("widgets", "widget pill bar component"),
