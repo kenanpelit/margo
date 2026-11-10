@@ -19,6 +19,9 @@ pub(crate) struct StatFields {
     pub comm: String,
     pub ppid: i32,
     pub kthread: bool,
+    /// Field 3: `R`, `S`, `D`, `T` (stopped by a signal — paused), `t`
+    /// (stopped by a tracer), `Z`, …
+    pub state: char,
     /// `utime + stime` in clock ticks.
     pub ticks: u64,
     /// Field 22: start time after boot (ticks). Pairs with the pid so a
@@ -41,6 +44,7 @@ pub(crate) fn parse_stat(line: &str) -> Option<StatFields> {
     let rest: Vec<&str> = line[close + 1..].split_whitespace().collect();
     let field = |n: usize| rest.get(n - 3).copied();
     let num = |n: usize| field(n).and_then(|v| v.parse::<u64>().ok());
+    let state = field(3)?.chars().next()?;
     let ppid = field(4)?.parse().ok()?;
     let flags = num(9)?;
     let ticks = num(14)? + num(15)?;
@@ -50,6 +54,7 @@ pub(crate) fn parse_stat(line: &str) -> Option<StatFields> {
         comm,
         ppid,
         kthread: flags & PF_KTHREAD != 0,
+        state,
         ticks,
         start,
     })
@@ -208,6 +213,9 @@ pub(crate) struct ProcRow {
     /// `/proc/<pid>/stat` start time: with the pid, names this process
     /// and no later one that reuses the pid (see [`send_signal`]).
     pub start: u64,
+    /// Stopped by `SIGSTOP` (state `T`): the row offers Resume. A tracer
+    /// stop (`t`, a debugger) is not a pause SIGCONT would undo.
+    pub paused: bool,
 }
 
 impl ProcRow {
@@ -263,6 +271,7 @@ impl ProcTracker {
                     swap_kb: p.swap_kb,
                     io_bps,
                     start: p.stat.start,
+                    paused: p.stat.state == 'T',
                 }
             })
             .collect();
@@ -480,6 +489,45 @@ pub(crate) fn send_signal(pid: i32, start: u64, sig: i32) -> Result<KillResult, 
     Ok(classify_kill(ret, if ret == 0 { 0 } else { errno() }))
 }
 
+/// Pause (`SIGSTOP`) or resume (`SIGCONT`) the process the user picked,
+/// as [`send_signal`] does for ending it. Pausing is refused for init,
+/// mshell itself, every ancestor of mshell, and the session-critical
+/// processes in [`mshell_privileged::PAUSE_PROTECTED`] (compositor,
+/// login, buses, polkit, audio): one of those stopped would freeze the
+/// desktop with nothing left to click Resume. The root helper applies the
+/// same check (`mshell_privileged::procsig::check`) for the pkexec path.
+pub(crate) fn pause_signal(pid: i32, start: u64, pause: bool) -> Result<KillResult, String> {
+    if pause && let Some(early) = pause_guard(pid, start)? {
+        return Ok(early);
+    }
+    kill_guard(pid, std::process::id())?;
+    let sig = if pause { libc::SIGSTOP } else { libc::SIGCONT };
+    Ok(send_signal(pid, start, sig)?)
+}
+
+/// The checks [`pause_signal`] runs before a `SIGSTOP` (nothing is
+/// signalled here): `Err` = refused with the reason, `Ok(Some(Gone))` =
+/// the process already exited, `Ok(None)` = may be paused.
+pub(crate) fn pause_guard(pid: i32, start: u64) -> Result<Option<KillResult>, String> {
+    kill_guard(pid, std::process::id())?;
+    let signal = mshell_privileged::Signal::Stop;
+    match mshell_privileged::procsig::check(Path::new("/proc"), pid, start, signal) {
+        Ok(()) => Ok(None),
+        Err(mshell_privileged::Error::Refused(why)) if why.contains("already exited") => {
+            Ok(Some(KillResult::Gone))
+        }
+        Err(e) => Err(capitalise(e.message())),
+    }
+}
+
+fn capitalise(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().chain(c).collect(),
+        None => String::new(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -499,6 +547,78 @@ mod tests {
         assert!(!s.kthread);
         assert_eq!(s.ticks, 3625 + 2057);
         assert_eq!(s.start, 2409);
+        assert_eq!(s.state, 'S');
+    }
+
+    #[test]
+    fn a_stopped_process_reads_as_paused() {
+        // Captured from a `sleep` after `kill -STOP`.
+        let s = parse_stat(include_str!("testdata/proc_pid_stat_stopped.txt")).expect("parses");
+        assert_eq!((s.pid, s.comm.as_str(), s.state), (214282, "sleep", 'T'));
+        let mut stopped = sample(7, 1, 0, None);
+        stopped.stat.state = 'T';
+        let mut traced = sample(8, 1, 0, None);
+        traced.stat.state = 't';
+        let snap = ProcSnapshot {
+            procs: vec![stopped, traced, sample(9, 1, 0, None)],
+            total_jiffies: 1,
+            ncpu: 1,
+        };
+        let rows = ProcTracker::default().update(&snap, 0.0);
+        let paused: Vec<_> = rows.iter().map(|r| (r.pid, r.paused)).collect();
+        assert_eq!(paused, [(7, true), (8, false), (9, false)]);
+    }
+
+    /// Pause / resume a child this test spawned, watching its real state.
+    #[test]
+    fn pause_and_resume_a_spawned_child() {
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("spawn sleep");
+        let pid = child.id() as i32;
+        let start = proc_start(Path::new("/proc"), pid).expect("start");
+        let state = || {
+            std::fs::read_to_string(format!("/proc/{pid}/stat"))
+                .ok()
+                .and_then(|s| parse_stat(&s))
+                .map(|s| s.state)
+        };
+        let wait_for = |want: bool| {
+            let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while (state() == Some('T')) != want && std::time::Instant::now() < until {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            state() == Some('T')
+        };
+        assert_eq!(pause_signal(pid, start, true), Ok(KillResult::Sent));
+        assert!(wait_for(true), "paused");
+        assert_eq!(pause_signal(pid, start, false), Ok(KillResult::Sent));
+        assert!(!wait_for(false), "resumed");
+        // A reused pid (other start time) is never paused.
+        assert_eq!(pause_signal(pid, start + 1, true), Ok(KillResult::Gone));
+        assert_ne!(state(), Some('T'));
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    /// Only the guard runs here (never `pause_signal`): nothing outside
+    /// this test's own children is ever signalled.
+    #[test]
+    fn pausing_init_mshell_or_its_ancestors_is_refused() {
+        assert!(pause_guard(1, 0).is_err(), "init");
+        let me = std::process::id() as i32;
+        let my_start = proc_start(Path::new("/proc"), me).expect("own start");
+        assert!(pause_guard(me, my_start).is_err(), "ourselves");
+        let parent = mshell_privileged::procsig::ancestors(Path::new("/proc"), me);
+        if let Some(&ppid) = parent.first() {
+            let start = proc_start(Path::new("/proc"), ppid).expect("parent start");
+            let refused = pause_guard(ppid, start);
+            assert!(
+                refused.as_ref().is_err_and(|m| m.contains("pause")),
+                "parent: {refused:?}"
+            );
+        }
     }
 
     #[test]
@@ -547,6 +667,7 @@ mod tests {
                 comm: format!("p{pid}"),
                 ppid,
                 kthread: false,
+                state: 'S',
                 ticks,
                 start: 100,
             },
@@ -617,6 +738,7 @@ mod tests {
             swap_kb: rss / 2,
             io_bps: None,
             start: 0,
+            paused: false,
         }
     }
 

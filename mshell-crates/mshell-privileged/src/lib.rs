@@ -24,7 +24,7 @@ pub mod validate;
 
 use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
-pub use validate::{BootTarget, FanLevel, SelfTest, Signal};
+pub use validate::{BootTarget, FanLevel, PAUSE_PROTECTED, SelfTest, Signal, pause_protected};
 
 /// Where the packages install the helper. Nix builds point it at the
 /// store path with `MSHELL_PRIVILEGED_HELPER` at compile time; the
@@ -382,11 +382,13 @@ mod tests {
         round_trip(Request::PacnewRemove {
             review: "/etc/a.pacorig".into(),
         });
-        round_trip(Request::Kill {
-            pid: 4242,
-            start: 99,
-            signal: Signal::Kill,
-        });
+        for signal in [Signal::Term, Signal::Kill, Signal::Stop, Signal::Cont] {
+            round_trip(Request::Kill {
+                pid: 4242,
+                start: 99,
+                signal,
+            });
+        }
         round_trip(Request::SmartRead {
             devices: vec!["/dev/nvme0".into(), "/dev/sda".into()],
         });

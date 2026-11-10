@@ -3,7 +3,8 @@
 //! `/proc/<pid>/stat` start time is compared with the one the table
 //! showed and kernel threads are refused; only then does the signal go
 //! through the pidfd, so a pid reused while the dialog was open is never
-//! hit.
+//! hit. `STOP` (pause) is further refused for session-critical processes
+//! and for the helper's own ancestors (the shell that asked).
 
 use crate::{Error, Signal};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
@@ -28,10 +29,52 @@ fn gone(pid: i32) -> Error {
     Error::Refused(format!("Process {pid} has already exited"))
 }
 
+/// `comm` (field 2) of a `stat` line: between the first `(` and the
+/// last `)`.
+pub fn parse_comm(stat: &str) -> Option<&str> {
+    let open = stat.find('(')?;
+    let close = stat.rfind(')')?;
+    (close > open).then(|| &stat[open + 1..close])
+}
+
+/// Parent pid (field 4) of a `stat` line.
+fn parse_ppid(stat: &str) -> Option<i32> {
+    stat[stat.rfind(')')? + 1..]
+        .split_whitespace()
+        .nth(1)?
+        .parse()
+        .ok()
+}
+
+/// `pid`'s ancestors under `proc_root`, nearest first, stopping before
+/// init (or after 64 hops, or at an unreadable link).
+pub fn ancestors(proc_root: &Path, pid: i32) -> Vec<i32> {
+    let mut out = Vec::new();
+    let mut cur = pid;
+    for _ in 0..64 {
+        let Some(ppid) = std::fs::read_to_string(proc_root.join(cur.to_string()).join("stat"))
+            .ok()
+            .and_then(|s| parse_ppid(&s))
+        else {
+            break;
+        };
+        if ppid <= 1 || ppid == pid || out.contains(&ppid) {
+            break;
+        }
+        out.push(ppid);
+        cur = ppid;
+    }
+    out
+}
+
 /// Re-check `pid` against `start` under `proc_root` (as root). A kernel
-/// thread or this helper itself is refused.
-pub fn check(proc_root: &Path, pid: i32, start: u64) -> Result<(), Error> {
-    if pid as u32 == std::process::id() {
+/// thread or this helper itself is refused; so is pausing (`STOP`) a
+/// session-critical process ([`crate::pause_protected`]) or any ancestor
+/// of the helper — the shell that asked and whatever runs it — since
+/// nothing could then click "Resume".
+pub fn check(proc_root: &Path, pid: i32, start: u64, signal: Signal) -> Result<(), Error> {
+    let me = std::process::id() as i32;
+    if pid == me {
         return Err(Error::Refused(
             "refusing to signal the helper itself".into(),
         ));
@@ -46,6 +89,14 @@ pub fn check(proc_root: &Path, pid: i32, start: u64) -> Result<(), Error> {
     }
     if started != start {
         return Err(gone(pid));
+    }
+    if signal == Signal::Stop {
+        let comm = parse_comm(&stat).unwrap_or("");
+        if crate::pause_protected(comm) || ancestors(proc_root, me).contains(&pid) {
+            return Err(Error::Refused(format!(
+                "refusing to pause {comm} ({pid}): the session depends on it"
+            )));
+        }
     }
     Ok(())
 }
@@ -69,7 +120,7 @@ pub fn kill(pid: i32, start: u64, signal: Signal) -> Result<(), Error> {
             return Err(send_error(pid, e));
         }
         // Kernel < 5.3: check, then kill(2) (the old window remains).
-        check(proc_root, pid, start)?;
+        check(proc_root, pid, start, signal)?;
         // SAFETY: integer arguments only.
         let r = unsafe { libc::kill(pid, signal.number()) };
         return if r == 0 {
@@ -83,7 +134,7 @@ pub fn kill(pid: i32, start: u64, signal: Signal) -> Result<(), Error> {
     let pidfd = unsafe { OwnedFd::from_raw_fd(fd) };
     // The pidfd pins this process: if it still started at `start`, the
     // signal below can't reach a newcomer reusing the number.
-    check(proc_root, pid, start)?;
+    check(proc_root, pid, start, signal)?;
     // SAFETY: valid pidfd, null siginfo (as kill(2)), no flags.
     let r = unsafe {
         libc::syscall(
@@ -150,15 +201,113 @@ mod tests {
         std::fs::write(root.join("2/stat"), stat(PF_KTHREAD | 0x40)).expect("fixture stat");
         assert_eq!(parse_stat(&stat(PF_KTHREAD)), Some((start, PF_KTHREAD)));
         assert!(
-            matches!(check(&root, 2, start), Err(Error::Refused(m)) if m.contains("kernel thread"))
+            matches!(check(&root, 2, start, Signal::Term), Err(Error::Refused(m)) if m.contains("kernel thread"))
         );
         // The same task without PF_KTHREAD passes the check.
         std::fs::write(root.join("2/stat"), stat(0x40)).expect("fixture stat");
-        assert_eq!(check(&root, 2, start), Ok(()));
+        assert_eq!(check(&root, 2, start, Signal::Term), Ok(()));
         let _ = std::fs::remove_dir_all(&root);
         let me = std::process::id() as i32;
         assert!(matches!(
-            check(Path::new("/proc"), me, 0),
+            check(Path::new("/proc"), me, 0, Signal::Term),
+            Err(Error::Refused(_))
+        ));
+    }
+
+    #[test]
+    fn a_child_is_paused_and_resumed() {
+        let (mut child, pid, start) = sleeper();
+        let state = || {
+            let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).expect("stat");
+            stat[stat.rfind(')').expect("comm") + 2..]
+                .chars()
+                .next()
+                .expect("state")
+        };
+        assert_eq!(kill(pid, start, Signal::Stop), Ok(()));
+        // SIGSTOP is delivered asynchronously; wait for the state flip.
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while state() != 'T' && std::time::Instant::now() < until {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!(state(), 'T', "stopped");
+        assert_eq!(kill(pid, start, Signal::Cont), Ok(()));
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while state() == 'T' && std::time::Instant::now() < until {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_ne!(state(), 'T', "running again");
+        assert_eq!(kill(pid, start + 1, Signal::Stop), Err(gone(pid)));
+        assert_eq!(kill(pid, start, Signal::Kill), Ok(()));
+        let _ = child.wait();
+    }
+
+    /// A fixture tree: pid -> (comm, ppid), start time 7 for all.
+    fn tree(name: &str, procs: &[(i32, &str, i32)]) -> std::path::PathBuf {
+        let root =
+            std::env::temp_dir().join(format!("mshell-procsig-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for (pid, comm, ppid) in procs {
+            std::fs::create_dir_all(root.join(pid.to_string())).expect("fixture dir");
+            std::fs::write(
+                root.join(pid.to_string()).join("stat"),
+                format!("{pid} ({comm}) S {ppid} 0 0 0 -1 64 0 0 0 0 0 0 0 0 20 0 1 0 7 0 0\n"),
+            )
+            .expect("fixture stat");
+        }
+        root
+    }
+
+    #[test]
+    fn session_processes_are_never_paused() {
+        let root = tree(
+            "protected",
+            &[(40, "polkitd", 1), (41, "margo", 1), (42, "firefox", 41)],
+        );
+        for pid in [40, 41] {
+            assert!(
+                matches!(check(&root, pid, 7, Signal::Stop), Err(Error::Refused(m)) if m.contains("pause")),
+                "{pid} pausable"
+            );
+            // Ending (or resuming) them is still the user's call.
+            assert_eq!(check(&root, pid, 7, Signal::Term), Ok(()));
+            assert_eq!(check(&root, pid, 7, Signal::Cont), Ok(()));
+        }
+        assert_eq!(check(&root, 42, 7, Signal::Stop), Ok(()));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn ancestors_walk_to_init_and_survive_loops() {
+        let root = tree(
+            "chain",
+            &[
+                (10, "a", 1),
+                (20, "b", 10),
+                (30, "c", 20),
+                (50, "x", 51),
+                (51, "y", 50),
+            ],
+        );
+        assert_eq!(ancestors(&root, 30), [20, 10]);
+        assert_eq!(ancestors(&root, 10), Vec::<i32>::new());
+        assert_eq!(ancestors(&root, 50), [51], "a cycle ends the walk");
+        assert_eq!(ancestors(&root, 99), Vec::<i32>::new(), "missing pid");
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(parse_comm("5 (a (b) c) S 1"), Some("a (b) c"));
+        assert_eq!(parse_ppid("5 (a (b) c) S 17 0"), Some(17));
+    }
+
+    #[test]
+    fn the_helpers_own_ancestors_are_never_paused() {
+        // The real chain: the test runner's parent is an ancestor. Only
+        // `check` runs — nothing is signalled even if it were to pass.
+        let parent = ancestors(Path::new("/proc"), std::process::id() as i32);
+        let Some(&ppid) = parent.first() else { return };
+        let stat = std::fs::read_to_string(format!("/proc/{ppid}/stat")).expect("stat");
+        let (start, _) = parse_stat(&stat).expect("parse");
+        assert!(matches!(
+            check(Path::new("/proc"), ppid, start, Signal::Stop),
             Err(Error::Refused(_))
         ));
     }

@@ -76,7 +76,11 @@ mod tests {
             [mshell_privileged::HELPER, "kill", "4242", "777", "TERM"]
         );
         assert_eq!(kill_argv(4242, 777, "KILL").expect("argv")[4], "KILL");
+        // Pause / resume of another user's process ride the same verb.
+        assert_eq!(kill_argv(4242, 777, "STOP").expect("argv")[4], "STOP");
+        assert_eq!(kill_argv(4242, 777, "CONT").expect("argv")[4], "CONT");
         assert!(kill_argv(4242, 777, "HUP").is_err());
+        assert!(kill_argv(4242, 777, "TSTP").is_err());
         assert!(kill_argv(1, 777, "TERM").is_err(), "never init");
     }
 

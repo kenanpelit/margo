@@ -1,14 +1,15 @@
 //! Processes tab of the CPU dashboard: a sortable, searchable process table
 //! read from `/proc` (CPU, RAM, swap, disk IO), optionally grouped by the
 //! margo window each process descends from, with a confirmed
-//! terminate / force-kill. Polls every 2 s only while the menu is revealed
+//! terminate / force-kill and a pause / resume (SIGSTOP / SIGCONT; a
+//! paused row says so and offers Resume). Polls every 2 s only while the menu is revealed
 //! AND this tab is the visible one; the `/proc` sweep runs on a blocking
 //! thread (DESIGN.md §13.4 — never on the GTK thread).
 
 use super::keyed_rows::KeyedRows;
 use super::procs::{
-    KillResult, ProcRow, ProcSnapshot, ProcSort, ProcTracker, group_by_window, read_snapshot,
-    row_matches, send_signal, sort_rows,
+    KillResult, ProcRow, ProcSnapshot, ProcSort, ProcTracker, group_by_window, pause_signal,
+    read_snapshot, row_matches, send_signal, sort_rows,
 };
 use super::ui;
 use crate::common_widgets::segmented::{Segmented, SegmentedStyle};
@@ -19,7 +20,7 @@ use relm4::gtk::prelude::{
     AccessibleExtManual, BoxExt, ButtonExt, EditableExt, OrientableExt, ToggleButtonExt, WidgetExt,
 };
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::path::Path;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -76,6 +77,9 @@ pub(crate) enum ProcessesTabInput {
     ConfirmKill(bool),
     /// Re-send the refused signal through `pkexec kill`.
     AdminKill,
+    /// Pause (`true`, SIGSTOP) or resume (`false`, SIGCONT): pid, start
+    /// time, name. Reversible, so no confirm step.
+    Pause(i32, u64, String, bool),
 }
 
 #[derive(Debug)]
@@ -328,6 +332,26 @@ impl Component for ProcessesTabModel {
                 };
                 sender.input(ProcessesTabInput::Poll);
             }
+            ProcessesTabInput::Pause(pid, start, name, pause) => {
+                self.pending = None;
+                self.needs_admin = None;
+                let (verb, sig_name) = if pause {
+                    ("Paused", "STOP")
+                } else {
+                    ("Resumed", "CONT")
+                };
+                self.status = match pause_signal(pid, start, pause) {
+                    Err(why) => why,
+                    Ok(KillResult::Sent) => format!("{verb} {name} ({pid})"),
+                    Ok(KillResult::Gone) => format!("{name} ({pid}) has already exited"),
+                    Ok(KillResult::NotPermitted) => {
+                        self.needs_admin = Some((pid, start, sig_name));
+                        format!("{name} ({pid}) belongs to another user")
+                    }
+                    Ok(KillResult::Failed(e)) => format!("SIG{sig_name} failed (errno {e})"),
+                };
+                sender.input(ProcessesTabInput::Poll);
+            }
             ProcessesTabInput::AdminKill => {
                 let Some((pid, start, sig)) = self.needs_admin.take() else {
                     return;
@@ -419,6 +443,8 @@ enum RowView {
         cmdline: String,
         /// Listed under a window group (indented).
         member: bool,
+        /// Stopped by SIGSTOP: dimmed, "Paused" subtitle, Resume button.
+        paused: bool,
     },
 }
 
@@ -484,7 +510,11 @@ fn row_views(
 }
 
 fn proc_view(r: &ProcRow, member: bool) -> RowView {
-    let mut sub = format!("{}", r.pid);
+    let mut sub = if r.paused {
+        format!("Paused · {}", r.pid)
+    } else {
+        format!("{}", r.pid)
+    };
     if r.swap_kb > 0 {
         sub.push_str(&format!(" · swap {}", units::kib(r.swap_kb)));
     }
@@ -506,6 +536,7 @@ fn proc_view(r: &ProcRow, member: bool) -> RowView {
         rss: units::kib(r.rss_kb),
         cmdline: r.cmdline.clone(),
         member,
+        paused: r.paused,
     }
 }
 
@@ -525,14 +556,20 @@ enum LiveKind {
         /// Process rows: the ✕ button and who it ends. The click reads the
         /// row's current target, so it always matches what the row shows.
         kill: Option<(gtk::Button, Rc<RefCell<KillTarget>>)>,
+        /// Process rows: the pause / resume button and whether the row is
+        /// paused right now (the click sends the opposite).
+        pause: Option<(gtk::Button, Rc<Cell<bool>>)>,
     },
 }
 
 /// Who a row's ✕ ends: pid, start time, name.
 type KillTarget = (i32, u64, String);
 
+type KillButton = (gtk::Button, Rc<RefCell<KillTarget>>);
+type PauseButton = (gtk::Button, Rc<Cell<bool>>);
+
 fn live_row(view: &RowView, sender: &ComponentSender<ProcessesTabModel>) -> LiveRow {
-    let item = |kill: Option<(gtk::Button, Rc<RefCell<KillTarget>>)>| {
+    let item = |kill: Option<KillButton>, pause: Option<PauseButton>| {
         let text = ui::live_title_block();
         let cpu = ui::value_label("", 6, "");
         let rss = ui::value_label("", 7, "");
@@ -543,6 +580,9 @@ fn live_row(view: &RowView, sender: &ComponentSender<ProcessesTabModel>) -> Live
         body.append(&text.block);
         body.append(&cpu);
         body.append(&rss);
+        if let Some((b, _)) = &pause {
+            body.append(b);
+        }
         if let Some((b, _)) = &kill {
             body.append(b);
         }
@@ -555,6 +595,7 @@ fn live_row(view: &RowView, sender: &ComponentSender<ProcessesTabModel>) -> Live
                 cpu,
                 rss,
                 kill,
+                pause,
             },
         }
     };
@@ -571,14 +612,18 @@ fn live_row(view: &RowView, sender: &ComponentSender<ProcessesTabModel>) -> Live
             }
         }
         RowView::Group { .. } => {
-            let r = item(None);
+            let r = item(None, None);
             if let LiveKind::Item { body, .. } = &r.kind {
                 body.add_css_class("cpu-dashboard-group-head");
             }
             r
         }
         RowView::Proc {
-            pid, start, name, ..
+            pid,
+            start,
+            name,
+            paused,
+            ..
         } => {
             let target = Rc::new(RefCell::new((*pid, *start, name.clone())));
             let button = ui::icon_button("close-symbolic", &kill_name(*pid, name));
@@ -588,13 +633,41 @@ fn live_row(view: &RowView, sender: &ComponentSender<ProcessesTabModel>) -> Live
                 let (pid, start, name) = t.borrow().clone();
                 s.input(ProcessesTabInput::AskKill(pid, start, name));
             });
-            item(Some((button, target)))
+
+            let is_paused = Rc::new(Cell::new(*paused));
+            let (icon, label) = pause_button_face(*pid, name, *paused);
+            let pause = ui::icon_button(icon, &label);
+            pause.set_tooltip_text(Some(&label));
+            let s = sender.clone();
+            let t = target.clone();
+            let p = is_paused.clone();
+            pause.connect_clicked(move |_| {
+                let (pid, start, name) = t.borrow().clone();
+                s.input(ProcessesTabInput::Pause(pid, start, name, !p.get()));
+            });
+            item(Some((button, target)), Some((pause, is_paused)))
         }
     }
 }
 
 fn kill_name(pid: i32, name: &str) -> String {
     format!("End {name} ({pid})")
+}
+
+/// Icon + accessible name of a row's pause button: Resume on a paused
+/// row, Pause otherwise.
+fn pause_button_face(pid: i32, name: &str, paused: bool) -> (&'static str, String) {
+    if paused {
+        (
+            "media-playback-start-symbolic",
+            format!("Resume {name} ({pid})"),
+        )
+    } else {
+        (
+            "media-playback-pause-symbolic",
+            format!("Pause {name} ({pid})"),
+        )
+    }
 }
 
 /// Bring a kept row up to date, touching only what changed.
@@ -621,6 +694,7 @@ fn update_row(r: &LiveRow, view: &RowView) {
                 cpu,
                 rss,
                 kill,
+                pause,
             },
             RowView::Proc {
                 pid,
@@ -631,9 +705,23 @@ fn update_row(r: &LiveRow, view: &RowView) {
                 rss: m,
                 cmdline,
                 member,
+                paused,
             },
         ) => {
             ui::set_title(text, name, subtitle);
+            ui::set_class(&text.title, "dim-label", *paused);
+            if let Some((button, is_paused)) = pause {
+                let renamed = kill
+                    .as_ref()
+                    .is_some_and(|(_, target)| target.borrow().2 != *name);
+                if is_paused.get() != *paused || renamed {
+                    is_paused.set(*paused);
+                    let (icon, label) = pause_button_face(*pid, name, *paused);
+                    button.set_icon_name(icon);
+                    button.update_property(&[gtk::accessible::Property::Label(&label)]);
+                    button.set_tooltip_text(Some(&label));
+                }
+            }
             ui::set_text(cpu, c);
             ui::set_text(rss, m);
             ui::set_class(&r.row, "cpu-dashboard-group-member", *member);
@@ -671,6 +759,7 @@ mod tests {
             swap_kb: 0,
             io_bps: None,
             start: u64::try_from(pid).unwrap_or(0) * 10,
+            paused: false,
         }
     }
 
@@ -710,6 +799,36 @@ mod tests {
                 RowKey::Placeholder,
                 RowView::Placeholder("No process matches the search")
             )]
+        );
+    }
+
+    #[test]
+    fn paused_rows_say_so_and_offer_resume() {
+        let mut stopped = proc(30, 1, "sleep", 0.0);
+        stopped.paused = true;
+        let v = row_views(&[stopped, proc(31, 1, "cat", 0.0)], "", ProcSort::Cpu, None);
+        let RowView::Proc {
+            subtitle, paused, ..
+        } = &v[0].1
+        else {
+            panic!("process row");
+        };
+        assert!(*paused);
+        assert!(subtitle.starts_with("Paused · 30"), "{subtitle}");
+        assert!(matches!(v[1].1, RowView::Proc { paused: false, .. }));
+        assert_eq!(
+            pause_button_face(30, "sleep", true),
+            (
+                "media-playback-start-symbolic",
+                "Resume sleep (30)".to_string()
+            )
+        );
+        assert_eq!(
+            pause_button_face(31, "cat", false),
+            (
+                "media-playback-pause-symbolic",
+                "Pause cat (31)".to_string()
+            )
         );
     }
 

@@ -113,11 +113,15 @@ pub fn start_time(arg: &OsStr) -> Result<u64, Error> {
         .ok_or_else(|| invalid("start time", arg))
 }
 
-/// The signals the process tables send.
+/// The signals the process tables send: end (`TERM`, `KILL`) and pause /
+/// resume (`STOP`, `CONT`). Nothing else — no `HUP`/`USR*` that a daemon
+/// might act on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Signal {
     Term,
     Kill,
+    Stop,
+    Cont,
 }
 
 impl Signal {
@@ -125,6 +129,8 @@ impl Signal {
         match self {
             Signal::Term => "TERM",
             Signal::Kill => "KILL",
+            Signal::Stop => "STOP",
+            Signal::Cont => "CONT",
         }
     }
 
@@ -132,17 +138,57 @@ impl Signal {
         match self {
             Signal::Term => libc::SIGTERM,
             Signal::Kill => libc::SIGKILL,
+            Signal::Stop => libc::SIGSTOP,
+            Signal::Cont => libc::SIGCONT,
         }
     }
 
-    /// `TERM` / `KILL` (case-sensitive; nothing else).
+    /// `TERM` / `KILL` / `STOP` / `CONT` (case-sensitive; nothing else).
     pub fn parse(arg: &OsStr) -> Result<Signal, Error> {
         match arg.as_bytes() {
             b"TERM" => Ok(Signal::Term),
             b"KILL" => Ok(Signal::Kill),
-            _ => Err(invalid("signal (TERM or KILL)", arg)),
+            b"STOP" => Ok(Signal::Stop),
+            b"CONT" => Ok(Signal::Cont),
+            _ => Err(invalid("signal (TERM, KILL, STOP or CONT)", arg)),
         }
     }
+}
+
+/// Process names (`/proc/<pid>/stat` `comm`, at most 15 bytes) that are
+/// never paused: the compositor, the shell, the session and login
+/// processes, the buses everything talks over, polkit (a paused polkitd
+/// could not authorise the resume) and the audio / X bridge every app
+/// blocks on. Pausing one of them freezes the desktop with no way to
+/// click "Resume". Ending them stays possible (a deliberate, confirmed
+/// act); only `STOP` is refused.
+pub const PAUSE_PROTECTED: &[&str] = &[
+    "margo",
+    "start-margo",
+    "mshell",
+    "mlogind",
+    "mgreet",
+    "login",
+    "agetty",
+    "systemd",
+    "systemd-logind",
+    "(sd-pam)",
+    "dbus-daemon",
+    "dbus-broker",
+    // `dbus-broker-launch`, truncated to comm's 15 bytes.
+    "dbus-broker-lau",
+    "polkitd",
+    "sshd",
+    "sshd-session",
+    "Xwayland",
+    "pipewire",
+    "pipewire-pulse",
+    "wireplumber",
+];
+
+/// `comm` names a process that must never be paused.
+pub fn pause_protected(comm: &str) -> bool {
+    PAUSE_PROTECTED.contains(&comm)
 }
 
 /// A drive `smartctl --scan` lists: `/dev/<1–32 ASCII letters/digits>`.
@@ -524,11 +570,59 @@ mod tests {
     }
 
     #[test]
-    fn only_term_and_kill() {
+    fn only_term_kill_stop_and_cont() {
         assert_eq!(Signal::parse(os("TERM")).unwrap(), Signal::Term);
         assert_eq!(Signal::parse(os("KILL")).unwrap().number(), libc::SIGKILL);
-        for bad in ["term", "9", "SIGKILL", "HUP", "STOP", "", "KILL "] {
+        assert_eq!(Signal::parse(os("STOP")).unwrap(), Signal::Stop);
+        assert_eq!(Signal::parse(os("STOP")).unwrap().number(), libc::SIGSTOP);
+        assert_eq!(Signal::parse(os("CONT")).unwrap().number(), libc::SIGCONT);
+        for sig in [Signal::Term, Signal::Kill, Signal::Stop, Signal::Cont] {
+            assert_eq!(
+                Signal::parse(os(sig.name())).unwrap(),
+                sig,
+                "name round-trips"
+            );
+        }
+        for bad in [
+            "term", "9", "19", "SIGKILL", "SIGSTOP", "stop", "cont", "TSTP", "HUP", "USR1", "",
+            "KILL ", "STOP\0",
+        ] {
             assert!(Signal::parse(os(bad)).is_err(), "{bad:?} accepted");
+        }
+    }
+
+    #[test]
+    fn pausing_the_session_is_refused() {
+        for comm in [
+            "margo",
+            "start-margo",
+            "mshell",
+            "mlogind",
+            "login",
+            "systemd",
+            "systemd-logind",
+            "(sd-pam)",
+            "dbus-daemon",
+            "dbus-broker",
+            "dbus-broker-lau",
+            "polkitd",
+            "sshd",
+            "sshd-session",
+            "Xwayland",
+            "pipewire",
+            "wireplumber",
+        ] {
+            assert!(pause_protected(comm), "{comm} may be paused");
+        }
+        for comm in [
+            "firefox",
+            "sleep",
+            "margo-helper",
+            "mshellctl",
+            "systemd-journal",
+            "",
+        ] {
+            assert!(!pause_protected(comm), "{comm} refused");
         }
     }
 
