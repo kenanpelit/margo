@@ -35,7 +35,7 @@ parameter and use YAML tag syntax:
 | Token | Widget | What it does |
 | --- | --- | --- |
 | `Clock` | Clock | Date/time pill. Cycles through a list of strftime formats (`[tempo]`) on right-click; left-click opens the clock/calendar menu. **World clocks:** Settings → Widgets → Clock → "Show world clocks in the Clock menu" adds a World Clocks section (`MenuWidget::WorldClocks`) to the Clock menu: the device row, then one row per city in `tempo.world_clocks` with its time, "3h ahead · Tomorrow morning · Outside working hours" and an hour strip (−2…+9 h, now highlighted, the working day `tempo.work_day_start`–`work_day_end`, 9–17, shaded). Add cities with the + search (bundled IANA database, no network), move up, remove, or pin one as the device timezone (`timedatectl set-timezone`, asks polkit). `tempo.world_clocks_in_bar` (0–3, default 0) puts the first cities next to the bar time (`New York 07:05`); the tooltip lists them all. |
-| `Mdash` | Mdash | The dashboard opener — same clock label as `Clock`, but a click opens **mdash**: greeting hero + calendar + weather + media player + a quick-settings tile stack + a menu-shortcut grid. |
+| `Mdash` | Mdash | The dashboard opener — same clock label as `Clock`, but a click opens **mdash**, the tabbed dashboard: a header (greeting, date and time, Settings, one power button), a status strip and four tabs — **Today**, **Controls**, **System**, **Tools**. See [mdash dashboard](#mdash-dashboard). |
 | `ControlCenter` | Control Center | System-preferences glyph that opens the Control Center menu (header + sliders + a grid of quick toggles; opt-in tiles such as Hotspot are enabled from the grid's edit mode). The optional **Mirror** tile (off by default — tick it in the grid's edit mode) toggles margo's output mirroring, laptop panel onto the external display, and shows the running `source → target`. The optional **Internal Keyboard** tile (also off by default) turns the laptop's built-in keyboard off and on (margo `internal_keyboard`); it is highlighted while the keyboard is off, and margo refuses to turn it off while it is the only keyboard. The optional **Logo LED** tile (off by default; only on ThinkPads with `tpacpi::lid_logo_dot`) switches the red dot in the lid logo on or off: straight to sysfs when a udev rule made its `brightness` writable, otherwise through the `mshell-privileged led-set` polkit action (thinkpad_acpi LEDs only). **Logo LED automation** (Settings → Widgets → Control Center, `control_center.logo_led`, all off by default) turns the LED off while the screen is locked (`off_while_locked`) or during Do Not Disturb (`off_while_dnd`) and restores it afterwards (unless you switched it on meanwhile), and blinks it when a notification arrives (`blink_on_notification`, not during DND or while locked). It writes the LED directly, so it only runs when `brightness` is writable by you — never one password prompt per event; Settings shows the rule when it isn't: `ACTION=="add", SUBSYSTEM=="leds", KERNEL=="tpacpi::lid_logo_dot", RUN+="/bin/chgrp video /sys/class/leds/%k/brightness", RUN+="/bin/chmod g+w /sys/class/leds/%k/brightness"` in `/etc/udev/rules.d/90-thinkpad-logo-led.rules` (you must be in the `video` group), then reboot. The optional **Custom Shortcut** tile (off by default) is your own: label, icon and a command run on click (`sh -c`), set under Settings → Widgets → Control Center → Custom tile (`control_center.custom_shortcut_tile`); with a *state command* it becomes a toggle — exit status 0 lights the tile and its first output line is the subtitle (re-read when the Control Center opens and after each click). |
 
 ## System monitors
@@ -195,6 +195,53 @@ whole pill:
 
 Output that is not a JSON object keeps the pill visible with its `icon` and a
 tooltip saying so.
+
+## mdash dashboard
+
+`mshellctl menu mdash` (or the `Mdash` pill) opens the dashboard at the top
+centre. The default is the tabbed dashboard (`MenuWidget::Dashboard`):
+
+- **Header** — "Good evening, Kenan", the date and time, a Settings button
+  and ONE power button whose popover holds Lock, Suspend, Log out, Reboot and
+  Shut down (the last three ask once more; the Session menu's commands run
+  them).
+- **Status strip** — small chips for battery, network (SSID / VPN), volume,
+  weather, unread notifications and pending updates; each opens its menu and
+  hides when it doesn't apply (no battery on a desktop, nothing unread).
+- **Today** — two columns that end level: Calendar over Weather (now, the
+  next hours, three days) on the left; the selected day's Agenda, Now
+  playing and Timers on the right. The agenda takes the height the left
+  column leaves and scrolls on a busy day. When nothing plays the media card
+  keeps its size and offers to resume the last Tune track or start a saved
+  station. Timers shows the next alarm, the running timers (cancel in place)
+  and the quick entry (`10m tea`, `14:30 call`) with +5m / +10m / +25m / +1h —
+  the same store as the Alarm Clock menu and `mshellctl timer`.
+- **Controls** — output volume, microphone and brightness sliders, then
+  every quick setting as a labelled tile in four equal columns, grouped
+  under Connectivity, Display, Focus, Audio, Services, Hardware and Custom.
+  These are the Control Center's own tiles (same state, same probes; a
+  toggle here and there always agree, and tiles the hardware lacks are
+  hidden the same way). A click toggles; the chevron or a right click opens
+  the related menu.
+- **System** — CPU, memory, temperature and disk with small sparklines;
+  battery (time left) with the power-profile switch; network throughput;
+  pending updates with *Review & update*; Claude / Codex usage limits. Each
+  card opens its detailed menu. These poll only while the tab is on screen.
+- **Tools** — a grid of every menu worth launching (Screenshot, Color Picker,
+  Clipboard, Notes, Translate, Keybinds, Monitor, Network, VPN, Podman, SSH,
+  USB, Theme, …). Opening one closes mdash.
+
+The panel is 800 px wide (`minimum_width`); its height follows the tab on
+screen and eases on a switch. A tab taller than the screen (or than the
+menu's `maximum_height`) scrolls inside the tab area.
+
+Keys: <kbd>1</kbd>–<kbd>4</kbd> pick a tab, <kbd>Ctrl</kbd>+<kbd>Tab</kbd> /
+<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Tab</kbd> cycle. The last tab is
+remembered (`$XDG_STATE_HOME/margo/mdash-tab`) and the next open starts there.
+`mshellctl menu mdash today|controls|system|tools` opens on that tab (the same
+tab again closes it). Tab order, visibility and the cards of each tab are set
+under **Settings → Widgets → Mdash → Tabs** (YAML: see
+[Configuration](configuration.md#shell-dashboard-mdash)).
 
 ## Crashes menu
 

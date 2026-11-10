@@ -664,6 +664,44 @@ launcher:
   (1 500 000 for the whole system); the status line says *capped* when the
   limit cut the walk.
 
+## Shell dashboard (mdash)
+
+The shell's settings live in its profile
+(`~/.config/margo/mshell/profiles/active.yaml`), not in `config.conf`. The
+dashboard is `menus.mdash_menu`; while it is the code default it is not
+written to the profile, so a new release's default reaches you. The default:
+
+```yaml
+menus:
+  mdash_menu:
+    position: Top
+    minimum_width: 800       # the panel; the dashboard inside is 760 px
+    maximum_height: 0        # 0 = up to the screen; a taller tab scrolls
+    widgets:
+      - !Dashboard
+        tabs:
+          - tab: Today       # Calendar, Agenda, Weather, Media, Timers
+          - tab: Controls    # Sliders, Tiles
+          - tab: System      # Cpu, Memory, Temperature, Disk, Battery,
+                             # Network, Updates, AiUsage
+          - tab: Tools       # Launchers
+```
+
+Each tab entry takes `visible: false` (hide the tab, keep its place) and
+`hidden_cards: [Media, Timers]` (leave cards out; the rest close up — on
+Today the other column takes the width when a whole column is hidden). The
+order of `tabs` is the order of the segments and of the <kbd>1</kbd>–<kbd>4</kbd>
+keys. Settings → Widgets → Mdash → Tabs edits the same list.
+
+A profile with its own `mdash_menu.widgets` (the pre-tabs `Container` +
+`QuickActions` layout, or anything else) keeps it unchanged; a profile that
+merely saved the old default is read as the new tabbed default.
+
+`mshellctl menu mdash` toggles the dashboard; `mshellctl menu mdash <tab>`
+(`today`, `controls`, `system`, `tools`) opens it on that tab, or closes it
+when it is already showing that tab. The last tab used is remembered in
+`$XDG_STATE_HOME/margo/mdash-tab` (state, not config).
+
 ## See also
 
 - [**Full config reference**](config-reference.md) — every option with inline commentary, the complete `config.example.conf` rendered in-page.
