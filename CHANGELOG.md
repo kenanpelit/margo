@@ -5,6 +5,25 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.1] – 2026-11-10
+
+**Media keys no longer flash or crash Tune: a stray Pause/Play from a
+shared Bluetooth headset (for example when the phone plays a message tone)
+no longer opens a fresh mtune window, and Play on an empty queue no longer
+aborts mtune.**
+
+### Fixed
+
+- **mtune:** Play with an empty queue crashed the player (GStreamer reported
+  a loaded URI without an address, and reading it aborted mtune). It now
+  stays running.
+- **mshellctl mtune:** `pause`, `stop` and `quit` do nothing when mtune is
+  not running instead of starting it with its window; playback keys,
+  `raise` and `toggle-window` start it in the background, and loading a
+  folder or playlist still opens the window.
+- **CI:** the weekly soak's config fuzz jobs build for the GNU target
+  again; they had been picking up a musl build and failing before fuzzing.
+
 ## [5.1.0] – 2026-11-07
 
 **A richer native desktop: radio and podcasts in Tune, a redesigned Tune
