@@ -320,6 +320,12 @@ mod tests {
 
     /// A pipe that already reached EOF must end the forward, even when the
     /// event that woke the thread had no read-closed flag.
+    ///
+    /// Other tests in this binary fork children in parallel; a fork between
+    /// our `drop(tx)` and the read briefly holds a copy of the write end
+    /// (until that child execs and CLOEXEC closes it), so a single read can
+    /// legitimately see `WouldBlock` first. Retry on `Ok(false)` - a forward
+    /// that spins at EOF still never returns and trips the timeout.
     #[test]
     fn forwarding_stops_at_eof_without_a_read_closed_flag() {
         use std::io::Write as _;
@@ -329,7 +335,14 @@ mod tests {
         let (done_tx, done_rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let mut out = Vec::new();
-            let eof = forward_receiver_to_file(&mut rx, &mut out).unwrap();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+            let eof = loop {
+                let eof = forward_receiver_to_file(&mut rx, &mut out).unwrap();
+                if eof || std::time::Instant::now() > deadline {
+                    break eof;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            };
             let _ = done_tx.send((eof, out));
         });
         let (eof, out) = done_rx
