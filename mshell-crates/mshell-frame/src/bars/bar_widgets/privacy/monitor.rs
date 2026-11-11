@@ -691,9 +691,14 @@ impl OpenCounter {
     }
 
     /// Replace the counts with what a `/proc` scan saw (nodes missing from
-    /// `open` are closed).
+    /// `open` are closed). The scan is the new reference point, so it also
+    /// starts a new window: events counted before it are already in the
+    /// snapshot, and keeping them in `net` would cancel the close that
+    /// follows (open before the scan, close after it, one window -> net 0 ->
+    /// "nothing changed" -> a holder that left stays on the pill).
     fn set_baseline(&mut self, open: &HashMap<PathBuf, i64>) {
         self.held = open.clone();
+        self.net.clear();
         self.baselined = true;
     }
 
@@ -1425,6 +1430,24 @@ mod tests {
         // A scan with nothing happening during it is trusted.
         let began = c.begin_scan();
         assert!(!c.finish_scan(&HashMap::new(), began));
+    }
+
+    #[test]
+    fn a_holder_seen_by_a_scan_mid_window_clears_when_it_closes() {
+        // wireplumber at login, the variant the stale-scan check misses: it
+        // opens the node (counted in the current debounce window), the driver
+        // scans while it still holds it, and it closes after the scan - all
+        // inside one window. The window then nets to zero (+1 before the
+        // baseline, -1 after) and `decide` said "nothing changed", so the
+        // pill showed "pipewire" on the camera until the next reboot.
+        let mut c = counter_on(&[(1, "/dev/video0")]);
+        c.set_baseline(&HashMap::new());
+        c.apply(&[wd_ev(1, libc::IN_OPEN)]);
+        let began = c.begin_scan();
+        let stale = c.finish_scan(&HashMap::from([(PathBuf::from("/dev/video0"), 1)]), began);
+        assert!(!stale);
+        c.apply(&[wd_ev(1, libc::IN_CLOSE_NOWRITE)]);
+        assert_eq!(c.decide(), CamAction::Clear);
     }
 
     #[test]
