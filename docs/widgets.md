@@ -240,8 +240,10 @@ centre. The default is the tabbed dashboard (`MenuWidget::Dashboard`):
   Clipboard, Notes, Translate, Keybinds, Monitor, Network, VPN, Podman, SSH,
   USB, Theme, …). Opening one closes mdash.
 
-The panel is 800 px wide (`minimum_width`); its height follows the tab on
-screen and eases on a switch. A tab taller than the screen (or than the
+The panel is 960 px wide (`minimum_width`) so its text reads at body size
+(14 px; card titles 16, the greeting 18; only timestamps and captions at
+12 px, never bold); its height follows the tab on screen and eases on a
+switch. A tab taller than the screen (or than the
 menu's `maximum_height`) scrolls inside the tab area.
 
 Keys: <kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd> cycle the tabs

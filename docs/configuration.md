@@ -675,7 +675,7 @@ written to the profile, so a new release's default reaches you. The default:
 menus:
   mdash_menu:
     position: Top
-    minimum_width: 800       # the panel; the dashboard inside is 760 px
+    minimum_width: 960       # the panel; the dashboard inside is 920 px
     maximum_height: 0        # 0 = up to the screen; a taller tab scrolls
     widgets:
       - !Dashboard
