@@ -332,10 +332,27 @@ fn pump() {
 }
 
 fn screenshot(window: &gtk::Window, path: &std::path::Path) {
+    // A freshly mapped window may not have drawn its first frame yet (an
+    // empty snapshot): give the main loop a few more turns.
     let paintable = gtk::WidgetPaintable::new(Some(window));
-    let snapshot = gtk::Snapshot::new();
-    paintable.snapshot(&snapshot, window.width() as f64, window.height() as f64);
-    let node = snapshot.to_node().expect("rendered native widget tree");
+    let mut node = None;
+    for _ in 0..20 {
+        let snapshot = gtk::Snapshot::new();
+        paintable.snapshot(&snapshot, window.width() as f64, window.height() as f64);
+        node = snapshot.to_node();
+        if node.is_some() {
+            break;
+        }
+        pump();
+    }
+    let node = node.unwrap_or_else(|| {
+        panic!(
+            "rendered native widget tree (mapped {}, {}x{})",
+            window.is_mapped(),
+            window.width(),
+            window.height()
+        )
+    });
     let surface = window.surface().expect("fixture surface");
     let renderer = gtk::gsk::Renderer::for_surface(&surface).expect("fixture renderer");
     let texture = renderer.render_texture(&node, None);
@@ -556,6 +573,121 @@ fn truncated_labels(w: &gtk::Widget, out: &mut Vec<(String, String)>) {
     }
 }
 
+/// One drawn label's rendered font, read back from GTK (the CSS cascade
+/// as Pango sees it), with its position in the window.
+struct LabelFont {
+    class: String,
+    text: String,
+    px: f64,
+    weight: i32,
+    letter_spacing: bool,
+    x: f32,
+    y: f32,
+}
+
+/// Every drawn label under `w` (GtkCalendar's own day labels included).
+fn label_fonts(w: &gtk::Widget, window: &gtk::Widget, out: &mut Vec<LabelFont>) {
+    if !w.is_drawable() {
+        return;
+    }
+    if let Some(l) = w.downcast_ref::<gtk::Label>()
+        && !l.label().is_empty()
+    {
+        let fd = l
+            .pango_context()
+            .font_description()
+            .expect("label font description");
+        let size = f64::from(fd.size()) / f64::from(gtk::pango::SCALE);
+        // GTK hands CSS px to Pango as an absolute size; a point size
+        // would be at 96 dpi.
+        let px = if fd.is_size_absolute() {
+            size
+        } else {
+            size * 96.0 / 72.0
+        };
+        let letter_spacing = l.layout().attributes().is_some_and(|attrs| {
+            attrs.attributes().iter().any(|a| {
+                a.type_() == gtk::pango::AttrType::LetterSpacing
+                    && a.downcast_ref::<gtk::pango::AttrInt>()
+                        .is_some_and(|i| i.value() != 0)
+            })
+        });
+        let b = bounds(l, window);
+        out.push(LabelFont {
+            class: l
+                .css_classes()
+                .first()
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| {
+                    w.parent()
+                        .map(|p| p.css_name().to_string())
+                        .unwrap_or_default()
+                }),
+            text: l.label().to_string(),
+            px,
+            weight: gtk::glib::translate::IntoGlib::into_glib(fd.weight()),
+            letter_spacing,
+            x: b.x(),
+            y: b.y(),
+        });
+    }
+    let mut child = w.first_child();
+    while let Some(c) = child {
+        label_fonts(&c, window, out);
+        child = c.next_sibling();
+    }
+}
+
+/// The type floor (the owner's monospace breaks up below it): no label
+/// under 12 px, nothing bold (> 500) under 14 px, no letter-spacing under
+/// 14 px, and every label on whole pixels (no fractional transform left
+/// after the tab transition). Returns the smallest size seen.
+fn assert_type_floor(name: &str, tab: &str, dash: &gtk::Widget, window: &gtk::Widget) -> f64 {
+    let mut fonts = Vec::new();
+    label_fonts(dash, window, &mut fonts);
+    assert!(!fonts.is_empty(), "{name}/{tab}: no labels found");
+    let mut problems = Vec::new();
+    for f in &fonts {
+        if f.px < 12.0 - 0.01 {
+            problems.push(format!("{} {:?} at {} px (< 12)", f.class, f.text, f.px));
+        }
+        if f.px < 14.0 - 0.01 && f.weight > 500 {
+            problems.push(format!(
+                "{} {:?} weight {} at {} px (bold < 14)",
+                f.class, f.text, f.weight, f.px
+            ));
+        }
+        if f.px < 14.0 - 0.01 && f.letter_spacing {
+            problems.push(format!(
+                "{} {:?} letter-spaced at {} px",
+                f.class, f.text, f.px
+            ));
+        }
+        if f.x.fract().abs() > 0.01 || f.y.fract().abs() > 0.01 {
+            problems.push(format!(
+                "{} {:?} at {},{} (not on whole px)",
+                f.class, f.text, f.x, f.y
+            ));
+        }
+    }
+    if std::env::var("MDASH_RENDER_VERBOSE").is_ok_and(|v| !v.is_empty()) {
+        for f in &fonts {
+            println!(
+                "{name}/{tab}: font {} {:?} {} px w{}",
+                f.class, f.text, f.px, f.weight
+            );
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "{name}/{tab}: type floor broken:\n  {}",
+        problems.join("\n  ")
+    );
+    let min = fonts.iter().map(|f| f.px).fold(f64::MAX, f64::min);
+    println!("{name}/{tab}: {} labels, smallest {min} px", fonts.len());
+    min
+}
+
 const NEVER_CUT: &[&str] = &[
     "mdash-card-title",
     "control-center-tile-title",
@@ -592,6 +724,20 @@ fn native_mdash_render_fixture() {
         &frame_css,
         gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 1,
     );
+    if let Ok(font) = std::env::var("MDASH_RENDER_FONT") {
+        // The owner's UI font (Settings → Fonts), injected the way the
+        // style manager does it, so sizes and widths are measured in it.
+        let font_css = gtk::CssProvider::new();
+        font_css.load_from_string(&format!(
+            ":root {{ --font-family-primary: \"{font}\"; --font-family-secondary: \"{font}\"; \
+             --font-family-tertiary: \"{font}\"; --font-family-monospace: \"{font}\"; }}"
+        ));
+        gtk::style_context_add_provider_for_display(
+            &display,
+            &font_css,
+            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 1,
+        );
+    }
     if let Ok(icons) = std::env::var("MDASH_RENDER_ICONS") {
         // The scratch HOME has no icon theme configured: point the
         // display's theme at the repo's MargoMaterial set.
@@ -600,9 +746,17 @@ fn native_mdash_render_fixture() {
     }
     mshell_services::init_absent_services_for_fixtures();
 
-    // The real panel: mdash's default width (800) minus the menu's 20 px
-    // margins on each side.
-    const CONTENT_WIDTH: i32 = 760;
+    // The real panel: mdash's default menu width minus the menu's 20 px
+    // margins on each side (920 inside 960).
+    let content_width = mshell_config::schema::config::Config::default()
+        .menus
+        .mdash_menu
+        .minimum_width
+        - 40;
+    assert_eq!(
+        content_width, 920,
+        "the shots and docs assume a 920 px dashboard"
+    );
     const ALL_TABS: &[&str] = &["today", "controls", "system", "tools"];
     for (name, fx, tabs) in [
         (
@@ -689,7 +843,7 @@ fn native_mdash_render_fixture() {
             // surface that follows the active tab's height.
             .resizable(false)
             .build();
-        controller.widget().set_size_request(CONTENT_WIDTH, -1);
+        controller.widget().set_size_request(content_width, -1);
         window.present();
         pump();
 
@@ -716,12 +870,12 @@ fn native_mdash_render_fixture() {
                 page.width(),
                 page.height()
             );
-            if min_w > CONTENT_WIDTH {
+            if min_w > content_width {
                 wide_report(&dash, 0);
             }
             // Fits the menu's pinned width; never wider.
-            assert!(min_w <= CONTENT_WIDTH, "{name}/{tab}: needs {min_w} px");
-            assert_eq!(dash.width(), CONTENT_WIDTH, "{name}/{tab}: width");
+            assert!(min_w <= content_width, "{name}/{tab}: needs {min_w} px");
+            assert_eq!(dash.width(), content_width, "{name}/{tab}: width");
             // The panel's height follows the tab: the page gets exactly
             // its natural height.
             assert!(
@@ -743,6 +897,11 @@ fn native_mdash_render_fixture() {
                     "{name}/{tab}: {class} {text:?} is cut"
                 );
             }
+            assert!(
+                !stack.is_transition_running(),
+                "{name}/{tab}: still animating"
+            );
+            assert_type_floor(name, tab, &dash, window.upcast_ref());
             assert_no_stretched_cards(name, tab, &page);
             match tab {
                 "today" => {
