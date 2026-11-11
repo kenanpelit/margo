@@ -385,7 +385,7 @@ impl TodayCard {
         summary.set_single_line_mode(true);
         row.append(&summary);
         let time = gtk::Label::new(Some(&n.time));
-        time.add_css_class("mdash-dim");
+        time.add_css_class("mdash-caption");
         row.append(&time);
         b.set_child(Some(&row));
         let label = if n.app.is_empty() {

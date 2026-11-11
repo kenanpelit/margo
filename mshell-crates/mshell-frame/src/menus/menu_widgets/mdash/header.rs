@@ -146,8 +146,7 @@ fn power_page(popover: &gtk::Popover, on: Rc<dyn Fn(HeaderEvent)>) -> gtk::Stack
     question.set_xalign(0.0);
     confirm.append(&question);
     let hint = gtk::Label::new(Some("Unsaved work in open apps is lost."));
-    hint.add_css_class("label-small");
-    hint.add_css_class("dim-label");
+    hint.add_css_class("mdash-power-hint");
     hint.set_xalign(0.0);
     confirm.append(&hint);
     let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 8);

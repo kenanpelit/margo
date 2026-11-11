@@ -9,6 +9,14 @@
 // start at the menu's own margin (no extra padding here), and ONE gap
 // (`card::GAP`, --space-2) between cards, rows and tiles. Tokens only
 // (DESIGN.md §1, §15).
+//
+// Type scale (the owner's UI font is a monospace that breaks up when small
+// and bold): body text and row labels --font-sm, card titles --font-md 600,
+// values --font-md / --font-lg, the greeting --font-lg 700. Only true
+// metadata (timestamps, units, captions) drops to --font-xs, at weight
+// 400-500 with no letter-spacing. Nothing bold below --font-sm, no
+// --font-2xs, and dim text uses the dim colour token, never opacity. The
+// render fixture enforces the floor (`render_tests::assert_type_floor`).
 
 .mdash-dashboard {
   // ── Header ─────────────────────────────────────────────────────
@@ -23,7 +31,7 @@
   }
 
   .mdash-datetime {
-    font-size: var(--font-xs);
+    font-size: var(--font-sm);
     color: var(--on-surface-variant);
     font-variant-numeric: tabular-nums;
   }
@@ -58,7 +66,7 @@
     border-radius: var(--radius-pill);
     background-color: var(--surface-container);
     color: var(--on-surface-variant);
-    font-size: var(--font-xs);
+    font-size: var(--font-sm);
     @include state-layer(var(--surface-container));
 
     image {
@@ -73,11 +81,13 @@
 
   // ── Tabs ───────────────────────────────────────────────────────
   .mdash-tabs > button.ok-segment {
-    padding: var(--space-1) var(--space-3);
-    font-size: var(--font-xs);
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--font-sm);
+    font-weight: 600;
 
     label {
-      font-size: var(--font-xs);
+      font-size: var(--font-sm);
+      font-weight: 600;
     }
   }
 
@@ -101,7 +111,7 @@
   }
 
   .mdash-card-header {
-    min-height: 24px;
+    min-height: 28px;
   }
 
   .mdash-card-icon {
@@ -110,22 +120,21 @@
   }
 
   .mdash-card-title {
-    font-size: var(--font-xs);
-    font-weight: 700;
-    color: var(--on-surface-variant);
-    letter-spacing: 0.02em;
+    font-size: var(--font-md);
+    font-weight: 600;
+    color: var(--on-surface);
   }
 
   .mdash-card-meta {
-    font-size: var(--font-xs);
-    color: var(--outline);
+    font-size: var(--font-sm);
+    color: var(--on-surface-variant);
   }
 
   button.mdash-card-open,
   button.mdash-icon-button {
     all: unset;
-    min-width: 24px;
-    min-height: 24px;
+    min-width: 28px;
+    min-height: 28px;
     border-radius: var(--radius-pill);
     @include state-layer();
 
@@ -139,13 +148,23 @@
     }
   }
 
+  // Secondary text (a sub-line, a place, a condition): body size, dim.
   .mdash-dim {
-    font-size: var(--font-xs);
+    font-size: var(--font-sm);
     color: var(--on-surface-variant);
   }
 
-  .mdash-empty {
+  // True metadata (an hour, a notification's age): the one place for
+  // --font-xs — regular weight, no letter-spacing.
+  .mdash-caption {
     font-size: var(--font-xs);
+    font-weight: 400;
+    color: var(--on-surface-variant);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mdash-empty {
+    font-size: var(--font-sm);
     color: var(--on-surface-variant);
   }
 
@@ -153,10 +172,10 @@
   button.mdash-row-button {
     all: unset;
     padding: var(--space-1) var(--space-2);
-    min-height: 28px;
+    min-height: 32px;
     border-radius: var(--radius-sm);
     background-color: var(--surface-container-high);
-    font-size: var(--font-xs);
+    font-size: var(--font-sm);
     @include state-layer(var(--surface-container-high));
 
     image {
@@ -181,32 +200,35 @@
       padding: 0 0 var(--space-1);
 
       > label {
+        font-size: var(--font-md);
         font-weight: 600;
         color: var(--on-surface);
       }
 
       > button {
         background-color: transparent;
-        min-height: 24px;
-        min-width: 24px;
+        min-height: 28px;
+        min-width: 28px;
       }
     }
 
     > grid > label {
       padding: 2px 0;
-      min-width: 26px;
-      min-height: 22px;
-      font-size: var(--font-xs);
+      min-width: 32px;
+      min-height: 26px;
+      font-size: var(--font-sm);
       border-radius: var(--radius-pill);
-      color: var(--on-surface-variant);
+      color: var(--on-surface);
 
       &.day-name {
-        color: var(--outline);
-        font-weight: 600;
+        font-size: var(--font-xs);
+        color: var(--on-surface-variant);
+        font-weight: 500;
       }
 
+      // The dim colour token, not opacity: faded glyphs smear.
       &.other-month {
-        opacity: 0.35;
+        color: var(--outline);
       }
 
       &:checked {
@@ -239,12 +261,13 @@
   }
 
   .mdash-today-row {
-    min-height: 24px;
+    min-height: 28px;
   }
 
-  .mdash-today-time {
-    min-width: 44px;
-    font-size: var(--font-xs);
+  .mdash-today-time,
+  .calendar-agenda-time {
+    min-width: 48px;
+    font-size: var(--font-sm);
     font-weight: 600;
     color: var(--primary);
     font-variant-numeric: tabular-nums;
@@ -255,7 +278,7 @@
   }
 
   .mdash-today-empty {
-    min-height: 24px;
+    min-height: 28px;
   }
 
   button.mdash-note-row {
@@ -280,9 +303,9 @@
   button.mdash-more {
     all: unset;
     padding: 0 var(--space-1);
-    min-height: 20px;
+    min-height: 24px;
     border-radius: var(--radius-sm);
-    font-size: var(--font-xs);
+    font-size: var(--font-sm);
     font-weight: 600;
     color: var(--primary);
     @include state-layer();
@@ -306,7 +329,7 @@
 
   .mdash-weather-condition {
     font-weight: 600;
-    font-size: var(--font-sm);
+    font-size: var(--font-md);
   }
 
   .mdash-weather-hours {
@@ -322,15 +345,15 @@
 
   .mdash-weather-hour-temp,
   .mdash-weather-range {
-    font-size: var(--font-xs);
+    font-size: var(--font-sm);
     font-weight: 600;
     font-variant-numeric: tabular-nums;
   }
 
   .mdash-weather-day {
-    font-size: var(--font-xs);
+    font-size: var(--font-sm);
     font-weight: 600;
-    min-width: 32px;
+    min-width: 40px;
   }
 
   .mdash-weather-days image {
@@ -340,8 +363,8 @@
 
   // ── Today: media ───────────────────────────────────────────────
   .mdash-media-art {
-    min-width: 44px;
-    min-height: 44px;
+    min-width: 52px;
+    min-height: 52px;
     border-radius: var(--radius-xs);
     background-color: var(--surface-container-high);
   }
@@ -353,7 +376,7 @@
 
   .mdash-media-title {
     font-weight: 600;
-    font-size: var(--font-sm);
+    font-size: var(--font-md);
   }
 
   progressbar.mdash-media-progress > trough,
@@ -373,8 +396,8 @@
 
   button.mdash-transport {
     all: unset;
-    min-width: 32px;
-    min-height: 32px;
+    min-width: 36px;
+    min-height: 36px;
     border-radius: var(--radius-pill);
     @include state-layer();
 
@@ -405,7 +428,7 @@
   // The quick-entry field on the card's raised surface (the theme's own
   // entry chrome would read as a white box on the card).
   entry.mdash-entry {
-    min-height: 30px;
+    min-height: 34px;
     padding: 0 var(--space-2);
     border: none;
     border-radius: var(--radius-sm);
@@ -413,7 +436,7 @@
     background-color: var(--surface-container-high);
     color: var(--on-surface);
     caret-color: var(--on-surface);
-    font-size: var(--font-xs);
+    font-size: var(--font-sm);
 
     placeholder {
       color: var(--on-surface-variant);
@@ -427,15 +450,15 @@
   // The media card's second row (progress, or the station buttons) is
   // one height in both states, so the card doesn't change size.
   .mdash-media-row2 {
-    min-height: 28px;
+    min-height: 32px;
   }
 
   button.mdash-preset {
     all: unset;
-    min-height: 26px;
+    min-height: 34px;
     border-radius: var(--radius-sm);
     background-color: var(--surface-container-high);
-    font-size: var(--font-xs);
+    font-size: var(--font-sm);
     font-weight: 600;
     @include state-layer(var(--surface-container-high));
 
@@ -459,7 +482,7 @@
 
   .mdash-timer-left {
     font-weight: 700;
-    font-size: var(--font-sm);
+    font-size: var(--font-md);
     font-variant-numeric: tabular-nums;
   }
 
@@ -488,8 +511,8 @@
 
   button.mdash-inline-button {
     padding: var(--space-1) var(--space-3);
-    min-height: 30px;
-    font-size: var(--font-xs);
+    min-height: 34px;
+    font-size: var(--font-sm);
   }
 
   levelbar.mdash-bar > trough {
@@ -532,14 +555,18 @@
       background: var(--surface-container-high);
       @include state-layer(var(--surface-container-high));
     }
+
+    label {
+      font-size: var(--font-sm);
+    }
   }
 
   .mdash-ai-label {
-    font-size: var(--font-xs);
+    font-size: var(--font-sm);
   }
 
   .mdash-ai-percent {
-    font-size: var(--font-xs);
+    font-size: var(--font-sm);
     font-weight: 700;
     font-variant-numeric: tabular-nums;
 
@@ -554,7 +581,15 @@
 
   // ── Controls ───────────────────────────────────────────────────
   .mdash-sliders-card {
-    padding: var(--space-2) var(--space-3);
+    padding: var(--space-3);
+  }
+
+  // The Control Center's slider rows at their own size; only the
+  // percentage reads at body size (bold at 12 px breaks up).
+  .control-center-slider-value {
+    font-size: var(--font-sm);
+    letter-spacing: 0;
+    min-width: 44px;
   }
 
   // Where a slider row has no device chevron: the chevron's footprint
@@ -563,11 +598,12 @@
     min-width: calc(var(--icon-sm) + 2 * var(--space-1));
   }
 
+  // A group heading ("Connectivity", "Upcoming · Thu"): body size,
+  // semibold, dim — no letter-spacing, no transform.
   .mdash-section-caption {
-    font-size: var(--font-2xs);
-    font-weight: 700;
+    font-size: var(--font-sm);
+    font-weight: 600;
     color: var(--on-surface-variant);
-    letter-spacing: 0.04em;
     margin: var(--space-1) 0 0 0;
   }
 
@@ -594,22 +630,23 @@
       }
 
       .control-center-tile-title {
-        font-size: var(--font-xs);
+        font-size: var(--font-sm);
+        letter-spacing: 0;
       }
 
       .control-center-tile-subtitle {
-        font-size: var(--font-2xs);
+        font-size: var(--font-xs);
       }
 
       .control-center-tile-icon image {
-        -gtk-icon-size: var(--icon-sm);
+        -gtk-icon-size: var(--icon-md);
       }
     }
 
     > button.mdash-tile-more {
       all: unset;
-      min-width: 24px;
-      min-height: 24px;
+      min-width: 28px;
+      min-height: 28px;
       margin: 0 var(--space-2) 0 0;
       border-radius: var(--radius-pill);
       @include state-layer();
@@ -634,8 +671,8 @@
     all: unset;
     border-radius: var(--card-radius);
     background-color: var(--card-bg);
-    min-height: 64px;
-    padding: var(--space-1);
+    min-height: 72px;
+    padding: var(--space-2) var(--space-1);
     @include state-layer(var(--card-bg));
 
     &:focus-visible {
@@ -649,7 +686,7 @@
   }
 
   .mdash-tool-label {
-    font-size: var(--font-xs);
+    font-size: var(--font-sm);
     color: var(--on-surface);
   }
 }
@@ -684,5 +721,10 @@ popover.mdash-power-popover > contents {
   .mdash-power-question {
     font-weight: 700;
     font-size: var(--font-sm);
+  }
+
+  .mdash-power-hint {
+    font-size: var(--font-sm);
+    color: var(--on-surface-variant);
   }
 }

@@ -472,8 +472,9 @@ impl SystemTab {
             let label = gtk::Label::new(Some(&r.label));
             label.add_css_class("mdash-ai-label");
             label.set_xalign(0.0);
-            label.set_width_chars(14);
-            label.set_max_width_chars(14);
+            // The longest default window name ("Claude · weekly") whole.
+            label.set_width_chars(16);
+            label.set_max_width_chars(16);
             label.set_ellipsize(gtk::pango::EllipsizeMode::End);
             row.append(&label);
             let bar = gtk::LevelBar::new();

@@ -168,7 +168,7 @@ impl WeatherCard {
             } else {
                 h.time.format("%-I %p").to_string()
             }));
-            time.add_css_class("mdash-dim");
+            time.add_css_class("mdash-caption");
             cell.append(&time);
             let icon = gtk::Image::from_icon_name(get_weather_icon_name(&h.condition, h.is_day));
             cell.append(&icon);

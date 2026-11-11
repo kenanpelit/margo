@@ -110,7 +110,13 @@ impl ToolsTab {
             content.append(&icon);
             let label = gtk::Label::new(Some(t.label));
             label.add_css_class("mdash-tool-label");
+            // Body size; a long name wraps to a second line rather than
+            // shrinking or being cut.
+            label.set_wrap(true);
+            label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+            label.set_lines(2);
             label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+            label.set_justify(gtk::Justification::Center);
             content.append(&label);
             button.set_child(Some(&content));
             button.set_tooltip_text(Some(&format!("Open {}", t.label)));
