@@ -15,6 +15,17 @@ use std::{
 // Keep native decoder/plugin teardown out of other pipeline tests.
 pub(in crate::audio) static GST_TEST_LOCK: Mutex<()> = Mutex::new(());
 
+/// Every test's GstPlay, never released (see `GstBackend::new`): the last
+/// ref must not die on GstPlay's own thread.
+static KEEP_ALIVE: Mutex<Vec<gst_play::Play>> = Mutex::new(Vec::new());
+
+pub(in crate::audio) fn keep_alive(play: &gst_play::Play) {
+    KEEP_ALIVE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .push(play.clone());
+}
+
 /// Endless, non-seekable radio responses, independent of public stations/network.
 pub(in crate::audio) struct RadioFixture {
     address: std::net::SocketAddr,

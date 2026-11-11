@@ -141,6 +141,18 @@ impl GstBackend {
 
         res.setup_signals();
 
+        // Tests drop their backend at the end; GstPlay may still be posting
+        // a message (URI_LOADED, a state change) whose `src` holds a ref to
+        // the Play. If that message is the last ref, GstPlay is finalized
+        // on its own thread while that thread holds the Play's lock, and
+        // glib aborts the whole test binary with "g_mutex_clear() called on
+        // uninitialised or locked mutex" (seen under load: 3 of 30 parallel
+        // runs, and makepkg's check()). Keep every test Play alive for the
+        // binary's lifetime. The app owns one backend for its whole life,
+        // so this case never arises outside tests.
+        #[cfg(test)]
+        tests::keep_alive(&res.gst_player);
+
         // Put `scaletempo` in the audio path from the start — before the
         // window pushes the persisted ReplayGain mode — so the very
         // first speed change is already pitch-preserving.
