@@ -5,6 +5,88 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.2.0] – 2026-11-11
+
+**A tabbed mdash dashboard with every quick setting, and the firewall,
+Claude Code sessions and running processes managed from the shell: UFW rules and boot state in the firewall menu, saved-session
+rename/lock/cleanup in AI Agents, pause/resume in the CPU Dashboard, one-line
+timers and reminders, file search beyond the home folder, and a Tune that
+remembers its volume.**
+
+### Added
+
+- **Tabbed mdash dashboard:** `mshellctl menu mdash` opens at the top centre
+  with four compact tabs - Today (greeting, media, calendar with this week's
+  events and "+N more", upcoming items, unread notifications), Controls
+  (every Control Center quick-settings tile in rows of four, plus the
+  sliders), System and Tools - and power options in one header popover.
+  Tab / Shift+Tab, Ctrl+Tab and the keys 1–9 switch tabs, `mshellctl menu mdash
+  <today|controls|system|tools>` opens a given tab, and Settings → Widgets →
+  Mdash → Tabs sets the tab order, which tabs show and their cards. Each tab
+  is as tall as its content, with a smooth height change; the panel is a
+  fixed 960 px wide and reads at body text size. Older single-page mdash
+  configs are migrated.
+- **UFW firewall:** add rules from the menu (allow/deny/reject/limit, port,
+  range or list, TCP/UDP/both, optional source and comment, presets for
+  SSH, HTTP(S), KDE Connect/Valent, LocalSend and mDNS), a "Start at boot"
+  switch, the default policies, and an amber state when ufw is enabled but
+  its service failed, is not running or will not start at boot, with a
+  one-click fix. Rules are read without a password when the rule files are
+  readable. New `mshellctl ufw status|enable|disable|allow|deny|reject|limit|delete`.
+  Optional rule count on the pill (`bars.widgets.ufw.show_count`).
+- **AI Agents → Sessions → All sessions:** each saved Claude Code session
+  shows whether it can resume (moved, orphaned or misplaced sessions are
+  marked with the reason; moved ones resume from their new folder). Rename
+  (the same title `/rename` writes), lock against deletion, delete, delete
+  all empty sessions, repair a misplaced transcript, clean up leftovers of
+  deleted sessions, sort by date/name/count, filter, and copy the resume
+  command.
+- **One-line timers and reminders:** `timer 10m tea`, `timer 14:30 meeting`,
+  `timer tomorrow 9am`, also in Turkish (`timer 10dk çay`, `timer yarın 9:00
+  toplantı`), from the launcher (live "Rings at …" preview),
+  `mshellctl timer add|list|cancel|clear`, or the new Timers tab of the Alarm
+  Clock menu (presets +5m … +1h). Timers survive shell restarts, a timer
+  missed while suspended rings once as "missed", and the Alarm Clock pill
+  counts down the next one (`alarm.show_timer_on_pill`).
+- **Launcher file search (`fs`):** search Home only, Home plus extra folders,
+  or the whole system, optionally including mounted USB disks; each
+  combination keeps its own index. Settings → Launcher → File search, or
+  `fs +<folder>` in the launcher.
+- **CPU Dashboard:** pause and resume a process from its row; paused
+  processes are marked. The compositor, the shell, the login/session
+  processes, D-Bus, polkit and the audio stack cannot be paused.
+- **Default Apps:** Archive Manager, Text Editor, Code Editor, PDF Viewer,
+  Documents, Spreadsheet, Presentation and BitTorrent rows.
+
+### Changed
+
+- **mtune** remembers its volume across restarts (a new `volume` setting),
+  whichever control changed it, including the shell's Tune menu.
+- Every UFW root action goes through the audited `mshell-privileged` helper
+  (five new polkit actions) instead of running `pkexec ufw` directly.
+- Default Apps lists only apps that declare the row's file types and says
+  "Not set" when no default exists, instead of showing the first app.
+
+### Fixed
+
+- The privacy pill could keep showing the camera as in use (held by
+  "pipewire") after nothing held it: a device scan inside the same debounce
+  window as the close cancelled the release.
+- Notifications were counted as unread after they had been seen; the
+  unread count is now computed in one place.
+- Quick-settings tile subtitles lead with the percentage.
+- Installing `margo-git` could abort in `check()` with "g_mutex_clear()
+  called on uninitialised or locked mutex" (an mtune test teardown race),
+  and an mlogind test could fail under parallel load.
+- Deleting a UFW rule from the menu never worked (ufw rejected the status
+  line it was given).
+- The alarm's tone stopped as soon as it started when `notify-send` was
+  not installed; the Stop/Snooze notice now stays until answered.
+- File search kept showing an old index's results after a refresh, and a
+  system with plocate but without fd got an empty index for folders outside
+  the plocate database.
+- `fuzz/Cargo.lock` is in step with the workspace version again.
+
 ## [5.1.1] – 2026-11-10
 
 **Media keys no longer flash or crash Tune: a stray Pause/Play from a
