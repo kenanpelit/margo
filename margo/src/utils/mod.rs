@@ -251,7 +251,26 @@ fn spawn_detached(mut cmd: Command, build: impl FnOnce(&mut Command)) -> Result<
 /// succeeded — silent failure was the previous bug, when
 /// `systemctl` exited non-zero (no user manager / dbus broken /
 /// permission denied) the import would no-op without any trace.
+/// Set once the winit (nested) backend is chosen. A nested margo is a
+/// window inside someone else's session: pushing its `WAYLAND_DISPLAY` /
+/// `DISPLAY` into the user's systemd manager and D-Bus activation
+/// environment would point every service started afterwards at a
+/// compositor that disappears when the window closes.
+static NESTED_SESSION: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Mark this compositor as nested (winit), which turns
+/// [`import_session_environment`] into a no-op.
+pub fn set_nested_session() {
+    NESTED_SESSION.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
 pub fn import_session_environment(extra: &[&str]) {
+    if NESTED_SESSION.load(std::sync::atomic::Ordering::Relaxed) {
+        tracing::info!(
+            "import_session_environment: nested (winit) session, leaving the parent's environment alone"
+        );
+        return;
+    }
     let mut vars = vec![
         "WAYLAND_DISPLAY",
         "DISPLAY",

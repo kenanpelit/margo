@@ -1546,6 +1546,7 @@ fn main() -> Result<()> {
 
     if use_winit {
         info!("using winit backend");
+        utils::set_nested_session();
         // Restore parent display env so winit connects to the real parent
         // compositor; our own socket reaches children via the overlay.
         // SAFETY: still no other thread — winit/EGL start inside `run`.
@@ -1585,6 +1586,7 @@ fn main() -> Result<()> {
             error!("  • In qemu, enable virtio-gpu with --enable-virgl");
             error!("");
             error!("Falling back to winit (nested mode — needs WAYLAND_DISPLAY or DISPLAY).");
+            utils::set_nested_session();
             error!(
                 "Software rendering (pixman) fallback is W2.2b in road_map.md, not yet shipped."
             );
