@@ -5,6 +5,36 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.3.0] – 2026-11-12
+
+**Menus with a text field take your typing as soon as they open, and a
+redesigned app launcher.**
+
+### Added
+
+- **Type straight into any menu:** the app launcher, the Settings search,
+  the AI prompt, Keybinds, SSH sessions, Translate, QR, Notifications,
+  Notes, the VPN favourites filter, the Tune queue filter, Wallpaper and AI
+  Agents put the cursor in their text field when they open - from a bar
+  pill, a keybind or `mshellctl menu …` - every time, not only on the
+  first open.
+
+### Changed
+
+- **App launcher:** one rounded search field holding the magnifier, the
+  input and two small toggles (fuzzy `~` / exact `=` matching and hidden
+  apps), highlighted while you type; result rows without zebra stripes and
+  an accent bar on the selected row; a "No matches for …" message when
+  nothing matches; a footer with the result count and only the shortcuts
+  the selected row can use (the rest are on the count's tooltip).
+
+### Fixed
+
+- Opening one menu could pull the keyboard focus into another menu that
+  was already closed, so the keys typed went nowhere.
+- A nested margo (`margo --winit`) no longer rewrites the session's
+  `WAYLAND_DISPLAY` / `DISPLAY` for systemd and D-Bus services.
+
 ## [5.2.0] – 2026-11-11
 
 **A tabbed mdash dashboard with every quick setting, and the firewall,
