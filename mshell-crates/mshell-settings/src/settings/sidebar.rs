@@ -702,11 +702,18 @@ pub(super) fn wire_sidebar_keys(
         // click. (The prior one-shot idle ran once at startup while the
         // panel was hidden, so its focus was lost.) Deferred to idle so
         // focus lands after the map / realize settles.
+        // The frame also focuses it once the panel holds the keyboard
+        // (`mshell_common::autofocus`). This map-time grab only acts while
+        // the panel is really on screen: `map` also fires when the frame
+        // remaps for another menu, and grabbing then stole that menu's focus.
+        mshell_common::autofocus::mark(search_entry);
         let search_weak2 = search_entry.downgrade();
         root.connect_map(move |_| {
             let search_weak2 = search_weak2.clone();
             glib::idle_add_local_once(move || {
-                if let Some(entry) = search_weak2.upgrade() {
+                if let Some(entry) = search_weak2.upgrade()
+                    && mshell_common::autofocus::on_screen(entry.upcast_ref())
+                {
                     entry.grab_focus();
                 }
             });

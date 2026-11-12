@@ -170,6 +170,7 @@ impl Component for AiMenuWidgetModel {
             // on a compact row below, sized like the mode buttons.
             #[name = "input"]
             gtk::Entry {
+            add_css_class: mshell_common::autofocus::CLASS,
                 set_hexpand: true,
                 set_placeholder_text: Some("Ask anything… (Enter to send)"),
                 connect_activate => AiMenuWidgetInput::Send,
@@ -269,13 +270,8 @@ impl Component for AiMenuWidgetModel {
                     // Reflect any provider/model/font change from Settings.
                     self.meta_label.set_label(&provider_model_label());
                     apply_chat_font(&self.font_provider);
-                    // Focus the prompt so you can type immediately on open
-                    // (`mshellctl menu ai` / the pill). Deferred to idle so the
-                    // entry is mapped + the layer surface has keyboard focus.
-                    let entry = self.input.clone();
-                    relm4::gtk::glib::idle_add_local_once(move || {
-                        entry.grab_focus();
-                    });
+                    // The prompt is focused on open by the frame
+                    // (`mshell_common::autofocus`).
                 }
             }
             AiMenuWidgetInput::Send => {

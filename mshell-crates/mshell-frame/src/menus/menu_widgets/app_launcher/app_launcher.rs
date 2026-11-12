@@ -38,6 +38,7 @@
 //! binding the launcher already exposes — overloading it would
 //! break a long-standing muscle-memory shortcut.
 
+use super::footer::{empty_title, rebuild_binds_strip, result_count_label};
 use crate::menus::menu_widgets::app_launcher::apps_provider::AppsProvider;
 use crate::menus::menu_widgets::app_launcher::clipboard_provider::ClipboardProvider;
 use crate::menus::menu_widgets::app_launcher::launcher_row::{
@@ -91,7 +92,7 @@ pub(crate) struct AppLauncherModel {
     /// while the runtime simultaneously borrows providers
     /// immutably during `query()`. Two-borrow split via
     /// `Rc<AppsProvider>` on the side.
-    runtime: RefCell<LauncherRuntime>,
+    pub(super) runtime: RefCell<LauncherRuntime>,
     /// Shared handle to the Apps provider so we can toggle the
     /// `show_hidden` flag without going through the runtime.
     apps_provider: Rc<AppsProvider>,
@@ -101,11 +102,11 @@ pub(crate) struct AppLauncherModel {
     /// model type.
     close_sender: RefCell<Option<Box<dyn Fn() + 'static>>>,
     filter: String,
-    results: Vec<DisplayItem>,
+    pub(super) results: Vec<DisplayItem>,
     /// Stable id of the currently-selected row. We store the id
     /// rather than an index so reordering between keystrokes
     /// doesn't strand the highlight on a different row.
-    selected_id: Option<String>,
+    pub(super) selected_id: Option<String>,
     /// Cached label for the active provider category — drives the
     /// tab-strip highlight without re-asking the runtime on every
     /// repaint.
@@ -276,19 +277,26 @@ impl Component for AppLauncherModel {
             set_vexpand: true,
             set_valign: gtk::Align::Fill,
 
+            // Search capsule — one rounded field holding the magnifier, the
+            // entry and two quiet toggles (fuzzy/exact, hidden apps). The
+            // whole capsule lights up while the entry has the focus, which it
+            // gets as soon as the launcher opens (`mshell_common::autofocus`).
             gtk::Box {
-                add_css_class: "app-launcher-search-row",
+                add_css_class: "app-launcher-search",
                 set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 4,
 
                 gtk::Image {
                     add_css_class: "app-launcher-search-icon",
                     set_icon_name: Some("system-search-symbolic"),
+                    set_valign: gtk::Align::Center,
                 },
 
                 #[name = "search_entry"]
                 gtk::Entry {
-                    add_css_class: "ok-entry",
-                    set_placeholder_text: Some("Search apps, calc, > commands…"),
+                    add_css_class: mshell_common::autofocus::CLASS,
+                    add_css_class: "app-launcher-search-entry",
+                    set_placeholder_text: Some("Search apps, windows, = calc, > commands…"),
                     set_hexpand: true,
                     // Fallible sends, never `input()`: `changed` also fires
                     // when the entry text is set programmatically (e.g. the
@@ -306,37 +314,53 @@ impl Component for AppLauncherModel {
                     },
                 },
 
-                // Exact-search indicator — small "≈/=" pill next to
-                // the eye toggle that tells the user whether fuzzy
-                // (~) or exact (=) matching is active. CSS handles
-                // the visual style; the label text is the only
-                // model-bound thing.
+                // Fuzzy (~) / exact (=) matching — a toggle, same as Ctrl+E.
                 #[name = "exact_indicator"]
-                gtk::Label {
-                    add_css_class: "app-launcher-exact-mode",
+                gtk::Button {
+                    #[watch]
+                    set_css_classes: if model.runtime.borrow().is_exact_search() {
+                        &["app-launcher-search-toggle", "app-launcher-exact-mode", "active"]
+                    } else {
+                        &["app-launcher-search-toggle", "app-launcher-exact-mode"]
+                    },
                     #[watch]
                     set_label: if model.runtime.borrow().is_exact_search() { "=" } else { "~" },
-                    set_margin_start: 6,
-                    set_margin_end: 6,
+                    #[watch]
+                    set_tooltip_text: Some(if model.runtime.borrow().is_exact_search() {
+                        "Exact matching (Ctrl+E for fuzzy)"
+                    } else {
+                        "Fuzzy matching (Ctrl+E for exact)"
+                    }),
+                    update_property: &[gtk::accessible::Property::Label("Toggle exact matching")],
+                    set_can_focus: false,
                     set_valign: gtk::Align::Center,
+                    connect_clicked[sender] => move |_| {
+                        sender.input(AppLauncherInput::ToggleExactSearch);
+                    },
                 },
 
                 gtk::Button {
-                    set_tooltip_text: Some("Show hidden apps"),
+                    #[watch]
+                    set_css_classes: if model.apps_provider.show_hidden() {
+                        &["app-launcher-search-toggle", "active"]
+                    } else {
+                        &["app-launcher-search-toggle"]
+                    },
+                    #[watch]
+                    set_tooltip_text: Some(if model.apps_provider.show_hidden() {
+                        "Hidden apps are shown"
+                    } else {
+                        "Show hidden apps"
+                    }),
                     update_property: &[gtk::accessible::Property::Label("Show hidden apps")],
-                    add_css_class: "ok-button-surface",
-                    set_hexpand: false,
-                    set_vexpand: false,
+                    set_can_focus: false,
+                    set_valign: gtk::Align::Center,
                     connect_clicked[sender] => move |_| {
                         sender.input(AppLauncherInput::ShowHiddenAppsChanged);
                     },
 
                     #[name = "image"]
                     gtk::Image {
-                        set_hexpand: true,
-                        set_vexpand: true,
-                        set_halign: gtk::Align::Center,
-                        set_valign: gtk::Align::Center,
                         #[watch]
                         set_icon_name: if model.apps_provider.show_hidden() {
                             Some("eye-symbolic")
@@ -376,8 +400,16 @@ impl Component for AppLauncherModel {
                 set_spacing: 12,
                 set_vexpand: true,
 
+                // The list, with a centred empty state laid over it when
+                // nothing matches.
+                gtk::Overlay {
+                    set_hexpand: true,
+                    set_vexpand: true,
+
+                #[wrap(Some)]
                 #[name = "scrolled_window"]
-                ScrolledWindow {
+                set_child = &ScrolledWindow {
+                    add_css_class: "app-launcher-list",
                     set_vscrollbar_policy: gtk::PolicyType::Automatic,
                     set_hscrollbar_policy: gtk::PolicyType::Never,
                     set_propagate_natural_height: false,
@@ -395,6 +427,38 @@ impl Component for AppLauncherModel {
                     gtk::Box {
                         set_hexpand: true,
                     },
+                },
+
+                add_overlay = &gtk::Box {
+                    add_css_class: "app-launcher-empty",
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 6,
+                    set_halign: gtk::Align::Center,
+                    set_valign: gtk::Align::Center,
+                    set_can_target: false,
+                    #[watch]
+                    set_visible: model.results.is_empty(),
+
+                    gtk::Image {
+                        add_css_class: "app-launcher-empty-icon",
+                        set_icon_name: Some("system-search-symbolic"),
+                    },
+                    gtk::Label {
+                        add_css_class: "app-launcher-empty-title",
+                        #[watch]
+                        set_label: &empty_title(&model.filter),
+                        set_wrap: true,
+                        set_justify: gtk::Justification::Center,
+                        set_max_width_chars: 32,
+                    },
+                    gtk::Label {
+                        add_css_class: "app-launcher-empty-hint",
+                        set_label: "Tab switches category · > lists every command",
+                        set_wrap: true,
+                        set_justify: gtk::Justification::Center,
+                        set_max_width_chars: 36,
+                    },
+                },
                 },
 
                 gtk::Box {
@@ -462,6 +526,22 @@ impl Component for AppLauncherModel {
             // minimum width is just the widest single chip, so it
             // never forces the panel wider; it simply reflows within
             // whatever width the panel has.
+            gtk::Box {
+                add_css_class: "app-launcher-footer",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 12,
+
+                gtk::Label {
+                    add_css_class: "app-launcher-count",
+                    #[watch]
+                    set_label: &result_count_label(model.results.len()),
+                    set_valign: gtk::Align::Center,
+                    set_tooltip_text: Some(
+                        "Ctrl+1…9 launch a numbered row · Ctrl+E exact matching · \
+                         Ctrl+R last query · PgUp/PgDn page · right-click a row to pin or hide",
+                    ),
+                },
+
             #[name = "binds_strip"]
             gtk::FlowBox {
                 add_css_class: "app-launcher-binds-strip",
@@ -472,9 +552,9 @@ impl Component for AppLauncherModel {
                 set_max_children_per_line: 24,
                 set_min_children_per_line: 1,
                 set_homogeneous: false,
-                set_margin_top: 10,
-                set_halign: gtk::Align::Fill,
+                set_halign: gtk::Align::End,
                 set_hexpand: true,
+            },
             },
         }
     }
@@ -1129,7 +1209,9 @@ impl Component for AppLauncherModel {
                     self.runtime.borrow_mut().on_opened();
                     self.filter.clear();
                     widgets.search_entry.set_text("");
-                    widgets.search_entry.grab_focus();
+                    // Focus comes from the frame (`mshell_common::autofocus`):
+                    // this handler also runs when the frame remaps for
+                    // another menu, so a grab here stole that menu's focus.
                     // Resolve the matugen accent (`--primary`) from a realized
                     // widget so result rows can accent-colour matched query
                     // chars (fzf-style). Refreshed each open → picks up theme
@@ -1460,149 +1542,6 @@ impl AppLauncherModel {
                 return;
             }
         }
-    }
-}
-
-/// One keybind hint = visible key chip + caption + whether it
-/// applies to the current selection. Always-rendered hints have
-/// `applicable: true` regardless of state; contextual hints (Pin /
-/// Remove / Alt) flip their `applicable` flag based on the
-/// selected row's capabilities.
-///
-/// We render *every* hint every time — the inapplicable ones go
-/// to `opacity: 0` instead of being removed. That keeps the
-/// strip's natural width identical across selections so the
-/// launcher menu doesn't slide sideways when navigation toggles
-/// the contextual chips.
-struct BindHint {
-    /// One or more keycaps in the combo — each becomes a `.kbd-key`
-    /// cap in the shared keycap idiom (e.g. `&["Ctrl", "⇧", "P"]`).
-    keys: &'static [&'static str],
-    label: &'static str,
-    applicable: bool,
-}
-
-/// (Re)render the keybind hint strip at the bottom of the launcher.
-/// Walker-style: each hint is a small chip showing the key combo
-/// followed by what it does. The chip set is **fixed** in size —
-/// always 9 chips, in a stable order — so the strip's intrinsic
-/// width never changes as the selection moves. Contextual chips
-/// (Alt action / Pin·Unpin / Remove) fade to `opacity: 0` when
-/// they don't apply rather than being removed; the slot is still
-/// allocated.
-fn rebuild_binds_strip(strip: &gtk::FlowBox, model: &AppLauncherModel) {
-    // Snapshot the selected row's capabilities so we can flip
-    // contextual chips on/off without holding two runtime borrows.
-    let selected = model
-        .selected_id
-        .as_ref()
-        .and_then(|id| model.results.iter().find(|d| &d.item.id == id));
-    let (has_alt, has_pin, has_delete) = if let Some(d) = selected {
-        let item = &d.item;
-        let rt = model.runtime.borrow();
-        (
-            rt.alt_action(item).is_some(),
-            item.usage_key.is_some(),
-            rt.can_delete(item),
-        )
-    } else {
-        (false, false, false)
-    };
-
-    // Static caption — toggling between "Pin" and "Unpin" would
-    // change the chip's natural width and slide every chip to its
-    // right. The row's ★ glyph already shows whether the item is
-    // pinned right now; the chip just labels what the keybind does
-    // (toggle pin state).
-    let pin_label: &'static str = "Pin";
-
-    // Stable order matches the keyboard mental model: activation
-    // first, then power keys, then panel-level binds (Exact /
-    // Last / Close). Inapplicable chips reserve their slot via
-    // opacity 0 so the strip's natural width is identical for
-    // every selection.
-    let hints: [BindHint; 9] = [
-        BindHint {
-            keys: &["↵"],
-            label: "Activate",
-            applicable: true,
-        },
-        BindHint {
-            keys: &["Ctrl", "↵"],
-            label: "Alt action",
-            applicable: has_alt,
-        },
-        BindHint {
-            keys: &["Ctrl", "1-9"],
-            label: "Quick",
-            applicable: true,
-        },
-        BindHint {
-            keys: &["Tab"],
-            label: "Categories",
-            applicable: true,
-        },
-        BindHint {
-            keys: &["Ctrl", "⇧", "P"],
-            label: pin_label,
-            applicable: has_pin,
-        },
-        BindHint {
-            keys: &["Ctrl", "Del"],
-            label: "Remove",
-            applicable: has_delete,
-        },
-        BindHint {
-            keys: &["Ctrl", "E"],
-            label: "Exact",
-            applicable: true,
-        },
-        BindHint {
-            keys: &["Ctrl", "R"],
-            label: "Last",
-            applicable: true,
-        },
-        BindHint {
-            keys: &["Esc"],
-            label: "Close",
-            applicable: true,
-        },
-    ];
-
-    // Tear down old chips. GTK4 has no `clear()`.
-    while let Some(child) = strip.first_child() {
-        strip.remove(&child);
-    }
-
-    for hint in &hints {
-        // Skip inapplicable contextual chips entirely. The FlowBox
-        // reflows on its own, so we no longer need opacity-0 spacer
-        // chips to keep a single-line strip's width stable.
-        if !hint.applicable {
-            continue;
-        }
-
-        // Shared real-keycap idiom (`_keycap.scss`): a `.kbd-chip`
-        // grouping one `.kbd-key` cap per combo key, then a trailing
-        // `.kbd-caption` describing the action.
-        let chip = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-        chip.add_css_class("kbd-chip");
-
-        for cap in hint.keys {
-            let key_lbl = gtk::Label::new(Some(cap));
-            key_lbl.add_css_class("kbd-key");
-            chip.append(&key_lbl);
-        }
-
-        // Full label, no ellipsize — the FlowBox wraps chips that
-        // don't fit onto the next line instead of truncating them,
-        // and a single chip's natural width never forces the panel
-        // wider than its own ~one-chip minimum.
-        let cap_lbl = gtk::Label::new(Some(hint.label));
-        cap_lbl.add_css_class("kbd-caption");
-        chip.append(&cap_lbl);
-
-        strip.append(&chip);
     }
 }
 

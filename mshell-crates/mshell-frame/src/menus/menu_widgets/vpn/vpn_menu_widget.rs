@@ -441,6 +441,7 @@ impl Component for VpnMenuWidgetModel {
 
                         gtk::SearchEntry {
                             set_placeholder_text: Some("Search favourites…"),
+                            add_css_class: mshell_common::autofocus::CLASS,
                             connect_search_changed[sender] => move |e| {
                                 sender.input(VpnMenuWidgetInput::FavFilter(e.text().to_string()));
                             },

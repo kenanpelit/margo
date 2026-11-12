@@ -10,7 +10,7 @@
 // stacked inside the menu surface:
 //
 //   ┌─────────────────────────────────────────────┐
-//   │  🔍  search entry              ~  👁         │  search header (primary accent on focus)
+//   │ ( 🔍  search entry               ~   👁 )     │  search capsule (accent while focused)
 //   ├─────────────────────────────────────────────┤
 //   │  [All] [Apps] [Compositor] [System] [Run] … │  category pill strip
 //   ├─────────────────────────────────────────────┤
@@ -26,72 +26,96 @@
 // --on-primary for the accent state, --surface-variant for the
 // list card background, --surface-container-high for hover.
 
-// ── Search header ────────────────────────────────────────────────
+// ── Search capsule ───────────────────────────────────────────────
 //
-// The GtkEntry itself uses the .ok-entry primitive; we wrap it
-// with .app-launcher-search-row which adds breathing room and
-// stamps the focus accent.
-
-.app-launcher-search-row {
-  margin-bottom: var(--space-3);
-}
-
-// Larger, bolder magnifier glyph that picks up the primary tint
-// to match the calendar-hero day number tone. Sits left of the
-// search entry.
-.app-launcher-search-icon {
-  color: var(--primary);
-  -gtk-icon-size: var(--icon-md);
-  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-1);
-}
-
-// Search entry — bigger font + accent ring on focus so it reads
-// as the screen's primary input affordance.
-.app-launcher-search-row > entry,
-.app-launcher-search-row entry.ok-entry {
+// One rounded field: magnifier, entry, then two quiet toggles (~/= and
+// hidden apps). The entry itself is flat — the capsule carries the
+// surface and lights up while the entry holds the focus (the launcher
+// focuses it on open), so the screen's primary input is unmistakable.
+.app-launcher-search {
   background-color: var(--surface-container);
-  color: var(--on-surface);
-  // Material search field: pill-ish (radius-xl) filled tonal surface.
-  border-radius: var(--radius-xl);
-  padding: var(--space-3) var(--space-4);
-  // Primary input → body+ tier on the --font-* scale (§1.6), not an
-  // em-relative size.
-  font-size: var(--font-md);
-  border: 2px solid transparent;
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-4);
+  margin-bottom: var(--space-3);
+  min-height: 44px;
+  box-shadow: inset 0 0 0 1px var(--outline-variant);
   transition: background-color var(--motion-medium) var(--ease-standard),
               box-shadow var(--motion-medium) var(--ease-standard);
 
-  &:focus,
   &:focus-within {
     background-color: var(--surface-container-high);
-    // Soft accent glow instead of a hard 2px ring — calmer focus cue.
-    box-shadow: 0 0 0 3px unquote("color-mix(in srgb, var(--primary) 26%, transparent)");
+    box-shadow: inset 0 0 0 1px unquote("color-mix(in srgb, var(--primary) 70%, transparent)"),
+                0 0 0 3px unquote("color-mix(in srgb, var(--primary) 18%, transparent)");
+
+    .app-launcher-search-icon {
+      color: var(--primary);
+      opacity: 1;
+    }
   }
 }
 
-// Fuzzy / exact indicator chip. Renders as a small rounded badge
-// instead of a bare glyph so the state reads at a glance — the
-// background flips primary when exact mode is on.
-.app-launcher-exact-mode {
-  background-color: var(--surface-container);
+.app-launcher-search-icon {
   color: var(--on-surface-variant);
-  // Pill chip — use the shape-scale token, not a literal 999.
-  border-radius: var(--radius-pill);
-  padding: 2px var(--space-2);
-  font-family: monospace;
-  font-size: var(--font-xs);
-  font-weight: 600;
-  min-height: 0;
-  margin: 0 var(--space-1);
+  opacity: 0.8;
+  -gtk-icon-size: var(--icon-md);
+  margin-right: var(--space-1);
+  transition: color var(--motion-medium) var(--ease-standard);
 }
 
-// Show-hidden eye button (existing `ok-button-surface` primitive
-// handles the visual; we just give it a fixed shape so it sits
-// flush with the search entry).
-.app-launcher-search-row > button {
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-3);
-  margin-left: var(--space-1);
+// Flat entry inside the capsule — no surface, no ring of its own.
+.app-launcher-search > entry.app-launcher-search-entry {
+  background: none;
+  border: none;
+  box-shadow: none;
+  outline: none;
+  min-height: 0;
+  padding: var(--space-2) var(--space-1);
+  color: var(--on-surface);
+  font-size: var(--font-md);
+
+  > text > placeholder {
+    color: var(--on-surface-variant);
+    opacity: 0.6;
+  }
+}
+
+// The two trailing toggles: small round icon buttons, dim at rest,
+// tinted with the accent when on.
+.app-launcher-search-toggle {
+  background-color: transparent;
+  color: var(--on-surface-variant);
+  border: none;
+  box-shadow: none;
+  border-radius: var(--radius-pill);
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+  opacity: 0.75;
+  transition: background-color var(--motion-fast) var(--ease-standard),
+              color var(--motion-fast) var(--ease-standard);
+
+  image {
+    -gtk-icon-size: var(--icon-sm);
+  }
+
+  &:hover {
+    background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+    color: var(--on-surface);
+    opacity: 1;
+  }
+
+  &.active {
+    background-color: unquote("color-mix(in srgb, var(--primary) 28%, transparent)");
+    color: var(--on-surface);
+    opacity: 1;
+  }
+}
+
+// ~ / = glyph: mono so both states are the same width.
+.app-launcher-exact-mode {
+  font-family: monospace;
+  font-size: var(--font-sm);
+  font-weight: 700;
 }
 
 // ── Category pill strip ─────────────────────────────────────────
@@ -187,7 +211,8 @@
 // while feeling distinctly margo (the Dracula-style dark cool
 // palette) rather than the previous mid-grey wash.
 .app-launcher-menu-widget > scrolledwindow,
-.app-launcher-content > scrolledwindow {
+.app-launcher-content > scrolledwindow,
+scrolledwindow.app-launcher-list {
   background-color: var(--surface-container-lowest);
   border-radius: var(--radius-md);
   padding: var(--space-2);
@@ -269,7 +294,9 @@
     // Tonal elevation: a soft primary-tinted shadow lifts the selected
     // row off the well so the keyboard cursor reads as "raised", not
     // just tinted (DESIGN.md §0 tonal elevation).
-    box-shadow: 0 2px 8px unquote("color-mix(in srgb, var(--primary) 24%, transparent)");
+    // A 3 px accent bar on the leading edge marks the keyboard cursor
+    // more clearly than the tint alone.
+    box-shadow: inset 3px 0 0 var(--primary);
 
     image {
       color: var(--on-surface);
@@ -305,23 +332,16 @@
   }
 }
 
-// Zebra stripes — the clipboard panel's alternating tonal surfaces,
-// applied to the result rows so the boundary between neighbouring
-// results is visible at a glance. Same two tiers as `.clipboard-item-*`
-// (even one step above, odd one step below the panel surface); parity is
-// stamped in Rust over the final visual order and restarts under each
-// section caption. `:not(.selected)` keeps the resting/hover tiers from
-// tying with the 32% --primary selection tint, and the canonical
-// state-layer mixin reproduces the row's primary-wash hover over each
-// zebra base instead of flattening it.
-.app-launcher-item.app-launcher-item-even:not(.selected) {
-  background-color: var(--surface-container-high);
-  @include state-layer(var(--surface-container-high));
-}
-
+// Resting rows sit flat on the list well: no zebra stripes (they made a
+// long list read as a stack of bars). The Rust side still stamps the
+// `-even` / `-odd` parity; it only keeps the hover wash here.
+.app-launcher-item.app-launcher-item-even:not(.selected),
 .app-launcher-item.app-launcher-item-odd:not(.selected) {
-  background-color: var(--surface-container-low);
-  @include state-layer(var(--surface-container-low));
+  background-color: transparent;
+
+  &:hover {
+    background-color: unquote("color-mix(in srgb, var(--primary) 12%, transparent)");
+  }
 }
 
 // ── Quick-activate digits ───────────────────────────────────────
@@ -337,7 +357,9 @@
   font-size: var(--font-2xs);
   font-weight: 600;
   min-width: 16px;
-  padding: 0 var(--space-1);
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-xs);
+  background-color: unquote("color-mix(in srgb, var(--on-surface) 7%, transparent)");
 }
 
 // ── Pin marker ──────────────────────────────────────────────────
@@ -359,14 +381,14 @@
 // competing with the row title. Sits just left of the ★ pin marker.
 .app-launcher-source-badge {
   color: var(--on-surface-variant);
-  background-color: var(--surface-container-highest);
-  border: 1px solid var(--outline-variant);
+  background-color: unquote("color-mix(in srgb, var(--on-surface) 6%, transparent)");
+  border: none;
   border-radius: var(--radius-pill);
-  padding: 0 var(--space-2);
+  padding: 1px var(--space-2);
   font-size: var(--font-2xs);
   font-weight: 600;
   letter-spacing: 0.02em;
-  opacity: 0.72;
+  opacity: 0.6;
   min-height: 0;
 }
 
@@ -408,22 +430,63 @@
 // defined in `_keycap.scss`, so the footer reads as the same
 // component as the other keycap surfaces — no launcher-local keycap
 // styling here.
-.app-launcher-binds-strip {
-  // Subtle top divider line so the footer reads as a distinct
-  // band, but no card chrome — keeps the menu's visual weight
-  // on the result list above.
+.app-launcher-footer {
+  // Hairline divider: the footer is a band, not a card.
   border-top: 1px solid var(--outline-variant);
   padding-top: var(--space-2);
+  margin-top: var(--space-2);
+}
 
-  // It's a GtkFlowBox: chips wrap onto a second line so every
-  // shortcut shows its FULL label (no ellipsis). Strip GTK's default
-  // flowboxchild padding/min-size so the chips stay tight, and the
-  // FlowBox's minimum width stays ~one chip (never forces the panel
-  // wider — it just reflows within whatever width the panel has).
+// "12 results" — the list's size at a glance; its tooltip lists the
+// shortcuts the strip leaves out.
+.app-launcher-count {
+  color: var(--on-surface-variant);
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}
+
+.app-launcher-binds-strip {
+  // It's a GtkFlowBox: chips wrap onto a second line rather than
+  // ellipsize when the panel is narrow. Strip GTK's default
+  // flowboxchild padding/min-size so the chips stay tight, and its
+  // minimum width stays ~one chip (never forces the panel wider).
   > flowboxchild {
     padding: 0;
     min-width: 0;
     min-height: 0;
+  }
+
+  .kbd-chip {
+    opacity: 0.8;
+  }
+}
+
+// ── Empty state ─────────────────────────────────────────────────
+//
+// Laid over the list when nothing matches: a faint magnifier, what was
+// searched for, and the two ways out.
+.app-launcher-empty {
+  padding: var(--space-5);
+
+  .app-launcher-empty-icon {
+    -gtk-icon-size: 40px;
+    color: var(--on-surface-variant);
+    opacity: 0.35;
+    margin-bottom: var(--space-1);
+  }
+
+  .app-launcher-empty-title {
+    color: var(--on-surface);
+    font-size: var(--font-md);
+    font-weight: 600;
+  }
+
+  .app-launcher-empty-hint {
+    color: var(--on-surface-variant);
+    font-size: var(--font-xs);
+    opacity: 0.7;
   }
 }
 

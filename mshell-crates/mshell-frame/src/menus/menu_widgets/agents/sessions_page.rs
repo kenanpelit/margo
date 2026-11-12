@@ -129,6 +129,7 @@ impl SessionsPage {
         let search = gtk::SearchEntry::new();
         search.set_placeholder_text(Some("Search every prompt you typed…"));
         search.add_css_class("agents-search");
+        mshell_common::autofocus::mark(&search);
         search.connect_search_changed(move |e| on_search(e.text().trim().to_string()));
         container.append(&search);
         let new_title = section("New session in…");

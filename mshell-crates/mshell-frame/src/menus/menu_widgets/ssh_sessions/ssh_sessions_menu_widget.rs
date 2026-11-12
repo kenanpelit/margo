@@ -112,6 +112,7 @@ impl Component for SshSessionsMenuWidgetModel {
 
             #[name = "search_entry"]
             gtk::Entry {
+                add_css_class: mshell_common::autofocus::CLASS,
                 #[watch]
                 set_visible: !model.show_forwards,
                 add_css_class: "ssh-sessions-search",
@@ -173,14 +174,9 @@ impl Component for SshSessionsMenuWidgetModel {
 
         rebuild(&model.content, &model.hosts, &model.active, "", &sender);
 
-        // Focus the filter each time the panel is shown so the user can
-        // type immediately (the frame grants the menu keyboard focus).
-        {
-            let entry = widgets.search_entry.clone();
-            root.connect_map(move |_| {
-                entry.grab_focus();
-            });
-        }
+        // The filter is focused on open by the frame
+        // (`mshell_common::autofocus`) — not on `map`, which also fires when
+        // the frame remaps for another menu and would steal its focus.
 
         ComponentParts { model, widgets }
     }

@@ -262,6 +262,7 @@ impl Component for WallpaperMenuWidgetModel {
 
                     #[name = "search_entry"]
                     gtk::Entry {
+                        add_css_class: mshell_common::autofocus::CLASS,
                         add_css_class: "ok-entry-with-border",
                         set_placeholder_text: Some("Search"),
                         set_hexpand: true,
@@ -948,8 +949,8 @@ impl Component for WallpaperMenuWidgetModel {
                     if let Some(window) = widgets.root.toplevel_window() {
                         window.set_keyboard_mode(KeyboardMode::OnDemand);
                     }
-                    widgets.search_entry.grab_focus();
-                // if state is change from revealed to hidden
+                    // The search is focused by the frame (`mshell_common::autofocus`).
+                    // if state is change from revealed to hidden
                 } else if !revealed && self.is_revealed {
                     if let Some(window) = widgets.root.toplevel_window() {
                         window.set_keyboard_mode(KeyboardMode::None);

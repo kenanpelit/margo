@@ -219,6 +219,7 @@ impl Component for NotesMenuWidgetModel {
 
                     #[local_ref]
                     scratchpad_view_widget -> gtk::TextView {
+                        add_css_class: mshell_common::autofocus::CLASS,
                         add_css_class: "notes-scratchpad",
                         set_left_margin: 8,
                         set_right_margin: 8,

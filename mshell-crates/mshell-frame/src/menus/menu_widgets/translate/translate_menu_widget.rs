@@ -26,19 +26,10 @@ pub(crate) struct TranslateMenuWidgetModel {
     /// differ from the `target_entry` setting when `translate_auto`
     /// flipped direction (selected text was already in that language).
     result: Option<(TranslateResult, String)>,
-    /// Cloned at init so `ParentRevealChanged` can grab focus for it
-    /// without needing `Widgets` access — same shape as the AI menu
-    /// widget's `self.input`.
-    input_entry: gtk::Entry,
 }
 
 #[derive(Debug)]
 pub(crate) enum TranslateMenuWidgetInput {
-    /// Broadcast by the menu stack when this panel's reveal state
-    /// flips (see `menu.rs`'s `BroadcastReveal`). On becoming visible,
-    /// focuses the input entry so you can start typing immediately —
-    /// matches the AI menu's `mshellctl menu ai` / pill-click behavior.
-    ParentRevealChanged(bool),
     /// Carries the input box's text at click/Enter time — read directly
     /// off the `gtk::Entry` in the view-macro closure, so this handler
     /// never needs widget access itself.
@@ -123,6 +114,7 @@ impl Component for TranslateMenuWidgetModel {
 
                 #[name = "input_entry"]
                 gtk::Entry {
+                    add_css_class: mshell_common::autofocus::CLASS,
                     set_hexpand: true,
                     set_placeholder_text: Some("Type or paste text…"),
                     connect_activate[sender] => move |entry| {
@@ -226,7 +218,6 @@ impl Component for TranslateMenuWidgetModel {
             speaking: false,
             error: None,
             result: None,
-            input_entry: widgets.input_entry.clone(),
         };
         widgets.target_entry.set_text(&config::load().target_lang);
 
@@ -235,17 +226,6 @@ impl Component for TranslateMenuWidgetModel {
 
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
-            TranslateMenuWidgetInput::ParentRevealChanged(visible) => {
-                if visible {
-                    // Deferred to idle so the entry is mapped + the layer
-                    // surface already has keyboard focus — same timing
-                    // the AI menu widget uses for the same reason.
-                    let entry = self.input_entry.clone();
-                    relm4::gtk::glib::idle_add_local_once(move || {
-                        entry.grab_focus();
-                    });
-                }
-            }
             TranslateMenuWidgetInput::TargetLangChanged(lang) => {
                 let mut s = config::load();
                 s.target_lang = lang;

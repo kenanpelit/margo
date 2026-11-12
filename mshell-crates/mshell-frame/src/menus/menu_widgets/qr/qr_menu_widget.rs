@@ -113,6 +113,7 @@ impl Component for QrMenuWidgetModel {
 
                 #[local_ref]
                 entry_widget -> gtk::Entry {
+                    add_css_class: mshell_common::autofocus::CLASS,
                     set_hexpand: true,
                     set_placeholder_text: Some("Text or URL to share…"),
                     connect_activate => QrMenuWidgetInput::Generate,

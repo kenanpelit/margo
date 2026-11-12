@@ -110,6 +110,12 @@ impl DiagonalRevealer {
         }
     }
 
+    /// Whether the revealer is open (or opening) — its target state, not
+    /// the animation's progress.
+    pub fn is_revealed(&self) -> bool {
+        self.imp().revealed.get()
+    }
+
     pub fn set_revealed(&self, revealed: bool) {
         if self.imp().revealed.get() == revealed {
             return;

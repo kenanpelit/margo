@@ -432,6 +432,7 @@ impl Component for MtuneMenuWidgetModel {
 
                 #[name = "queue_filter_entry"]
                 gtk::SearchEntry {
+                    add_css_class: mshell_common::autofocus::CLASS,
                     add_css_class: "mtune-queue-filter",
                     set_placeholder_text: Some("Filter queue…"),
                     #[watch]

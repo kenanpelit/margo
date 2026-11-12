@@ -138,6 +138,14 @@ impl Frame {
                 // the keyboard until the next event (the user had to press Esc).
                 root.queue_draw();
                 tracing::debug!(?mode, "frame: sync_keyboard_mode (applied)");
+                // The surface now gets the keyboard: put it in the open menu's
+                // typing field (the launcher's search, a filter, the AI prompt…).
+                if mode == gtk4_layer_shell::KeyboardMode::Exclusive {
+                    mshell_common::autofocus::focus_in(root.upcast_ref());
+                } else {
+                    // Every menu closed: the next open focuses its field afresh.
+                    mshell_common::autofocus::reset(root.upcast_ref());
+                }
             });
         *self.pending_kbd_mode_timeout.borrow_mut() = Some(id);
     }

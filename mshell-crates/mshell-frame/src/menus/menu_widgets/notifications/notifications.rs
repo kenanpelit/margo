@@ -228,6 +228,7 @@ impl Component for NotificationsModel {
             // app name + summary + body as you type.
             gtk::SearchEntry {
                 add_css_class: "menu-search",
+                add_css_class: mshell_common::autofocus::CLASS,
                 set_placeholder_text: Some("Search notifications…"),
                 connect_search_changed[sender] => move |e| {
                     sender.input(NotificationsInput::SearchChanged(e.text().to_string()));
