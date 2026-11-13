@@ -27,7 +27,7 @@
 
 ---
 
-**margo** is a Wayland compositor in the dwl/mango tradition — a Rust + [Smithay] port of [mango] with tags instead of workspaces, a deep tiling layout catalogue, and a complete first-party stack for everyday use: a GTK4 desktop shell (`mshell`) with bar / menus / notifications / OSD / settings UI, a control CLI (`mctl`), a screen locker (`mlock`), a login manager (`mlogind`) with a GTK4 greeter (`mgreet`), monitor profiles (`mlayout`), a screenshot helper (`mscreenshot`), an automatic power-profile manager (`mpower`), an on-screen keyboard (`mkeys`), Mullvad VPN control (`mvpn`), a calendar (`mcal`), a folder-first music player (`mtune`) and a tmux session manager (`mtm`). The whole stack ships from one workspace and one release. The compositor exposes a scriptable Unix control socket (`get` / `watch` / `dispatch`) plus the standard `ext-workspace` + `foreign-toplevel-list` protocols, so third-party bars (sfwbar, ironbar) work too — but you don't need one.
+**margo** is a Wayland compositor in the dwl/mango tradition — a Rust + [Smithay] port of [mango] with tags instead of workspaces, a deep tiling layout catalogue, and a complete first-party stack for everyday use: a GTK4 desktop shell (`mshell`) with bar / menus / notifications / OSD / settings UI, a control CLI (`mctl`), a screen locker (`mlock`), a login manager (`mlogind`) with a GTK4 greeter (`mgreet`), monitor profiles (`mlayout`), a screenshot helper (`mscreenshot`), an automatic power-profile manager (`mpower`), an on-screen keyboard (`mkeys`), Mullvad VPN control (`mvpn`), a calendar (`mcal`), a folder-first music, radio and podcast player (`mtune`) and a tmux session manager (`mtm`). The whole stack ships from one workspace and one release. The compositor exposes a scriptable Unix control socket (`get` / `watch` / `dispatch`) plus the standard `ext-workspace` + `foreign-toplevel-list` protocols, so third-party bars (sfwbar, ironbar) work too — but you don't need one.
 
 [Smithay]: https://github.com/Smithay/smithay
 [mango]: https://github.com/mangowm/mango
@@ -75,7 +75,7 @@ itself from your wallpaper with Material You.
 </tr>
 </table>
 
-<sub>Twenty of mshell's 50-plus widgets and menus — every one recolours itself from your wallpaper with Material You. More on the <a href="https://kenanpelit.github.io/margo/">documentation site</a>.</sub>
+<sub>Twenty of mshell's 65 bar widgets and their menus — every one recolours itself from your wallpaper with Material You. More on the <a href="https://kenanpelit.github.io/margo/">documentation site</a>.</sub>
 
 ## Binaries
 
@@ -97,16 +97,17 @@ Each binary lives in its own top-level directory — the name links to it.
 | [`mkeys`](mkeys/) | On-screen keyboard — live xkb-derived legends, floating mode, function row + numpad, `zwp_virtual_keyboard` |
 | [`mvpn`](mvpn/) | Mullvad VPN control — CLI + GTK4 layer-shell panel |
 | [`mcal`](mcal/) | Calendar — local + remote ICS, CLI + in-shell UI |
-| [`mtune`](mtune/) | Folder-first music player — GTK4 + GStreamer, MPRIS, tray, own bar pill + menu |
+| [`mtune`](mtune/) | Folder-first music player with internet radio and podcasts — GTK4 + GStreamer, MPRIS, tray, own bar pill + menu |
 | [`mtm`](mtm/) | Native tmux session / layout / buffer / clipboard manager (Rust port of `tm.sh`) |
 | [`mpicker`](mpicker/) | Native colour picker — frozen screencap + zoom lens |
 | [`mdots`](mdots/) | Declarative package + dotfiles manager, Nix-aware TUI |
 | [`mwizard`](mwizard/) | First-launch setup wizard launcher |
 | [`mvisual`](mvisual/) | Interactive layout previewer — every tiling layout side by side, per-tag pinning rehearsal |
-| [`margo-portal`](margo-portal/) | xdg-desktop-portal screencast / screenshot backend |
+| [`margo-portal`](margo-portal/) | xdg-desktop-portal screencast / screenshot backend (D-Bus-activated, installed under `/usr/lib/margo/`) |
+| [`mshell-privileged`](mshell-crates/mshell-privileged/) | mshell's one root helper — a fixed set of verbs, each with its own polkit action, every argument validated as root (installed under `/usr/lib/mshell/`) |
 | [`mshellshare`](mshellshare/) | Portal screencast helper |
 
-Library-only crates (`margo-config`, `margo-layouts`, `mplugin-sdk`, and the `mshell-crates/*` family) keep their descriptive prefix.
+Library-only crates (`margo-config`, `margo-layouts`, `margo-fs`, `margo-logging`, `mlogind-proto`, `mvpn-proto`, `mplugin-sdk`, and the `mshell-crates/*` family) keep their descriptive prefix.
 
 ## Compositor highlights
 
@@ -119,8 +120,11 @@ Library-only crates (`margo-config`, `margo-layouts`, `mplugin-sdk`, and the `ms
 - **Twilight blue-light filter.** Static / Geo (sunrise-aware) / Manual / Schedule modes. Schedule mode reads sunsetr-compatible TOML presets from `~/.config/margo/twilight/` and interpolates in mired space between consecutive presets across the day; first run seeds a six-preset starter set the user can edit by hand or via `mctl twilight preset {list,set,remove,schedule}`.
 - **In-compositor screencast portal.** Five Mutter D-Bus shims + a PipeWire pipeline so `xdg-desktop-portal-gnome` serves Window / Entire-Screen tabs without gnome-shell.
 - **Embedded scripting.** Drop `~/.config/margo/init.rhai`; call any compositor action from a sandboxed Rhai interpreter, hook `on_focus_change` / `on_tag_switch` / `on_window_open`.
+- **Wallpaper drawn by the compositor.** `wallpaper_set` / `wallpaper_update` / `wallpaper_clear` actions and a `get wallpaper` topic: per output or `*`, every fit mode, a background colour and a crossfade. mshell hands its wallpaper to margo instead of keeping its own full-screen layer surfaces (about 100 MiB less GPU memory), and falls back to them if margo refuses.
+- **Output mirroring.** `mirror_output` / `toggle_mirror` / `stop_mirror` show one monitor's picture on another (presentations, a projector); screencopy of a mirror target shows the mirrored picture and DPMS follows the source.
+- **Minimize and restore.** Windows can be minimized and brought back, with per-tag application restore; `session_end reboot|poweroff|logout` closes every window gracefully before the session ends.
 - **Hot reload.** `mctl reload` (or `Super+Ctrl+R`) re-applies window rules, key binds, monitor topology, animation curves, gestures — no logout.
-- **DRM hotplug.** Dock / undock, plug a second monitor mid-session; outputs come and go cleanly.
+- **DRM hotplug and scaled outputs.** Dock / undock, plug a second monitor mid-session; outputs come and go cleanly. Every monitor is kept in logical coordinates, so scaled and rotated outputs place windows, blur and captures correctly, and `wlr-output-management` mode changes (custom modes too) really apply.
 - **Scriptable Unix-socket IPC.** A single control socket (`$MARGO_SOCKET`) speaks `get` / `watch` / `dispatch` as newline-delimited JSON — drive or observe the compositor from `mctl`, `socat`, or any script, no Wayland client needed. `mshell` subscribes to it for live state; third-party bars (sfwbar, ironbar) get the standard `ext-workspace` + `foreign-toplevel-list` protocols. (The legacy `dwl-ipc-v2` + the polled `state.json` were removed.)
 
 ## Supervisor (`start-margo`)
@@ -159,11 +163,15 @@ Ready-to-copy session glue (a Wayland-session `.desktop`, a uwsm wrapper, the `m
 A first-party GTK4 + relm4 + gtk4-layer-shell desktop shell that subscribes to margo's Unix IPC socket (`watch state`) for live compositor state. No need to wire up an external shell unless you want one — `mshell` ships with everything below preconfigured, and Settings UI lives inside the same panel as the menus (no separate window).
 
 - **Bar with configurable pill set.** Workspace pills (per-tag accent + window-count dots), active-window pill, clock, media player, a dedicated **Tune** pill (`mtune`, with track number + elapsed/total), network speed, battery, audio, tray, notifications. Plus the opt-in **A-series** (Privacy mic+cam indicator, CPU/RAM/Temp sysstat, Caps/Num/Scroll lock keys, Dark-mode toggle, KeepAwake idle-inhibit, rounded screen corners) and **B-series** (System-update count badge with right-click refresh, Display→Layout panel driving mlayout).
-- **Composite menus.** Dashboard (hero + 2-col + power footer) folds clock, weather and quick-settings into a single panel; clock menu carries a noctalia-style calendar grid; session menu (`super+delete`) drives Lock / Logout / Suspend / Reboot / Shutdown with 3-second countdown confirmation; notifications menu with urgency bar, count badge, action buttons and date-grouped history.
+- **Tabbed dashboard (`mdash`).** Today (greeting, media, calendar with the week's events, upcoming items, unread notifications), Controls (every Control Center tile plus the sliders), System and Tools tabs, with power options in one header popover. `mshellctl menu mdash <today|controls|system|tools>` opens a given tab; Settings → Widgets → Mdash sets the tab order and cards.
+- **Composite menus.** The clock menu carries a noctalia-style calendar grid; session menu (`super+delete`) drives Lock / Logout / Suspend / Reboot / Shutdown with 3-second countdown confirmation; notifications menu with urgency bar, count badge, action buttons and date-grouped history.
 - **OSD.** Brightness / volume / network-change pills with consistent 320 px noctalia-style geometry.
-- **Wallpaper.** Per-tag wallpaper assignment, optional rotation timer, `mshellctl wallpaper next/prev/random` for scriptable cycling.
+- **Wallpaper.** Per-tag wallpaper assignment, optional rotation timer, Bing daily wallpapers with descriptions, `mshellctl wallpaper next/prev/random` for scriptable cycling. margo draws it (see above).
 - **Idle.** `ext-idle-notify-v1` consumer; tray `KeepAwake` pill toggles the inhibit at runtime.
-- **Settings UI.** Alphabetic sidebar with **Bar** at top level and **Widgets** as a group exposing every pill and menu as its own page. Live preview, debounced reload — slider drags don't thrash the compositor.
+- **Launcher.** Type as soon as it opens (every menu with a text field takes your typing at once); fuzzy or exact matching, hidden apps, and providers behind a prefix: `fs` file search (home, extra folders or the whole system), `timer 10m tea` timers and reminders (English and Turkish), `cc` Claude Code sessions and `ai` to ask Claude, `svc` systemd units, `pass` with OTP and autotype, `case`, `nv` Neovim projects, `yt`, a calculator and more.
+- **System tools.** UFW firewall (rules, presets, boot state), System Updates (Arch news first, background upgrade with a live log, per-package rollback, `.pacnew` review), USB drives (mount, LUKS), SMART health, a CPU dashboard (processes, pause/resume, per-app grouping), Podman, Host Monitor and SSH port forwards, crash and journal investigation, and a dock (`mdock`) as a pill or a standalone per-output strip. Every root action goes through `mshell-privileged`, so each polkit prompt names exactly what root will do.
+- **Everyday helpers.** AI Agents (Claude Code sessions: resume, rename, lock, clean up; usage and cost charts), GitHub and Discord voice panels, Pomodoro, an Eye Care break reminder, world clocks, alarms and timers, sticky notes and todos, a drag-and-drop file Shelf, translate (select text, press a key), OCR, QR sharing and synced lyrics.
+- **Settings UI.** Categories in the KDE System Settings way, with **Bar** and **Widgets** exposing every pill and menu as its own page. Each page shows what you changed and has a Defaults button; search lands on the matching row. Live preview, debounced reload — slider drags don't thrash the compositor.
 - **Theming.** Optional matugen-style palette (`mshell-matugen`) generates wallpaper-derived themes that drive both the shell and the compositor border / focus colours.
 - **WASM plugins.** Declarative, sandboxed widgets — a `manifest.toml` describes a bar pill (or a full WASM-rendered panel) that any git repo can ship; installs go through Settings → Plugins with per-plugin capability grants (process / network / clipboard, deny by default). Author one with [`mplugin-sdk`](mplugin-sdk/).
 
@@ -174,19 +182,23 @@ plays everything under them; there is no library database to curate. A
 de-branded fork of [Amberol](https://gitlab.gnome.org/World/amberol), vendored
 into the workspace and re-themed to the margo look with a live matugen palette.
 
+- **Radio and podcasts** — internet radio station discovery, saved stations and
+  custom stream URLs; podcast search and RSS subscriptions with episode resume
+  and played state. Dropped streams reconnect with a short backoff.
 - **Folder library** with an off-thread recursive scanner, an on-disk tag index
   (mtime-invalidated), and a debounced inotify watcher that keeps the queue live
   as files come and go. Config: `~/.config/margo/mtune.toml` or Settings → Tune.
 - **Full interop** — MPRIS + MPRIS `TrackList`, a `StatusNotifierItem` tray, and
   a supplementary `org.margo.Tune` D-Bus interface for the library / queue.
 - **Dedicated shell surface** — a **Tune bar pill** (queue position + elapsed /
-  total) and a menu with a draggable seek bar, transport, shuffle / repeat, a
-  speed control and the folder / playlist actions. Not the generic MPRIS pill.
+  total, scroll to skip) and a panel with **Queue / Library / Radio** tabs, a
+  draggable seek bar, transport, shuffle / repeat, a speed control and the
+  folder / playlist actions. Not the generic MPRIS pill.
 - **`mshellctl media`** — cross-player control (MPRIS + native MPD, weighted
   auto-pick or an explicit target) drives mtune like any other player; the
   `org.margo.Tune` D-Bus interface above covers what's mtune-specific.
 - Playback speed with **pitch held constant** (`scaletempo`), **playlists**
-  (m3u / pls, open + save), **resume** on launch, compact **mini / strip**
+  (m3u / pls, open + save), **resume** on launch (volume included), compact **mini / strip**
   window skins, **desktop notifications** on track / setting change, and a
   **start-hidden-in-tray** mode (`mtune --hidden`).
 
@@ -260,7 +272,14 @@ for bin in margo start-margo mctl mshell mshellctl mshellshare mlock mlogind mgr
   sudo install -Dm755 target/release/$bin /usr/bin/$bin
 done
 sudo install -Dm644 margo.desktop /usr/share/wayland-sessions/margo.desktop
+# mshell's root helper and its polkit policy (fixed paths, required for every privileged action)
+sudo install -Dm755 target/release/mshell-privileged /usr/lib/mshell/mshell-privileged
+sudo install -Dm644 mshell-crates/mshell-privileged/data/org.margo.mshell.privileged.policy \
+  /usr/share/polkit-1/actions/org.margo.mshell.privileged.policy
 ```
+
+The screencast portal (`margo-portal`, its `.portal` file, D-Bus service and user unit) is easiest to take from the
+`PKGBUILD`'s `package()` or `./install.sh`, which install everything above.
 
 System dependencies: `wayland`, `libinput`, `libxkbcommon`, `seatd`, `mesa`, `libdrm`, `pixman`, `pcre2`, `cairo`, `pango`, `pam`, `gtk4` (≥ 4.20), `gtk4-layer-shell`, `libadwaita`, `gstreamer` + `gst-plugins-base` / `gst-plugins-good` (`mtune`), `xorg-xwayland` (optional). Runtime: `grim`, `slurp`, `wl-clipboard` for screenshots; `wlr-randr` for live monitor re-layout; `notify-send` (libnotify) for `mscreenshot`'s notification action buttons and media notifications; `mpv` (libmpv, build- and runtime-required) for `mshellctl play`'s mpv companion window control + video wallpaper, with optional `yt-dlp` for its `play`/`download` commands; optional `gst-libav` / `gst-plugins-bad` for `mtune` playback of AAC / M4A / ALAC / WMA and extra containers.
 
@@ -279,6 +298,8 @@ All user config lives in `~/.config/margo/`:
 ```
 ~/.config/margo/
 ├── config.conf        # margo — compositor
+├── init.rhai          # margo — optional startup script (see Scripting)
+├── mtune.toml         # mtune — music player settings
 ├── layout_*.conf      # mlayout — monitor profiles
 ├── twilight/          # mshell / mctl — blue-light filter
 │   ├── schedule.conf  #   HH:MM → preset name lines
@@ -355,7 +376,10 @@ mshellctl screenrecord toggle full   # start/stop recording the whole layout
 mshellctl menu screenshot            # the GUI front of the same engine
 
 # Shell
-mshellctl menu mdash                 # bring up the composite dashboard
+mshellctl menu mdash                 # bring up the tabbed dashboard
+mshellctl menu mdash controls        # …straight on its quick-settings tab
+mshellctl timer add 10m tea          # a reminder (also "14:30 meeting", "yarın 09:00 kahve")
+mshellctl ufw status                 # firewall state and numbered rules
 mshellctl session lock               # lock the session
 mshellctl wallpaper next             # cycle wallpaper
 
