@@ -1,6 +1,6 @@
 # community-plugins (noctalia) vs margo/mshell — review 2026-11-05 (margo 5.0.0)
 
-321 plugins: PORT 20, IMPROVE 36, HAVE 95, SKIP 170 (2026-11 ports added six more to HAVE: screen-time, mathsym, media-downloader, wallpaper-brightness, flatpak-bg, global-menu).
+321 plugins: PORT 20, IMPROVE 36, HAVE 95, SKIP 170 (2026-11 ports added five more to HAVE: screen-time, mathsym, media-downloader, wallpaper-brightness, flatpak-bg. global-menu was ported and removed again: on Wayland only XWayland GTK 3 apps with appmenu-gtk-module and KDE-themed Qt apps export a menu, so it stayed empty for the apps in use; do not port it again).
 Full re-review against the 5.0.0 tree; the 2026-11-04 review's high/medium PORT items were implemented in 4.9.0–5.0.0.
 `new` / `changed` mark plugins added or changed upstream since the 2026-11-04 review.
 
@@ -203,7 +203,6 @@ Full re-review against the 5.0.0 tree; the 2026-11-04 review's high/medium PORT 
 - **gamer-mode** — ours: mshell-core/src/game_mode.rs (+ CpuDashboard) — Game mode exists (effects off, DND, idle inhibit); plugin's SIGSTOP of background hogs/containers and power-profile switch aren't needed by this owner.
 - **geoip-monitor** — ours: bars/bar_widgets/ip.rs + menus/menu_widgets/ip (ipinfo.io city/region/country) — Ip widget already shows external IP with geo location.
 - **git_companion** — ours: mshell-frame/src/github.rs + Github menu — GitHub inbox + my PRs cover the owner's GitHub use; GitLab/Gitea backends and per-repo issue counts aren't needed.
-- **global-menu** — ours: mshell-frame/src/global_menu (registrar + dbusmenu client) + GlobalMenu bar widget — Ported 2026-11 behind `global_menu.enabled` (off): native AppMenu registrar (or a KDE one polled), pid / exe-name ↔ app-id matching, top-level labels + nested popovers activating via dbusmenu Event. Missing: org.gtk.Menus (GTK 4), Wayland Qt appmenu protocol, shortcut menus, app-name menu, keyboard nav.
 - **github-notifications** — ours: mshell-frame/src/github.rs + menus/menu_widgets/github — Inbox with reason labels, open-and-mark-read, mark-all-read already native; only group-by-repo/density options are missing (trivial).
 - **gslapper** — ours: mshell-wallpaper + mshellctl/src/mpv/paper (per-output video wallpaper) — Image + mpv video wallpapers per output already exist; gSlapper/GStreamer backend is just an alternative engine.
 - **headroom** — ours: mshell-frame/src/agents/limits.rs (Agents widget/menu) — Claude + Codex plan limits via the same OAuth usage endpoints with pace forecast are native; multi-account and Antigravity aren't relevant.

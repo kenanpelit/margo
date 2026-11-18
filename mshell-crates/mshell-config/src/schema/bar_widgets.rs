@@ -111,13 +111,8 @@ pub enum BarWidget {
     FlatpakBackground,
     /// Downloads menu (yt-dlp queue: progress, cancel, open folder)
     Downloads,
-    /// Screen time — today's focused time; click opens the Screen Time
-    /// menu (most used apps today / last 7 days).
+    /// Toggle the Screen Time menu (today's focused time per app, last 7 days)
     ScreenTime,
-    /// Global menu — the focused window's application menu (AppMenu
-    /// registrar + dbusmenu): the app name and its top-level menus; a
-    /// click opens the menu as a popover. Needs `global_menu.enabled`.
-    GlobalMenu,
     DiscordVoice,
     LockKeys,
     /// Keyboard-layout pill — shows the active xkb layout (e.g. "US",
@@ -238,7 +233,6 @@ impl BarWidget {
             BarWidget::SshSessions => "SSH Sessions",
             BarWidget::Usb => "USB Drives",
             BarWidget::Shelf => "Shelf",
-            BarWidget::GlobalMenu => "Global Menu",
             BarWidget::FlatpakBackground => "Flatpak Background",
             BarWidget::Downloads => "Downloads",
             BarWidget::ScreenTime => "Screen Time",
@@ -321,7 +315,6 @@ impl BarWidget {
             BarWidget::FlatpakBackground,
             BarWidget::Downloads,
             BarWidget::ScreenTime,
-            BarWidget::GlobalMenu,
             BarWidget::DiscordVoice,
             BarWidget::LockKeys,
             BarWidget::KeyboardLayout,

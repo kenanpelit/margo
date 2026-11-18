@@ -156,7 +156,7 @@ pub enum MenuWidget {
     FlatpakBackground,
     /// Downloads menu (yt-dlp queue: progress, cancel, open folder)
     Downloads,
-    /// Screen Time panel: today's / the last 7 days' focused time per app.
+    /// Toggle the Screen Time menu (today's focused time per app, last 7 days)
     ScreenTime,
     DiscordVoice,
     /// Crash history (systemd-coredump, your own processes) with

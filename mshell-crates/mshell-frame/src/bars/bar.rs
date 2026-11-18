@@ -18,7 +18,6 @@ use crate::bars::bar_widgets::flatpak_bg::{
     FlatpakBackgroundInit, FlatpakBackgroundModel, FlatpakBackgroundOutput,
 };
 use crate::bars::bar_widgets::github::{GithubInit, GithubModel};
-use crate::bars::bar_widgets::global_menu::{GlobalMenuInit, GlobalMenuModel};
 use crate::bars::bar_widgets::host_monitor::{HostMonitorInit, HostMonitorModel};
 use crate::bars::bar_widgets::ip::{IpInit, IpModel};
 use crate::bars::bar_widgets::keep_awake::{KeepAwakeInit, KeepAwakeModel};
@@ -1317,11 +1316,6 @@ impl BarModel {
                             BarOutput::DiscordVoiceClicked
                         }
                     }),
-            ),
-            BarWidget::GlobalMenu => Box::new(
-                GlobalMenuModel::builder()
-                    .launch(GlobalMenuInit { orientation })
-                    .detach(),
             ),
             BarWidget::LockKeys => Box::new(
                 LockKeysModel::builder()

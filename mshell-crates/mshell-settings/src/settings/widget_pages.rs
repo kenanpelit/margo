@@ -168,13 +168,6 @@ fn downloads_parts() -> Vec<PagePart> {
     ]
 }
 
-/// Global Menu: the registrar switch and bar options (a bar-only widget).
-fn global_menu_parts() -> Vec<PagePart> {
-    vec![
-        page_part!(crate::global_menu_settings::GlobalMenuSettingsModel => crate::global_menu_settings::GlobalMenuSettingsInit {}),
-    ]
-}
-
 impl WidgetEntry {
     pub(super) fn label(&self) -> &'static str {
         match self {
@@ -485,12 +478,6 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
             stack_name: "pill_countdown",
             label: "Countdown",
             icon: "alarm-symbolic",
-        },
-        WidgetEntry::Composite {
-            stack_name: "global_menu",
-            label: "Global Menu",
-            icon: "open-menu-symbolic",
-            parts: global_menu_parts,
         },
         WidgetEntry::Composite {
             stack_name: "eyecare",

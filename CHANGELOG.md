@@ -7,9 +7,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-**Six community-plugin ports: Screen Time, the full math-symbol table,
-a media downloader, wallpaper brightness, Flatpak background apps and a
-global menu.**
+**Five community-plugin ports: Screen Time, the full math-symbol table,
+a media downloader, wallpaper brightness and Flatpak background apps.**
 
 ### Added
 
@@ -32,11 +31,6 @@ global menu.**
   greeter), kept across wallpaper changes, image files untouched.
 - **Flatpak Background** pill and menu: Flatpak apps running without a
   window, with Stop (`flatpak kill`) and Ignore; hidden without flatpak.
-- **Global Menu** bar widget (off by default, `global_menu.*`): the
-  focused window's application menu via a native AppMenu registrar and a
-  dbusmenu client. Covers apps that register with the registrar (GTK 3
-  with appmenu-gtk-module, Qt with the KDE platform theme, as XWayland
-  clients); GTK 4 and native Wayland Qt menus are not supported yet.
 
 ## [5.3.0] – 2026-11-12
 
