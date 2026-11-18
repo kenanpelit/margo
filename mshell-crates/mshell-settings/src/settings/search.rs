@@ -315,6 +315,8 @@ pub(super) const SEARCH_ALIASES: &[(&str, &str)] = &[
     ("theme scheme", "theme/scheme"),
     ("scheme", "theme/scheme"),
     ("wallpaper", "theme/wallpaper"),
+    ("wallpaper brightness", "theme/wallpaper"),
+    ("dim wallpaper", "theme/wallpaper"),
     ("theme wallpaper", "theme/wallpaper"),
     ("theme bundles", "theme/bundles"),
     ("bundles", "theme/bundles"),

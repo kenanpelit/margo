@@ -276,6 +276,7 @@ Full re-review against the 5.0.0 tree; the 2026-11-04 review's high/medium PORT 
 - **web-launcher** — ours: mshell-launcher/src/providers/websearch.rs (favourite sites `web`) — Favourite-sites mode already in websearch provider.
 - **web-search** — ours: mshell-launcher/src/providers/websearch.rs — Engine prefixes + favourite sites cover it.
 - **webapp-maker** — ours: mshell-launcher/src/providers/webapp.rs — Native port: create/list/remove Chromium --app web apps with favicon.
+- **wallpaper-brightness** — ours: mshell-cache/src/wallpaper.rs apply_brightness + mshell-settings/src/wallpaper_brightness.rs — Ported 2026-11: `wallpaper.brightness_percent` (20–150) multiplied into the decoded display pixels (windows, margo-drawn copy, lock, greeter); slider in Settings and the Wallpaper menu; source files untouched.
 - **wl-screen-mirror** — ours: margo/src/mirror.rs + mirror_output action (mctl mirror) + CC Mirror tile — Compositor-native output mirroring with auto-stop and a CC tile; no wl-mirror needed.
 - **xwayland** — ours: bar_widgets/active_window.rs (XWayland badge from margo per-client flag) — Active-window pill already flags XWayland clients.
 

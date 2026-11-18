@@ -122,6 +122,7 @@ mod ufw_settings;
 mod users_settings;
 mod valent_mirror_settings;
 mod vpn_settings;
+pub mod wallpaper_brightness;
 mod wallpaper_settings;
 mod weather_settings;
 mod widget_menu_settings;

@@ -264,6 +264,11 @@ impl Component for WallpaperSettingsModel {
                         }
                     },
 
+                    #[name = "brightness_slot"]
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                    },
+
                     gtk::Box {
                         add_css_class: "action-row",
                         set_widget_name: "setting:/wallpaper/theme_filter_strength",
@@ -975,6 +980,9 @@ impl Component for WallpaperSettingsModel {
         };
 
         let widgets = view_output!();
+        widgets
+            .brightness_slot
+            .append(&crate::wallpaper_brightness::brightness_row(false));
 
         ComponentParts { model, widgets }
     }

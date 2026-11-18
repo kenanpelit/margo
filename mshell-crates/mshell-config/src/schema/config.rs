@@ -647,6 +647,15 @@ pub struct Wallpaper {
     /// static image. Looks the same; mshell keeps its windows when margo is
     /// older or can't draw it (nested session, other compositor).
     pub compositor_draws: bool,
+    /// Wallpaper brightness in percent: below 100 dims, above brightens
+    /// (20–150). Applied to the displayed pixels when the image is decoded,
+    /// so it follows every wallpaper change; the image files are untouched.
+    #[serde(default = "default_wallpaper_brightness")]
+    pub brightness_percent: u32,
+}
+
+fn default_wallpaper_brightness() -> u32 {
+    100
 }
 
 impl Default for Wallpaper {
@@ -663,6 +672,7 @@ impl Default for Wallpaper {
             daily_wallpaper_source: "bing".to_string(),
             daily_wallpaper_locale: "".to_string(),
             compositor_draws: true,
+            brightness_percent: 100,
         }
     }
 }

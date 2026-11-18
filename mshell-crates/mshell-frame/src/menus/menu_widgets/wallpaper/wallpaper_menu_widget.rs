@@ -240,6 +240,11 @@ impl Component for WallpaperMenuWidgetModel {
                     },
                 },
 
+                #[name = "brightness_slot"]
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                },
+
                 gtk::Box {
                     set_orientation: gtk::Orientation::Horizontal,
                     set_hexpand: true,
@@ -880,6 +885,9 @@ impl Component for WallpaperMenuWidgetModel {
         };
 
         let widgets = view_output!();
+        widgets
+            .brightness_slot
+            .append(&mshell_settings::wallpaper_brightness::brightness_row(true));
 
         widgets.grid_view.set_model(Some(&selection));
         widgets.grid_view.set_factory(Some(&factory));

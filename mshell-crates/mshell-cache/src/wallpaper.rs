@@ -172,6 +172,16 @@ static WALLPAPER_INNER: LazyLock<Mutex<WallpaperInner>> = LazyLock::new(|| {
         refilter();
     });
 
+    // React to the brightness slider
+    Effect::new(move |_| {
+        let _b = config_manager()
+            .config()
+            .wallpaper()
+            .brightness_percent()
+            .get();
+        refilter();
+    });
+
     // React to filter strength changes
     Effect::new(move |_| {
         let _strength = config_manager()
@@ -410,6 +420,8 @@ struct Job {
     filter: Option<(Themes, f64)>,
     /// Monitor sizes in device pixels; the decode covers the largest.
     targets: Vec<(u32, u32)>,
+    /// `wallpaper.brightness_percent` (100 = as is).
+    brightness: u32,
     cancel: Arc<AtomicBool>,
     origin: Origin,
 }
@@ -487,6 +499,11 @@ fn start_refilter() {
         path,
         filter: should_filter.then_some((theme, strength)),
         targets: monitor_pixel_sizes(),
+        brightness: config_manager()
+            .config()
+            .wallpaper()
+            .brightness_percent()
+            .get_untracked(),
         cancel,
         origin,
     };
@@ -504,6 +521,7 @@ fn run_job(job: Job) {
         path,
         filter,
         targets,
+        brightness,
         cancel,
         origin,
     } = job;
@@ -526,6 +544,8 @@ fn run_job(job: Job) {
         }
         None => img,
     };
+    let mut img = img;
+    apply_brightness(&mut img, brightness);
 
     let (width, height) = img.dimensions();
     // `from_owned` hands the Vec to GLib without copying; the texture keeps it.
@@ -568,6 +588,22 @@ fn run_job(job: Job) {
             Instant::now(),
             &mut write_display_cache,
         );
+    }
+}
+
+/// Scale the colour channels of straight-alpha RGBA by `percent` / 100
+/// (clamped to 20–150; alpha untouched). 100 is a no-op. One lookup table,
+/// so a 4K frame costs a few milliseconds on the worker thread.
+pub(crate) fn apply_brightness(rgba: &mut [u8], percent: u32) {
+    let percent = percent.clamp(20, 150);
+    if percent == 100 {
+        return;
+    }
+    let lut: [u8; 256] = std::array::from_fn(|v| ((v as u32 * percent + 50) / 100).min(255) as u8);
+    for px in rgba.chunks_exact_mut(4) {
+        px[0] = lut[px[0] as usize];
+        px[1] = lut[px[1] as usize];
+        px[2] = lut[px[2] as usize];
     }
 }
 
@@ -713,6 +749,21 @@ fn bump_revision() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn brightness_scales_colour_not_alpha_and_clamps() {
+        let mut px = vec![200, 100, 0, 128, 255, 10, 1, 255];
+        apply_brightness(&mut px, 100);
+        assert_eq!(px, [200, 100, 0, 128, 255, 10, 1, 255]);
+        apply_brightness(&mut px, 50);
+        assert_eq!(px, [100, 50, 0, 128, 128, 5, 1, 255]);
+        let mut px = vec![200, 100, 0, 7];
+        apply_brightness(&mut px, 150);
+        assert_eq!(px, [255, 150, 0, 7]);
+        let mut px = vec![100, 100, 100, 100];
+        apply_brightness(&mut px, 1);
+        assert_eq!(px, [20, 20, 20, 100], "clamped to 20 %");
+    }
 
     #[test]
     fn cover_size_fits_the_largest_monitor() {
