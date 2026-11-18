@@ -58,7 +58,7 @@ impl Source {
         match self {
             Source::Repo => "package-x-generic-symbolic",
             Source::Aur => "system-software-install-symbolic",
-            Source::Flatpak => "flatpak-symbolic",
+            Source::Flatpak => "package-x-generic-symbolic",
         }
     }
 }

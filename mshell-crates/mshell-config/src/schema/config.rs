@@ -21,6 +21,7 @@ mod crashes;
 mod dock;
 mod downloads;
 mod drive_health;
+mod flatpak_bg;
 mod launcher;
 mod menus;
 mod notifications;
@@ -38,6 +39,7 @@ pub use crashes::*;
 pub use dock::*;
 pub use downloads::*;
 pub use drive_health::*;
+pub use flatpak_bg::*;
 pub use launcher::*;
 pub use menus::*;
 pub use notifications::*;
@@ -100,6 +102,8 @@ pub struct Config {
     pub screen_time: ScreenTimeConfig,
     /// Media downloader (yt-dlp): folders, formats, extra arguments.
     pub downloads: DownloadsConfig,
+    /// Flatpak apps running without a window (pill + menu).
+    pub flatpak_bg: FlatpakBgConfig,
 }
 
 /// Transient state-change toasts — a small opaque corner card that auto-

@@ -152,6 +152,8 @@ pub enum MenuWidget {
     /// `shelf` bar pill's panel — files dropped in to hold, dragged out
     /// into other apps; open / show in folder / copy path / remove / clear.
     Shelf,
+    /// Flatpak Background menu (Flatpak apps running without a window)
+    FlatpakBackground,
     /// Downloads menu (yt-dlp queue: progress, cancel, open folder)
     Downloads,
     /// Toggle the Screen Time menu (today's focused time per app, last 7 days)
@@ -250,6 +252,7 @@ impl MenuWidget {
             MenuWidget::SshSessions => "SSH Sessions",
             MenuWidget::Usb => "USB Drives",
             MenuWidget::Shelf => "Shelf",
+            MenuWidget::FlatpakBackground => "Flatpak Background",
             MenuWidget::Downloads => "Downloads",
             MenuWidget::ScreenTime => "Screen Time",
             MenuWidget::DiscordVoice => "Discord Voice",
@@ -332,6 +335,7 @@ impl MenuWidget {
             MenuWidget::SshSessions,
             MenuWidget::Usb,
             MenuWidget::Shelf,
+            MenuWidget::FlatpakBackground,
             MenuWidget::Downloads,
             MenuWidget::ScreenTime,
             MenuWidget::DiscordVoice,

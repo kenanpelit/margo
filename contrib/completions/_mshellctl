@@ -274,6 +274,12 @@ _arguments "${_arguments_options[@]}" : \
 '--help[Print help]' \
 && ret=0
 ;;
+(flatpak-background)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
 (downloads)
 _arguments "${_arguments_options[@]}" : \
 '-h[Print help]' \
@@ -643,6 +649,10 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (shelf)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(flatpak-background)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -4084,6 +4094,10 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(flatpak-background)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (downloads)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -6680,6 +6694,7 @@ _mshellctl__subcmd__help__subcmd__menu_commands() {
 'ssh-sessions:Toggle the SSH Sessions menu (searchable ~/.ssh/config host list)' \
 'usb:Toggle the USB Drives menu (removable drives\: mount, unlock, safe removal)' \
 'shelf:Toggle the Shelf menu (files held to drag into other apps)' \
+'flatpak-background:Toggle the Flatpak Background menu (Flatpak apps running without a window)' \
 'downloads:Toggle the Downloads menu (yt-dlp queue\: progress, cancel, open folder)' \
 'screen-time:Toggle the Screen Time menu (today'\''s focused time per app, last 7 days)' \
 'discord-voice:Toggle the Discord voice menu (call controls + participants)' \
@@ -6788,6 +6803,11 @@ _mshellctl__subcmd__help__subcmd__menu__subcmd__dns_commands() {
 _mshellctl__subcmd__help__subcmd__menu__subcmd__downloads_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help menu downloads commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__menu__subcmd__flatpak-background_commands] )) ||
+_mshellctl__subcmd__help__subcmd__menu__subcmd__flatpak-background_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help menu flatpak-background commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__help__subcmd__menu__subcmd__github_commands] )) ||
 _mshellctl__subcmd__help__subcmd__menu__subcmd__github_commands() {
@@ -8150,6 +8170,7 @@ _mshellctl__subcmd__menu_commands() {
 'ssh-sessions:Toggle the SSH Sessions menu (searchable ~/.ssh/config host list)' \
 'usb:Toggle the USB Drives menu (removable drives\: mount, unlock, safe removal)' \
 'shelf:Toggle the Shelf menu (files held to drag into other apps)' \
+'flatpak-background:Toggle the Flatpak Background menu (Flatpak apps running without a window)' \
 'downloads:Toggle the Downloads menu (yt-dlp queue\: progress, cancel, open folder)' \
 'screen-time:Toggle the Screen Time menu (today'\''s focused time per app, last 7 days)' \
 'discord-voice:Toggle the Discord voice menu (call controls + participants)' \
@@ -8260,6 +8281,11 @@ _mshellctl__subcmd__menu__subcmd__downloads_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl menu downloads commands' commands "$@"
 }
+(( $+functions[_mshellctl__subcmd__menu__subcmd__flatpak-background_commands] )) ||
+_mshellctl__subcmd__menu__subcmd__flatpak-background_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl menu flatpak-background commands' commands "$@"
+}
 (( $+functions[_mshellctl__subcmd__menu__subcmd__github_commands] )) ||
 _mshellctl__subcmd__menu__subcmd__github_commands() {
     local commands; commands=()
@@ -8291,6 +8317,7 @@ _mshellctl__subcmd__menu__subcmd__help_commands() {
 'ssh-sessions:Toggle the SSH Sessions menu (searchable ~/.ssh/config host list)' \
 'usb:Toggle the USB Drives menu (removable drives\: mount, unlock, safe removal)' \
 'shelf:Toggle the Shelf menu (files held to drag into other apps)' \
+'flatpak-background:Toggle the Flatpak Background menu (Flatpak apps running without a window)' \
 'downloads:Toggle the Downloads menu (yt-dlp queue\: progress, cancel, open folder)' \
 'screen-time:Toggle the Screen Time menu (today'\''s focused time per app, last 7 days)' \
 'discord-voice:Toggle the Discord voice menu (call controls + participants)' \
@@ -8400,6 +8427,11 @@ _mshellctl__subcmd__menu__subcmd__help__subcmd__dns_commands() {
 _mshellctl__subcmd__menu__subcmd__help__subcmd__downloads_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl menu help downloads commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__menu__subcmd__help__subcmd__flatpak-background_commands] )) ||
+_mshellctl__subcmd__menu__subcmd__help__subcmd__flatpak-background_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl menu help flatpak-background commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__menu__subcmd__help__subcmd__github_commands] )) ||
 _mshellctl__subcmd__menu__subcmd__help__subcmd__github_commands() {

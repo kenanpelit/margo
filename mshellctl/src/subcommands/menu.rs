@@ -102,6 +102,8 @@ pub enum MenuCommands {
     Usb,
     /// Toggle the Shelf menu (files held to drag into other apps)
     Shelf,
+    /// Toggle the Flatpak Background menu (Flatpak apps running without a window)
+    FlatpakBackground,
     /// Toggle the Downloads menu (yt-dlp queue: progress, cancel, open folder)
     Downloads,
     /// Toggle the Screen Time menu (today's focused time per app, last 7 days)
@@ -274,6 +276,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Shelf => {
             shell().await?.shelf().await?;
+        }
+        MenuCommands::FlatpakBackground => {
+            shell().await?.flatpak_bg().await?;
         }
         MenuCommands::Downloads => {
             shell().await?.downloads().await?;

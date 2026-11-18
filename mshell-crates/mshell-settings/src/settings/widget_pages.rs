@@ -423,6 +423,12 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
             label: "Shelf",
             icon: "folder-download-symbolic",
         },
+        WidgetEntry::Menu {
+            kind: MenuKind::FlatpakBackground,
+            stack_name: "flatpak_bg",
+            label: "Flatpak Background",
+            icon: "package-x-generic-symbolic",
+        },
         WidgetEntry::Composite {
             stack_name: "downloads",
             label: "Downloads",
@@ -432,7 +438,7 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
         WidgetEntry::Composite {
             stack_name: "screen_time",
             label: "Screen Time",
-            icon: "hourglass-symbolic",
+            icon: "preferences-system-time-symbolic",
             parts: screen_time_parts,
         },
         // Discord Voice = saved channels / mic options above the menu geometry.

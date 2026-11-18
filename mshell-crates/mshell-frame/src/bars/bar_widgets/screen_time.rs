@@ -1,4 +1,4 @@
-//! Screen Time — bar pill for [`crate::screen_time`]: an hourglass and
+//! Screen Time — bar pill for [`crate::screen_time`]: a clock glyph and
 //! today's focused time (`3h 12m`). Hover lists the five most used apps of
 //! today; a click opens the Screen Time menu. While recording is off the
 //! pill shows "off", dimmed, and its tooltip says where to turn it on.
@@ -96,7 +96,7 @@ impl Component for ScreenTimeModel {
                     set_valign: gtk::Align::Center,
 
                     gtk::Image {
-                        set_icon_name: Some("hourglass-symbolic"),
+                        set_icon_name: Some("preferences-system-time-symbolic"),
                     },
                     gtk::Label {
                         add_css_class: "screen-time-bar-label",

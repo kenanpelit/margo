@@ -8,6 +8,7 @@ mod discord;
 mod downloads;
 mod drive_health;
 pub mod eyecare;
+mod flatpak_bg;
 pub mod frame;
 mod frame_draw_widget;
 mod frame_spacer;

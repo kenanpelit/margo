@@ -68,7 +68,7 @@ impl Component for ScreenTimeSettingsModel {
                     set_spacing: 16,
                     gtk::Image {
                         add_css_class: "settings-hero-icon",
-                        set_icon_name: Some("hourglass-symbolic"),
+                        set_icon_name: Some("preferences-system-time-symbolic"),
                         set_valign: gtk::Align::Center,
                     },
                     gtk::Box {

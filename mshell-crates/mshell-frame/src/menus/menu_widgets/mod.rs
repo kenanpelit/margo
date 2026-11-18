@@ -23,6 +23,7 @@ pub(crate) mod discord_voice;
 pub(crate) mod divider;
 pub(crate) mod dns;
 pub(crate) mod downloads;
+pub(crate) mod flatpak_bg;
 pub(crate) mod github;
 pub(crate) mod host_monitor;
 pub(crate) mod ip;

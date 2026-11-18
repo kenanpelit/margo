@@ -69,6 +69,8 @@ pub struct Menus {
     pub usb_menu: Menu,
     #[serde(default = "default_shelf_menu")]
     pub shelf_menu: Menu,
+    #[serde(default = "default_flatpak_bg_menu")]
+    pub flatpak_bg_menu: Menu,
     #[serde(default = "default_downloads_menu")]
     pub downloads_menu: Menu,
     #[serde(default = "default_screen_time_menu")]
@@ -481,6 +483,16 @@ pub(super) fn default_shelf_menu() -> Menu {
     }
 }
 
+/// Flatpak Background menu (Flatpak apps running without a window)
+pub(super) fn default_flatpak_bg_menu() -> Menu {
+    Menu {
+        position: Position::TopRight,
+        widgets: vec![MenuWidget::FlatpakBackground],
+        minimum_width: 380,
+        maximum_height: 0,
+    }
+}
+
 /// Downloads menu (yt-dlp queue: progress, cancel, open folder)
 pub(super) fn default_downloads_menu() -> Menu {
     Menu {
@@ -690,6 +702,7 @@ impl Default for Menus {
             ssh_menu: default_ssh_menu(),
             usb_menu: default_usb_menu(),
             shelf_menu: default_shelf_menu(),
+            flatpak_bg_menu: default_flatpak_bg_menu(),
             downloads_menu: default_downloads_menu(),
             screen_time_menu: default_screen_time_menu(),
             discord_voice_menu: default_discord_voice_menu(),

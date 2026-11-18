@@ -52,6 +52,9 @@ use crate::menus::menu_widgets::dns::dns_menu_widget::{DnsMenuWidgetInit, DnsMen
 use crate::menus::menu_widgets::downloads::downloads_menu_widget::{
     DownloadsMenuWidgetInit, DownloadsMenuWidgetModel,
 };
+use crate::menus::menu_widgets::flatpak_bg::flatpak_bg_menu_widget::{
+    FlatpakBackgroundMenuWidgetInit, FlatpakBackgroundMenuWidgetModel,
+};
 use crate::menus::menu_widgets::github::github_menu_widget::{
     GithubMenuWidgetInit, GithubMenuWidgetModel,
 };
@@ -296,6 +299,11 @@ pub fn build_widget(
         MenuWidget::Shelf => Box::new(
             ShelfMenuWidgetModel::builder()
                 .launch(ShelfMenuWidgetInit {})
+                .detach(),
+        ),
+        MenuWidget::FlatpakBackground => Box::new(
+            FlatpakBackgroundMenuWidgetModel::builder()
+                .launch(FlatpakBackgroundMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::Downloads => Box::new(

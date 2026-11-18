@@ -1,0 +1,21 @@
+// Flatpak Background — bar pill + panel (flatpak-bg port).
+// DESIGN.md: §3 active tint on the pill, §5 boxed-list rows, §12 header.
+
+@use "../02-functions/index" as *;
+
+.flatpak-bg-bar-label {
+  font-size: var(--font-bar);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.flatpak-bg-menu-widget {
+  padding: var(--space-1);
+}
+.flatpak-bg-list,
+.flatpak-bg-menu scrolledwindow {
+  background-color: transparent;
+}
+.flatpak-bg-row {
+  padding: var(--space-2) var(--space-3);
+}

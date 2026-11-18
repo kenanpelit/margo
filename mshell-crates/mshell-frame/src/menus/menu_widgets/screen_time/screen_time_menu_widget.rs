@@ -148,8 +148,11 @@ impl Component for ScreenTimeMenuWidgetModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let header = PanelHeader::new("hourglass-symbolic", MenuWidget::ScreenTime.display_name())
-            .with_subtitle();
+        let header = PanelHeader::new(
+            "preferences-system-time-symbolic",
+            MenuWidget::ScreenTime.display_name(),
+        )
+        .with_subtitle();
         let header_root = header.root().clone();
         let subtitle = header.subtitle().cloned().unwrap_or_default();
         let list = gtk::Box::new(gtk::Orientation::Vertical, 0);

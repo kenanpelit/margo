@@ -167,6 +167,7 @@ pub(crate) enum MenuType {
     /// `usb` bar pill's panel — removable drives (udisks2).
     Usb,
     Shelf,
+    FlatpakBackground,
     Downloads,
     ScreenTime,
     DiscordVoice,
@@ -689,6 +690,12 @@ impl Component for MenuModel {
                 effect_widgets!(effects, base_config, sender, shelf_menu);
                 effect_min_width!(effects, base_config, sender, shelf_menu);
                 effect_max_height!(effects, base_config, sender, shelf_menu);
+            }
+            MenuType::FlatpakBackground => {
+                css_class = "quick-settings-menu flatpak-bg-menu".to_string();
+                effect_widgets!(effects, base_config, sender, flatpak_bg_menu);
+                effect_min_width!(effects, base_config, sender, flatpak_bg_menu);
+                effect_max_height!(effects, base_config, sender, flatpak_bg_menu);
             }
             MenuType::Downloads => {
                 css_class = "quick-settings-menu downloads-menu".to_string();

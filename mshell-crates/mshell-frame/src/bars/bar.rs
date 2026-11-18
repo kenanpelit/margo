@@ -14,6 +14,9 @@ use crate::bars::bar_widgets::custom::{CustomWidgetInit, CustomWidgetModel, Cust
 use crate::bars::bar_widgets::dark_mode::{DarkModeInit, DarkModeModel};
 use crate::bars::bar_widgets::discord_voice::{DiscordVoiceInit, DiscordVoiceModel};
 use crate::bars::bar_widgets::downloads::{DownloadsInit, DownloadsModel, DownloadsOutput};
+use crate::bars::bar_widgets::flatpak_bg::{
+    FlatpakBackgroundInit, FlatpakBackgroundModel, FlatpakBackgroundOutput,
+};
 use crate::bars::bar_widgets::github::{GithubInit, GithubModel};
 use crate::bars::bar_widgets::host_monitor::{HostMonitorInit, HostMonitorModel};
 use crate::bars::bar_widgets::ip::{IpInit, IpModel};
@@ -248,6 +251,7 @@ pub(crate) enum BarOutput {
     SshSessionsClicked,
     UsbClicked,
     ShelfClicked,
+    FlatpakBackgroundClicked,
     DownloadsClicked,
     ScreenTimeClicked,
     DiscordVoiceClicked,
@@ -1281,6 +1285,13 @@ impl BarModel {
                     .launch(ShelfInit { orientation })
                     .forward(sender.output_sender(), |msg| match msg {
                         ShelfOutput::Clicked => BarOutput::ShelfClicked,
+                    }),
+            ),
+            BarWidget::FlatpakBackground => Box::new(
+                FlatpakBackgroundModel::builder()
+                    .launch(FlatpakBackgroundInit { orientation })
+                    .forward(sender.output_sender(), |msg| match msg {
+                        FlatpakBackgroundOutput::Clicked => BarOutput::FlatpakBackgroundClicked,
                     }),
             ),
             BarWidget::Downloads => Box::new(

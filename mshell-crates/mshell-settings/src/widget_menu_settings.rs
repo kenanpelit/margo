@@ -79,6 +79,8 @@ pub(crate) enum MenuKind {
     Usb,
     /// The `shelf_menu`, opened by the Shelf bar pill.
     Shelf,
+    /// Flatpak Background menu (Flatpak apps running without a window)
+    FlatpakBackground,
     /// Downloads menu (yt-dlp queue: progress, cancel, open folder)
     Downloads,
     /// Toggle the Screen Time menu (today's focused time per app, last 7 days)
@@ -142,6 +144,7 @@ macro_rules! menu_read {
             MenuKind::SshSessions => m.ssh_menu().$field().$g(),
             MenuKind::Usb => m.usb_menu().$field().$g(),
             MenuKind::Shelf => m.shelf_menu().$field().$g(),
+            MenuKind::FlatpakBackground => m.flatpak_bg_menu().$field().$g(),
             MenuKind::Downloads => m.downloads_menu().$field().$g(),
             MenuKind::ScreenTime => m.screen_time_menu().$field().$g(),
             MenuKind::DiscordVoice => m.discord_voice_menu().$field().$g(),
@@ -194,6 +197,7 @@ macro_rules! menu_write {
             MenuKind::SshSessions => c.menus.ssh_menu.$field = $val,
             MenuKind::Usb => c.menus.usb_menu.$field = $val,
             MenuKind::Shelf => c.menus.shelf_menu.$field = $val,
+            MenuKind::FlatpakBackground => c.menus.flatpak_bg_menu.$field = $val,
             MenuKind::Downloads => c.menus.downloads_menu.$field = $val,
             MenuKind::ScreenTime => c.menus.screen_time_menu.$field = $val,
             MenuKind::DiscordVoice => c.menus.discord_voice_menu.$field = $val,
@@ -245,6 +249,7 @@ impl MenuKind {
             Self::SshSessions => "SSH Sessions",
             Self::Usb => "USB Drives",
             Self::Shelf => "Shelf",
+            Self::FlatpakBackground => "Flatpak Background",
             Self::Downloads => "Downloads",
             Self::ScreenTime => "Screen Time",
             Self::DiscordVoice => "Discord Voice",
@@ -286,6 +291,7 @@ impl MenuKind {
             MenuKind::SshSessions,
             MenuKind::Usb,
             MenuKind::Shelf,
+            MenuKind::FlatpakBackground,
             MenuKind::Downloads,
             MenuKind::ScreenTime,
             MenuKind::DiscordVoice,

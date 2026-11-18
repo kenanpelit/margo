@@ -525,6 +525,12 @@ impl IPCService {
     async fn shelf(&self) -> fdo::Result<()> {
         self.send(IPCCommand::Menu(mshell_frame::frame::MenuId::Shelf, false))
     }
+    async fn flatpak_bg(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Menu(
+            mshell_frame::frame::MenuId::FlatpakBackground,
+            false,
+        ))
+    }
     async fn downloads(&self) -> fdo::Result<()> {
         self.send(IPCCommand::Menu(
             mshell_frame::frame::MenuId::Downloads,
