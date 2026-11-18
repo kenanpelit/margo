@@ -72,7 +72,11 @@ The GTK4 + relm4 shell hosting the bars, menus, settings, and dashboard.
   or the whole system, optionally USB disks — see
   [Configuration](configuration.md#launcher-file-search-fs)) and `timer`
   (one-line timers and reminders — `timer 10m tea`, `timer 14:30 meeting`,
-  `timer yarın 9:00 kahve` — with a live "Rings at …" preview); type `;` in
+  `timer yarın 9:00 kahve` — with a live "Rings at …" preview), `.`
+  (symbols: ~200 curated characters plus ~2900 math symbols from the
+  mathsym plugin, found by description, LaTeX command — `.\leq`,
+  `.mathbb{R}` —, Lean input name — `.le`, `.Ga` —, code point —
+  `.U+2264`, `.8804` — or a pasted character; Enter copies); type `;` in
   the launcher for the full prefix list.
 - **Material You theming** — matugen palette extraction from the wallpaper,
   applied across the shell, the compositor border, and the login screen.

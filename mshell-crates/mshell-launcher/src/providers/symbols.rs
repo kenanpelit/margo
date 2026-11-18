@@ -1,7 +1,9 @@
 //! `.<query>` — quick-pick special characters.
 //!
-//! Hardcoded ~200 unicode chars across arrows, math, currency,
-//! brackets, typography, Greek, and shapes. Activating an entry
+//! ~200 curated unicode chars across arrows, math, currency,
+//! brackets, typography, Greek, and shapes, plus the full math table
+//! of [`super::symbols_math`] (~2900 symbols by description, LaTeX
+//! command, Lean input name or code point). Activating an entry
 //! copies the single character to the wl-clipboard so the user
 //! can paste it anywhere — same UX as the calculator's "copy
 //! result" flow.
@@ -11,12 +13,14 @@
 //! | Query | Result |
 //! |---|---|
 //! | `.` (bare) | Every entry, in declaration order |
-//! | `.<partial>` | Substring filter on name + keywords |
+//! | `.<partial>` | Substring filter on name + keywords, then math-table hits |
+//! | `.\mathbb{R}`, `.le`, `.U+2264`, `.≤` | Math table: LaTeX, Lean, code point, pasted char |
 //!
 //! `handles_search` returns `false` so we never bleed symbol
 //! noise into the regular app list — reach symbols deliberately
 //! via the `.` prefix.
 
+use super::symbols_math;
 use crate::{item::LauncherItem, notify::toast, provider::Provider};
 use std::rc::Rc;
 
@@ -845,29 +849,73 @@ impl SymbolsProvider {
     /// only difference is the source of the filter string —
     /// `search()` strips the dot, `browse()` passes empty.
     fn build_items(&self, filter: &str) -> Vec<LauncherItem> {
-        SYMBOLS
+        let mut items: Vec<LauncherItem> = SYMBOLS
             .iter()
             .enumerate()
             .filter_map(|(idx, sym)| {
                 let score = match_score(sym, filter)?;
-                let payload = sym.char.to_string();
-                let display_name = sym.name.to_string();
-                Some(LauncherItem {
-                    id: format!("symbols:{idx}"),
-                    name: format!("{}  {}", sym.char, sym.name),
-                    description: format!("Press Enter to copy '{}'", sym.char),
-                    icon: "format-text-symbolic".into(),
-                    icon_is_path: false,
+                Some(item(
+                    format!("symbols:{idx}"),
+                    sym.char,
+                    sym.name,
+                    format!("Press Enter to copy '{}'", sym.char),
                     score,
-                    provider_name: "Symbols".into(),
-                    usage_key: Some(format!("symbols:{}", sym.char)),
-                    on_activate: Rc::new(move || {
-                        copy_to_clipboard(&payload);
-                        toast(format!("Copied {payload}"), display_name.clone());
-                    }),
-                })
+                ))
             })
-            .collect()
+            .collect();
+        if filter.is_empty() {
+            return items;
+        }
+        // The full math table (`symbols_math`): a character the curated list
+        // already has keeps its curated row, raised to the better score.
+        for (row, score) in symbols_math::search(filter, MATH_RESULTS) {
+            let m = &symbols_math::table()[row];
+            let payload = format!("Press Enter to copy '{}'", m.char);
+            if let Some(it) = items
+                .iter_mut()
+                .find(|it| it.usage_key.as_deref() == Some(&format!("symbols:{}", m.char)))
+            {
+                it.score = it.score.max(score);
+                continue;
+            }
+            let name = if m.desc.is_empty() {
+                m.latex.split_whitespace().next().unwrap_or(m.char)
+            } else {
+                m.desc
+            };
+            let mut it = item(
+                format!("symbols:math:{row}"),
+                m.char,
+                name,
+                symbols_math::subtitle(m),
+                score,
+            );
+            it.description = format!("{}  ·  {payload}", it.description);
+            items.push(it);
+        }
+        items
+    }
+}
+
+/// Math-table hits added per query (the launcher shows the best few).
+const MATH_RESULTS: usize = 60;
+
+fn item(id: String, ch: &str, name: &str, description: String, score: f64) -> LauncherItem {
+    let payload = ch.to_string();
+    let display_name = name.to_string();
+    LauncherItem {
+        id,
+        name: format!("{ch}  {name}"),
+        description,
+        icon: "format-text-symbolic".into(),
+        icon_is_path: false,
+        score,
+        provider_name: "Symbols".into(),
+        usage_key: Some(format!("symbols:{ch}")),
+        on_activate: Rc::new(move || {
+            copy_to_clipboard(&payload);
+            toast(format!("Copied {payload}"), display_name.clone());
+        }),
     }
 }
 
@@ -914,6 +962,26 @@ mod tests {
         let p = SymbolsProvider::new();
         let items = p.search(".pi");
         assert!(items.iter().any(|i| i.name.starts_with("π")));
+    }
+
+    #[test]
+    fn math_table_hits_follow_and_curated_rows_win() {
+        let p = SymbolsProvider::new();
+        let items = p.search(".mathbb{R}");
+        let best = items
+            .iter()
+            .max_by(|a, b| a.score.total_cmp(&b.score))
+            .map(|i| i.name.clone())
+            .unwrap_or_default();
+        assert!(best.starts_with("ℝ"), "{best}");
+        // π is curated: one row only, the curated name.
+        let pi: Vec<_> = p
+            .search(".pi")
+            .into_iter()
+            .filter(|i| i.name.starts_with("π "))
+            .collect();
+        assert_eq!(pi.len(), 1);
+        assert!(p.search(".U+2264").iter().any(|i| i.name.starts_with("≤")));
     }
 
     #[test]

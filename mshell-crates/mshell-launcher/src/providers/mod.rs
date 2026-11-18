@@ -25,6 +25,7 @@ pub mod session;
 pub mod settings;
 pub mod ssh;
 pub mod symbols;
+mod symbols_math;
 pub mod systemd;
 pub mod tmux;
 pub mod tools;
