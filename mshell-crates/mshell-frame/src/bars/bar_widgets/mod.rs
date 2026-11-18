@@ -21,6 +21,7 @@ pub(crate) mod downloads;
 pub(crate) mod eyecare;
 pub(crate) mod flatpak_bg;
 pub(crate) mod github;
+pub(crate) mod global_menu;
 pub(crate) mod hidden_bar;
 pub(crate) mod host_monitor;
 pub(crate) mod ip;

@@ -49,6 +49,7 @@ mod game_mode_extras;
 mod game_mode_settings;
 mod general_settings;
 mod github_settings;
+mod global_menu_settings;
 pub mod guide;
 mod guide_settings;
 mod helium_theme_settings;

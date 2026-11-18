@@ -61,4 +61,9 @@ pub(super) fn push_background_hooks(effects: &mut EffectScope) {
     effects.push(move |_| {
         crate::screen_time::configure(&config_manager().config().screen_time().get());
     });
+
+    // Global menu: the AppMenu registrar + focused-window menu task.
+    effects.push(move |_| {
+        crate::global_menu::configure(config_manager().config().global_menu().get().enabled);
+    });
 }

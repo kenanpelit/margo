@@ -22,6 +22,7 @@ mod dock;
 mod downloads;
 mod drive_health;
 mod flatpak_bg;
+mod global_menu;
 mod launcher;
 mod menus;
 mod notifications;
@@ -40,6 +41,7 @@ pub use dock::*;
 pub use downloads::*;
 pub use drive_health::*;
 pub use flatpak_bg::*;
+pub use global_menu::*;
 pub use launcher::*;
 pub use menus::*;
 pub use notifications::*;
@@ -104,6 +106,8 @@ pub struct Config {
     pub downloads: DownloadsConfig,
     /// Flatpak apps running without a window (pill + menu).
     pub flatpak_bg: FlatpakBgConfig,
+    /// Global (macOS-style) app menu in the bar.
+    pub global_menu: GlobalMenuConfig,
 }
 
 /// Transient state-change toasts — a small opaque corner card that auto-
