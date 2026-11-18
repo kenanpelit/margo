@@ -5,6 +5,39 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+**Six community-plugin ports: Screen Time, the full math-symbol table,
+a media downloader, wallpaper brightness, Flatpak background apps and a
+global menu.**
+
+### Added
+
+- **Screen Time** pill and menu (off by default, `screen_time.*`): how
+  long each app had the keyboard focus today and over 7 days, from margo's
+  focused window; pauses while you are away or the session is locked,
+  splits at midnight, keeps `retention_days` of history in
+  `$XDG_STATE_HOME/margo/screen-time.json`. `mshellctl menu screen-time`.
+- **Symbols launcher (`.`):** ~2900 math symbols from the mathsym plugin,
+  found by description, LaTeX command (`.\leq`, `.mathbb{R}`), Lean input
+  name (`.le`), code point (`.U+2264`, `.8804`) or a pasted character.
+- **Downloads** pill and menu + launcher `dl <link>` and *Download video
+  / audio* on a YouTube video's actions page: a yt-dlp queue with
+  progress, cancel and open folder; folders, audio format, video quality
+  and extra arguments under `downloads.*`. Needs `yt-dlp` (and `ffmpeg`
+  for audio); a missing one is reported, never installed.
+- **Wallpaper brightness** (`wallpaper.brightness_percent`, 20–150): a
+  slider in Settings → Theme → Wallpaper and the Wallpaper menu; applied
+  to the displayed pixels (windows, margo-drawn copy, lock screen,
+  greeter), kept across wallpaper changes, image files untouched.
+- **Flatpak Background** pill and menu: Flatpak apps running without a
+  window, with Stop (`flatpak kill`) and Ignore; hidden without flatpak.
+- **Global Menu** bar widget (off by default, `global_menu.*`): the
+  focused window's application menu via a native AppMenu registrar and a
+  dbusmenu client. Covers apps that register with the registrar (GTK 3
+  with appmenu-gtk-module, Qt with the KDE platform theme, as XWayland
+  clients); GTK 4 and native Wayland Qt menus are not supported yet.
+
 ## [5.3.0] – 2026-11-12
 
 **Menus with a text field take your typing as soon as they open, and a
