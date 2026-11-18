@@ -107,6 +107,8 @@ pub enum BarWidget {
     /// files on it (or in its menu) to hold them; click opens the shelf,
     /// where they can be dragged out into any app, opened or copied.
     Shelf,
+    /// Toggle the Screen Time menu (today's focused time per app, last 7 days)
+    ScreenTime,
     DiscordVoice,
     LockKeys,
     /// Keyboard-layout pill — shows the active xkb layout (e.g. "US",
@@ -227,6 +229,7 @@ impl BarWidget {
             BarWidget::SshSessions => "SSH Sessions",
             BarWidget::Usb => "USB Drives",
             BarWidget::Shelf => "Shelf",
+            BarWidget::ScreenTime => "Screen Time",
             BarWidget::DiscordVoice => "Discord Voice",
             BarWidget::LockKeys => "Lock Keys (Caps/Num/Scroll)",
             BarWidget::KeyboardLayout => "Keyboard Layout",
@@ -303,6 +306,7 @@ impl BarWidget {
             BarWidget::SshSessions,
             BarWidget::Usb,
             BarWidget::Shelf,
+            BarWidget::ScreenTime,
             BarWidget::DiscordVoice,
             BarWidget::LockKeys,
             BarWidget::KeyboardLayout,

@@ -25,6 +25,7 @@ mod menus;
 mod notifications;
 mod osd;
 mod rss;
+mod screen_time;
 mod session;
 mod social;
 mod system;
@@ -40,6 +41,7 @@ pub use menus::*;
 pub use notifications::*;
 pub use osd::*;
 pub use rss::*;
+pub use screen_time::*;
 pub use session::*;
 pub use social::*;
 pub use system::*;
@@ -92,6 +94,8 @@ pub struct Config {
     pub discord: DiscordConfig,
     /// RSS / Atom feeds that notify on new items.
     pub rss: RssConfig,
+    /// Focused-app time per day (Screen Time pill + menu).
+    pub screen_time: ScreenTimeConfig,
 }
 
 /// Transient state-change toasts — a small opaque corner card that auto-

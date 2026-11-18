@@ -48,6 +48,7 @@ use crate::bars::bar_widgets::recording_indicator::{
     RecordingIndicatorInit, RecordingIndicatorModel,
 };
 use crate::bars::bar_widgets::scratchpads::{ScratchpadsInit, ScratchpadsModel};
+use crate::bars::bar_widgets::screen_time::{ScreenTimeInit, ScreenTimeModel, ScreenTimeOutput};
 use crate::bars::bar_widgets::screenshot::{ScreenshotInit, ScreenshotModel, ScreenshotOutput};
 use crate::bars::bar_widgets::scroller_ribbon::{ScrollerRibbonInit, ScrollerRibbonModel};
 use crate::bars::bar_widgets::setup::{SetupInit, SetupModel, SetupOutput};
@@ -246,6 +247,7 @@ pub(crate) enum BarOutput {
     SshSessionsClicked,
     UsbClicked,
     ShelfClicked,
+    ScreenTimeClicked,
     DiscordVoiceClicked,
     AudioDashboardClicked,
     VpnClicked,
@@ -1277,6 +1279,13 @@ impl BarModel {
                     .launch(ShelfInit { orientation })
                     .forward(sender.output_sender(), |msg| match msg {
                         ShelfOutput::Clicked => BarOutput::ShelfClicked,
+                    }),
+            ),
+            BarWidget::ScreenTime => Box::new(
+                ScreenTimeModel::builder()
+                    .launch(ScreenTimeInit { orientation })
+                    .forward(sender.output_sender(), |msg| match msg {
+                        ScreenTimeOutput::Clicked => BarOutput::ScreenTimeClicked,
                     }),
             ),
             BarWidget::DiscordVoice => Box::new(

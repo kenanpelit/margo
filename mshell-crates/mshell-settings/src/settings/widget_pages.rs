@@ -152,6 +152,14 @@ fn eyecare_parts() -> Vec<PagePart> {
     ]
 }
 
+/// Screen Time: recording rules above the menu geometry.
+fn screen_time_parts() -> Vec<PagePart> {
+    vec![
+        page_part!(crate::screen_time_settings::ScreenTimeSettingsModel => crate::screen_time_settings::ScreenTimeSettingsInit {}),
+        page_part!(WidgetMenuSettingsModel => WidgetMenuSettingsInit { kind: MenuKind::ScreenTime }),
+    ]
+}
+
 impl WidgetEntry {
     pub(super) fn label(&self) -> &'static str {
         match self {
@@ -406,6 +414,12 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
             stack_name: "shelf",
             label: "Shelf",
             icon: "folder-download-symbolic",
+        },
+        WidgetEntry::Composite {
+            stack_name: "screen_time",
+            label: "Screen Time",
+            icon: "hourglass-symbolic",
+            parts: screen_time_parts,
         },
         // Discord Voice = saved channels / mic options above the menu geometry.
         WidgetEntry::Composite {

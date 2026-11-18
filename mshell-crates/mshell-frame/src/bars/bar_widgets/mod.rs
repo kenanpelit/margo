@@ -51,6 +51,7 @@ pub(crate) mod privacy;
 pub(crate) mod reboot;
 pub(crate) mod recording_indicator;
 pub(crate) mod scratchpads;
+pub(crate) mod screen_time;
 pub(crate) mod screenshot;
 pub(crate) mod scroller_ribbon;
 pub(crate) mod setup;

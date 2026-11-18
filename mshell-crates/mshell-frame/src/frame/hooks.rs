@@ -56,4 +56,9 @@ pub(super) fn push_background_hooks(effects: &mut EffectScope) {
     effects.push(move |_| {
         crate::drive_health::configure(&config_manager().config().drive_health().get());
     });
+
+    // Screen time (focused-app time per day): one owner task while on.
+    effects.push(move |_| {
+        crate::screen_time::configure(&config_manager().config().screen_time().get());
+    });
 }

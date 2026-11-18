@@ -105,6 +105,9 @@ use crate::menus::menu_widgets::quick_action::quick_actions::{
 use crate::menus::menu_widgets::screen_record::screen_record_menu_widget::{
     ScreenRecordMenuWidgetInit, ScreenRecordMenuWidgetModel, ScreenRecordMenuWidgetOutput,
 };
+use crate::menus::menu_widgets::screen_time::screen_time_menu_widget::{
+    ScreenTimeMenuWidgetInit, ScreenTimeMenuWidgetModel,
+};
 use crate::menus::menu_widgets::screenshot::screenshot_menu_widget::{
     ScreenshotMenuWidgetInit, ScreenshotMenuWidgetModel, ScreenshotMenuWidgetOutput,
 };
@@ -290,6 +293,11 @@ pub fn build_widget(
         MenuWidget::Shelf => Box::new(
             ShelfMenuWidgetModel::builder()
                 .launch(ShelfMenuWidgetInit {})
+                .detach(),
+        ),
+        MenuWidget::ScreenTime => Box::new(
+            ScreenTimeMenuWidgetModel::builder()
+                .launch(ScreenTimeMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::DiscordVoice => Box::new(

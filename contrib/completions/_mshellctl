@@ -274,6 +274,12 @@ _arguments "${_arguments_options[@]}" : \
 '--help[Print help]' \
 && ret=0
 ;;
+(screen-time)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
 (discord-voice)
 _arguments "${_arguments_options[@]}" : \
 '-h[Print help]' \
@@ -631,6 +637,10 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (shelf)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(screen-time)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -4064,6 +4074,10 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(screen-time)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (discord-voice)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -6652,6 +6666,7 @@ _mshellctl__subcmd__help__subcmd__menu_commands() {
 'ssh-sessions:Toggle the SSH Sessions menu (searchable ~/.ssh/config host list)' \
 'usb:Toggle the USB Drives menu (removable drives\: mount, unlock, safe removal)' \
 'shelf:Toggle the Shelf menu (files held to drag into other apps)' \
+'screen-time:Toggle the Screen Time menu (today'\''s focused time per app, last 7 days)' \
 'discord-voice:Toggle the Discord voice menu (call controls + participants)' \
 'crashes:Toggle the Crashes menu (your core dumps + this boot'\''s journal errors)' \
 'vpn:Toggle the DNS / VPN menu (Mullvad controls + a collapsible DNS section)' \
@@ -6868,6 +6883,11 @@ _mshellctl__subcmd__help__subcmd__menu__subcmd__privacy_commands() {
 _mshellctl__subcmd__help__subcmd__menu__subcmd__qr_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help menu qr commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__menu__subcmd__screen-time_commands] )) ||
+_mshellctl__subcmd__help__subcmd__menu__subcmd__screen-time_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help menu screen-time commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__help__subcmd__menu__subcmd__screenshot_commands] )) ||
 _mshellctl__subcmd__help__subcmd__menu__subcmd__screenshot_commands() {
@@ -8110,6 +8130,7 @@ _mshellctl__subcmd__menu_commands() {
 'ssh-sessions:Toggle the SSH Sessions menu (searchable ~/.ssh/config host list)' \
 'usb:Toggle the USB Drives menu (removable drives\: mount, unlock, safe removal)' \
 'shelf:Toggle the Shelf menu (files held to drag into other apps)' \
+'screen-time:Toggle the Screen Time menu (today'\''s focused time per app, last 7 days)' \
 'discord-voice:Toggle the Discord voice menu (call controls + participants)' \
 'crashes:Toggle the Crashes menu (your core dumps + this boot'\''s journal errors)' \
 'vpn:Toggle the DNS / VPN menu (Mullvad controls + a collapsible DNS section)' \
@@ -8244,6 +8265,7 @@ _mshellctl__subcmd__menu__subcmd__help_commands() {
 'ssh-sessions:Toggle the SSH Sessions menu (searchable ~/.ssh/config host list)' \
 'usb:Toggle the USB Drives menu (removable drives\: mount, unlock, safe removal)' \
 'shelf:Toggle the Shelf menu (files held to drag into other apps)' \
+'screen-time:Toggle the Screen Time menu (today'\''s focused time per app, last 7 days)' \
 'discord-voice:Toggle the Discord voice menu (call controls + participants)' \
 'crashes:Toggle the Crashes menu (your core dumps + this boot'\''s journal errors)' \
 'vpn:Toggle the DNS / VPN menu (Mullvad controls + a collapsible DNS section)' \
@@ -8466,6 +8488,11 @@ _mshellctl__subcmd__menu__subcmd__help__subcmd__privacy_commands() {
 _mshellctl__subcmd__menu__subcmd__help__subcmd__qr_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl menu help qr commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__menu__subcmd__help__subcmd__screen-time_commands] )) ||
+_mshellctl__subcmd__menu__subcmd__help__subcmd__screen-time_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl menu help screen-time commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__menu__subcmd__help__subcmd__screenshot_commands] )) ||
 _mshellctl__subcmd__menu__subcmd__help__subcmd__screenshot_commands() {
@@ -8714,6 +8741,11 @@ _mshellctl__subcmd__menu__subcmd__privacy_commands() {
 _mshellctl__subcmd__menu__subcmd__qr_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl menu qr commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__menu__subcmd__screen-time_commands] )) ||
+_mshellctl__subcmd__menu__subcmd__screen-time_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl menu screen-time commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__menu__subcmd__screenshot_commands] )) ||
 _mshellctl__subcmd__menu__subcmd__screenshot_commands() {

@@ -58,6 +58,7 @@ mod input_settings;
 mod keybinds_settings;
 mod mtune_settings;
 mod page_defaults;
+mod screen_time_settings;
 /// Fire a startup toast when a keybind is bound twice across active sources.
 pub use keybinds_settings::warn_conflicts_toast;
 mod agents_settings;

@@ -64,6 +64,7 @@ macro_rules! positioned_menus {
             COLOR_PICKER_MENU => color_picker_menu,
             NHOST_MONITOR_MENU => host_monitor_menu,
             SHELF_MENU => shelf_menu,
+            SCREEN_TIME_MENU => screen_time_menu,
             NPLUGIN_PANEL_MENU => plugin_panel_menu,
         }
     };

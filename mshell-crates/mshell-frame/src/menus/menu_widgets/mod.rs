@@ -44,6 +44,7 @@ pub(crate) mod privacy;
 pub(crate) mod qr;
 pub(crate) mod quick_action;
 pub(crate) mod screen_record;
+pub(crate) mod screen_time;
 pub(crate) mod screenshare;
 pub(crate) mod screenshot;
 pub(crate) mod section_label;

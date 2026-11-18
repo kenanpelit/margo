@@ -24,6 +24,7 @@ pub mod pomodoro;
 mod removable_drives;
 pub mod rss;
 pub mod screen_corners;
+mod screen_time;
 mod shelf;
 mod ssh;
 

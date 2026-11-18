@@ -246,6 +246,8 @@ pub(super) const SEARCH_ALIASES: &[(&str, &str)] = &[
     ("reminder", "widgets/alarmclock"),
     ("snooze", "widgets/alarmclock"),
     ("eye care", "widgets/eyecare"),
+    ("screen time", "widgets/screen_time"),
+    ("usage time", "widgets/screen_time"),
     ("world clock", "widgets/clock"),
     ("time zones", "widgets/clock"),
     ("20-20-20", "widgets/eyecare"),

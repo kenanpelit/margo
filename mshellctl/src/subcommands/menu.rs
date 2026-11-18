@@ -102,6 +102,8 @@ pub enum MenuCommands {
     Usb,
     /// Toggle the Shelf menu (files held to drag into other apps)
     Shelf,
+    /// Toggle the Screen Time menu (today's focused time per app, last 7 days)
+    ScreenTime,
     /// Toggle the Discord voice menu (call controls + participants)
     DiscordVoice,
     /// Toggle the Crashes menu (your core dumps + this boot's journal errors)
@@ -270,6 +272,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Shelf => {
             shell().await?.shelf().await?;
+        }
+        MenuCommands::ScreenTime => {
+            shell().await?.screen_time().await?;
         }
         MenuCommands::DiscordVoice => {
             shell().await?.discord_voice().await?;

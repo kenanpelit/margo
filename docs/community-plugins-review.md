@@ -1,6 +1,6 @@
 # community-plugins (noctalia) vs margo/mshell — review 2026-11-05 (margo 5.0.0)
 
-321 plugins: PORT 20, IMPROVE 36, HAVE 95, SKIP 170.
+321 plugins: PORT 20, IMPROVE 36, HAVE 95, SKIP 170 (2026-11 ports added six more to HAVE: screen-time, mathsym, media-downloader, wallpaper-brightness, flatpak-bg, global-menu).
 Full re-review against the 5.0.0 tree; the 2026-11-04 review's high/medium PORT items were implemented in 4.9.0–5.0.0.
 `new` / `changed` mark plugins added or changed upstream since the 2026-11-04 review.
 
@@ -244,6 +244,7 @@ Full re-review against the 5.0.0 tree; the 2026-11-04 review's high/medium PORT 
 - **region-recorder** — ours: mshell-screenshot/src/record.rs + screen_record menu + mshellctl screenrecord — Region/window/monitor recording with wf-recorder or gpu-screen-recorder and mixed audio.
 - **run-path** — ours: mshell-launcher/src/providers/command.rs (+ file_search) — Command provider runs commands with PATH completion/history; file_search opens paths.
 - **screen-mirror** — ours: margo-config/src/actions.rs mirror_output/toggle_mirror + CC Mirror tile — Native compositor output mirroring (mctl mirror) with a control-center tile; no wl-mirror needed.
+- **screen-time** — ours: mshell-frame/src/screen_time + ScreenTime pill/menu — Ported 2026-11: native focused-app time from margo focus events, idle/lock aware, per-day JSON history with retention, Today / 7 days menu.
 - **scroll-indicator** (changed) — ours: mshell-frame/src/bars/bar_widgets/scroller_ribbon.rs (ScrollerRibbon) — Changed upstream but still Hyprland-only; margo's ScrollerRibbon already shows scroller column position.
 - **sharednd** — ours: mshell-frame/src/bars/bar_widgets/privacy/auto_dnd.rs — Already ported: auto DND while a PipeWire screencast is active, with ownership-aware restore.
 - **shell-command** — ours: mshell-launcher/src/providers/command.rs — Launcher command provider runs shell commands (plus terminal via scripts/tools).
