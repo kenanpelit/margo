@@ -5,7 +5,7 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [5.4.0] – 2026-11-18
 
 **Five community-plugin ports: Screen Time, the full math-symbol table,
 a media downloader, wallpaper brightness and Flatpak background apps.**
