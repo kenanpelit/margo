@@ -218,6 +218,7 @@ fn row(a: &BgApp, sender: &ComponentSender<FlatpakBackgroundMenuWidgetModel>) ->
         ("process-stop-symbolic", "Stop (flatpak kill)", true),
     ] {
         let b = gtk::Button::from_icon_name(icon);
+        mshell_common::a11y::name(&b, tip);
         b.add_css_class("ok-button-flat");
         b.set_valign(gtk::Align::Center);
         b.set_tooltip_text(Some(tip));

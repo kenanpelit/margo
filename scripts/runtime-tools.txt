@@ -29,11 +29,11 @@ zbarimg                     zbar                       screenshot-region QR deco
 qrencode                    qrencode                   QR codes to share text / Wi-Fi with a phone (QR menu, Network menu)
 ssh                         openssh                    SSH Sessions menu port forwards (ssh -L)
 gpu-screen-recorder         gpu-screen-recorder        hardware-encoded screen recording
-ffmpeg                      ffmpeg                     webcam overlay in screen recordings (V4L2 capture)
+ffmpeg                      ffmpeg                     webcam overlay in screen recordings (V4L2 capture), audio downloads
 v4l2-ctl                    v4l-utils                  webcam overlay: pick a camera node + a 30 fps mode
 swappy                      swappy                     screenshot annotation
 satty                       satty                      screenshot annotation
-yt-dlp                      yt-dlp                     mshellctl play of streaming URLs, launcher YouTube provider
+yt-dlp                      yt-dlp                     mshellctl play of streaming URLs, launcher YouTube provider, Downloads queue
 topgrade                    topgrade                   system-update backend (AUR)
 arch-audit                  arch-audit                 security advisories in the update menu
 checkupdates                pacman-contrib             update count without sudo or the db lock
@@ -152,7 +152,7 @@ apt                         -                          mdots: the user's package
 dnf                         -                          mdots: the user's package manager, probed
 yay                         -                          mdots: the user's AUR helper, probed
 paru                        -                          mdots: the user's AUR helper, probed
-flatpak                     -                          mdots / update pill: used when installed
+flatpak                     -                          mdots / update pill / Flatpak Background pill: used when installed
 nix                         -                          mdots Nix backend, used when installed
 nix-channel                 -                          mdots Nix backend, used when installed
 nix-shell                   -                          mdots Nix backend, used when installed

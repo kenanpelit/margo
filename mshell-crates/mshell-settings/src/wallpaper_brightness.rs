@@ -62,6 +62,7 @@ pub fn brightness_row(compact: bool) -> gtk::Box {
     value.add_css_class("label-small");
     value.set_width_chars(5);
     let reset = gtk::Button::from_icon_name("edit-undo-symbolic");
+    mshell_common::a11y::name(&reset, "Reset the wallpaper brightness");
     reset.add_css_class("ok-button-flat");
     reset.set_valign(gtk::Align::Center);
     reset.set_tooltip_text(Some("Back to 100 %"));

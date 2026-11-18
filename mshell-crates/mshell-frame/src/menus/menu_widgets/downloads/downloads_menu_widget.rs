@@ -309,6 +309,7 @@ fn row(j: &Job, sender: &ComponentSender<DownloadsMenuWidgetModel>) -> gtk::Box 
 
     let button = |icon: &str, tip: &str, msg: DownloadsMenuWidgetInput| {
         let b = gtk::Button::from_icon_name(icon);
+        mshell_common::a11y::name(&b, tip);
         b.add_css_class("ok-button-flat");
         b.set_valign(gtk::Align::Center);
         b.set_tooltip_text(Some(tip));
