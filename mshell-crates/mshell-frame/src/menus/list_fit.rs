@@ -68,6 +68,7 @@ pub(crate) fn lists_follow_menu_height(kinds: &[MenuWidget]) -> bool {
                     | MenuWidget::Crashes
                     | MenuWidget::Usb
                     | MenuWidget::Shelf
+                    | MenuWidget::Downloads
                     | MenuWidget::ScreenTime
                     | MenuWidget::DiscordVoice
                     | MenuWidget::Podman
@@ -211,6 +212,7 @@ mod tests {
             &m.crashes_menu.widgets,
             &m.usb_menu.widgets,
             &m.shelf_menu.widgets,
+            &m.downloads_menu.widgets,
             &m.screen_time_menu.widgets,
             &m.discord_voice_menu.widgets,
             &m.podman_menu.widgets,

@@ -41,6 +41,7 @@ mod default_apps_settings;
 mod discord_settings;
 mod display_settings;
 mod dock_settings;
+mod downloads_settings;
 mod effects_settings;
 mod eyecare_settings;
 mod fonts_settings;

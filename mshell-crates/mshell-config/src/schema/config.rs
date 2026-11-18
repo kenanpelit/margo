@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 mod bars;
 mod crashes;
 mod dock;
+mod downloads;
 mod drive_health;
 mod launcher;
 mod menus;
@@ -35,6 +36,7 @@ mod valent;
 pub use bars::*;
 pub use crashes::*;
 pub use dock::*;
+pub use downloads::*;
 pub use drive_health::*;
 pub use launcher::*;
 pub use menus::*;
@@ -96,6 +98,8 @@ pub struct Config {
     pub rss: RssConfig,
     /// Focused-app time per day (Screen Time pill + menu).
     pub screen_time: ScreenTimeConfig,
+    /// Media downloader (yt-dlp): folders, formats, extra arguments.
+    pub downloads: DownloadsConfig,
 }
 
 /// Transient state-change toasts — a small opaque corner card that auto-

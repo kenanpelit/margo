@@ -102,6 +102,8 @@ pub enum MenuCommands {
     Usb,
     /// Toggle the Shelf menu (files held to drag into other apps)
     Shelf,
+    /// Toggle the Downloads menu (yt-dlp queue: progress, cancel, open folder)
+    Downloads,
     /// Toggle the Screen Time menu (today's focused time per app, last 7 days)
     ScreenTime,
     /// Toggle the Discord voice menu (call controls + participants)
@@ -272,6 +274,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Shelf => {
             shell().await?.shelf().await?;
+        }
+        MenuCommands::Downloads => {
+            shell().await?.downloads().await?;
         }
         MenuCommands::ScreenTime => {
             shell().await?.screen_time().await?;

@@ -1,6 +1,7 @@
 pub(crate) mod app_launcher;
 mod apps_provider;
 mod clipboard_provider;
+mod downloads_provider;
 mod footer;
 mod fs_settings;
 pub(crate) mod launcher_row;

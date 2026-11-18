@@ -99,6 +99,7 @@ pub trait Shell {
     fn ssh_sessions(&self) -> zbus::Result<()>;
     fn usb(&self) -> zbus::Result<()>;
     fn shelf(&self) -> zbus::Result<()>;
+    fn downloads(&self) -> zbus::Result<()>;
     fn screen_time(&self) -> zbus::Result<()>;
     fn discord_voice(&self) -> zbus::Result<()>;
     fn crashes(&self) -> zbus::Result<()>;

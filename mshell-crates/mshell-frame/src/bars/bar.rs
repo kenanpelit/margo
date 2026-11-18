@@ -13,6 +13,7 @@ use crate::bars::bar_widgets::cpu_dashboard::{CpuDashboardInit, CpuDashboardMode
 use crate::bars::bar_widgets::custom::{CustomWidgetInit, CustomWidgetModel, CustomWidgetOutput};
 use crate::bars::bar_widgets::dark_mode::{DarkModeInit, DarkModeModel};
 use crate::bars::bar_widgets::discord_voice::{DiscordVoiceInit, DiscordVoiceModel};
+use crate::bars::bar_widgets::downloads::{DownloadsInit, DownloadsModel, DownloadsOutput};
 use crate::bars::bar_widgets::github::{GithubInit, GithubModel};
 use crate::bars::bar_widgets::host_monitor::{HostMonitorInit, HostMonitorModel};
 use crate::bars::bar_widgets::ip::{IpInit, IpModel};
@@ -247,6 +248,7 @@ pub(crate) enum BarOutput {
     SshSessionsClicked,
     UsbClicked,
     ShelfClicked,
+    DownloadsClicked,
     ScreenTimeClicked,
     DiscordVoiceClicked,
     AudioDashboardClicked,
@@ -1279,6 +1281,13 @@ impl BarModel {
                     .launch(ShelfInit { orientation })
                     .forward(sender.output_sender(), |msg| match msg {
                         ShelfOutput::Clicked => BarOutput::ShelfClicked,
+                    }),
+            ),
+            BarWidget::Downloads => Box::new(
+                DownloadsModel::builder()
+                    .launch(DownloadsInit { orientation })
+                    .forward(sender.output_sender(), |msg| match msg {
+                        DownloadsOutput::Clicked => BarOutput::DownloadsClicked,
                     }),
             ),
             BarWidget::ScreenTime => Box::new(

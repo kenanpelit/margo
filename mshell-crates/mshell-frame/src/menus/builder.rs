@@ -49,6 +49,9 @@ use crate::menus::menu_widgets::discord_voice::discord_voice_menu_widget::{
 };
 use crate::menus::menu_widgets::divider::{DividerMenuWidgetInit, DividerMenuWidgetModel};
 use crate::menus::menu_widgets::dns::dns_menu_widget::{DnsMenuWidgetInit, DnsMenuWidgetModel};
+use crate::menus::menu_widgets::downloads::downloads_menu_widget::{
+    DownloadsMenuWidgetInit, DownloadsMenuWidgetModel,
+};
 use crate::menus::menu_widgets::github::github_menu_widget::{
     GithubMenuWidgetInit, GithubMenuWidgetModel,
 };
@@ -293,6 +296,11 @@ pub fn build_widget(
         MenuWidget::Shelf => Box::new(
             ShelfMenuWidgetModel::builder()
                 .launch(ShelfMenuWidgetInit {})
+                .detach(),
+        ),
+        MenuWidget::Downloads => Box::new(
+            DownloadsMenuWidgetModel::builder()
+                .launch(DownloadsMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::ScreenTime => Box::new(

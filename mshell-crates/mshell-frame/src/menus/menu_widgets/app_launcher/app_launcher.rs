@@ -41,6 +41,7 @@
 use super::footer::{empty_title, rebuild_binds_strip, result_count_label};
 use crate::menus::menu_widgets::app_launcher::apps_provider::AppsProvider;
 use crate::menus::menu_widgets::app_launcher::clipboard_provider::ClipboardProvider;
+use crate::menus::menu_widgets::app_launcher::downloads_provider::DownloadsProvider;
 use crate::menus::menu_widgets::app_launcher::launcher_row::{
     LauncherRowInit, LauncherRowInput, LauncherRowModel, LauncherRowOutput,
     SECTION_HEADER_PROVIDER, resolve_primary_var, set_match_accent,
@@ -603,6 +604,7 @@ impl Component for AppLauncherModel {
         runtime.register(Box::new(WindowsProvider::new()));
         runtime.register(Box::new(TagsProvider::new()));
         runtime.register(Box::new(TimersProvider::new()));
+        runtime.register(Box::new(DownloadsProvider::new()));
         runtime.register(Box::new(CalculatorProvider::new()));
         runtime.register(Box::new(SessionProvider::new()));
         runtime.register(Box::new(MctlProvider::new()));
@@ -617,7 +619,16 @@ impl Component for AppLauncherModel {
         runtime.register(Box::new(PlayerctlProvider::new()));
         runtime.register(Box::new(archpkgs_provider));
         runtime.register(Box::new(
-            YoutubeProvider::new().with_search_setter(make_search_setter()),
+            YoutubeProvider::new()
+                .with_search_setter(make_search_setter())
+                .with_downloader(Rc::new(|url: &str, audio: bool| {
+                    let mode = if audio {
+                        crate::downloads::engine::Mode::Audio
+                    } else {
+                        crate::downloads::engine::Mode::Video
+                    };
+                    crate::downloads::add(url, mode);
+                })),
         ));
         // `fs`: scope / extra folders / USB disks follow Settings → Launcher
         // → File search (re-read per query; launcher rows write back).

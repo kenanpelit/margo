@@ -525,6 +525,12 @@ impl IPCService {
     async fn shelf(&self) -> fdo::Result<()> {
         self.send(IPCCommand::Menu(mshell_frame::frame::MenuId::Shelf, false))
     }
+    async fn downloads(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Menu(
+            mshell_frame::frame::MenuId::Downloads,
+            false,
+        ))
+    }
     async fn screen_time(&self) -> fdo::Result<()> {
         self.send(IPCCommand::Menu(
             mshell_frame::frame::MenuId::ScreenTime,

@@ -167,6 +167,7 @@ pub(crate) enum MenuType {
     /// `usb` bar pill's panel — removable drives (udisks2).
     Usb,
     Shelf,
+    Downloads,
     ScreenTime,
     DiscordVoice,
     /// Crash history + this boot's journal errors (`crashes` menu).
@@ -688,6 +689,12 @@ impl Component for MenuModel {
                 effect_widgets!(effects, base_config, sender, shelf_menu);
                 effect_min_width!(effects, base_config, sender, shelf_menu);
                 effect_max_height!(effects, base_config, sender, shelf_menu);
+            }
+            MenuType::Downloads => {
+                css_class = "quick-settings-menu downloads-menu".to_string();
+                effect_widgets!(effects, base_config, sender, downloads_menu);
+                effect_min_width!(effects, base_config, sender, downloads_menu);
+                effect_max_height!(effects, base_config, sender, downloads_menu);
             }
             MenuType::ScreenTime => {
                 css_class = "quick-settings-menu screen-time-menu".to_string();

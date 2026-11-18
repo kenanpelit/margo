@@ -69,6 +69,8 @@ pub struct Menus {
     pub usb_menu: Menu,
     #[serde(default = "default_shelf_menu")]
     pub shelf_menu: Menu,
+    #[serde(default = "default_downloads_menu")]
+    pub downloads_menu: Menu,
     #[serde(default = "default_screen_time_menu")]
     pub screen_time_menu: Menu,
     #[serde(default = "default_discord_voice_menu")]
@@ -479,6 +481,16 @@ pub(super) fn default_shelf_menu() -> Menu {
     }
 }
 
+/// Downloads menu (yt-dlp queue: progress, cancel, open folder)
+pub(super) fn default_downloads_menu() -> Menu {
+    Menu {
+        position: Position::TopRight,
+        widgets: vec![MenuWidget::Downloads],
+        minimum_width: 380,
+        maximum_height: 0,
+    }
+}
+
 /// Screen time: today's focused time per app and the last days.
 pub(super) fn default_screen_time_menu() -> Menu {
     Menu {
@@ -678,6 +690,7 @@ impl Default for Menus {
             ssh_menu: default_ssh_menu(),
             usb_menu: default_usb_menu(),
             shelf_menu: default_shelf_menu(),
+            downloads_menu: default_downloads_menu(),
             screen_time_menu: default_screen_time_menu(),
             discord_voice_menu: default_discord_voice_menu(),
             crashes_menu: default_crashes_menu(),

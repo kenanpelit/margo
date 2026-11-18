@@ -301,6 +301,9 @@ pub struct YoutubeProvider {
     known: RefCell<HashMap<String, VideoView>>,
     channels: RefCell<HashMap<String, Channel>>,
     set_search: Option<Rc<dyn Fn(&str) + 'static>>,
+    /// Queues a download (`url`, audio only?) in the shell's downloader;
+    /// `None` hides the video page's Download actions.
+    downloader: Option<Rc<dyn Fn(&str, bool) + 'static>>,
     notifier: Arc<Mutex<Option<RefreshNotifier>>>,
     pruned: Cell<bool>,
 }
@@ -334,6 +337,7 @@ impl YoutubeProvider {
             known: RefCell::default(),
             channels: RefCell::default(),
             set_search: None,
+            downloader: None,
             notifier: Arc::default(),
             pruned: Cell::new(false),
         }
@@ -343,6 +347,12 @@ impl YoutubeProvider {
     /// the launcher query.
     pub fn with_search_setter(mut self, set_search: Rc<dyn Fn(&str) + 'static>) -> Self {
         self.set_search = Some(set_search);
+        self
+    }
+
+    /// Adds *Download video* / *Download audio* to a video's actions page.
+    pub fn with_downloader(mut self, download: Rc<dyn Fn(&str, bool) + 'static>) -> Self {
+        self.downloader = Some(download);
         self
     }
 
@@ -925,6 +935,39 @@ impl YoutubeProvider {
             298.0,
             Rc::new(move || mshellctl_play("queue", &vq.url(), Some(&vq))),
         ));
+        if let Some(dl) = &self.downloader {
+            for (tag, audio, name, desc, icon, score) in [
+                (
+                    "dlv",
+                    false,
+                    "Download video",
+                    "Into the videos folder (Downloads menu)",
+                    "folder-download-symbolic",
+                    297.6,
+                ),
+                (
+                    "dla",
+                    true,
+                    "Download audio",
+                    "Audio only, into the music folder",
+                    "audio-x-generic-symbolic",
+                    297.5,
+                ),
+            ] {
+                let (dl, url) = (Rc::clone(dl), v.url());
+                rows.push(act(
+                    tag,
+                    name.into(),
+                    desc.into(),
+                    icon,
+                    score,
+                    Rc::new(move || {
+                        dl(&url, audio);
+                        toast(PROVIDER, "Download queued");
+                    }),
+                ));
+            }
+        }
         let state = Rc::clone(&self.state);
         let repaint = self.repaint();
         let vl = v.clone();

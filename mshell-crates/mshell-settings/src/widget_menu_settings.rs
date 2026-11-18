@@ -79,6 +79,8 @@ pub(crate) enum MenuKind {
     Usb,
     /// The `shelf_menu`, opened by the Shelf bar pill.
     Shelf,
+    /// Downloads menu (yt-dlp queue: progress, cancel, open folder)
+    Downloads,
     /// Toggle the Screen Time menu (today's focused time per app, last 7 days)
     ScreenTime,
     DiscordVoice,
@@ -140,6 +142,7 @@ macro_rules! menu_read {
             MenuKind::SshSessions => m.ssh_menu().$field().$g(),
             MenuKind::Usb => m.usb_menu().$field().$g(),
             MenuKind::Shelf => m.shelf_menu().$field().$g(),
+            MenuKind::Downloads => m.downloads_menu().$field().$g(),
             MenuKind::ScreenTime => m.screen_time_menu().$field().$g(),
             MenuKind::DiscordVoice => m.discord_voice_menu().$field().$g(),
             MenuKind::Crashes => m.crashes_menu().$field().$g(),
@@ -191,6 +194,7 @@ macro_rules! menu_write {
             MenuKind::SshSessions => c.menus.ssh_menu.$field = $val,
             MenuKind::Usb => c.menus.usb_menu.$field = $val,
             MenuKind::Shelf => c.menus.shelf_menu.$field = $val,
+            MenuKind::Downloads => c.menus.downloads_menu.$field = $val,
             MenuKind::ScreenTime => c.menus.screen_time_menu.$field = $val,
             MenuKind::DiscordVoice => c.menus.discord_voice_menu.$field = $val,
             MenuKind::Crashes => c.menus.crashes_menu.$field = $val,
@@ -241,6 +245,7 @@ impl MenuKind {
             Self::SshSessions => "SSH Sessions",
             Self::Usb => "USB Drives",
             Self::Shelf => "Shelf",
+            Self::Downloads => "Downloads",
             Self::ScreenTime => "Screen Time",
             Self::DiscordVoice => "Discord Voice",
             Self::Crashes => "Crashes",
@@ -281,6 +286,7 @@ impl MenuKind {
             MenuKind::SshSessions,
             MenuKind::Usb,
             MenuKind::Shelf,
+            MenuKind::Downloads,
             MenuKind::ScreenTime,
             MenuKind::DiscordVoice,
             MenuKind::Crashes,

@@ -88,6 +88,7 @@ impl Frame {
                 BarOutput::SshSessionsClicked => FrameInput::ToggleMenu(MenuId::SshSessions),
                 BarOutput::UsbClicked => FrameInput::ToggleMenu(MenuId::Usb),
                 BarOutput::ShelfClicked => FrameInput::ToggleMenu(MenuId::Shelf),
+                BarOutput::DownloadsClicked => FrameInput::ToggleMenu(MenuId::Downloads),
                 BarOutput::ScreenTimeClicked => FrameInput::ToggleMenu(MenuId::ScreenTime),
                 BarOutput::DiscordVoiceClicked => FrameInput::ToggleMenu(MenuId::DiscordVoice),
                 BarOutput::VpnClicked => FrameInput::ToggleMenu(MenuId::Vpn),

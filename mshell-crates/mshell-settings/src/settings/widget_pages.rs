@@ -160,6 +160,14 @@ fn screen_time_parts() -> Vec<PagePart> {
     ]
 }
 
+/// Downloads: yt-dlp folders / formats above the menu geometry.
+fn downloads_parts() -> Vec<PagePart> {
+    vec![
+        page_part!(crate::downloads_settings::DownloadsSettingsModel => crate::downloads_settings::DownloadsSettingsInit {}),
+        page_part!(WidgetMenuSettingsModel => WidgetMenuSettingsInit { kind: MenuKind::Downloads }),
+    ]
+}
+
 impl WidgetEntry {
     pub(super) fn label(&self) -> &'static str {
         match self {
@@ -414,6 +422,12 @@ pub(super) fn widget_entries() -> Vec<WidgetEntry> {
             stack_name: "shelf",
             label: "Shelf",
             icon: "folder-download-symbolic",
+        },
+        WidgetEntry::Composite {
+            stack_name: "downloads",
+            label: "Downloads",
+            icon: "folder-download-symbolic",
+            parts: downloads_parts,
         },
         WidgetEntry::Composite {
             stack_name: "screen_time",

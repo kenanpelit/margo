@@ -29,6 +29,7 @@ pub(super) const CONTROL_CENTER_MENU: &str = "control_center";
 pub(super) const SSH_MENU: &str = "ssh_sessions";
 pub(super) const USB_MENU: &str = "usb";
 pub(super) const SHELF_MENU: &str = "shelf";
+pub(super) const DOWNLOADS_MENU: &str = "downloads";
 pub(super) const SCREEN_TIME_MENU: &str = "screen_time";
 pub(super) const DISCORD_MENU: &str = "discord_voice";
 pub(super) const CRASHES_MENU: &str = "crashes";
@@ -91,6 +92,7 @@ pub enum MenuId {
     SshSessions,
     Usb,
     Shelf,
+    Downloads,
     ScreenTime,
     DiscordVoice,
     Crashes,
@@ -195,6 +197,7 @@ impl MenuId {
             MenuId::SshSessions => SSH_MENU,
             MenuId::Usb => USB_MENU,
             MenuId::Shelf => SHELF_MENU,
+            MenuId::Downloads => DOWNLOADS_MENU,
             MenuId::ScreenTime => SCREEN_TIME_MENU,
             MenuId::DiscordVoice => DISCORD_MENU,
             MenuId::Crashes => CRASHES_MENU,
@@ -251,6 +254,7 @@ impl MenuId {
             MenuId::SshSessions => MenuType::SshSessions,
             MenuId::Usb => MenuType::Usb,
             MenuId::Shelf => MenuType::Shelf,
+            MenuId::Downloads => MenuType::Downloads,
             MenuId::ScreenTime => MenuType::ScreenTime,
             MenuId::DiscordVoice => MenuType::DiscordVoice,
             MenuId::Crashes => MenuType::Crashes,

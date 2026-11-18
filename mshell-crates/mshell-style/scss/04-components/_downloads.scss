@@ -1,0 +1,25 @@
+// Downloads — bar pill + yt-dlp queue panel (media-downloader port).
+// DESIGN.md: §3 active tint on the pill, §5 boxed-list rows, §12 header.
+
+@use "../02-functions/index" as *;
+
+.downloads-bar-label {
+  font-size: var(--font-bar);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--primary);
+}
+.downloads-bar-widget.active image {
+  color: var(--primary);
+}
+
+.downloads-menu-widget {
+  padding: var(--space-1);
+}
+.downloads-list,
+.downloads-menu scrolledwindow {
+  background-color: transparent;
+}
+.downloads-row {
+  padding: var(--space-2) var(--space-3);
+}

@@ -5,6 +5,7 @@ mod common_widgets;
 mod countdown;
 mod crashes;
 mod discord;
+mod downloads;
 mod drive_health;
 pub mod eyecare;
 pub mod frame;

@@ -76,7 +76,9 @@ The GTK4 + relm4 shell hosting the bars, menus, settings, and dashboard.
   (symbols: ~200 curated characters plus ~2900 math symbols from the
   mathsym plugin, found by description, LaTeX command — `.\leq`,
   `.mathbb{R}` —, Lean input name — `.le`, `.Ga` —, code point —
-  `.U+2264`, `.8804` — or a pasted character; Enter copies); type `;` in
+  `.U+2264`, `.8804` — or a pasted character; Enter copies), `dl <link>`
+  (download a video or its audio with yt-dlp into the Downloads queue);
+  type `;` in
   the launcher for the full prefix list.
 - **Material You theming** — matugen palette extraction from the wallpaper,
   applied across the shell, the compositor border, and the login screen.

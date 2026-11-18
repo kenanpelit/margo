@@ -107,6 +107,8 @@ pub enum BarWidget {
     /// files on it (or in its menu) to hold them; click opens the shelf,
     /// where they can be dragged out into any app, opened or copied.
     Shelf,
+    /// Downloads menu (yt-dlp queue: progress, cancel, open folder)
+    Downloads,
     /// Toggle the Screen Time menu (today's focused time per app, last 7 days)
     ScreenTime,
     DiscordVoice,
@@ -229,6 +231,7 @@ impl BarWidget {
             BarWidget::SshSessions => "SSH Sessions",
             BarWidget::Usb => "USB Drives",
             BarWidget::Shelf => "Shelf",
+            BarWidget::Downloads => "Downloads",
             BarWidget::ScreenTime => "Screen Time",
             BarWidget::DiscordVoice => "Discord Voice",
             BarWidget::LockKeys => "Lock Keys (Caps/Num/Scroll)",
@@ -306,6 +309,7 @@ impl BarWidget {
             BarWidget::SshSessions,
             BarWidget::Usb,
             BarWidget::Shelf,
+            BarWidget::Downloads,
             BarWidget::ScreenTime,
             BarWidget::DiscordVoice,
             BarWidget::LockKeys,
