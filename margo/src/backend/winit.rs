@@ -43,7 +43,10 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
     let (mut backend, winit_evt) =
         winit::init::<GlesRenderer>().map_err(|e| anyhow::anyhow!("winit init failed: {e}"))?;
 
-    let dmabuf_formats = backend.renderer().dmabuf_formats();
+    let dmabuf_formats = crate::backend::client_dmabuf_formats(
+        &backend.renderer().dmabuf_formats(),
+        state.config.dmabuf_ccs,
+    );
     match EGLDevice::device_for_display(backend.renderer().egl_context().display())
         .and_then(|device| device.try_get_render_node())
     {

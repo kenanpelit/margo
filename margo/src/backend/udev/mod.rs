@@ -291,7 +291,10 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
         Err(err) => warn!("failed to bind EGL Wayland display: {err:?}"),
     }
 
-    let dmabuf_formats = renderer.dmabuf_formats();
+    // Intel aux-plane CCS modifiers are not offered unless `dmabuf_ccs = 1` (see `client_dmabuf_formats`). Read once:
+    // the global's formats can't change on reload.
+    let dmabuf_formats =
+        crate::backend::client_dmabuf_formats(&renderer.dmabuf_formats(), state.config.dmabuf_ccs);
     match DmabufFeedbackBuilder::new(primary_node.dev_id(), dmabuf_formats.clone()).build() {
         Ok(feedback) => {
             let global = state

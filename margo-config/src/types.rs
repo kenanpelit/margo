@@ -1154,6 +1154,9 @@ pub struct Config {
     pub idle_inhibit_when_fullscreen: bool,
     pub log_level: i32,
     pub syncobj_enable: bool,
+    /// Offer Intel's aux-plane CCS (compressed) dmabuf modifiers to clients. Off by default: Mesa 26.3.1 makes such
+    /// buffers too small for linux-dmabuf's bounds check (margo/src/backend/mod.rs `client_dmabuf_formats`).
+    pub dmabuf_ccs: bool,
     /// Minimum ms between re-arranges while dragging / resizing a tiled
     /// (resp. floating) window. `0` (default) = one per frame of the
     /// grab's monitor, from its refresh rate (mango ca34a6ac).
@@ -1516,6 +1519,7 @@ impl Default for Config {
             idle_inhibit_when_fullscreen: false,
             log_level: 0,
             syncobj_enable: false,
+            dmabuf_ccs: false,
             drag_tile_refresh_interval: 0.0,
             drag_floating_refresh_interval: 0.0,
             allow_tearing: TearingMode::Disabled,

@@ -5,6 +5,24 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Intel compressed client buffers (Mesa 26.3.1):** margo no longer
+  offers clients Intel's aux-plane CCS dmabuf modifiers. Mesa 26.3.1 made
+  such buffers smaller than linux-dmabuf allows (a 3×1440 Meteor Lake
+  surface: stride 512, its CCS plane at 724992 < 512 × 1440); margo
+  rejected them, so mshell's Vulkan renderer retried a lost surface at
+  100% CPU (`VK_ERROR_SURFACE_LOST`) and its GL renderer died with
+  protocol error 71. `dmabuf_ccs = 1` offers them again (read at start-up).
+
+### Changed
+
+- **smithay** bumped to master 2026-11-19 (`a38bb709`, 50 commits):
+  virtual keyboard keymaps are compared by their `KeymapFile` id;
+  xdg-decoration v2 (`decoration_destroyed`).
+
 ## [5.4.0] – 2026-11-18
 
 **Five community-plugin ports: Screen Time, the full math-symbol table,

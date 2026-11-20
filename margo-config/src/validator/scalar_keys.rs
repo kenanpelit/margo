@@ -77,6 +77,7 @@ pub(super) const BOOL_KEYS: &[&str] = &[
     "sloppyfocus_arrange",
     "smartgaps",
     "syncobj_enable",
+    "dmabuf_ccs",
     "tag_carousel",
     "tag_gather",
     "taglayout_force",

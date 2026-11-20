@@ -450,6 +450,7 @@ pub(super) fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()>
         // without an unknown-key warning.
         "xwayland_persistence" => {}
         "syncobj_enable" => cfg.syncobj_enable = parse_bool(val),
+        "dmabuf_ccs" => cfg.dmabuf_ccs = parse_bool(val),
         "drag_tile_refresh_interval" => cfg.drag_tile_refresh_interval = parse_f32(val),
         "drag_floating_refresh_interval" => cfg.drag_floating_refresh_interval = parse_f32(val),
         "allow_tearing" => {
@@ -758,6 +759,7 @@ pub const OPTION_KEYS: &[&str] = &[
     "snap_distance",
     "swipe_min_threshold",
     "syncobj_enable",
+    "dmabuf_ccs",
     "tablet_map_to_mon",
     "tag_animation_direction",
     "tag_carousel",
