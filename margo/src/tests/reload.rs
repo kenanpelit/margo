@@ -80,7 +80,19 @@ fn a_reload_forgets_the_active_virtual_keymap() {
     let state = &mut fx.server.state;
     state.config_path = Some(config);
     state.generations_dir = dir.join("generations");
-    state.active_virtual_keymap = Some(std::sync::Arc::from("xkb_keymap { virtual }"));
+    use smithay::input::keyboard::xkb;
+    let context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
+    let keymap = xkb::Keymap::new_from_names(
+        &context,
+        "",
+        "",
+        "us",
+        "",
+        None,
+        xkb::KEYMAP_COMPILE_NO_FLAGS,
+    )
+    .unwrap();
+    state.active_virtual_keymap = Some(smithay::input::keyboard::KeymapFile::new(&keymap).id());
 
     state.reload_config().unwrap();
 

@@ -763,7 +763,7 @@ pub struct MargoState {
     pub virtual_input: bool,
     /// Keymap of the virtual keyboard currently loaded into the seat
     /// (`None` = the configured xkb keymap is active).
-    pub active_virtual_keymap: Option<std::sync::Arc<str>>,
+    pub active_virtual_keymap: Option<smithay::input::keyboard::KeymapFileId>,
     /// Virtual keyboards that set modifiers directly (`modifiers`
     /// request), so their removal can clear what they left held.
     pub virtual_modifier_devices: std::collections::HashSet<String>,

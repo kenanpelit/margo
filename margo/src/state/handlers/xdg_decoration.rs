@@ -60,6 +60,13 @@ impl XdgDecorationHandler for MargoState {
         });
         toplevel.send_configure();
     }
+
+    /// The client destroyed its decoration object: the protocol puts the
+    /// toplevel back on client-side decorations, and smithay has already
+    /// reset its mode to `None` (applied with the commit that follows).
+    /// A new decoration object goes through `new_decoration` again, so
+    /// there is no policy to re-apply here.
+    fn decoration_destroyed(&mut self, _toplevel: ToplevelSurface) {}
 }
 
 impl MargoState {

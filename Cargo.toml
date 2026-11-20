@@ -344,15 +344,16 @@ mshell-wallpaper = { path = "mshell-crates/mshell-wallpaper" }
 
 [workspace.dependencies.smithay]
 git = "https://github.com/Smithay/smithay.git"
-# Master HEAD 2026-10-14 — well past the v0.7.0 tag (a166cf4c); pinning
+# Master HEAD 2026-11-19 — well past the v0.7.0 tag (a166cf4c); pinning
 # the tag would be a large downgrade, we track HEAD. This bump (from
-# 28c8e0fa, 48 commits) carries: virtual keyboards as real input devices
-# (VirtualKeyboardHandler — margo routes them through its keyboard path),
-# text-input activation hooks, wl_seat missing_capability errors, no frame
-# callbacks for bufferless surfaces, keymap updates to grabs, weak-ref
-# input handles, xwm _NET_ACTIVE_WINDOW fixes, drm render-node and legacy
-# VRR fixes, and wl_region / size-hint validation.
-rev = "8a270232f1bfc416c781273c98a3f52a812a0bba"
+# 8a270232, 50 commits) carries: reference-counted KeymapFile and
+# set_keymap_from_keymap_file (virtual keyboards), a separate grab mutex
+# for input handles and a tablet set_grab deadlock fix, layer-shell layers
+# kept across unmap, xdg-decoration v2 and destroy handling, xwm ICCCM
+# withdraw / unmap-loop fixes, drm-syncobj timeline cleanup on drop,
+# negative/zero size guards, the gles y-inverted texture fix and
+# winit 0.31.0-beta.4. MSRV 1.88.
+rev = "a38bb709a0400759b6a4fab6129e0f1dd72808c3"
 default-features = false
 
 # Local dev + test builds default to full DWARF (`debug = 2`), which is the

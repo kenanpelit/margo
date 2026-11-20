@@ -46,14 +46,15 @@ fn activate_virtual_keymap(
 ) {
     match device.keymap() {
         Some(keymap) => {
-            if state.active_virtual_keymap.as_ref() == Some(&keymap) {
+            if state.active_virtual_keymap == Some(keymap.id()) {
                 return;
             }
             let Some(keyboard) = state.seat.get_keyboard() else {
                 return;
             };
-            match keyboard.set_keymap_from_string(state, keymap.to_string()) {
-                Ok(()) => state.active_virtual_keymap = Some(keymap),
+            let id = keymap.id();
+            match keyboard.set_keymap_from_keymap_file(state, keymap) {
+                Ok(()) => state.active_virtual_keymap = Some(id),
                 Err(e) => tracing::warn!("virtual keyboard keymap rejected: {e:?}"),
             }
         }
@@ -120,7 +121,7 @@ pub(crate) fn handle_virtual_keyboard(
         InputEvent::DeviceRemoved { device } => {
             let set_modifiers = state.virtual_modifier_devices.remove(&device.id());
             if device.keymap().is_some()
-                && state.active_virtual_keymap.as_ref() == device.keymap().as_ref()
+                && state.active_virtual_keymap == device.keymap().map(|keymap| keymap.id())
             {
                 // Rebuilds the xkb state, which also drops its modifiers.
                 restore_configured_keymap(state);
