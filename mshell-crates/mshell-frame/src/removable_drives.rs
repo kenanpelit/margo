@@ -673,11 +673,34 @@ async fn proxy<'a>(
     zbus::Proxy::new(conn, UDISKS, path, iface).await
 }
 
-/// Mount a filesystem object; returns the mount path.
+/// Mount a filesystem object; returns the mount path. When the kernel
+/// refuses a read-write mount (ntfs3 on a volume Windows left dirty:
+/// hibernated, Fast Startup, NTFS errors), mount(8) answers "wrong fs
+/// type, bad option, bad superblock" and a read-only mount usually works:
+/// it is tried once, and a toast says the drive is read-only and why.
 pub(crate) async fn mount(fs_path: &str) -> zbus::Result<String> {
     let conn = mshell_services::systemd::system_bus().await?;
     let p = proxy(&conn, fs_path, IF_FS).await?;
-    p.call("Mount", &(Opts::new(),)).await
+    match p.call::<_, _, String>("Mount", &(Opts::new(),)).await {
+        Err(e) if refused_read_write(&error_text(&e)) => {
+            let mut ro = Opts::new();
+            ro.insert("options", Value::from("ro"));
+            let mp: String = p.call("Mount", &(ro,)).await.map_err(|_| e)?;
+            report(
+                "Mounted read-only",
+                Ok(format!(
+                    "{mp}: the drive can't be written to now (on a Windows drive: shut Windows down fully, without Fast Startup)"
+                )),
+            );
+            Ok(mp)
+        }
+        other => other,
+    }
+}
+
+/// Whether a failed mount is the kernel refusing to mount read-write.
+fn refused_read_write(message: &str) -> bool {
+    message.contains("wrong fs type")
 }
 
 pub(crate) async fn unmount(fs_path: &str) -> zbus::Result<()> {
@@ -807,6 +830,17 @@ pub(crate) fn report(title: &str, result: Result<String, String>) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_refused_read_write_mount_is_told_from_other_failures() {
+        assert!(refused_read_write(
+            "Error mounting /dev/sdb1 at /run/media/k/USB: wrong fs type, bad option, bad superblock on /dev/sdb1, missing codepage or helper program, or other error"
+        ));
+        assert!(!refused_read_write("Not authorized to perform operation"));
+        assert!(!refused_read_write(
+            "Device /dev/sdb1 is already mounted at `/run/media/k/USB'."
+        ));
+    }
+
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
