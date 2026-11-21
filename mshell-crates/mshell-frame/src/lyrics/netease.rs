@@ -132,7 +132,7 @@ pub(super) fn parse_search(v: &serde_json::Value) -> Vec<Song> {
 }
 
 /// Lower-cased letters and digits only, so "Get Lucky!" == "get lucky".
-fn norm(s: &str) -> String {
+pub(super) fn norm(s: &str) -> String {
     s.chars()
         .filter(|c| c.is_alphanumeric())
         .flat_map(char::to_lowercase)

@@ -434,28 +434,65 @@ fn fetch_lrclib(key: &TrackKey) -> Option<Lyrics> {
         Err(()) => return None,
     }
 
-    // Fuzzy fallback — pick the first hit that actually has synced lyrics.
+    // Fuzzy fallback — only hits that can be this recording (lrclib_pick).
     let mut search = ureq::get(&format!("{LRCLIB_BASE}/search")).query("track_name", &key.title);
     if !key.artist.is_empty() {
         search = search.query("artist_name", &key.artist);
     }
     match call_json(search, USER_AGENT) {
-        Ok(Some(v)) => {
-            let arr = v.as_array().cloned().unwrap_or_default();
-            let best = arr
-                .iter()
-                .find(|e| {
-                    e.get("syncedLyrics")
-                        .and_then(|s| s.as_str())
-                        .map(|s| !s.trim().is_empty())
-                        .unwrap_or(false)
-                })
-                .or_else(|| arr.first());
-            Some(best.map(lyrics_from_json).unwrap_or(Lyrics::None))
-        }
+        Ok(Some(v)) => Some(lrclib_pick(
+            v.as_array().map(Vec::as_slice).unwrap_or_default(),
+            key,
+        )),
         Ok(None) => Some(Lyrics::None),
         Err(()) => None,
     }
+}
+
+/// How far (s) a search hit's length may be from the track's and still be the
+/// same recording; a radio edit or an extended mix is further off.
+const LRCLIB_DURATION_SLACK: f64 = 10.0;
+
+/// The lyrics of the best lrclib search hit for `key`. A hit is a candidate
+/// only when it can be this recording: its artist matches when both name one
+/// (either contains the other, letters and digits only), and its length is
+/// within [`LRCLIB_DURATION_SLACK`] when both are known — the first synced
+/// hit alone used to bring another artist's song of the same title. Synced
+/// candidates go first, then the closest length; a candidate whose lyrics
+/// don't parse gives way to the next. No candidate = no lyrics, not a guess.
+fn lrclib_pick(hits: &[serde_json::Value], key: &TrackKey) -> Lyrics {
+    let artist = netease::norm(&key.artist);
+    let mut candidates: Vec<(bool, f64, &serde_json::Value)> = hits
+        .iter()
+        .filter_map(|e| {
+            let theirs = netease::norm(e.get("artistName").and_then(|s| s.as_str()).unwrap_or(""));
+            let same_artist = artist.is_empty()
+                || theirs.is_empty()
+                || theirs.contains(&artist)
+                || artist.contains(&theirs);
+            if !same_artist {
+                return None;
+            }
+            let diff = match e.get("duration").and_then(|d| d.as_f64()) {
+                Some(d) if d > 0.0 && key.duration_secs > 0 => (d - key.duration_secs as f64).abs(),
+                _ => 0.0,
+            };
+            if diff > LRCLIB_DURATION_SLACK {
+                return None;
+            }
+            let synced = e
+                .get("syncedLyrics")
+                .and_then(|s| s.as_str())
+                .is_some_and(|s| !s.trim().is_empty());
+            Some((synced, diff, e))
+        })
+        .collect();
+    candidates.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.total_cmp(&b.1)));
+    candidates
+        .into_iter()
+        .map(|(_, _, e)| lyrics_from_json(e))
+        .find(|l| !matches!(l, Lyrics::None))
+        .unwrap_or(Lyrics::None)
 }
 
 /// Run a GET with `user_agent` and parse JSON. `Ok(None)` for a 404, `Err`
@@ -685,6 +722,60 @@ fn save_cache(key: &TrackKey, opts: &FetchOptions, lyrics: &Lyrics, source: Lyri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn hit(artist: &str, duration: f64, synced: &str, plain: &str) -> serde_json::Value {
+        serde_json::json!({"artistName": artist, "duration": duration, "syncedLyrics": synced, "plainLyrics": plain})
+    }
+
+    fn key(artist: &str, duration_secs: u64) -> TrackKey {
+        TrackKey {
+            artist: artist.into(),
+            title: "Song".into(),
+            album: String::new(),
+            duration_secs,
+        }
+    }
+
+    #[test]
+    fn lrclib_search_skips_another_artists_song_of_the_same_title() {
+        let hits = [
+            hit("Somebody Else", 200.0, "[00:01.00]wrong", ""),
+            hit("The Band", 201.0, "[00:01.00]right", ""),
+        ];
+        let Lyrics::Synced(lines) = lrclib_pick(&hits, &key("the band", 200)) else {
+            panic!("synced")
+        };
+        assert_eq!(lines[0].text, "right");
+        assert!(
+            matches!(lrclib_pick(&hits[..1], &key("The Band", 200)), Lyrics::None),
+            "no candidate: no lyrics"
+        );
+    }
+
+    #[test]
+    fn lrclib_search_skips_another_length_and_prefers_synced_then_closest() {
+        let hits = [
+            hit("A", 260.0, "[00:01.00]extended", ""),
+            hit("A", 205.0, "", "plain"),
+            hit("A", 207.0, "[00:01.00]far", ""),
+            hit("A", 202.0, "[00:01.00]near", ""),
+        ];
+        let Lyrics::Synced(lines) = lrclib_pick(&hits, &key("A", 200)) else {
+            panic!("synced")
+        };
+        assert_eq!(lines[0].text, "near");
+        // a synced text that doesn't parse gives way to the next candidate
+        let broken = [
+            hit("A", 200.0, "no timestamps here", ""),
+            hit("A", 203.0, "", "plain line"),
+        ];
+        assert!(matches!(
+            lrclib_pick(&broken, &key("A", 200)),
+            Lyrics::Plain(_)
+        ));
+        // no artist or length known: any hit is a candidate
+        assert!(matches!(lrclib_pick(&hits, &key("", 0)), Lyrics::Synced(_)));
+    }
 
     #[test]
     fn active_index_tracks_position() {
