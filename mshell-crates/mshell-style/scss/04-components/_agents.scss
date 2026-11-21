@@ -167,7 +167,127 @@
   color: var(--on-surface-variant);
 }
 
-// ── Usage charts (by hour, by weekday) ────────────────────────
+// ── Usage page cards (overview, providers, charts) ────────────
+// Ideas from AiOverviewControl: a tinted hero card, ring gauges, an
+// even-pace marker on each bar, and stat tiles. Severity = §2 ladder
+// (calm = --primary accent, warn = --warning, danger = --error).
+.agents-card {
+  background-color: var(--surface-container);
+  border-radius: var(--card-radius);
+  padding: var(--space-3);
+  border: var(--border-width) solid var(--outline-variant);
+}
+
+.agents-card.stale {
+  opacity: 0.7;
+}
+
+// The card's edge carries the severity, as AiOverviewControl's accent rail.
+.agents-provider-card {
+  border-left: 3px solid var(--primary);
+  &.warn { border-left-color: var(--warning); }
+  &.danger { border-left-color: var(--error); }
+}
+
+.agents-hero {
+  background-image: unquote("linear-gradient(135deg, color-mix(in srgb, var(--primary) 16%, transparent), color-mix(in srgb, var(--primary) 3%, transparent))");
+  border-color: unquote("color-mix(in srgb, var(--primary) 35%, transparent)");
+  &.warn {
+    background-image: unquote("linear-gradient(135deg, color-mix(in srgb, var(--warning) 18%, transparent), color-mix(in srgb, var(--warning) 3%, transparent))");
+    border-color: unquote("color-mix(in srgb, var(--warning) 40%, transparent)");
+  }
+  &.danger {
+    background-image: unquote("linear-gradient(135deg, color-mix(in srgb, var(--error) 18%, transparent), color-mix(in srgb, var(--error) 3%, transparent))");
+    border-color: unquote("color-mix(in srgb, var(--error) 40%, transparent)");
+  }
+}
+
+.agents-hero-status {
+  font-size: var(--font-2xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--on-surface-variant);
+}
+
+.agents-hero-title {
+  font-size: var(--font-xl);
+  font-weight: 700;
+}
+
+.agents-hero-pct,
+.agents-provider-pct {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--primary);
+  &.warn { color: var(--warning); }
+  &.danger { color: var(--error); }
+}
+
+.agents-hero-pct { font-size: var(--font-xxl); }
+.agents-provider-pct { font-size: var(--font-lg); }
+
+.agents-hero-mark { -gtk-icon-size: 26px; }
+.agents-provider-mark { -gtk-icon-size: 18px; }
+
+// Ring gauges and pace bars are drawn in the widget's `color`.
+.agents-ring,
+.agents-pace-bar {
+  color: var(--primary);
+  &.warn { color: var(--warning); }
+  &.danger { color: var(--error); }
+}
+
+.agents-tiles {
+  margin-top: var(--space-1);
+}
+
+.agents-tile {
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  background-color: unquote("color-mix(in srgb, var(--surface-container-highest) 55%, transparent)");
+}
+
+.agents-tile-icon {
+  -gtk-icon-size: 16px;
+  min-width: 28px;
+  min-height: 28px;
+  border-radius: var(--radius-sm);
+  background-color: unquote("color-mix(in srgb, var(--primary) 16%, transparent)");
+  color: var(--primary);
+  &.warn {
+    background-color: unquote("color-mix(in srgb, var(--warning) 18%, transparent)");
+    color: var(--warning);
+  }
+  &.danger {
+    background-color: unquote("color-mix(in srgb, var(--error) 18%, transparent)");
+    color: var(--error);
+  }
+}
+
+.agents-tile-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  &.warn { color: var(--warning); }
+  &.danger { color: var(--error); }
+}
+
+.agents-token-tile {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container);
+  border-left: 3px solid var(--primary);
+}
+
+.agents-month-cost {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.agents-chart-card {
+  padding: var(--space-2);
+}
+
+// ── Usage charts (last seven days, by hour) ───────────────────
 .agents-chart {
   padding: var(--space-2) var(--space-3);
 }
@@ -186,13 +306,20 @@
   progress {
     min-width: 6px;
     border-radius: var(--radius-pill);
-    background-color: var(--primary);
+    background-color: unquote("color-mix(in srgb, var(--primary) 65%, transparent)");
     border: none;
   }
+  // Today, picked out as AiOverviewControl's chart does.
+  &.today progress { background-color: var(--tertiary); }
 }
 
 .agents-chart-label {
   font-variant-numeric: tabular-nums;
+  &.today {
+    color: var(--tertiary);
+    font-weight: 700;
+    opacity: 1;
+  }
 }
 
 // ── Session manager (every saved session) ─────────────────────

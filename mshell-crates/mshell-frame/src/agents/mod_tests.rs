@@ -268,6 +268,24 @@ fn history_periods_week_month_all_time_and_weekdays() {
         (2, 3, 4, 5)
     );
     assert_eq!(snap.weekdays, vec![per, 0, 0, 2 * per, 0, 0, 0]);
+    // the last seven days run 10-30 .. 11-05 (today last): oct, sun, mon, thu x2
+    let days: Vec<(String, u64)> = snap
+        .last_days
+        .iter()
+        .map(|(d, t)| (d.format("%m-%d").to_string(), t.tokens()))
+        .collect();
+    assert_eq!(
+        days,
+        vec![
+            ("10-30".into(), 0),
+            ("10-31".into(), per),
+            ("11-01".into(), per),
+            ("11-02".into(), per),
+            ("11-03".into(), 0),
+            ("11-04".into(), 0),
+            ("11-05".into(), 2 * per),
+        ]
+    );
     assert_eq!(snap.all_sessions, 1);
     let cost = snap.today.cost(&pricing::test_table()).unwrap();
     assert!(cost > 0.0);

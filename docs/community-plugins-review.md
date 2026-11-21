@@ -120,7 +120,7 @@ Full re-review against the 5.0.0 tree; the 2026-11-04 review's high/medium PORT 
 - **lunar-workspaces** [low] — MargoTags bar widget options (ours: mshell-crates/mshell-frame/src/bars/bar_widgets/margo_tags.rs (MargoTagsConfig in mshell-config/src/schema/config/bars.rs))
   - Hyprland/Niri widget, but its presentation options map onto MargoTags, which today exposes only window_icons.
   - missing: display mode: all tags / only active+occupied tags (MargoTagsConfig has only window_icons); per-state (focused/urgent/occupied/empty) custom glyph and pill colour
-- **lyrics** (changed) [low] — lyrics engine + Lyrics menu/pill (ours: mshell-crates/mshell-frame/src/lyrics.rs, mshell-crates/mshell-frame/src/menus/menu_widgets/lyrics/, mshell-crates/mshell-frame/src/bars/bar_widgets/lyrics.rs)
+- **lyrics** (changed) [low] — 1.8.0's candidate check (artist + length before taking an lrclib search hit) ported 2026-11-21; per-track timing nudges already native (lyrics/offsets.rs). Lyrics engine + Lyrics menu/pill (ours: mshell-crates/mshell-frame/src/lyrics.rs, mshell-crates/mshell-frame/src/menus/menu_widgets/lyrics/, mshell-crates/mshell-frame/src/bars/bar_widgets/lyrics.rs)
   - Changed (1.6.0): adds word-synced karaoke rendering, a format-priority chain across many (mostly Chinese) sources, translation/romanization pairing and categorized settings. Ours is lrclib-only and line-synced; only the offset/word-sync/fallback bits matter for this owner.
   - missing: word-level (enhanced LRC/karaoke) highlighting; ours parses only line-synced LRC; fallback lyric sources beyond lrclib (plugin chains NetEase/QQ/Kugou/Spotify/SPlayer with format priority); translation/romanization layer under each line; global timing offset setting; retry with backoff when every source fails (ours caches "none" only on a definitive miss)
 - **media-lyrics** [low] — Lyrics menu (ours: mshell-crates/mshell-frame/src/menus/menu_widgets/lyrics/lyrics_menu_widget.rs)
@@ -271,7 +271,7 @@ Full re-review against the 5.0.0 tree; the 2026-11-04 review's high/medium PORT 
 - **umbriel-displays** — ours: mshell-settings/src/monitors_settings.rs + monitors_arrange.rs — Umbriel-only; our monitors page has drag arrangement map, mode/refresh/rotation/scale with confirm-revert.
 - **umbriel-monitor-control** — ours: mshell-settings/src/monitors_arrange.rs — Umbriel-only; arrangement left/right/above/below + rotation already native.
 - **umbriel-submap** — ours: bar_widgets/keymode.rs + mshell-osd toast_producer (toasts.keymode) — Keymode pill hidden in default mode plus change toast is the margo equivalent.
-- **usb-manager** — ours: bar_widgets/usb.rs + menus/usb + crate::removable_drives — Native port: mount/open, LUKS, safe-remove, auto-hide, right-click eject all.
+- **usb-manager** — ours: bar_widgets/usb.rs + menus/usb + crate::removable_drives — Native port: mount/open, LUKS, safe-remove, auto-hide, right-click eject all; read-only fallback when the kernel refuses read-write (dirty NTFS) ported 2026-11-21.
 - **usbeehive** — ours: menus/power/usb_c_power.rs — USB-C PD role/wattage read natively from sysfs typec; connected-USB-device list is not useful enough to add.
 - **visualizerp** — ours: bar_widgets/audio_visualizer.rs (cava spectrum) — Bar visualizer exists; phase-locked oscilloscope needs a C PipeWire helper — cosmetic alternative, not worth it.
 - **web-launcher** — ours: mshell-launcher/src/providers/websearch.rs (favourite sites `web`) — Favourite-sites mode already in websearch provider.
@@ -453,3 +453,9 @@ Full re-review against the 5.0.0 tree; the 2026-11-04 review's high/medium PORT 
 - **yt-music** — Full YouTube Music client with cookies; owner music is MPD/mtune.
 - **zakker** — Religious reminder notifications; not relevant.
 - **zed-provider** — Zed not installed.
+
+## Review 2026-11-21 (744fe5a1..546e0b72)
+- Ported: lyrics 1.8.0 lrclib candidate check; usb-manager read-only fallback.
+- New, not ported: **retro-hdd-led** (bar LED blinking on disk I/O from /proc/diskstats) — optional, no disk-activity widget in mshell yet; **keyboard** (layouts + fcitx5 + OSK) — layouts and the OSK (mkeys) are native, fcitx5 not installed.
+- HAVE already: battery-power-management 1.1.0 start threshold (fsops::charge_limit), vpn-manager bar toggle (right click), gamer-mode, headroom, hover-widgets.
+- SKIP: cmf-buds (Nothing earbuds), shipyard (Docker/Podman: podman menu exists), lyrics-carousel / synced-lyrics / terminal-widgets / wallpaper-deck (cosmetic).

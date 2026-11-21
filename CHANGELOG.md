@@ -5,6 +5,36 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **AI Agents menu, Usage page redesigned** (visual ideas from
+  AiOverviewControl): an overview card on top — the fullest plan window in
+  a ring gauge with the provider's mark, then Avg load / Peak / Active /
+  Attention / At risk / Next reset tiles, tinted by severity; one card per
+  provider (Claude, every other Claude account, Codex) with its mark in a
+  ring of its fullest window, the headline percent, Live / Stale chips and
+  an open-the-usage-page button; each window's bar carries an even-pace
+  marker (where an even burn would be now — a fill past it runs out early);
+  Today / Week / Month token and cost tiles, a last-seven-days chart with
+  today picked out, and the by-project list with share bars. Claude and
+  Codex symbolic marks (Lobe Icons, MIT) join the MargoMaterial theme.
+
+### Fixed
+
+- **Lyrics, wrong song from the lrclib search** (community-plugins lyrics
+  1.8.0): when the exact lookup misses, the fuzzy search no longer takes
+  the first synced hit whatever it is — a hit must match the artist (when
+  both name one) and be within 10 s of the track's length; synced hits go
+  first, then the closest length, and a hit whose lyrics don't parse gives
+  way to the next. No matching hit = no lyrics instead of another song's.
+- **USB drives Windows left dirty mount read-only** (community-plugins
+  usb-manager): when the kernel refuses a read-write mount ("wrong fs type,
+  bad option, bad superblock" — ntfs3 after hibernation / Fast Startup),
+  the USB menu mounts the drive read-only and says so in a toast, instead
+  of failing.
+
 ## [5.4.1] – 2026-11-20
 
 **mshell no longer spins at 100% CPU on Mesa 26.3.1: margo stops offering

@@ -528,6 +528,8 @@ pub(crate) struct HistorySnapshot {
     pub(crate) all_sessions: u32,
     /// Tokens per day of this week, Monday first.
     pub(crate) weekdays: Vec<u64>,
+    /// The last seven days, oldest first, today last.
+    pub(crate) last_days: Vec<(chrono::NaiveDate, history::Totals)>,
     /// Per project over the last [`HISTORY_DAYS`], most tokens first.
     pub(crate) projects: Vec<(String, history::Totals)>,
     /// Tokens per local hour of the day over the last [`HISTORY_DAYS`].
@@ -585,6 +587,15 @@ fn summarize(h: &history::UsageHistory, today: chrono::NaiveDate) -> HistorySnap
         projects: h.by_project(&from),
         hours: vec![0; 24],
         weekdays: vec![0; 7],
+        last_days: (0..7)
+            .rev()
+            .map(|n| {
+                (
+                    today - chrono::Duration::days(n),
+                    history::Totals::default(),
+                )
+            })
+            .collect(),
         all_sessions: h.sessions(),
         ..HistorySnapshot::default()
     };
@@ -610,6 +621,9 @@ fn summarize(h: &history::UsageHistory, today: chrono::NaiveDate) -> HistorySnap
         }
         if d == today_s {
             snap.today.add(&u.totals);
+        }
+        if let Some((_, t)) = snap.last_days.iter_mut().find(|(date, _)| day(*date) == d) {
+            t.add(&u.totals);
         }
     }
     snap

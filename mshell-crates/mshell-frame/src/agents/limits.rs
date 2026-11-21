@@ -705,12 +705,19 @@ pub(crate) fn forecast_text(w: &LimitWindow, p: &Pace) -> String {
     }
 }
 
-/// `"resets in 3h 10m · budget 12%/h"`.
-pub(crate) fn reset_text(w: &LimitWindow, p: &Pace) -> String {
-    let Some(rem) = p.remaining_ms else {
-        return String::new();
-    };
-    let mut s = format!("Resets in {}", span(rem));
+/// The right side of a window's title line: `"40% · 2h 30m"` (the used
+/// share, then the time to the reset while one is coming).
+pub(crate) fn headline_text(w: &LimitWindow, p: &Pace) -> String {
+    match p.remaining_ms {
+        Some(rem) => format!("{:.0}% · {}", w.percent, span(rem)),
+        None => format!("{:.0}%", w.percent),
+    }
+}
+
+/// The line under a window's bar: the forecast, then the even-pace budget
+/// (`"On course for ~80% by reset (16%/h) · budget 24%/h"`).
+pub(crate) fn detail_text(w: &LimitWindow, p: &Pace) -> String {
+    let mut s = forecast_text(w, p);
     if let Some(b) = p.budget
         && p.status != PaceStatus::Limit
     {
@@ -990,6 +997,10 @@ mod tests {
         let w = window(WindowKind::Session, 40.0, 5 * HOUR_MS, 150 * 60_000);
         let p = pace(&w, NOW, None);
         assert_eq!(forecast_text(&w, &p), "On course for ~80% by reset (16%/h)");
-        assert_eq!(reset_text(&w, &p), "Resets in 2h 30m · budget 24%/h");
+        assert_eq!(headline_text(&w, &p), "40% · 2h 30m");
+        assert_eq!(
+            detail_text(&w, &p),
+            "On course for ~80% by reset (16%/h) · budget 24%/h"
+        );
     }
 }

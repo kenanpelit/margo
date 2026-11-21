@@ -5,3 +5,4 @@ pub(crate) mod library_section;
 pub(crate) mod memory_page;
 pub(crate) mod plugins_page;
 pub(crate) mod sessions_page;
+pub(crate) mod usage_page;
